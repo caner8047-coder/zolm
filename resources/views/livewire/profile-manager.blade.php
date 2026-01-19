@@ -84,12 +84,12 @@
                     Düzenle
                 </button>
                 @else
-                <a 
-                    href="#"
-                    class="flex-1 px-3 py-2 text-sm text-center text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                <button 
+                    wire:click="viewRules({{ $profile->id }})"
+                    class="flex-1 px-3 py-2 text-sm text-center text-purple-700 border border-purple-300 rounded-lg hover:bg-purple-50 transition-colors"
                 >
                     Kuralları Gör
-                </a>
+                </button>
                 @endif
                 <button 
                     wire:click="delete({{ $profile->id }})"
@@ -185,6 +185,116 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+    @endif
+
+    <!-- Rules Modal -->
+    @if($showRulesModal && $viewingRules)
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-lg w-full max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900">AI Kuralları</h2>
+                    <p class="text-sm text-gray-500">{{ $viewingProfileName }}</p>
+                </div>
+                <button wire:click="closeRulesModal" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto flex-1">
+                <!-- Input Config -->
+                @if(isset($viewingRules['input']))
+                <div class="mb-6">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-2">📥 Girdi Ayarları</h3>
+                    <div class="bg-gray-50 rounded-lg p-4 text-sm">
+                        <p><strong>Sayfa:</strong> {{ $viewingRules['input']['sheet_name'] ?? 'Varsayılan' }}</p>
+                        @if(isset($viewingRules['input']['columns']))
+                        <p class="mt-2"><strong>Kolonlar:</strong></p>
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            @foreach($viewingRules['input']['columns'] as $col)
+                            <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                                {{ is_array($col) ? ($col['name'] ?? '') : $col }}
+                            </span>
+                            @endforeach
+                        </div>
+                        @endif
+                    </div>
+                </div>
+                @endif
+
+                <!-- Transformations -->
+                @if(isset($viewingRules['transformations']) && count($viewingRules['transformations']) > 0)
+                <div class="mb-6">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-2">⚙️ Dönüşümler</h3>
+                    <div class="space-y-2">
+                        @foreach($viewingRules['transformations'] as $transform)
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                            <div class="flex items-center space-x-2">
+                                <span class="px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-medium">
+                                    {{ $transform['type'] ?? 'işlem' }}
+                                </span>
+                                @if(isset($transform['description']))
+                                <span class="text-sm text-gray-700">{{ $transform['description'] }}</span>
+                                @endif
+                            </div>
+                            @if(isset($transform['mapping']))
+                            <div class="mt-2 text-xs text-gray-600">
+                                <strong>Eşleme:</strong>
+                                @foreach($transform['mapping'] as $from => $to)
+                                <span class="inline-block mx-1">{{ $from }} → {{ $to }}</span>
+                                @endforeach
+                            </div>
+                            @endif
+                        </div>
+                        @endforeach
+                    </div>
+                </div>
+                @endif
+
+                <!-- Outputs -->
+                @if(isset($viewingRules['outputs']) && count($viewingRules['outputs']) > 0)
+                <div class="mb-6">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-2">📤 Çıktı Dosyaları</h3>
+                    <div class="space-y-2">
+                        @foreach($viewingRules['outputs'] as $output)
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <p class="font-medium text-green-800">{{ $output['filename_pattern'] ?? 'dosya.xlsx' }}</p>
+                            @if(isset($output['sheets']))
+                            <div class="mt-2 flex flex-wrap gap-1">
+                                @foreach($output['sheets'] as $sheet)
+                                <span class="px-2 py-0.5 bg-green-200 text-green-800 rounded text-xs">
+                                    {{ $sheet['name'] ?? 'Sayfa' }}
+                                </span>
+                                @endforeach
+                            </div>
+                            @endif
+                        </div>
+                        @endforeach
+                    </div>
+                </div>
+                @endif
+
+                <!-- Raw JSON -->
+                <details class="bg-gray-900 rounded-lg">
+                    <summary class="px-4 py-3 text-sm text-gray-300 cursor-pointer hover:text-white">
+                        Ham JSON Verisi
+                    </summary>
+                    <pre class="px-4 pb-4 text-xs text-green-400 overflow-x-auto">{{ json_encode($viewingRules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre>
+                </details>
+            </div>
+
+            <div class="px-6 py-4 border-t border-gray-200">
+                <button 
+                    wire:click="closeRulesModal"
+                    class="w-full px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+                >
+                    Kapat
+                </button>
+            </div>
         </div>
     </div>
     @endif

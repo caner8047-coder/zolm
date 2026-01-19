@@ -7,6 +7,7 @@ use App\Models\Report;
 use App\Models\ReportFile;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class DynamicTransformEngine
@@ -28,18 +29,34 @@ class DynamicTransformEngine
         try {
             $rules = $profile->getRules();
             
+            Log::info('DynamicTransformEngine: Kurallar yüklendi', ['profile' => $profile->name]);
+            
             if (empty($rules) || !isset($rules['version'])) {
                 throw new \Exception('Profil kuralları bulunamadı veya geçersiz.');
             }
 
             // 1. Veriyi oku
-            $data = $this->readInputData($uploadedFile, $rules['input'] ?? []);
+            $inputConfig = $rules['input'] ?? [];
+            $data = $this->readInputData($uploadedFile, $inputConfig);
+            
+            Log::info('DynamicTransformEngine: Veri okundu', ['count' => $data->count()]);
+            
+            if ($data->isEmpty()) {
+                throw new \Exception('Dosyadan veri okunamadı.');
+            }
 
-            // 2. Dönüşümleri uygula
+            // 2. Kategori kolonunu belirle (AI kurallarından veya varsayılan)
+            $categoryCol = $this->findCategoryColumn($data, $rules);
+            Log::info('DynamicTransformEngine: Kategori kolonu', ['column' => $categoryCol]);
+
+            // 3. Dönüşümleri uygula (filter, map_column, sort vb.)
             $data = $this->applyTransformations($data, $rules['transformations'] ?? []);
 
-            // 3. Çıktıları oluştur
-            $generatedFiles = $this->generateOutputs($data, $rules['outputs'] ?? [], $report);
+            // 4. Çıktıları oluştur - KATEGORİ BAZLI
+            $outputs = $rules['outputs'] ?? [];
+            $generatedFiles = $this->generateCategoryBasedOutputs($data, $outputs, $report, $categoryCol);
+            
+            Log::info('DynamicTransformEngine: Dosyalar oluşturuldu', ['count' => count($generatedFiles)]);
 
             $report->update(['status' => 'success']);
 
@@ -50,6 +67,8 @@ class DynamicTransformEngine
             ];
 
         } catch (\Exception $e) {
+            Log::error('DynamicTransformEngine: Hata', ['error' => $e->getMessage()]);
+            
             $report->update([
                 'status' => 'failed',
                 'error_message' => $e->getMessage(),
@@ -64,6 +83,53 @@ class DynamicTransformEngine
     }
 
     /**
+     * Find the category column from data or rules
+     */
+    protected function findCategoryColumn(Collection $data, array $rules): ?string
+    {
+        // 1. Kurallardan al
+        $inputConfig = $rules['input'] ?? [];
+        if (isset($inputConfig['key_columns']['category_col'])) {
+            return $inputConfig['key_columns']['category_col'];
+        }
+
+        // 2. Transformations'dan map_column target'ını ara
+        foreach ($rules['transformations'] ?? [] as $transform) {
+            if (($transform['type'] ?? '') === 'map_column' && isset($transform['target'])) {
+                return $transform['target'];
+            }
+            if (($transform['type'] ?? '') === 'group_by' && isset($transform['column'])) {
+                return $transform['column'];
+            }
+        }
+
+        // 3. Outputs'tan {CATEGORY} yerine kullanılacak kolonu bul
+        foreach ($rules['outputs'] ?? [] as $output) {
+            $pattern = $output['filename_pattern'] ?? '';
+            if (preg_match('/\{(\w+)\}/', $pattern, $matches)) {
+                $groupCol = $matches[1];
+                $firstItem = $data->first();
+                if ($firstItem && isset($firstItem[$groupCol])) {
+                    return $groupCol;
+                }
+            }
+        }
+
+        // 4. Varsayılan kategori kolon adları dene
+        $possibleCategoryColumns = ['Kategori', 'Renk Etiketi', 'Ürün Grubu', 'Grup', 'CATEGORY', 'Category'];
+        $firstItem = $data->first();
+        if ($firstItem) {
+            foreach ($possibleCategoryColumns as $col) {
+                if (isset($firstItem[$col])) {
+                    return $col;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Read input data from file
      */
     protected function readInputData(UploadedFile $file, array $inputConfig): Collection
@@ -73,162 +139,189 @@ class DynamicTransformEngine
     }
 
     /**
-     * Apply all transformations
+     * Apply transformations
      */
     protected function applyTransformations(Collection $data, array $transformations): Collection
     {
         foreach ($transformations as $transform) {
             $type = $transform['type'] ?? '';
             
-            $data = match ($type) {
-                'filter' => $this->applyFilter($data, $transform),
-                'map_column' => $this->applyMapColumn($data, $transform),
-                'sort' => $this->applySort($data, $transform),
-                'convert_type' => $this->applyConvertType($data, $transform),
-                default => $data,
-            };
+            try {
+                $newData = match ($type) {
+                    'filter' => $this->applyFilter($data, $transform),
+                    'map_column' => $this->applyMapColumn($data, $transform),
+                    'sort' => $this->applySort($data, $transform),
+                    default => $data,
+                };
+                
+                if ($newData->isNotEmpty()) {
+                    $data = $newData;
+                }
+            } catch (\Exception $e) {
+                Log::warning("DynamicTransformEngine: {$type} hatası: " . $e->getMessage());
+            }
         }
 
         return $data;
     }
 
     /**
-     * Apply filter transformation
+     * Apply filter
      */
     protected function applyFilter(Collection $data, array $config): Collection
     {
         $condition = $config['condition'] ?? '';
         
-        // Basit IN koşulu: "Renk Etiketi IN ['BERJER', 'PUF']"
-        if (preg_match('/(\w+[\w\s\.]*)\s+IN\s+\[(.*?)\]/i', $condition, $matches)) {
-            $column = trim($matches[1]);
-            $valuesStr = $matches[2];
-            $values = array_map(function ($v) {
-                return trim($v, " '\"");
-            }, explode(',', $valuesStr));
+        if (empty($condition)) return $data;
+        
+        if (preg_match('/(.+?)\s+IN\s+\[(.*?)\]/i', $condition, $matches)) {
+            $column = trim($matches[1], " '\"");
+            $values = array_map(fn($v) => trim($v, " '\""), explode(',', $matches[2]));
+            
+            $firstItem = $data->first();
+            if (!$firstItem || !isset($firstItem[$column])) return $data;
 
-            return $data->filter(function ($item) use ($column, $values) {
-                return in_array($item[$column] ?? '', $values);
-            });
+            return $data->filter(fn($item) => in_array($item[$column] ?? '', $values));
         }
 
-        // NOT NULL koşulu
-        if (preg_match('/(\w+[\w\s\.]*)\s+IS\s+NOT\s+NULL/i', $condition, $matches)) {
-            $column = trim($matches[1]);
-            return $data->filter(function ($item) use ($column) {
-                return !empty($item[$column]);
-            });
+        if (preg_match('/(.+?)\s+IS\s+NOT\s+NULL/i', $condition, $matches)) {
+            $column = trim($matches[1], " '\"");
+            return $data->filter(fn($item) => !empty($item[$column]));
         }
 
         return $data;
     }
 
     /**
-     * Apply column mapping transformation
+     * Apply column mapping
      */
     protected function applyMapColumn(Collection $data, array $config): Collection
     {
         $source = $config['source'] ?? '';
-        $target = $config['target'] ?? '';
+        $target = $config['target'] ?? $source;
         $mapping = $config['mapping'] ?? [];
 
-        if (empty($source) || empty($target)) {
-            return $data;
-        }
+        if (empty($source)) return $data;
+
+        $firstItem = $data->first();
+        if (!$firstItem || !isset($firstItem[$source])) return $data;
 
         return $data->map(function ($item) use ($source, $target, $mapping) {
             $sourceValue = $item[$source] ?? '';
-            $item[$target] = $mapping[$sourceValue] ?? $sourceValue;
+            $item[$target] = !empty($mapping) ? ($mapping[$sourceValue] ?? $sourceValue) : $sourceValue;
             return $item;
         });
     }
 
     /**
-     * Apply sort transformation
+     * Apply sort
      */
     protected function applySort(Collection $data, array $config): Collection
     {
         $column = $config['column'] ?? '';
+        if (empty($column)) return $data;
+        
         $direction = $config['direction'] ?? 'asc';
-
-        if (empty($column)) {
-            return $data;
-        }
-
-        return $direction === 'desc' 
-            ? $data->sortByDesc($column) 
-            : $data->sortBy($column);
+        return $direction === 'desc' ? $data->sortByDesc($column) : $data->sortBy($column);
     }
 
     /**
-     * Apply type conversion
+     * Generate category-based outputs with proper sheet names
      */
-    protected function applyConvertType(Collection $data, array $config): Collection
-    {
-        $column = $config['column'] ?? '';
-        $type = $config['to_type'] ?? 'string';
-
-        if (empty($column)) {
-            return $data;
-        }
-
-        return $data->map(function ($item) use ($column, $type) {
-            $value = $item[$column] ?? null;
-            
-            $item[$column] = match ($type) {
-                'integer', 'int' => (int) $value,
-                'float', 'decimal' => (float) $value,
-                'string' => (string) $value,
-                default => $value,
-            };
-            
-            return $item;
-        });
-    }
-
-    /**
-     * Generate output files
-     */
-    protected function generateOutputs(Collection $data, array $outputs, Report $report): array
-    {
+    protected function generateCategoryBasedOutputs(
+        Collection $data, 
+        array $outputs, 
+        Report $report, 
+        ?string $categoryCol
+    ): array {
         $generatedFiles = [];
-        $storageDir = 'reports/' . $report->id;
+        $storageDir = 'private/reports/' . $report->id;
         Storage::disk('local')->makeDirectory($storageDir);
 
         foreach ($outputs as $output) {
-            $files = $this->generateOutput($data, $output, $storageDir, $report);
-            $generatedFiles = array_merge($generatedFiles, $files);
-        }
+            $filenamePattern = $output['filename_pattern'] ?? 'output.xlsx';
+            $sheetsConfig = $output['sheets'] ?? [];
+            
+            // {CATEGORY} veya benzeri placeholder var mı kontrol et
+            $hasPlaceholder = preg_match('/\{(\w+)\}/', $filenamePattern, $matches);
+            $placeholderKey = $matches[1] ?? 'CATEGORY';
+            
+            // Sheet isimlerinde de placeholder var mı?
+            $sheetsHavePlaceholder = false;
+            foreach ($sheetsConfig as $sheet) {
+                if (str_contains($sheet['name'] ?? '', '{')) {
+                    $sheetsHavePlaceholder = true;
+                    break;
+                }
+            }
 
-        return $generatedFiles;
-    }
-
-    /**
-     * Generate a single output configuration
-     */
-    protected function generateOutput(Collection $data, array $output, string $storageDir, Report $report): array
-    {
-        $filenamePattern = $output['filename_pattern'] ?? 'output.xlsx';
-        $sheets = $output['sheets'] ?? [];
-        $generatedFiles = [];
-
-        // Eğer pattern'de değişken varsa, grupla
-        if (preg_match('/\{(\w+)\}/', $filenamePattern, $matches)) {
-            $groupColumn = $matches[1];
-            $groups = $data->groupBy($groupColumn);
-
-            foreach ($groups as $groupValue => $groupData) {
-                if (empty($groupValue)) continue;
+            // Eğer placeholder varsa ve kategori kolonu varsa, kategoriye göre işle
+            if (($hasPlaceholder || $sheetsHavePlaceholder) && $categoryCol) {
+                // Kategorilere göre grupla
+                $categories = $data->pluck($categoryCol)->unique()->filter()->values()->toArray();
                 
-                $filename = str_replace('{' . $groupColumn . '}', $groupValue, $filenamePattern);
-                $file = $this->createExcelFile($groupData, $sheets, $storageDir, $filename, $report);
+                Log::info('DynamicTransformEngine: Kategoriler bulundu', [
+                    'categories' => $categories,
+                    'column' => $categoryCol
+                ]);
+
+                if (!empty($categories)) {
+                    // TEK DOSYA İÇİNDE TÜM KATEGORİLER İÇİN AYRI SHEET'LER
+                    $filename = str_replace('{' . $placeholderKey . '}', 'TÜM', $filenamePattern);
+                    $filename = preg_replace('/\{[A-Z_]+\}/', '', $filename); // Diğer placeholders temizle
+                    
+                    $allSheets = [];
+                    
+                    foreach ($categories as $category) {
+                        $categoryData = $data->filter(fn($item) => ($item[$categoryCol] ?? '') === $category);
+                        
+                        if ($categoryData->isEmpty()) continue;
+                        
+                        // Her kategori için sheet'leri oluştur
+                        foreach ($sheetsConfig as $sheetConfig) {
+                            $sheetName = $sheetConfig['name'] ?? 'Sheet';
+                            
+                            // {CATEGORY} yerine gerçek kategori adını koy
+                            $sheetName = str_replace('{CATEGORY}', $category, $sheetName);
+                            $sheetName = str_replace('{' . $placeholderKey . '}', $category, $sheetName);
+                            $sheetName = substr($sheetName, 0, 31); // Excel max 31 karakter
+                            
+                            $sheetData = $this->generateSheetData($categoryData, $sheetConfig);
+                            
+                            if (!empty($sheetData)) {
+                                $allSheets[] = [
+                                    'name' => $sheetName,
+                                    'data' => $sheetData,
+                                ];
+                            }
+                        }
+                    }
+
+                    if (!empty($allSheets)) {
+                        $file = $this->createExcelFile($allSheets, $storageDir, $filename, $report);
+                        if ($file) {
+                            $generatedFiles[] = $file;
+                        }
+                    }
+                } else {
+                    // Kategori bulunamadı, tek dosya oluştur
+                    $file = $this->createSingleOutput($data, $sheetsConfig, $storageDir, $filenamePattern, $report);
+                    if ($file) {
+                        $generatedFiles[] = $file;
+                    }
+                }
+            } else {
+                // Placeholder yok, tek dosya oluştur
+                $file = $this->createSingleOutput($data, $sheetsConfig, $storageDir, $filenamePattern, $report);
                 if ($file) {
                     $generatedFiles[] = $file;
                 }
             }
-        } else {
-            // Tek dosya oluştur
-            $file = $this->createExcelFile($data, $sheets, $storageDir, $filenamePattern, $report);
+        }
+
+        // Hiç dosya oluşturulamadıysa varsayılan çıktı oluştur
+        if (empty($generatedFiles)) {
+            $file = $this->createDefaultOutput($data, $storageDir, $report);
             if ($file) {
                 $generatedFiles[] = $file;
             }
@@ -238,40 +331,60 @@ class DynamicTransformEngine
     }
 
     /**
-     * Create Excel file with sheets
+     * Create single output file
      */
-    protected function createExcelFile(
-        Collection $data,
-        array $sheetsConfig,
-        string $storageDir,
-        string $filename,
+    protected function createSingleOutput(
+        Collection $data, 
+        array $sheetsConfig, 
+        string $storageDir, 
+        string $filename, 
         Report $report
     ): ?ReportFile {
-        if ($data->isEmpty()) {
-            return null;
-        }
-
-        $excelSheets = [];
-
+        $filename = preg_replace('/\{[A-Z_]+\}/', 'CIKTI', $filename);
+        
+        $sheets = [];
         foreach ($sheetsConfig as $sheetConfig) {
-            $sheetData = $this->generateSheetData($data, $sheetConfig);
+            $sheetName = preg_replace('/\{[A-Z_]+\}/', '', $sheetConfig['name'] ?? 'Sheet');
+            $sheetName = trim($sheetName) ?: 'Veriler';
+            $sheetName = substr($sheetName, 0, 31);
             
+            $sheetData = $this->generateSheetData($data, $sheetConfig);
             if (!empty($sheetData)) {
-                $excelSheets[] = [
-                    'name' => substr($sheetConfig['name'] ?? 'Sheet', 0, 31),
-                    'data' => $sheetData,
-                ];
+                $sheets[] = ['name' => $sheetName, 'data' => $sheetData];
             }
         }
 
-        if (empty($excelSheets)) {
-            return null;
+        if (empty($sheets)) {
+            $sheets[] = ['name' => 'Veriler', 'data' => $data->values()->toArray()];
         }
+
+        return $this->createExcelFile($sheets, $storageDir, $filename, $report);
+    }
+
+    /**
+     * Create default output
+     */
+    protected function createDefaultOutput(Collection $data, string $storageDir, Report $report): ?ReportFile
+    {
+        $sheets = [['name' => 'Tüm Veriler', 'data' => $data->values()->toArray()]];
+        return $this->createExcelFile($sheets, $storageDir, 'VARSAYILAN_CIKTI.xlsx', $report);
+    }
+
+    /**
+     * Create Excel file
+     */
+    protected function createExcelFile(
+        array $sheets, 
+        string $storageDir, 
+        string $filename, 
+        Report $report
+    ): ?ReportFile {
+        if (empty($sheets)) return null;
 
         $filePath = $storageDir . '/' . $filename;
         $fullPath = Storage::disk('local')->path($filePath);
         
-        $this->excelService->exportToXlsx($excelSheets, $fullPath);
+        $this->excelService->exportToXlsx($sheets, $fullPath);
 
         return ReportFile::create([
             'report_id' => $report->id,
@@ -282,7 +395,7 @@ class DynamicTransformEngine
     }
 
     /**
-     * Generate data for a single sheet
+     * Generate sheet data
      */
     protected function generateSheetData(Collection $data, array $config): array
     {
@@ -296,15 +409,26 @@ class DynamicTransformEngine
     }
 
     /**
-     * Generate summary sheet (grouped aggregation)
+     * Generate summary sheet
      */
     protected function generateSummarySheet(Collection $data, array $config): array
     {
         $groupBy = $config['group_by'] ?? null;
         $aggregates = $config['aggregate'] ?? [];
+        $columns = $config['columns'] ?? [];
+
+        // Eğer group_by yoksa ama columns varsa, o kolonlara göre grupla
+        if (empty($groupBy) && !empty($columns)) {
+            $groupBy = $columns[0];
+        }
 
         if (empty($groupBy)) {
-            return [];
+            return $data->values()->toArray();
+        }
+
+        $firstItem = $data->first();
+        if (!$firstItem || !isset($firstItem[$groupBy])) {
+            return $data->values()->toArray();
         }
 
         $grouped = $data->groupBy($groupBy);
@@ -313,57 +437,73 @@ class DynamicTransformEngine
         foreach ($grouped as $groupValue => $items) {
             $row = [$groupBy => $groupValue];
 
-            foreach ($aggregates as $agg) {
-                $column = $agg['column'] ?? '';
-                $function = strtoupper($agg['function'] ?? 'SUM');
+            // Aggregates varsa uygula
+            if (!empty($aggregates)) {
+                foreach ($aggregates as $agg) {
+                    $column = $agg['column'] ?? '';
+                    $function = strtoupper($agg['function'] ?? 'SUM');
+                    if (empty($column)) continue;
 
-                if (empty($column)) continue;
+                    $row[$column] = match ($function) {
+                        'SUM' => $items->sum($column),
+                        'COUNT' => $items->count(),
+                        'AVG' => $items->avg($column),
+                        default => $items->sum($column),
+                    };
+                }
+            } else {
+                // Aggregates yoksa, Adet kolonunu topla veya count yap
+                $adetCol = null;
+                foreach (['Adet', 'Miktar', 'Quantity', 'Qty'] as $possibleCol) {
+                    if (isset($firstItem[$possibleCol])) {
+                        $adetCol = $possibleCol;
+                        break;
+                    }
+                }
 
-                $value = match ($function) {
-                    'SUM' => $items->sum($column),
-                    'COUNT' => $items->count(),
-                    'AVG' => $items->avg($column),
-                    'MIN' => $items->min($column),
-                    'MAX' => $items->max($column),
-                    default => $items->sum($column),
-                };
-
-                $row[$column] = $value;
+                if ($adetCol) {
+                    $row[$adetCol] = $items->sum($adetCol);
+                } else {
+                    $row['Adet'] = $items->count();
+                }
             }
 
             $result[] = $row;
         }
 
-        // Sırala
-        usort($result, function ($a, $b) use ($groupBy) {
-            return ($a[$groupBy] ?? '') <=> ($b[$groupBy] ?? '');
-        });
+        usort($result, fn($a, $b) => ($a[$groupBy] ?? '') <=> ($b[$groupBy] ?? ''));
 
         return $result;
     }
 
     /**
-     * Generate detail sheet (filtered list)
+     * Generate detail sheet
      */
     protected function generateDetailSheet(Collection $data, array $config): array
     {
         $columns = $config['columns'] ?? [];
         $sortBy = $config['sort_by'] ?? null;
 
-        // Sırala
         if ($sortBy) {
-            $data = $data->sortBy($sortBy);
+            $firstItem = $data->first();
+            if ($firstItem && isset($firstItem[$sortBy])) {
+                $data = $data->sortBy($sortBy);
+            }
         }
 
-        // Kolon filtrele
         if (!empty($columns)) {
-            $data = $data->map(function ($item) use ($columns) {
-                $filtered = [];
-                foreach ($columns as $col) {
-                    $filtered[$col] = $item[$col] ?? '';
-                }
-                return $filtered;
-            });
+            $firstItem = $data->first();
+            $validColumns = $firstItem ? array_filter($columns, fn($c) => isset($firstItem[$c])) : $columns;
+            
+            if (!empty($validColumns)) {
+                $data = $data->map(function ($item) use ($validColumns) {
+                    $filtered = [];
+                    foreach ($validColumns as $col) {
+                        $filtered[$col] = $item[$col] ?? '';
+                    }
+                    return $filtered;
+                });
+            }
         }
 
         return $data->values()->toArray();

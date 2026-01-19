@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Report;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class AIService
 {
@@ -19,7 +21,7 @@ class AIService
     }
 
     /**
-     * Ask a question to the AI
+     * Ask a question to the AI with Excel data context
      */
     public function ask(string $role, string $question, ?Report $report = null): string
     {
@@ -31,17 +33,28 @@ class AIService
         try {
             $systemPrompt = $this->getSystemPrompt($role, $report);
             
+            // Eğer rapor varsa, Excel verilerini oku ve prompt'a ekle
+            $dataContext = '';
+            if ($report) {
+                $dataContext = $this->extractReportData($report);
+            }
+
+            $fullQuestion = $question;
+            if (!empty($dataContext)) {
+                $fullQuestion = "Aşağıdaki sipariş verilerini analiz ederek soruyu yanıtla:\n\n" . $dataContext . "\n\nSoru: " . $question;
+            }
+            
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
-            ])->post($this->getApiUrl(), [
+            ])->timeout(60)->post($this->getApiUrl(), [
                 'model' => $this->model,
                 'messages' => [
                     ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $question],
+                    ['role' => 'user', 'content' => $fullQuestion],
                 ],
-                'max_tokens' => 1024,
-                'temperature' => 0.7,
+                'max_tokens' => 2048,
+                'temperature' => 0.5,
             ]);
 
             if ($response->successful()) {
@@ -54,6 +67,76 @@ class AIService
         } catch (\Exception $e) {
             return 'Bağlantı hatası: ' . $e->getMessage();
         }
+    }
+
+    /**
+     * Extract data from report's Excel files
+     */
+    protected function extractReportData(Report $report): string
+    {
+        $dataLines = [];
+        $today = now()->format('Y-m-d');
+        
+        // Orijinal dosyayı veya çıktı dosyalarını oku
+        foreach ($report->files as $file) {
+            $fullPath = Storage::disk('local')->path($file->file_path);
+            
+            if (!file_exists($fullPath)) {
+                continue;
+            }
+
+            try {
+                $spreadsheet = IOFactory::load($fullPath);
+                
+                foreach ($spreadsheet->getSheetNames() as $sheetName) {
+                    $sheet = $spreadsheet->getSheetByName($sheetName);
+                    $data = $sheet->toArray(null, true, true, true);
+                    
+                    if (empty($data)) continue;
+                    
+                    // İlk satır header
+                    $headers = array_shift($data);
+                    $headers = array_filter($headers);
+                    
+                    if (empty($headers)) continue;
+                    
+                    $dataLines[] = "\n### {$file->filename} - {$sheetName}";
+                    $dataLines[] = "Kolonlar: " . implode(', ', $headers);
+                    $dataLines[] = "Toplam satır: " . count($data);
+                    
+                    // İlk 50 satırı ekle (veya daha az)
+                    $rowCount = min(count($data), 50);
+                    $dataLines[] = "\nVeri ({$rowCount} satır):";
+                    
+                    foreach (array_slice($data, 0, $rowCount) as $row) {
+                        $rowData = [];
+                        foreach ($headers as $col => $header) {
+                            $value = $row[$col] ?? '';
+                            if (!empty($value)) {
+                                $rowData[] = "{$header}: {$value}";
+                            }
+                        }
+                        if (!empty($rowData)) {
+                            $dataLines[] = "- " . implode(' | ', $rowData);
+                        }
+                    }
+                }
+                
+            } catch (\Exception $e) {
+                $dataLines[] = "Dosya okunamadı: {$file->filename} - " . $e->getMessage();
+            }
+        }
+
+        if (empty($dataLines)) {
+            return '';
+        }
+
+        $header = "## Rapor Verileri\n";
+        $header .= "Rapor: {$report->original_filename}\n";
+        $header .= "Tarih: {$report->created_at->format('d.m.Y H:i')}\n";
+        $header .= "Bugünün tarihi: " . now()->format('d.m.Y') . "\n";
+        
+        return $header . implode("\n", $dataLines);
     }
 
     /**
@@ -74,17 +157,36 @@ class AIService
     protected function getSystemPrompt(string $role, ?Report $report): string
     {
         $basePrompt = match ($role) {
-            'production' => 'Sen bir üretim müdürüsün. E-ticaret sipariş verilerini analiz edip üretim planlaması konusunda önerilerde bulunuyorsun. Türkçe yanıt ver.',
-            'operation' => 'Sen bir operasyon sorumlusun. E-ticaret sipariş ve kargo verilerini analiz edip operasyonel önerilerde bulunuyorsun. Acil durumları, gecikmeli kargoları ve öncelikli işleri belirle. Türkçe yanıt ver.',
-            default => 'Sen bir E-ticaret, Üretim ve Operasyon Uzmanısın. Sipariş verilerini analiz edip profesyonel önerilerde bulunuyorsun. Türkçe yanıt ver.',
-        };
+            'production' => "Sen bir üretim müdürüsün. E-ticaret sipariş verilerini analiz edip üretim planlaması konusunda önerilerde bulunuyorsun. 
 
-        if ($report && $report->files->isNotEmpty()) {
-            $basePrompt .= "\n\nMevcut rapor bilgileri:\n";
-            $basePrompt .= "- Dosya: {$report->original_filename}\n";
-            $basePrompt .= "- Oluşturulma: {$report->created_at}\n";
-            $basePrompt .= "- Çıktı dosyaları: " . $report->files->pluck('filename')->join(', ');
-        }
+ÖNEMLİ KURALLAR:
+- Sana verilen Excel verilerini dikkatle oku
+- Somut sipariş numaraları ve ürün adları ver
+- 'Kargoya Son Teslim Tarihi' sütununu kontrol et
+- Bugün gönderilmesi gerekenleri belirle
+- Türkçe yanıt ver
+- Kısa ve öz ol",
+
+            'operation' => "Sen bir operasyon sorumlusun. E-ticaret sipariş ve kargo verilerini analiz edip operasyonel önerilerde bulunuyorsun.
+
+ÖNEMLİ KURALLAR:
+- Sana verilen Excel verilerini dikkatle oku
+- Acil durumları, gecikmeli kargoları ve öncelikli işleri belirle
+- Somut sipariş numaraları ver
+- 'Kargoya Son Teslim Tarihi' bugün veya geçmiş olanları işaretle
+- Türkçe yanıt ver
+- Kısa ve öz ol",
+
+            default => "Sen bir E-ticaret, Üretim ve Operasyon Uzmanısın. Sipariş verilerini analiz edip profesyonel önerilerde bulunuyorsun.
+
+ÖNEMLİ KURALLAR:
+- Sana verilen Excel verilerini dikkatle oku
+- Somut veriler ve sayılar kullan
+- Spesifik sipariş numaraları ve ürün adları ver
+- Acil olanları öncelikle belirt
+- Türkçe yanıt ver
+- Kısa ve öz ol",
+        };
 
         return $basePrompt;
     }
@@ -94,16 +196,14 @@ class AIService
      */
     protected function getDemoResponse(string $role, string $question, ?Report $report): string
     {
-        $demoResponses = [
-            'Merhaba! Ben ZOLM AI asistanıyım. Şu anda demo modunda çalışıyorum.',
-            'Sipariş verilerinizi analiz etmek için hazırım. API anahtarı yapılandırıldığında tam işlevsellik sağlanacaktır.',
-            'Bu bir demo yanıttır. Gerçek AI entegrasyonu için Groq API anahtarı gereklidir.',
-        ];
-
-        $response = $demoResponses[array_rand($demoResponses)];
+        $response = "⚠️ **Demo Modu**\n\nAI API anahtarı yapılandırılmamış. Gerçek veri analizi için:\n\n1. `.env` dosyasına `AI_API_KEY=gsk_xxx` ekleyin\n2. `php artisan config:clear` çalıştırın\n\n";
         
-        if (str_contains(strtolower($question), 'acil') || str_contains(strtolower($question), 'bugün')) {
-            $response .= "\n\n📦 **Demo Öneri:** Bugün kargoya verilmesi gereken siparişler için 'Kargoya Son Teslim Tarihi' sütununu kontrol edin.";
+        if ($report) {
+            $response .= "📁 Seçili rapor: **{$report->original_filename}**\n";
+            $response .= "📊 Çıktı dosyaları:\n";
+            foreach ($report->files as $file) {
+                $response .= "- {$file->filename}\n";
+            }
         }
 
         return $response;

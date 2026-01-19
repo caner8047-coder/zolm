@@ -64,9 +64,8 @@
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Profil Türü *</label>
                 <div class="grid grid-cols-2 gap-4">
-                    <label class="relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
+                    <div wire:click="$set('type', 'production')" class="relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
                         {{ $type === 'production' ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400' }}">
-                        <input type="radio" wire:model="type" value="production" class="sr-only">
                         <div class="flex items-center">
                             <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
                                 <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -85,11 +84,10 @@
                                 </svg>
                             </div>
                         @endif
-                    </label>
+                    </div>
 
-                    <label class="relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
+                    <div wire:click="$set('type', 'operation')" class="relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
                         {{ $type === 'operation' ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400' }}">
-                        <input type="radio" wire:model="type" value="operation" class="sr-only">
                         <div class="flex items-center">
                             <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mr-3">
                                 <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -108,7 +106,7 @@
                                 </svg>
                             </div>
                         @endif
-                    </label>
+                    </div>
                 </div>
             </div>
 
@@ -303,17 +301,118 @@
                 @endif
             </div>
 
+            <!-- JSON Düzenleme Butonu -->
+            <div class="flex items-center justify-between mt-4">
+                <button 
+                    wire:click="openJsonEditor"
+                    class="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+                >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                    <span>JSON'u Düzenle</span>
+                </button>
+                
+                @if(session('json-saved'))
+                <span class="text-sm text-green-600 flex items-center">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Değişiklikler kaydedildi
+                </span>
+                @endif
+            </div>
+
             <!-- Raw JSON (Collapsible) -->
-            <details class="bg-gray-900 rounded-lg">
+            <details class="bg-gray-900 rounded-lg mt-4">
                 <summary class="px-4 py-3 text-sm text-gray-300 cursor-pointer hover:text-white">
-                    Ham JSON Çıktısı
+                    Ham JSON Çıktısı (Sadece Görüntüle)
                 </summary>
-                <pre class="px-4 pb-4 text-xs text-green-400 overflow-x-auto">{{ json_encode($generatedRules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre>
+                <pre class="px-4 pb-4 text-xs text-green-400 overflow-x-auto max-h-64">{{ json_encode($generatedRules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre>
             </details>
             @endif
         </div>
         @endif
     </div>
+
+    <!-- JSON Editor Modal -->
+    @if($showJsonEditor)
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900">JSON Kurallarını Düzenle</h2>
+                    <p class="text-sm text-gray-500">AI'ın oluşturduğu kuralları manuel olarak düzenleyebilirsiniz</p>
+                </div>
+                <button wire:click="closeJsonEditor" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Error Message -->
+            @if($jsonEditorError)
+            <div class="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                <div class="flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    {{ $jsonEditorError }}
+                </div>
+            </div>
+            @endif
+
+            <!-- Editor -->
+            <div class="flex-1 p-6 overflow-hidden">
+                <textarea 
+                    wire:model="jsonEditorContent"
+                    class="w-full h-full min-h-[400px] px-4 py-3 font-mono text-sm bg-gray-900 text-green-400 border border-gray-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    spellcheck="false"
+                ></textarea>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <button 
+                        wire:click="formatJson"
+                        class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-100"
+                    >
+                        <span class="flex items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"/>
+                            </svg>
+                            Formatla
+                        </span>
+                    </button>
+                    <span class="text-xs text-gray-400">Ctrl+Shift+F</span>
+                </div>
+                
+                <div class="flex items-center space-x-3">
+                    <button 
+                        wire:click="closeJsonEditor"
+                        class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    >
+                        İptal
+                    </button>
+                    <button 
+                        wire:click="saveJsonEditorChanges"
+                        class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                    >
+                        <span class="flex items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Değişiklikleri Kaydet
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 
     <!-- Navigation Buttons -->
     <div class="flex justify-between mt-6">

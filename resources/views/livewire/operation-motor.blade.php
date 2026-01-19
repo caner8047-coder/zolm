@@ -103,12 +103,12 @@
                             <p class="text-sm text-gray-500">Çıktı xls dosyası (motorun verdiği çıktı)</p>
                         </div>
                     </div>
-                    <button 
-                        wire:click="downloadFile({{ $file['id'] }})"
+                    <a 
+                        href="{{ route('download', $file['id']) }}"
                         class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                     >
                         xls dışarı aktar
-                    </button>
+                    </a>
                 </div>
                 @endforeach
             </div>

@@ -63,16 +63,81 @@ Route::middleware('auth')->group(function () {
         ->name('profile.wizard')
         ->middleware('can:admin');
 
-    // File downloads
+    // File downloads - doğrudan binary response
     Route::get('/download/{reportFile}', function (\App\Models\ReportFile $reportFile) {
         $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($reportFile->file_path);
-        if (file_exists($fullPath)) {
-            return response()->streamDownload(function () use ($fullPath) {
-                echo file_get_contents($fullPath);
-            }, $reportFile->filename, [
-                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            ]);
+        
+        if (!file_exists($fullPath)) {
+            abort(404, 'Dosya bulunamadı');
         }
-        abort(404);
+
+        // BinaryFileResponse kullan - output buffering sorununu önler
+        return response()->download($fullPath, $reportFile->filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $reportFile->filename . '"',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
+        ]);
     })->name('download');
 });
+
+// DEBUG: Excel test route - sorun tespiti için
+Route::get('/test-excel', function () {
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Test');
+    $sheet->setCellValue('A1', 'Merhaba');
+    $sheet->setCellValue('B1', 'Dünya');
+    $sheet->setCellValue('A2', 'Test');
+    $sheet->setCellValue('B2', '123');
+    
+    $tempFile = storage_path('app/test-excel.xlsx');
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+    $writer->save($tempFile);
+    
+    return response()->download($tempFile, 'test-dosya.xlsx', [
+        'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ])->deleteFileAfterSend(true);
+});
+
+// DEBUG: Son rapor dosyasını test et
+Route::get('/test-last-file', function () {
+    $lastFile = \App\Models\ReportFile::latest()->first();
+    if (!$lastFile) {
+        return 'Dosya bulunamadı';
+    }
+    
+    $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($lastFile->file_path);
+    
+    if (!file_exists($fullPath)) {
+        return 'Dosya mevcut değil: ' . $lastFile->file_path;
+    }
+    
+    // Dosyayı PhpSpreadsheet ile aç ve kontrol et
+    try {
+        $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($fullPath);
+        $info = [
+            'path' => $fullPath,
+            'size' => filesize($fullPath),
+            'sheet_count' => $spreadsheet->getSheetCount(),
+            'sheets' => [],
+        ];
+        
+        foreach ($spreadsheet->getSheetNames() as $name) {
+            $sheet = $spreadsheet->getSheetByName($name);
+            $info['sheets'][] = [
+                'name' => $name,
+                'rows' => $sheet->getHighestRow(),
+                'cols' => $sheet->getHighestColumn(),
+            ];
+        }
+        
+        return response()->json($info);
+        
+    } catch (\Exception $e) {
+        return 'Hata: ' . $e->getMessage();
+    }
+});
+
+

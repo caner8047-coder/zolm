@@ -78,19 +78,25 @@ class ProductionMotor extends Component
     public function downloadFile($fileId)
     {
         $file = \App\Models\ReportFile::find($fileId);
-        if ($file) {
-            $fullPath = Storage::disk('local')->path($file->file_path);
-            if (file_exists($fullPath)) {
-                return response()->streamDownload(function () use ($fullPath) {
-                    echo file_get_contents($fullPath);
-                }, $file->filename, [
-                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                ]);
-            }
-        }
         
-        $this->message = 'Dosya bulunamadı!';
-        $this->messageType = 'error';
+        if (!$file) {
+            $this->message = 'Dosya kaydı bulunamadı!';
+            $this->messageType = 'error';
+            return null;
+        }
+
+        $fullPath = Storage::disk('local')->path($file->file_path);
+        
+        if (!file_exists($fullPath)) {
+            $this->message = 'Dosya bulunamadı: ' . $file->file_path;
+            $this->messageType = 'error';
+            return null;
+        }
+
+        return response()->download($fullPath, $file->filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+        ]);
     }
 
     public function downloadAll()

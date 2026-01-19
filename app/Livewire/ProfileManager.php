@@ -8,10 +8,15 @@ use Livewire\Component;
 class ProfileManager extends Component
 {
     public bool $showModal = false;
+    public bool $showRulesModal = false;
     public ?int $editingId = null;
     public string $name = '';
     public string $type = 'production';
     public bool $isDefault = false;
+    
+    // Kuralları gösterme
+    public ?array $viewingRules = null;
+    public string $viewingProfileName = '';
 
     protected $rules = [
         'name' => 'required|string|max:255',
@@ -33,6 +38,21 @@ class ProfileManager extends Component
         $this->type = $profile->type;
         $this->isDefault = $profile->is_default;
         $this->showModal = true;
+    }
+
+    public function viewRules($id)
+    {
+        $profile = Profile::findOrFail($id);
+        $this->viewingRules = $profile->ai_generated_rules ?? [];
+        $this->viewingProfileName = $profile->name;
+        $this->showRulesModal = true;
+    }
+
+    public function closeRulesModal()
+    {
+        $this->showRulesModal = false;
+        $this->viewingRules = null;
+        $this->viewingProfileName = '';
     }
 
     public function save()
@@ -65,9 +85,16 @@ class ProfileManager extends Component
         Profile::find($id)?->delete();
     }
 
+    public function setDefault($id)
+    {
+        $profile = Profile::findOrFail($id);
+        Profile::where('type', $profile->type)->update(['is_default' => false]);
+        $profile->update(['is_default' => true]);
+    }
+
     public function getProfilesProperty()
     {
-        return Profile::orderBy('type')->orderBy('name')->get();
+        return Profile::orderBy('type')->orderBy('is_default', 'desc')->orderBy('name')->get();
     }
 
     public function render()

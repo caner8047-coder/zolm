@@ -38,6 +38,11 @@ class ProfileWizard extends Component
     public string $analysisError = '';
     public bool $analysisComplete = false;
 
+    // JSON Editor
+    public bool $showJsonEditor = false;
+    public string $jsonEditorContent = '';
+    public string $jsonEditorError = '';
+
     // Validation Rules
     protected function rules()
     {
@@ -157,6 +162,9 @@ class ProfileWizard extends Component
             );
 
             $this->analysisComplete = true;
+            
+            // JSON editor için hazırla
+            $this->jsonEditorContent = json_encode($this->generatedRules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
         } catch (\Exception $e) {
             $this->analysisError = $e->getMessage();
@@ -168,6 +176,69 @@ class ProfileWizard extends Component
     public function retryAnalysis()
     {
         $this->runAIAnalysis();
+    }
+
+    // === JSON EDITOR ===
+
+    public function openJsonEditor()
+    {
+        $this->jsonEditorContent = json_encode($this->generatedRules, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $this->jsonEditorError = '';
+        $this->showJsonEditor = true;
+    }
+
+    public function closeJsonEditor()
+    {
+        $this->showJsonEditor = false;
+        $this->jsonEditorError = '';
+    }
+
+    public function saveJsonEditorChanges()
+    {
+        $this->jsonEditorError = '';
+
+        // JSON syntax kontrolü
+        $decoded = json_decode($this->jsonEditorContent, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $this->jsonEditorError = 'Geçersiz JSON formatı: ' . json_last_error_msg();
+            return;
+        }
+
+        // Zorunlu alanları kontrol et
+        if (!isset($decoded['version'])) {
+            $decoded['version'] = '1.0';
+        }
+
+        if (!isset($decoded['outputs']) || empty($decoded['outputs'])) {
+            $this->jsonEditorError = 'En az bir çıktı (outputs) tanımlanmalı.';
+            return;
+        }
+
+        // Outputs içinde sheets kontrolü
+        foreach ($decoded['outputs'] as $index => $output) {
+            if (!isset($output['filename_pattern'])) {
+                $this->jsonEditorError = "Çıktı #" . ($index + 1) . " için filename_pattern gerekli.";
+                return;
+            }
+        }
+
+        // Başarılı - kuralları güncelle
+        $this->generatedRules = $decoded;
+        $this->showJsonEditor = false;
+        
+        session()->flash('json-saved', 'JSON kuralları başarıyla güncellendi.');
+    }
+
+    public function formatJson()
+    {
+        $decoded = json_decode($this->jsonEditorContent, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $this->jsonEditorContent = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            $this->jsonEditorError = '';
+        } else {
+            $this->jsonEditorError = 'JSON formatlanamadı: ' . json_last_error_msg();
+        }
     }
 
     // === SAVE PROFILE ===
@@ -230,7 +301,7 @@ class ProfileWizard extends Component
             1 => 'Profilinize bir isim verin ve türünü seçin.',
             2 => 'Dönüştürmek istediğiniz örnek XLS dosyasını yükleyin.',
             3 => 'İstediğiniz çıktı formatını açıklayın veya örnek dosya yükleyin.',
-            4 => 'AI kuralları oluşturuyor. Sonuçları inceleyip onaylayın.',
+            4 => 'AI kuralları oluşturuyor. Sonuçları inceleyip düzenleyebilirsiniz.',
             default => '',
         };
     }
