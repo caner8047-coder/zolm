@@ -1,0 +1,123 @@
+<?php
+
+namespace App\Livewire;
+
+use App\Models\Profile;
+use App\Models\Report;
+use App\Services\DynamicTransformEngine;
+use App\Services\ProductionEngine;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Component;
+use Livewire\WithFileUploads;
+
+class ProductionMotor extends Component
+{
+    use WithFileUploads;
+
+    public $file;
+    public $isProcessing = false;
+    public $message = '';
+    public $messageType = 'info';
+    public array $generatedFiles = [];
+    public $selectedProfileId;
+
+    public function mount()
+    {
+        $this->selectedProfileId = Profile::where('type', 'production')
+            ->where('is_default', true)
+            ->first()?->id;
+    }
+
+    public function process()
+    {
+        $this->validate([
+            'file' => 'required|file|mimes:xlsx,xls|max:10240',
+        ]);
+
+        $this->isProcessing = true;
+        $this->message = '';
+        $this->generatedFiles = [];
+
+        $profile = Profile::find($this->selectedProfileId) 
+            ?? Profile::where('type', 'production')->where('is_default', true)->first();
+
+        if (!$profile) {
+            $this->message = 'Üretim profili bulunamadı!';
+            $this->messageType = 'error';
+            $this->isProcessing = false;
+            return;
+        }
+
+        $report = Report::create([
+            'user_id' => auth()->id(),
+            'profile_id' => $profile->id,
+            'original_filename' => $this->file->getClientOriginalName(),
+            'status' => 'pending',
+        ]);
+
+        // Profil türüne göre motor seç
+        if ($profile->isAiGenerated()) {
+            $engine = app(DynamicTransformEngine::class);
+        } else {
+            $engine = app(ProductionEngine::class);
+        }
+
+        $result = $engine->run($this->file, $profile, $report);
+
+        $this->isProcessing = false;
+        $this->message = $result['message'];
+        $this->messageType = $result['success'] ? 'success' : 'error';
+
+        if ($result['success']) {
+            $this->generatedFiles = $report->fresh()->files->toArray();
+        }
+
+        $this->reset('file');
+    }
+
+    public function downloadFile($fileId)
+    {
+        $file = \App\Models\ReportFile::find($fileId);
+        if ($file) {
+            $fullPath = Storage::disk('local')->path($file->file_path);
+            if (file_exists($fullPath)) {
+                return response()->streamDownload(function () use ($fullPath) {
+                    echo file_get_contents($fullPath);
+                }, $file->filename, [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                ]);
+            }
+        }
+        
+        $this->message = 'Dosya bulunamadı!';
+        $this->messageType = 'error';
+    }
+
+    public function downloadAll()
+    {
+        $this->message = 'Toplu indirme özelliği yakında eklenecek.';
+        $this->messageType = 'info';
+    }
+
+    public function getProfilesProperty()
+    {
+        return Profile::where('type', 'production')
+            ->where(function ($q) {
+                $q->where('status', 'ready')->orWhereNull('status');
+            })
+            ->orderBy('is_default', 'desc')
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function getSelectedProfileProperty()
+    {
+        return Profile::find($this->selectedProfileId);
+    }
+
+    public function render()
+    {
+        return view('livewire.production-motor')
+            ->layout('layouts.app');
+    }
+}
