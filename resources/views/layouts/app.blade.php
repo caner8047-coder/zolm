@@ -104,9 +104,14 @@
             <header class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8">
                 <div></div>
                 <div class="flex items-center space-x-4">
+                    @if(auth()->user()->isAdmin())
+                    <a href="{{ route('admin.dashboard') }}" class="px-3 py-1 text-sm font-medium text-gray-700 border border-gray-300 rounded hover:bg-gray-50">
+                        Admin
+                    </a>
+                    @endif
                     <span class="text-sm text-gray-600">{{ auth()->user()->name }}</span>
                     <span class="px-2 py-1 text-xs font-medium bg-gray-900 text-white rounded">
-                        {{ auth()->user()->role?->name ?? 'User' }}
+                        {{ auth()->user()->role_label ?? auth()->user()->role?->name ?? 'User' }}
                     </span>
                     <form method="POST" action="{{ route('logout') }}">
                         @csrf

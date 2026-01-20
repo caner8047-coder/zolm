@@ -107,6 +107,39 @@ class OperationMotor extends Component
         $this->messageType = 'info';
     }
 
+    public bool $isSaving = false;
+    public string $saveMessage = '';
+
+    public function saveAllToHistory()
+    {
+        if ($this->isSaving) {
+            return;
+        }
+
+        if (empty($this->generatedFiles)) {
+            $this->message = 'Kaydedilecek dosya yok!';
+            $this->messageType = 'error';
+            return;
+        }
+
+        $this->isSaving = true;
+        $this->saveMessage = '';
+
+        try {
+            // Dosyalar zaten Report'a bağlı, sadece onay mesajı göster
+            $count = count($this->generatedFiles);
+            $this->saveMessage = "✓ {$count} dosya başarıyla geçmişe kaydedildi!";
+            $this->message = $this->saveMessage;
+            $this->messageType = 'success';
+        } catch (\Exception $e) {
+            $this->saveMessage = 'Kaydetme hatası: ' . $e->getMessage();
+            $this->message = $this->saveMessage;
+            $this->messageType = 'error';
+        } finally {
+            $this->isSaving = false;
+        }
+    }
+
     public function getProfilesProperty()
     {
         return Profile::where('type', 'operation')

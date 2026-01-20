@@ -75,7 +75,7 @@
             </div>
             @endif
 
-            <div class="flex space-x-2">
+            <div class="flex flex-wrap gap-2">
                 @if(!$profile->is_ai_generated)
                 <button 
                     wire:click="edit({{ $profile->id }})"
@@ -91,6 +91,17 @@
                     Kuralları Gör
                 </button>
                 @endif
+                
+                @if(!$profile->is_default)
+                <button 
+                    wire:click="setDefault({{ $profile->id }})"
+                    class="px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-yellow-50 hover:border-yellow-400 transition-colors"
+                    title="Varsayılan Yap"
+                >
+                    ★
+                </button>
+                @endif
+                
                 <button 
                     wire:click="delete({{ $profile->id }})"
                     wire:confirm="Bu profili silmek istediğinize emin misiniz?"

@@ -443,10 +443,16 @@
                 wire:click="saveProfile"
                 wire:loading.attr="disabled"
                 class="px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors
-                    {{ !$analysisComplete ? 'opacity-50 cursor-not-allowed' : '' }}"
-                {{ !$analysisComplete ? 'disabled' : '' }}
+                    {{ (!$analysisComplete || $isSaving) ? 'opacity-50 cursor-not-allowed' : '' }}"
+                {{ (!$analysisComplete || $isSaving) ? 'disabled' : '' }}
             >
-                <span wire:loading.remove wire:target="saveProfile">✓ Profili Kaydet</span>
+                <span wire:loading.remove wire:target="saveProfile">
+                    @if($isSaving)
+                        Kaydediliyor...
+                    @else
+                        ✓ Profili Kaydet
+                    @endif
+                </span>
                 <span wire:loading wire:target="saveProfile">Kaydediliyor...</span>
             </button>
             @endif

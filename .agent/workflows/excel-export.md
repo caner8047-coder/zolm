@@ -74,3 +74,30 @@ Yeni Excel export özelliği eklerken:
 3. [ ] Boş değerler ile test et
 4. [ ] Çok uzun string değerler ile test et
 5. [ ] Microsoft Excel'de aç ve kontrol et
+
+---
+
+## 🔄 normalize_product Best Practices
+
+`DynamicTransformEngine::applyNormalizeProduct()` ürün adı temizleme için kullanılır.
+
+### Mevcut Temizlik Kuralları:
+1. Baştaki "Zem " prefix
+2. Sondaki `[Renk: ...]` 
+3. `one size` / `tek beden`
+4. ZEM kodları: `ZEMLİNES`, `ZEMOR`, `ZEMJRV`...
+5. Entegratör kodları: `TYZ...`, `TCY...`, `TBZ...`
+6. Alfanumerik kodlar (6+ karakter + rakam)
+7. Case normalizasyonu: `mb_strtolower()`
+
+### Yeni Kod Prefix'i Eklemek:
+```php
+// Örnek: ABC ile başlayan yeni entegratör kodu
+$text = preg_replace('/\b(?:ABC)[0-9A-ZÇĞİÖŞÜ_-]{3,}\b/iu', '', $text);
+```
+
+### ÖNEMLİ:
+- `mb_strtolower()` MUTLAKA KALMALI - Bench/bench farkını çözer
+- Regex'lerde `/iu` flag'i kullan (case-insensitive + unicode)
+- Yeni kuralları sona değil, mantıksal sıraya ekle
+

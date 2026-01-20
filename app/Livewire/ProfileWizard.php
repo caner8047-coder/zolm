@@ -242,44 +242,58 @@ class ProfileWizard extends Component
     }
 
     // === SAVE PROFILE ===
+    
+    public bool $isSaving = false;
 
     public function saveProfile()
     {
+        // Çift kayıt engelleme
+        if ($this->isSaving) {
+            return;
+        }
+        
         if (!$this->analysisComplete || empty($this->generatedRules)) {
             return;
         }
-
-        // Dosyaları kaydet
-        $inputPath = null;
-        $outputPath = null;
-
-        if ($this->sampleInputFile) {
-            $inputPath = $this->sampleInputFile->store('profile-samples', 'local');
-        }
-
-        if ($this->sampleOutputFile) {
-            $outputPath = $this->sampleOutputFile->store('profile-samples', 'local');
-        }
-
-        // Profil oluştur
-        $profile = Profile::create([
-            'user_id' => auth()->id(),
-            'name' => $this->name,
-            'type' => $this->type,
-            'input_config' => $this->inputStructure,
-            'output_config' => $this->outputStructure,
-            'ai_prompt' => $this->aiPrompt,
-            'sample_input_path' => $inputPath,
-            'sample_output_path' => $outputPath,
-            'ai_generated_rules' => $this->generatedRules,
-            'is_ai_generated' => true,
-            'is_default' => false,
-            'status' => 'ready',
-        ]);
-
-        session()->flash('success', "'{$this->name}' profili başarıyla oluşturuldu!");
         
-        return redirect()->route('profiles');
+        $this->isSaving = true;
+
+        try {
+            // Dosyaları kaydet
+            $inputPath = null;
+            $outputPath = null;
+
+            if ($this->sampleInputFile) {
+                $inputPath = $this->sampleInputFile->store('profile-samples', 'local');
+            }
+
+            if ($this->sampleOutputFile) {
+                $outputPath = $this->sampleOutputFile->store('profile-samples', 'local');
+            }
+
+            // Profil oluştur
+            $profile = Profile::create([
+                'user_id' => auth()->id(),
+                'name' => $this->name,
+                'type' => $this->type,
+                'input_config' => $this->inputStructure,
+                'output_config' => $this->outputStructure,
+                'ai_prompt' => $this->aiPrompt,
+                'sample_input_path' => $inputPath,
+                'sample_output_path' => $outputPath,
+                'ai_generated_rules' => $this->generatedRules,
+                'is_ai_generated' => true,
+                'is_default' => false,
+                'status' => 'ready',
+            ]);
+
+            session()->flash('success', "'{$this->name}' profili başarıyla oluşturuldu!");
+        
+            return redirect()->route('profiles');
+            
+        } finally {
+            $this->isSaving = false;
+        }
     }
 
     // === HELPERS ===

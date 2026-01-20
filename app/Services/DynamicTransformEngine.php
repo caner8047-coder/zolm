@@ -10,6 +10,23 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
+/**
+ * DynamicTransformEngine
+ * 
+ * AI tarafından üretilen JSON kurallarına göre Excel dosyalarını dönüştürür.
+ * 
+ * Desteklenen Transformation Tipleri:
+ * - filter: Veriyi filtreler (IN, IS NOT NULL, =, !=, >, <)
+ * - map_column: Kolon değerlerini eşler veya dönüştürür
+ * - sort: Veriyi sıralar
+ * - normalize_product: Ürün adlarını temizler ve standardize eder
+ * - add_column: Yeni kolon ekler
+ * - remove_column: Kolon kaldırır
+ * 
+ * Desteklenen Sheet Tipleri:
+ * - summary: Gruplu özet (group_by + aggregate)
+ * - detail: Detay listesi (sort_by + columns)
+ */
 class DynamicTransformEngine
 {
     protected ExcelService $excelService;
@@ -29,7 +46,10 @@ class DynamicTransformEngine
         try {
             $rules = $profile->getRules();
             
-            Log::info('DynamicTransformEngine: Kurallar yüklendi', ['profile' => $profile->name]);
+            Log::info('DynamicTransformEngine: Kurallar yüklendi', [
+                'profile' => $profile->name,
+                'version' => $rules['version'] ?? 'unknown'
+            ]);
             
             if (empty($rules) || !isset($rules['version'])) {
                 throw new \Exception('Profil kuralları bulunamadı veya geçersiz.');
@@ -49,8 +69,14 @@ class DynamicTransformEngine
             $categoryCol = $this->findCategoryColumn($data, $rules);
             Log::info('DynamicTransformEngine: Kategori kolonu', ['column' => $categoryCol]);
 
-            // 3. Dönüşümleri uygula (filter, map_column, sort vb.)
-            $data = $this->applyTransformations($data, $rules['transformations'] ?? []);
+            // 3. Dönüşümleri uygula (filter, map_column, sort, normalize_product vb.)
+            $transformations = $rules['transformations'] ?? [];
+            $data = $this->applyTransformations($data, $transformations);
+            
+            Log::info('DynamicTransformEngine: Dönüşümler uygulandı', [
+                'transform_count' => count($transformations),
+                'final_count' => $data->count()
+            ]);
 
             // 4. Çıktıları oluştur - KATEGORİ BAZLI
             $outputs = $rules['outputs'] ?? [];
@@ -67,7 +93,10 @@ class DynamicTransformEngine
             ];
 
         } catch (\Exception $e) {
-            Log::error('DynamicTransformEngine: Hata', ['error' => $e->getMessage()]);
+            Log::error('DynamicTransformEngine: Hata', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             
             $report->update([
                 'status' => 'failed',
@@ -138,27 +167,53 @@ class DynamicTransformEngine
         return $this->excelService->importOrderXls($file, $sheetName);
     }
 
+    // ============================================================
+    // TRANSFORMATIONS
+    // ============================================================
+
     /**
-     * Apply transformations
+     * Apply all transformations in order
      */
     protected function applyTransformations(Collection $data, array $transformations): Collection
     {
-        foreach ($transformations as $transform) {
+        foreach ($transformations as $index => $transform) {
             $type = $transform['type'] ?? '';
             
+            if (empty($type)) {
+                continue;
+            }
+            
             try {
+                $beforeCount = $data->count();
+                
                 $newData = match ($type) {
                     'filter' => $this->applyFilter($data, $transform),
                     'map_column' => $this->applyMapColumn($data, $transform),
                     'sort' => $this->applySort($data, $transform),
+                    'normalize_product' => $this->applyNormalizeProduct($data, $transform),
+                    'add_column' => $this->applyAddColumn($data, $transform),
+                    'remove_column' => $this->applyRemoveColumn($data, $transform),
+                    'rename_column' => $this->applyRenameColumn($data, $transform),
                     default => $data,
                 };
                 
+                // Boş collection döndüyse orijinali koru
                 if ($newData->isNotEmpty()) {
                     $data = $newData;
                 }
+                
+                Log::debug("DynamicTransformEngine: {$type} uygulandı", [
+                    'index' => $index,
+                    'before' => $beforeCount,
+                    'after' => $data->count()
+                ]);
+                
             } catch (\Exception $e) {
-                Log::warning("DynamicTransformEngine: {$type} hatası: " . $e->getMessage());
+                Log::warning("DynamicTransformEngine: {$type} hatası", [
+                    'index' => $index,
+                    'error' => $e->getMessage()
+                ]);
+                // Hata olsa bile devam et, veri kaybetme
             }
         }
 
@@ -166,64 +221,279 @@ class DynamicTransformEngine
     }
 
     /**
-     * Apply filter
+     * Apply filter transformation
+     * 
+     * Desteklenen formatlar:
+     * - "column IN ['val1','val2']"
+     * - "column IS NOT NULL"
+     * - "column = 'value'"
+     * - "column != 'value'"
+     * - "column > 10"
      */
     protected function applyFilter(Collection $data, array $config): Collection
     {
         $condition = $config['condition'] ?? '';
         
-        if (empty($condition)) return $data;
+        if (empty($condition)) {
+            return $data;
+        }
         
+        // IN operatörü
         if (preg_match('/(.+?)\s+IN\s+\[(.*?)\]/i', $condition, $matches)) {
             $column = trim($matches[1], " '\"");
             $values = array_map(fn($v) => trim($v, " '\""), explode(',', $matches[2]));
             
             $firstItem = $data->first();
-            if (!$firstItem || !isset($firstItem[$column])) return $data;
+            if (!$firstItem || !isset($firstItem[$column])) {
+                return $data;
+            }
 
             return $data->filter(fn($item) => in_array($item[$column] ?? '', $values));
         }
 
+        // IS NOT NULL
         if (preg_match('/(.+?)\s+IS\s+NOT\s+NULL/i', $condition, $matches)) {
             $column = trim($matches[1], " '\"");
             return $data->filter(fn($item) => !empty($item[$column]));
+        }
+
+        // Eşitlik (=)
+        if (preg_match('/(.+?)\s*=\s*[\'"](.+?)[\'"]/i', $condition, $matches)) {
+            $column = trim($matches[1], " '\"");
+            $value = $matches[2];
+            return $data->filter(fn($item) => ($item[$column] ?? '') === $value);
+        }
+
+        // Eşitsizlik (!=)
+        if (preg_match('/(.+?)\s*!=\s*[\'"](.+?)[\'"]/i', $condition, $matches)) {
+            $column = trim($matches[1], " '\"");
+            $value = $matches[2];
+            return $data->filter(fn($item) => ($item[$column] ?? '') !== $value);
         }
 
         return $data;
     }
 
     /**
-     * Apply column mapping
+     * Apply column mapping transformation
+     * 
+     * Config:
+     * - source: Kaynak kolon
+     * - target: Hedef kolon (opsiyonel, varsayılan = source)
+     * - mapping: { "eski_değer": "yeni_değer" } 
+     * - regex: Regex pattern (opsiyonel)
+     * - regex_replacement: Regex ile değiştirilecek değer
      */
     protected function applyMapColumn(Collection $data, array $config): Collection
     {
         $source = $config['source'] ?? '';
         $target = $config['target'] ?? $source;
         $mapping = $config['mapping'] ?? [];
+        $regexPattern = $config['regex'] ?? null;
+        $regexReplacement = $config['regex_replacement'] ?? '';
 
-        if (empty($source)) return $data;
+        if (empty($source)) {
+            return $data;
+        }
 
         $firstItem = $data->first();
-        if (!$firstItem || !isset($firstItem[$source])) return $data;
+        if (!$firstItem || !isset($firstItem[$source])) {
+            return $data;
+        }
 
-        return $data->map(function ($item) use ($source, $target, $mapping) {
-            $sourceValue = $item[$source] ?? '';
-            $item[$target] = !empty($mapping) ? ($mapping[$sourceValue] ?? $sourceValue) : $sourceValue;
+        return $data->map(function ($item) use ($source, $target, $mapping, $regexPattern, $regexReplacement) {
+            $sourceValue = (string)($item[$source] ?? '');
+            
+            // Önce mapping kontrol et
+            if (!empty($mapping) && isset($mapping[$sourceValue])) {
+                $item[$target] = $mapping[$sourceValue];
+            }
+            // Partial match için mapping'de ara
+            elseif (!empty($mapping)) {
+                $matched = false;
+                foreach ($mapping as $key => $value) {
+                    if (stripos($sourceValue, $key) !== false) {
+                        $item[$target] = $value;
+                        $matched = true;
+                        break;
+                    }
+                }
+                if (!$matched && $regexPattern) {
+                    $item[$target] = preg_replace($regexPattern, $regexReplacement, $sourceValue);
+                } elseif (!$matched) {
+                    $item[$target] = $sourceValue;
+                }
+            }
+            // Regex varsa uygula
+            elseif ($regexPattern) {
+                $item[$target] = preg_replace($regexPattern, $regexReplacement, $sourceValue);
+            }
+            else {
+                $item[$target] = $sourceValue;
+            }
+            
             return $item;
         });
     }
 
     /**
-     * Apply sort
+     * Apply sort transformation
      */
     protected function applySort(Collection $data, array $config): Collection
     {
         $column = $config['column'] ?? '';
-        if (empty($column)) return $data;
+        if (empty($column)) {
+            return $data;
+        }
         
-        $direction = $config['direction'] ?? 'asc';
+        $firstItem = $data->first();
+        if (!$firstItem || !isset($firstItem[$column])) {
+            return $data;
+        }
+        
+        $direction = strtolower($config['direction'] ?? 'asc');
         return $direction === 'desc' ? $data->sortByDesc($column) : $data->sortBy($column);
     }
+
+    /**
+     * Apply product name normalization (ULTRA FINAL VERSION)
+     * 
+     * Ürün adlarını temizler ve standardize eder:
+     * - Marka prefix'lerini kaldırır (Zem, Zemary...)
+     * - Model kodlarını kaldırır (ZEMLİNES, ZEMLOUCA, ZEMJRV, ZEMOR...)
+     * - Sondaki ZEM kodlarını kaldırır (... ZEMOR)
+     * - Renk etiketlerini kaldırır ([Renk: ...])
+     * - Beden bilgilerini kaldırır (one size, tek beden)
+     * - Entegratör kodlarını kaldırır (TYZ, TCY, TBZ...)
+     * - Alfanumerik ürün kodlarını kaldırır (LOUCA01, TCY00468831285...)
+     * - Case normalizasyonu (lowercase) - Bench/bench farkını çözer
+     * 
+     * Config:
+     * - source: Kaynak kolon (varsayılan: 'Ürün')
+     * - target: Hedef kolon (varsayılan: source)
+     */
+    protected function applyNormalizeProduct(Collection $data, array $config): Collection
+    {
+        $source = $config['source'] ?? 'Ürün';
+        $target = $config['target'] ?? $source;
+        
+        $firstItem = $data->first();
+        if (!$firstItem || !isset($firstItem[$source])) {
+            // Source kolon yoksa alternatif dene
+            $alternatives = ['Ürün', 'Ürün Adı', 'Product', 'ProductName', 'Urun'];
+            foreach ($alternatives as $alt) {
+                if (isset($firstItem[$alt])) {
+                    $source = $alt;
+                    break;
+                }
+            }
+        }
+        
+        return $data->map(function ($item) use ($source, $target) {
+            $text = (string)($item[$source] ?? '');
+            
+            if (empty($text)) {
+                $item[$target] = $text;
+                return $item;
+            }
+
+            // 1) Baştaki "Zem " prefix
+            $text = preg_replace('/^\s*Zem\s+/iu', '', $text);
+
+            // 2) Sondaki [Renk: ...] kısmı
+            $text = preg_replace('/\[\s*Renk\s*:\s*.*?\]\s*$/iu', '', $text);
+
+            // 3) "one size" varyasyonları
+            $text = preg_replace('/\bone\s*size\b/iu', '', $text);
+            $text = preg_replace('/\btek\s*beden\b/iu', '', $text);
+
+            // 4) ZEM ile başlayan tüm ürün kodlarını temizle (min 2 karakter - ZEMOR dahil)
+            // Örn: ZEMLİNES, ZEMLOUCA, ZEMOR, ZEMJRV...
+            $text = preg_replace('/\bZEM[0-9A-ZÇĞİÖŞÜ_-]{2,}\b/iu', '', $text);
+
+            // 5) Sonda tek kelime olarak duran ZEM kodları (örn: "... ZEMOR")
+            $text = preg_replace('/\s+ZEM[0-9A-ZÇĞİÖŞÜ_-]{2,}\s*$/iu', '', $text);
+
+            // 6) Entegratör/kod prefixleri (varsa) - güvenli temizlik
+            $text = preg_replace('/\b(?:TYZ|TCY|TYC|TBZ|TBY|TCT)[0-9A-ZÇĞİÖŞÜ_-]{3,}\b/iu', '', $text);
+
+            // 7) Rakam içeren uzun alfanumerik kodlar (örn: LOUCA01, TCY00468831285)
+            // (>=6 karakter ve içinde en az 1 rakam varsa)
+            $text = preg_replace('/\b(?=[0-9A-ZÇĞİÖŞÜ-]{6,}\b)(?=.*\d)[0-9A-ZÇĞİÖŞÜ-]{6,}\b/iu', '', $text);
+
+            // 8) Noktalama/boşluk standardizasyonu
+            $text = preg_replace('/\s*,\s*/u', ', ', $text);
+            $text = preg_replace('/\s*\/\s*/u', '/', $text);
+            $text = preg_replace('/\s+/u', ' ', trim($text));
+            $text = trim($text, " ,");
+
+            // 9) Case standardizasyonu: birleşme garantisi (Bench/bench, Teddy/teddy)
+            $text = mb_strtolower($text, 'UTF-8');
+
+            $item[$target] = $text;
+            return $item;
+        });
+    }
+
+    /**
+     * Add new column with value
+     */
+    protected function applyAddColumn(Collection $data, array $config): Collection
+    {
+        $column = $config['column'] ?? '';
+        $value = $config['value'] ?? '';
+        
+        if (empty($column)) {
+            return $data;
+        }
+        
+        return $data->map(function ($item) use ($column, $value) {
+            $item[$column] = $value;
+            return $item;
+        });
+    }
+
+    /**
+     * Remove column
+     */
+    protected function applyRemoveColumn(Collection $data, array $config): Collection
+    {
+        $column = $config['column'] ?? '';
+        
+        if (empty($column)) {
+            return $data;
+        }
+        
+        return $data->map(function ($item) use ($column) {
+            unset($item[$column]);
+            return $item;
+        });
+    }
+
+    /**
+     * Rename column
+     */
+    protected function applyRenameColumn(Collection $data, array $config): Collection
+    {
+        $from = $config['from'] ?? '';
+        $to = $config['to'] ?? '';
+        
+        if (empty($from) || empty($to)) {
+            return $data;
+        }
+        
+        return $data->map(function ($item) use ($from, $to) {
+            if (isset($item[$from])) {
+                $item[$to] = $item[$from];
+                unset($item[$from]);
+            }
+            return $item;
+        });
+    }
+
+    // ============================================================
+    // OUTPUT GENERATION
+    // ============================================================
 
     /**
      * Generate category-based outputs with proper sheet names
@@ -249,69 +519,64 @@ class DynamicTransformEngine
             // Sheet isimlerinde de placeholder var mı?
             $sheetsHavePlaceholder = false;
             foreach ($sheetsConfig as $sheet) {
-                if (str_contains($sheet['name'] ?? '', '{')) {
+                if (isset($sheet['name']) && preg_match('/\{CATEGORY\}/', $sheet['name'])) {
                     $sheetsHavePlaceholder = true;
                     break;
                 }
             }
 
-            // Eğer placeholder varsa ve kategori kolonu varsa, kategoriye göre işle
             if (($hasPlaceholder || $sheetsHavePlaceholder) && $categoryCol) {
-                // Kategorilere göre grupla
                 $categories = $data->pluck($categoryCol)->unique()->filter()->values()->toArray();
                 
-                Log::info('DynamicTransformEngine: Kategoriler bulundu', [
-                    'categories' => $categories,
-                    'column' => $categoryCol
-                ]);
-
-                if (!empty($categories)) {
-                    // TEK DOSYA İÇİNDE TÜM KATEGORİLER İÇİN AYRI SHEET'LER
-                    $filename = str_replace('{' . $placeholderKey . '}', 'TÜM', $filenamePattern);
-                    $filename = preg_replace('/\{[A-Z_]+\}/', '', $filename); // Diğer placeholders temizle
-                    
-                    $allSheets = [];
-                    
-                    foreach ($categories as $category) {
-                        $categoryData = $data->filter(fn($item) => ($item[$categoryCol] ?? '') === $category);
-                        
-                        if ($categoryData->isEmpty()) continue;
-                        
-                        // Her kategori için sheet'leri oluştur
-                        foreach ($sheetsConfig as $sheetConfig) {
-                            $sheetName = $sheetConfig['name'] ?? 'Sheet';
-                            
-                            // {CATEGORY} yerine gerçek kategori adını koy
-                            $sheetName = str_replace('{CATEGORY}', $category, $sheetName);
-                            $sheetName = str_replace('{' . $placeholderKey . '}', $category, $sheetName);
-                            $sheetName = substr($sheetName, 0, 31); // Excel max 31 karakter
-                            
-                            $sheetData = $this->generateSheetData($categoryData, $sheetConfig);
-                            
-                            if (!empty($sheetData)) {
-                                $allSheets[] = [
-                                    'name' => $sheetName,
-                                    'data' => $sheetData,
-                                ];
-                            }
-                        }
-                    }
-
-                    if (!empty($allSheets)) {
-                        $file = $this->createExcelFile($allSheets, $storageDir, $filename, $report);
-                        if ($file) {
-                            $generatedFiles[] = $file;
-                        }
-                    }
-                } else {
-                    // Kategori bulunamadı, tek dosya oluştur
+                if (empty($categories)) {
+                    Log::warning("DynamicTransformEngine: Kategori değeri bulunamadı", ['col' => $categoryCol]);
                     $file = $this->createSingleOutput($data, $sheetsConfig, $storageDir, $filenamePattern, $report);
+                    if ($file) $generatedFiles[] = $file;
+                    continue;
+                }
+
+                Log::info("DynamicTransformEngine: Kategoriler", ['categories' => $categories]);
+
+                // TEK DOSYA İÇİNDE TÜM KATEGORİLER İÇİN AYRI SHEET'LER
+                $filename = str_replace('{' . $placeholderKey . '}', 'TÜM', $filenamePattern);
+                $filename = preg_replace('/\{[A-Z_]+\}/', '', $filename);
+                $filename = trim($filename, '_ ');
+                
+                $allSheets = [];
+                foreach ($categories as $category) {
+                    $categoryData = $data->filter(fn($item) => ($item[$categoryCol] ?? '') === $category);
+                    
+                    if ($categoryData->isEmpty()) {
+                        continue;
+                    }
+
+                    foreach ($sheetsConfig as $sheetConfig) {
+                        $sheetName = $sheetConfig['name'] ?? 'Sheet';
+                        
+                        // {CATEGORY} yerine gerçek kategori adını koy
+                        $sheetName = str_replace('{CATEGORY}', $category, $sheetName);
+                        $sheetName = str_replace('{' . $placeholderKey . '}', $category, $sheetName);
+                        $sheetName = mb_substr($sheetName, 0, 31); // Excel max 31 karakter
+                        
+                        $sheetData = $this->generateSheetData($categoryData, $sheetConfig);
+                        
+                        if (!empty($sheetData)) {
+                            $allSheets[] = [
+                                'name' => $sheetName,
+                                'data' => $sheetData,
+                            ];
+                        }
+                    }
+                }
+
+                if (!empty($allSheets)) {
+                    $file = $this->createExcelFile($allSheets, $storageDir, $filename, $report);
                     if ($file) {
                         $generatedFiles[] = $file;
                     }
                 }
             } else {
-                // Placeholder yok, tek dosya oluştur
+                // Kategori yok, tek dosya oluştur
                 $file = $this->createSingleOutput($data, $sheetsConfig, $storageDir, $filenamePattern, $report);
                 if ($file) {
                     $generatedFiles[] = $file;
@@ -337,16 +602,22 @@ class DynamicTransformEngine
         Collection $data, 
         array $sheetsConfig, 
         string $storageDir, 
-        string $filename, 
+        string $filename,
         Report $report
     ): ?ReportFile {
-        $filename = preg_replace('/\{[A-Z_]+\}/', 'CIKTI', $filename);
+        // Filename'den placeholder temizle
+        $filename = preg_replace('/\{[A-Z_]+\}/', '', $filename);
+        $filename = trim($filename, '_ ');
+        
+        if (empty($filename)) {
+            $filename = 'output.xlsx';
+        }
         
         $sheets = [];
         foreach ($sheetsConfig as $sheetConfig) {
-            $sheetName = preg_replace('/\{[A-Z_]+\}/', '', $sheetConfig['name'] ?? 'Sheet');
-            $sheetName = trim($sheetName) ?: 'Veriler';
-            $sheetName = substr($sheetName, 0, 31);
+            $sheetName = $sheetConfig['name'] ?? 'Sheet';
+            $sheetName = preg_replace('/\{[A-Z_]+\}/', '', $sheetName);
+            $sheetName = mb_substr(trim($sheetName), 0, 31);
             
             $sheetData = $this->generateSheetData($data, $sheetConfig);
             if (!empty($sheetData)) {
@@ -379,7 +650,9 @@ class DynamicTransformEngine
         string $filename, 
         Report $report
     ): ?ReportFile {
-        if (empty($sheets)) return null;
+        if (empty($sheets)) {
+            return null;
+        }
 
         $filePath = $storageDir . '/' . $filename;
         $fullPath = Storage::disk('local')->path($filePath);
@@ -394,8 +667,12 @@ class DynamicTransformEngine
         ]);
     }
 
+    // ============================================================
+    // SHEET DATA GENERATION
+    // ============================================================
+
     /**
-     * Generate sheet data
+     * Generate sheet data based on type
      */
     protected function generateSheetData(Collection $data, array $config): array
     {
@@ -409,12 +686,20 @@ class DynamicTransformEngine
     }
 
     /**
-     * Generate summary sheet
+     * Generate summary sheet (grouped with aggregations)
+     * 
+     * Config:
+     * - group_by: Gruplama kolonu
+     * - aggregate veya aggregations: Toplama kuralları (geriye uyumluluk)
+     * - columns: Gösterilecek kolonlar
      */
     protected function generateSummarySheet(Collection $data, array $config): array
     {
         $groupBy = $config['group_by'] ?? null;
-        $aggregates = $config['aggregate'] ?? [];
+        
+        // GERIYE UYUMLULUK: hem "aggregate" hem "aggregations" kabul et
+        $aggregates = $config['aggregate'] ?? $config['aggregations'] ?? [];
+        
         $columns = $config['columns'] ?? [];
 
         // Eğer group_by yoksa ama columns varsa, o kolonlara göre grupla
@@ -428,7 +713,18 @@ class DynamicTransformEngine
 
         $firstItem = $data->first();
         if (!$firstItem || !isset($firstItem[$groupBy])) {
-            return $data->values()->toArray();
+            // Alternatif kolon isimleri dene
+            $alternatives = ['Ürün', 'Ürün Adı', 'Product'];
+            foreach ($alternatives as $alt) {
+                if (isset($firstItem[$alt])) {
+                    $groupBy = $alt;
+                    break;
+                }
+            }
+            
+            if (!isset($firstItem[$groupBy])) {
+                return $data->values()->toArray();
+            }
         }
 
         $grouped = $data->groupBy($groupBy);
@@ -442,13 +738,24 @@ class DynamicTransformEngine
                 foreach ($aggregates as $agg) {
                     $column = $agg['column'] ?? '';
                     $function = strtoupper($agg['function'] ?? 'SUM');
-                    if (empty($column)) continue;
+                    
+                    if (empty($column)) {
+                        continue;
+                    }
 
                     $row[$column] = match ($function) {
-                        'SUM' => $items->sum($column),
+                        'SUM' => $items->sum(function($item) use ($column) {
+                            return (float)($item[$column] ?? 0);
+                        }),
                         'COUNT' => $items->count(),
-                        'AVG' => $items->avg($column),
-                        default => $items->sum($column),
+                        'AVG' => $items->avg(function($item) use ($column) {
+                            return (float)($item[$column] ?? 0);
+                        }),
+                        'MIN' => $items->min($column),
+                        'MAX' => $items->max($column),
+                        default => $items->sum(function($item) use ($column) {
+                            return (float)($item[$column] ?? 0);
+                        }),
                     };
                 }
             } else {
@@ -462,7 +769,9 @@ class DynamicTransformEngine
                 }
 
                 if ($adetCol) {
-                    $row[$adetCol] = $items->sum($adetCol);
+                    $row[$adetCol] = $items->sum(function($item) use ($adetCol) {
+                        return (float)($item[$adetCol] ?? 0);
+                    });
                 } else {
                     $row['Adet'] = $items->count();
                 }
@@ -471,6 +780,7 @@ class DynamicTransformEngine
             $result[] = $row;
         }
 
+        // Gruplamaya göre sırala
         usort($result, fn($a, $b) => ($a[$groupBy] ?? '') <=> ($b[$groupBy] ?? ''));
 
         return $result;

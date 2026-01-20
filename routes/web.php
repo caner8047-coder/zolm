@@ -80,6 +80,18 @@ Route::middleware('auth')->group(function () {
             'Expires' => '0',
         ]);
     })->name('download');
+
+    // Report History alias
+    Route::get('/report-history', ReportHistory::class)->name('report-history');
+
+    // ============================================
+    // ADMIN ROUTES
+    // ============================================
+    Route::middleware(\App\Http\Middleware\AdminMiddleware::class)->prefix('admin')->group(function () {
+        Route::get('/', \App\Livewire\Admin\Dashboard::class)->name('admin.dashboard');
+        Route::get('/users', \App\Livewire\Admin\UserManager::class)->name('admin.users');
+        Route::get('/logs', \App\Livewire\Admin\ActivityLogs::class)->name('admin.logs');
+    });
 });
 
 // DEBUG: Excel test route - sorun tespiti için
