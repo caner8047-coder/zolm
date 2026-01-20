@@ -53,6 +53,14 @@ Route::middleware('auth')->group(function () {
     // AI Chat
     Route::get('/ai-chat', AIChat::class)->name('ai-chat');
 
+    // ============================================
+    // COMING SOON - V0.2 Features
+    // ============================================
+    Route::get('/cargo-reports', \App\Livewire\CargoReports::class)->name('cargo-reports');
+    Route::get('/supply-report', \App\Livewire\SupplyReport::class)->name('supply-report');
+    Route::get('/marketplace-accounting', \App\Livewire\MarketplaceAccounting::class)->name('marketplace-accounting');
+    Route::get('/api-dev', \App\Livewire\ApiDev::class)->name('api-dev');
+
     // Profile Management
     Route::get('/profiles', ProfileManager::class)
         ->name('profiles')
