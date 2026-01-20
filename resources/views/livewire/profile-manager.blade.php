@@ -1,22 +1,22 @@
 <div>
     <!-- Page Header -->
-    <div class="flex items-center justify-between mb-8">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 lg:mb-8">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Profil Yönetimi</h1>
-            <p class="text-gray-500 mt-1">Dönüşüm profillerini oluşturun ve yönetin</p>
+            <h1 class="text-xl lg:text-2xl font-bold text-gray-900">Profil Yönetimi</h1>
+            <p class="text-gray-500 mt-1 text-sm lg:text-base">Dönüşüm profillerini oluşturun ve yönetin</p>
         </div>
-        <div class="flex space-x-3">
+        <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <button 
                 wire:click="create"
-                class="px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                class="px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors text-sm"
             >
                 + Manuel Profil
             </button>
             <a 
                 href="{{ route('profile.wizard') }}"
-                class="px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors flex items-center"
+                class="px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center text-sm"
             >
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                 </svg>
                 AI ile Profil Oluştur
@@ -32,7 +32,7 @@
     @endif
 
     <!-- Profiles Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
         @foreach($this->profiles as $profile)
         <div class="bg-white rounded-lg border border-gray-200 p-6 {{ $profile->is_ai_generated ? 'ring-2 ring-purple-200' : '' }}">
             <div class="flex items-start justify-between mb-4">

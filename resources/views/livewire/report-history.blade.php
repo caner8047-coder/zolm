@@ -15,19 +15,19 @@
     @endif
 
     <!-- Page Header -->
-    <div class="mb-8 flex items-center justify-between">
+    <div class="mb-6 lg:mb-8 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Geçmiş Raporlar</h1>
-            <p class="text-gray-500 mt-1">Daha önce oluşturulan raporları görüntüleyin, indirin veya silin</p>
+            <h1 class="text-xl lg:text-2xl font-bold text-gray-900">Geçmiş Raporlar</h1>
+            <p class="text-gray-500 mt-1 text-sm lg:text-base">Daha önce oluşturulan raporları görüntüleyin, indirin veya silin</p>
         </div>
         
         <!-- İstatistikler -->
-        <div class="flex items-center space-x-4 text-sm">
-            <div class="px-3 py-1 bg-gray-100 rounded-lg">
+        <div class="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+            <div class="px-2 sm:px-3 py-1 bg-gray-100 rounded-lg">
                 <span class="text-gray-500">Toplam:</span>
                 <span class="font-medium text-gray-900">{{ $this->totalReports }} rapor</span>
             </div>
-            <div class="px-3 py-1 bg-gray-100 rounded-lg">
+            <div class="px-2 sm:px-3 py-1 bg-gray-100 rounded-lg">
                 <span class="text-gray-500">Tahmini boyut:</span>
                 <span class="font-medium text-gray-900">{{ $this->totalSize }}</span>
             </div>
@@ -35,12 +35,12 @@
     </div>
 
     <!-- Filters -->
-    <div class="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="bg-white rounded-lg border border-gray-200 p-4 lg:p-6 mb-6">
+        <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
             <!-- Report Type -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Rapor Türü</label>
-                <select wire:model.live="reportType" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Rapor Türü</label>
+                <select wire:model.live="reportType" class="w-full px-3 py-2 sm:px-4 border border-gray-300 rounded-lg text-sm">
                     <option value="all">Tümü</option>
                     <option value="production">Üretim</option>
                     <option value="operation">Operasyon</option>
@@ -49,8 +49,8 @@
 
             <!-- Period -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Periyot</label>
-                <select wire:model.live="period" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Periyot</label>
+                <select wire:model.live="period" class="w-full px-3 py-2 sm:px-4 border border-gray-300 rounded-lg text-sm">
                     <option value="daily">Günlük</option>
                     <option value="weekly">Haftalık</option>
                     <option value="monthly">Aylık</option>
@@ -59,32 +59,32 @@
 
             <!-- Start Date -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Başlangıç</label>
-                <input type="date" wire:model.live="startDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Başlangıç</label>
+                <input type="date" wire:model.live="startDate" class="w-full px-3 py-2 sm:px-4 border border-gray-300 rounded-lg text-sm">
             </div>
 
             <!-- End Date -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Bitiş</label>
-                <input type="date" wire:model.live="endDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Bitiş</label>
+                <input type="date" wire:model.live="endDate" class="w-full px-3 py-2 sm:px-4 border border-gray-300 rounded-lg text-sm">
             </div>
         </div>
     </div>
 
     <!-- Bulk Actions Bar -->
     @if(count($selectedReports) > 0)
-    <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center justify-between">
+    <div class="bg-red-50 border border-red-200 rounded-lg p-3 lg:p-4 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div class="flex items-center space-x-3">
-            <span class="text-red-700 font-medium">{{ count($selectedReports) }} rapor seçildi</span>
+            <span class="text-red-700 font-medium text-sm">{{ count($selectedReports) }} rapor seçildi</span>
         </div>
-        <div class="flex items-center space-x-3">
+        <div class="flex items-center gap-3">
             <button wire:click="$set('selectedReports', [])" class="text-sm text-gray-600 hover:text-gray-900">
-                Seçimi Temizle
+                Temizle
             </button>
             <button 
                 wire:click="deleteSelected"
                 wire:confirm="Seçili {{ count($selectedReports) }} raporu silmek istediğinize emin misiniz? Bu işlem geri alınamaz."
-                class="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700"
+                class="px-3 sm:px-4 py-2 bg-red-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-red-700"
             >
                 Seçilenleri Sil
             </button>
@@ -116,29 +116,29 @@
         @forelse($this->reports as $date => $dateReports)
         <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <!-- Date Header -->
-            <div class="flex items-center justify-between p-4 hover:bg-gray-50">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 lg:p-4 hover:bg-gray-50 gap-2 sm:gap-0">
                 <button 
                     wire:click="toggleDate('{{ $date }}')"
-                    class="flex-1 flex items-center space-x-3 text-left"
+                    class="flex-1 flex items-center space-x-2 sm:space-x-3 text-left"
                 >
-                    <svg class="w-5 h-5 text-gray-400 transform transition-transform {{ in_array($date, $expandedDates) ? 'rotate-90' : '' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 transform transition-transform flex-shrink-0 {{ in_array($date, $expandedDates) ? 'rotate-90' : '' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                     </svg>
-                    <span class="font-medium text-gray-900">{{ \Carbon\Carbon::parse($date)->format('d.m.Y') }}</span>
-                    <span class="text-sm text-gray-500">({{ $dateReports->count() }} rapor)</span>
+                    <span class="font-medium text-gray-900 text-sm sm:text-base">{{ \Carbon\Carbon::parse($date)->format('d.m.Y') }}</span>
+                    <span class="text-xs sm:text-sm text-gray-500">({{ $dateReports->count() }} rapor)</span>
                 </button>
                 
-                <div class="flex items-center space-x-2">
+                <div class="flex items-center gap-2 ml-6 sm:ml-0">
                     <button 
                         wire:click.stop="downloadAllForDate('{{ $date }}')"
-                        class="px-3 py-1 text-xs font-medium text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+                        class="px-2 sm:px-3 py-1 text-xs font-medium text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
                     >
                         toplu indir
                     </button>
                     <button 
                         wire:click.stop="deleteByDate('{{ $date }}')"
                         wire:confirm="{{ $date }} tarihli tüm raporları silmek istediğinize emin misiniz?"
-                        class="px-3 py-1 text-xs font-medium text-red-600 border border-red-300 rounded hover:bg-red-50"
+                        class="px-2 sm:px-3 py-1 text-xs font-medium text-red-600 border border-red-300 rounded hover:bg-red-50"
                     >
                         tarihi sil
                     </button>

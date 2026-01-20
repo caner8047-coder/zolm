@@ -1,21 +1,22 @@
 <div>
     <!-- Page Header -->
-    <div class="mb-8">
-        <h1 class="text-2xl font-bold text-gray-900">Üretim Motoru</h1>
-        <p class="text-gray-500 mt-1">Sipariş XLS dosyasını yükleyerek üretim raporlarını oluşturun</p>
+    <div class="mb-6 lg:mb-8">
+        <h1 class="text-xl lg:text-2xl font-bold text-gray-900">Üretim Motoru</h1>
+        <p class="text-gray-500 mt-1 text-sm lg:text-base">Sipariş XLS dosyasını yükleyerek üretim raporlarını oluşturun</p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
         <!-- Left Column: Upload & Files -->
-        <div class="lg:col-span-2 space-y-6">
+        <div class="xl:col-span-2 space-y-4 lg:space-y-6">
             <!-- Import Section -->
-            <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <div class="bg-white rounded-lg border border-gray-200 p-4 lg:p-6">
                 <h3 class="text-sm font-medium text-gray-500 mb-4">import</h3>
                 
-                <div class="flex items-center space-x-4">
+                <!-- Mobile: Stack vertically, Desktop: Horizontal -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
                     <!-- Profile Select -->
-                    <div class="relative">
-                        <select wire:model.live="selectedProfileId" class="appearance-none px-4 py-2 pr-10 border border-gray-300 rounded-lg text-sm bg-white">
+                    <div class="relative w-full sm:w-auto">
+                        <select wire:model.live="selectedProfileId" class="w-full sm:w-auto appearance-none px-4 py-3 pr-10 border border-gray-300 rounded-lg text-sm bg-white">
                             @foreach($this->profiles as $profile)
                                 <option value="{{ $profile->id }}">
                                     {{ $profile->name }}
@@ -32,20 +33,20 @@
                     </div>
 
                     <!-- File Upload -->
-                    <label class="flex-1 flex items-center justify-center px-6 py-4 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors">
+                    <label class="flex-1 flex items-center justify-center px-4 lg:px-6 py-4 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors">
                         <input type="file" wire:model="file" accept=".xlsx,.xls" class="hidden">
                         <div class="flex items-center space-x-2 text-sm text-gray-600">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                             </svg>
-                            <span>{{ $file ? $file->getClientOriginalName() : 'sipariş xls ↓' }}</span>
+                            <span class="truncate">{{ $file ? $file->getClientOriginalName() : 'sipariş xls ↓' }}</span>
                         </div>
                     </label>
 
                     <button 
                         wire:click="process" 
                         wire:loading.attr="disabled"
-                        class="px-6 py-3 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                        class="w-full sm:w-auto px-6 py-3 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
                     >
                         <span wire:loading.remove wire:target="process">İşle</span>
                         <span wire:loading wire:target="process">İşleniyor...</span>
@@ -61,7 +62,7 @@
             @if($this->selectedProfile && $this->selectedProfile->is_ai_generated)
             <div class="bg-purple-50 rounded-lg border border-purple-200 p-4">
                 <div class="flex items-center space-x-2 mb-2">
-                    <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 text-purple-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
                     <span class="font-medium text-purple-900">AI Profili: {{ $this->selectedProfile->name }}</span>
@@ -95,20 +96,20 @@
             @if(count($generatedFiles) > 0)
             <div class="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
                 @foreach($generatedFiles as $index => $file)
-                <div class="flex items-center justify-between p-4">
-                    <div class="flex items-center space-x-3">
-                        <span class="text-gray-400">{{ $index + 1 }}.</span>
-                        <div>
-                            <p class="font-medium text-gray-900">{{ $file['filename'] }}</p>
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4">
+                    <div class="flex items-start sm:items-center space-x-3 min-w-0">
+                        <span class="text-gray-400 flex-shrink-0">{{ $index + 1 }}.</span>
+                        <div class="min-w-0">
+                            <p class="font-medium text-gray-900 truncate">{{ $file['filename'] }}</p>
                             <p class="text-sm text-gray-500">Çıktı xls dosyası (motorun verdiği çıktı)</p>
                         </div>
                     </div>
-                    <button 
-                        wire:click="downloadFile({{ $file['id'] }})"
-                        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    <a 
+                        href="{{ route('download', $file['id']) }}"
+                        class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0"
                     >
                         xls dışarı aktar
-                    </button>
+                    </a>
                 </div>
                 @endforeach
             </div>
@@ -116,11 +117,11 @@
         </div>
 
         <!-- Right Column: Actions -->
-        <div class="space-y-6">
+        <div class="space-y-4 lg:space-y-6">
             <!-- New AI Profile Button -->
             <div class="bg-white rounded-lg border border-gray-200 p-4">
                 <a href="{{ route('profile.wizard') }}" class="flex items-center justify-center w-full px-4 py-3 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors">
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
                     AI ile Yeni Profil
@@ -145,7 +146,7 @@
                 >
                     ↓ toplu indir (zip)
                 </button>
-                <p class="text-xs text-gray-400 mt-2">tüm xls dosyalarını zipleyip indir</p>
+                <p class="text-xs text-gray-400 mt-2 text-center">tüm xls dosyalarını zipleyip indir</p>
             </div>
 
             <!-- Save All -->
