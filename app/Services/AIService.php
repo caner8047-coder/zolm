@@ -25,9 +25,13 @@ class AIService
      */
     public function ask(string $role, string $question, ?Report $report = null): string
     {
-        // Eğer API anahtarı yoksa demo yanıt dön
+        // Eğer API anahtarı yoksa
         if (empty($this->apiKey)) {
-            return $this->getDemoResponse($role, $question, $report);
+            // Demo mode aktifse demo yanıt dön, değilse hata ver
+            if (config('ai.demo_mode', false)) {
+                return $this->getDemoResponse($role, $question, $report);
+            }
+            return '❌ AI API anahtarı yapılandırılmamış. Lütfen .env dosyasına AI_API_KEY ekleyin.';
         }
 
         try {
@@ -47,14 +51,14 @@ class AIService
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
-            ])->timeout(60)->post($this->getApiUrl(), [
+            ])->timeout(config('ai.timeout', 60))->post($this->getApiUrl(), [
                 'model' => $this->model,
                 'messages' => [
                     ['role' => 'system', 'content' => $systemPrompt],
                     ['role' => 'user', 'content' => $fullQuestion],
                 ],
-                'max_tokens' => 2048,
-                'temperature' => 0.5,
+                'max_tokens' => config('ai.max_tokens', 4000),
+                'temperature' => config('ai.temperature', 0.7),
             ]);
 
             if ($response->successful()) {

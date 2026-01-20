@@ -102,62 +102,64 @@ Route::middleware('auth')->group(function () {
     });
 });
 
-// DEBUG: Excel test route - sorun tespiti için
-Route::get('/test-excel', function () {
-    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-    $sheet = $spreadsheet->getActiveSheet();
-    $sheet->setTitle('Test');
-    $sheet->setCellValue('A1', 'Merhaba');
-    $sheet->setCellValue('B1', 'Dünya');
-    $sheet->setCellValue('A2', 'Test');
-    $sheet->setCellValue('B2', '123');
-    
-    $tempFile = storage_path('app/test-excel.xlsx');
-    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
-    $writer->save($tempFile);
-    
-    return response()->download($tempFile, 'test-dosya.xlsx', [
-        'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    ])->deleteFileAfterSend(true);
-});
-
-// DEBUG: Son rapor dosyasını test et
-Route::get('/test-last-file', function () {
-    $lastFile = \App\Models\ReportFile::latest()->first();
-    if (!$lastFile) {
-        return 'Dosya bulunamadı';
-    }
-    
-    $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($lastFile->file_path);
-    
-    if (!file_exists($fullPath)) {
-        return 'Dosya mevcut değil: ' . $lastFile->file_path;
-    }
-    
-    // Dosyayı PhpSpreadsheet ile aç ve kontrol et
-    try {
-        $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($fullPath);
-        $info = [
-            'path' => $fullPath,
-            'size' => filesize($fullPath),
-            'sheet_count' => $spreadsheet->getSheetCount(),
-            'sheets' => [],
-        ];
+// ============================================
+// DEBUG ROUTES - ONLY LOCAL ENVIRONMENT
+// ============================================
+if (app()->environment('local')) {
+    // Excel test route - sorun tespiti için
+    Route::get('/test-excel', function () {
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Test');
+        $sheet->setCellValue('A1', 'Merhaba');
+        $sheet->setCellValue('B1', 'Dünya');
+        $sheet->setCellValue('A2', 'Test');
+        $sheet->setCellValue('B2', '123');
         
-        foreach ($spreadsheet->getSheetNames() as $name) {
-            $sheet = $spreadsheet->getSheetByName($name);
-            $info['sheets'][] = [
-                'name' => $name,
-                'rows' => $sheet->getHighestRow(),
-                'cols' => $sheet->getHighestColumn(),
-            ];
+        $tempFile = storage_path('app/test-excel.xlsx');
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->save($tempFile);
+        
+        return response()->download($tempFile, 'test-dosya.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
+    });
+
+    // Son rapor dosyasını test et
+    Route::get('/test-last-file', function () {
+        $lastFile = \App\Models\ReportFile::latest()->first();
+        if (!$lastFile) {
+            return 'Dosya bulunamadı';
         }
         
-        return response()->json($info);
+        $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($lastFile->file_path);
         
-    } catch (\Exception $e) {
-        return 'Hata: ' . $e->getMessage();
-    }
-});
-
-
+        if (!file_exists($fullPath)) {
+            return 'Dosya mevcut değil: ' . $lastFile->file_path;
+        }
+        
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($fullPath);
+            $info = [
+                'path' => $fullPath,
+                'size' => filesize($fullPath),
+                'sheet_count' => $spreadsheet->getSheetCount(),
+                'sheets' => [],
+            ];
+            
+            foreach ($spreadsheet->getSheetNames() as $name) {
+                $sheet = $spreadsheet->getSheetByName($name);
+                $info['sheets'][] = [
+                    'name' => $name,
+                    'rows' => $sheet->getHighestRow(),
+                    'cols' => $sheet->getHighestColumn(),
+                ];
+            }
+            
+            return response()->json($info);
+            
+        } catch (\Exception $e) {
+            return 'Hata: ' . $e->getMessage();
+        }
+    });
+}

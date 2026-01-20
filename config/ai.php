@@ -5,7 +5,7 @@ return [
     |--------------------------------------------------------------------------
     | AI Provider
     |--------------------------------------------------------------------------
-    | Supported: "groq", "openai"
+    | Desteklenen: 'groq', 'openai'
     */
     'provider' => env('AI_PROVIDER', 'groq'),
 
@@ -13,7 +13,8 @@ return [
     |--------------------------------------------------------------------------
     | API Key
     |--------------------------------------------------------------------------
-    | Get your Groq API key from: https://console.groq.com/keys
+    | AI servisinin API anahtarı. Production'da mutlaka set edilmeli.
+    | Groq: https://console.groq.com/keys
     */
     'api_key' => env('AI_API_KEY', ''),
 
@@ -21,8 +22,44 @@ return [
     |--------------------------------------------------------------------------
     | Model
     |--------------------------------------------------------------------------
-    | Groq models: llama-3.3-70b-versatile, llama-3.1-8b-instant, mixtral-8x7b-32768
-    | OpenAI models: gpt-4o, gpt-4o-mini, gpt-3.5-turbo
+    | Kullanılacak AI modeli
+    | Groq: llama-3.3-70b-versatile, llama-3.1-8b-instant, mixtral-8x7b-32768
+    | OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo
     */
     'model' => env('AI_MODEL', 'llama-3.3-70b-versatile'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Max Tokens
+    |--------------------------------------------------------------------------
+    | AI yanıtındaki maksimum token sayısı
+    */
+    'max_tokens' => env('AI_MAX_TOKENS', 4000),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Temperature
+    |--------------------------------------------------------------------------
+    | AI yanıtlarının yaratıcılık seviyesi (0.0 - 2.0)
+    | Düşük: Daha tutarlı, Yüksek: Daha yaratıcı
+    */
+    'temperature' => env('AI_TEMPERATURE', 0.7),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Timeout
+    |--------------------------------------------------------------------------
+    | API isteği için maksimum bekleme süresi (saniye)
+    */
+    'timeout' => env('AI_TIMEOUT', 60),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Demo Mode
+    |--------------------------------------------------------------------------
+    | API key yoksa demo mod aktif olur. Production'da false olmalı.
+    | true: API key yoksa demo yanıt döner
+    | false: API key yoksa hata fırlatır
+    */
+    'demo_mode' => env('AI_DEMO_MODE', false),
 ];
