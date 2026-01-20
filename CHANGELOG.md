@@ -1,8 +1,35 @@
 # ZOLM - Changelog
 
-## V0.1 - 2026-01-20
+## V0.2 - 2026-01-20 (Responsive)
 
-### 🎉 İlk Sürüm
+### ✨ Yeni Özellikler
+
+#### Mobil Responsive Tasarım
+- **Hamburger Menü** - Mobilde sidebar toggle
+- **Touch-Friendly Butonlar** - Min 44px height
+- **Stack Layout** - Mobilde dikey düzen
+- **Responsive Grid** - Tüm sayfalarda uyumlu grid sistemi
+
+#### Yeni Menü Öğeleri (Yakında)
+- **Kargo Raporları** - Kargo XLS karşılaştırma (placeholder)
+- **Tedarik Raporu** - Eksik/kusurlu ürün takibi (placeholder)
+- **Pazaryeri Muhasebe** - 178 faktörlü check list (placeholder)
+- **API / Dev** - zemuretim.online entegrasyonu (placeholder)
+
+### 🔧 İyileştirmeler
+- Admin paneli mobil uyumlu hale getirildi
+- AI Chat mobil görünümü düzeltildi
+- Activity Logs mobilde card view eklendi
+- Report History filtreleri mobil uyumlu
+
+### 🐛 Hata Düzeltmeleri
+- Alpine.js çift yükleme sorunu düzeltildi (Livewire 3 dahili)
+- Profil modal açılmama sorunu düzeltildi
+- Sidebar mobile overlay eklendi
+
+---
+
+## V0.1 - 2026-01-20 (Genesis)
 
 Bu sürüm ZOLM XLS Dönüşüm Platformu'nun temel özelliklerini içerir.
 
