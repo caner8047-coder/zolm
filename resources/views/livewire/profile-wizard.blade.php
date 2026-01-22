@@ -122,59 +122,114 @@
         </div>
         @endif
 
-        <!-- Step 2: Örnek Girdi -->
+        <!-- Step 2: Örnek Girdi (Çoklu Dosya) -->
         @if($currentStep === 2)
         <div class="space-y-6">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Örnek Girdi Dosyası *</label>
-                <label class="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors
-                    {{ $sampleInputFile ? 'border-green-500 bg-green-50' : '' }}">
-                    <input type="file" wire:model="sampleInputFile" accept=".xlsx,.xls" class="hidden">
-                    @if($sampleInputFile)
-                        <svg class="w-12 h-12 text-green-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <!-- Dosya Listesi -->
+            @if(count($sampleInputFiles) > 0)
+            <div class="space-y-3">
+                <label class="block text-sm font-medium text-gray-700">Eklenen Girdi Dosyaları ({{ count($sampleInputFiles) }})</label>
+                @foreach($sampleInputFiles as $index => $file)
+                <div class="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div class="flex items-center">
+                        <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                        <span class="text-sm font-medium text-gray-900">{{ $sampleInputFile->getClientOriginalName() }}</span>
-                        <span class="text-xs text-gray-500 mt-1">Dosyayı değiştirmek için tıklayın</span>
-                    @else
-                        <svg class="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                        <div>
+                            <span class="font-medium text-gray-900">{{ $file['name'] }}</span>
+                            @if(isset($file['structure']['sheets']))
+                            <span class="text-xs text-gray-500 ml-2">({{ count($file['structure']['sheets']) }} sayfa)</span>
+                            @endif
+                        </div>
+                    </div>
+                    <button 
+                        wire:click="removeInputFile({{ $index }})"
+                        class="p-1 text-red-500 hover:bg-red-100 rounded transition-colors"
+                        title="Dosyayı Kaldır"
+                    >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                         </svg>
-                        <span class="text-sm text-gray-600">XLS veya XLSX dosyası yükleyin</span>
-                        <span class="text-xs text-gray-400 mt-1">Maksimum 10MB</span>
-                    @endif
+                    </button>
+                </div>
+                @endforeach
+            </div>
+            @endif
+
+            <!-- Dosya Ekleme -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    {{ count($sampleInputFiles) > 0 ? 'Başka Dosya Ekle' : 'Örnek Girdi Dosyası *' }}
                 </label>
-                @error('sampleInputFile') <span class="text-sm text-red-600">{{ $message }}</span> @enderror
+                <div class="flex gap-3">
+                    <label class="flex-1 flex flex-col items-center justify-center h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors
+                        {{ $tempInputFile ? 'border-blue-500 bg-blue-50' : '' }}">
+                        <input type="file" wire:model="tempInputFile" accept=".xlsx,.xls" class="hidden">
+                        @if($tempInputFile)
+                            <svg class="w-8 h-8 text-blue-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <span class="text-sm font-medium text-gray-900">{{ $tempInputFile->getClientOriginalName() }}</span>
+                            <span class="text-xs text-blue-600 mt-1">Eklemek için butona tıklayın</span>
+                        @else
+                            <svg class="w-8 h-8 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                            <span class="text-sm text-gray-600">XLS veya XLSX dosyası seçin</span>
+                            <span class="text-xs text-gray-400 mt-1">Maksimum 10MB</span>
+                        @endif
+                    </label>
+                    
+                    @if($tempInputFile)
+                    <button 
+                        wire:click="addInputFile"
+                        class="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors h-32 flex flex-col items-center justify-center"
+                    >
+                        <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                        </svg>
+                        <span class="text-sm">Ekle</span>
+                    </button>
+                    @endif
+                </div>
+                @error('tempInputFile') <span class="text-sm text-red-600">{{ $message }}</span> @enderror
+                @error('sampleInputFiles') <span class="text-sm text-red-600">{{ $message }}</span> @enderror
             </div>
 
             <!-- Analiz Sonucu -->
-            @if($inputAnalyzed && !empty($inputStructure))
+            @if($inputAnalyzed && !empty($inputStructure['sheets']))
             <div class="bg-gray-50 rounded-lg p-4">
-                <h4 class="text-sm font-medium text-gray-900 mb-3">📊 Dosya Analizi</h4>
+                <h4 class="text-sm font-medium text-gray-900 mb-3">📊 Toplam Dosya Analizi ({{ count($inputStructure['sheets']) }} sayfa)</h4>
                 
-                @if(isset($inputStructure['sheets']))
-                <div class="space-y-3">
+                <div class="space-y-3 max-h-64 overflow-y-auto">
                     @foreach($inputStructure['sheets'] as $sheet)
                     <div class="bg-white rounded border border-gray-200 p-3">
                         <div class="flex items-center justify-between mb-2">
-                            <span class="font-medium text-gray-900">{{ $sheet['name'] }}</span>
+                            <div>
+                                <span class="font-medium text-gray-900">{{ $sheet['name'] }}</span>
+                                @if(isset($sheet['file']))
+                                <span class="text-xs text-gray-400 ml-2">({{ $sheet['file'] }})</span>
+                                @endif
+                            </div>
                             <span class="text-xs text-gray-500">{{ $sheet['row_count'] ?? '?' }} satır</span>
                         </div>
                         <div class="flex flex-wrap gap-1">
-                            @foreach(($sheet['columns'] ?? []) as $column)
+                            @foreach(array_slice($sheet['columns'] ?? [], 0, 10) as $column)
                             <span class="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded">{{ $column }}</span>
                             @endforeach
+                            @if(count($sheet['columns'] ?? []) > 10)
+                            <span class="px-2 py-0.5 text-xs bg-gray-200 text-gray-600 rounded">+{{ count($sheet['columns']) - 10 }} daha</span>
+                            @endif
                         </div>
                     </div>
                     @endforeach
                 </div>
-                @endif
             </div>
             @endif
         </div>
         @endif
 
-        <!-- Step 3: Çıktı Tanımı -->
+        <!-- Step 3: Çıktı Tanımı (Çoklu Dosya) -->
         @if($currentStep === 3)
         <div class="space-y-6">
             <div>
@@ -197,22 +252,68 @@
             </div>
 
             <div class="border-t border-gray-200 pt-6">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Örnek Çıktı Dosyası (Opsiyonel)</label>
-                <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors
-                    {{ $sampleOutputFile ? 'border-green-500 bg-green-50' : '' }}">
-                    <input type="file" wire:model="sampleOutputFile" accept=".xlsx,.xls" class="hidden">
-                    @if($sampleOutputFile)
-                        <svg class="w-8 h-8 text-green-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                <label class="block text-sm font-medium text-gray-700 mb-3">Örnek Çıktı Dosyaları (Opsiyonel)</label>
+                
+                <!-- Çıktı Dosya Listesi -->
+                @if(count($sampleOutputFiles) > 0)
+                <div class="space-y-2 mb-4">
+                    @foreach($sampleOutputFiles as $index => $file)
+                    <div class="flex items-center justify-between p-2 bg-purple-50 border border-purple-200 rounded-lg">
+                        <div class="flex items-center">
+                            <svg class="w-4 h-4 text-purple-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span class="text-sm font-medium text-gray-900">{{ $file['name'] }}</span>
+                            @if(isset($file['structure']['sheets']))
+                            <span class="text-xs text-gray-500 ml-2">({{ count($file['structure']['sheets']) }} sayfa)</span>
+                            @endif
+                        </div>
+                        <button 
+                            wire:click="removeOutputFile({{ $index }})"
+                            class="p-1 text-red-500 hover:bg-red-100 rounded transition-colors"
+                            title="Dosyayı Kaldır"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                    @endforeach
+                </div>
+                @endif
+
+                <!-- Çıktı Dosya Ekleme -->
+                <div class="flex gap-3">
+                    <label class="flex-1 flex flex-col items-center justify-center h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors
+                        {{ $tempOutputFile ? 'border-purple-500 bg-purple-50' : '' }}">
+                        <input type="file" wire:model="tempOutputFile" accept=".xlsx,.xls" class="hidden">
+                        @if($tempOutputFile)
+                            <svg class="w-6 h-6 text-purple-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <span class="text-sm font-medium text-gray-900">{{ $tempOutputFile->getClientOriginalName() }}</span>
+                        @else
+                            <svg class="w-6 h-6 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                            </svg>
+                            <span class="text-xs text-gray-600">Örnek çıktı ekle</span>
+                        @endif
+                    </label>
+                    
+                    @if($tempOutputFile)
+                    <button 
+                        wire:click="addOutputFile"
+                        class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors h-24 flex flex-col items-center justify-center"
+                    >
+                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
                         </svg>
-                        <span class="text-sm font-medium text-gray-900">{{ $sampleOutputFile->getClientOriginalName() }}</span>
-                    @else
-                        <svg class="w-8 h-8 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                        </svg>
-                        <span class="text-xs text-gray-600">Örnek çıktı dosyası yükleyin (opsiyonel)</span>
+                        <span class="text-sm">Ekle</span>
+                    </button>
                     @endif
-                </label>
+                </div>
+                @error('tempOutputFile') <span class="text-sm text-red-600">{{ $message }}</span> @enderror
+                
                 <p class="text-xs text-gray-500 mt-2">
                     Örnek çıktı yüklerseniz AI daha doğru analiz yapabilir.
                 </p>

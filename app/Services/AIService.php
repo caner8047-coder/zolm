@@ -48,6 +48,12 @@ class AIService
                 $fullQuestion = "Aşağıdaki sipariş verilerini analiz ederek soruyu yanıtla:\n\n" . $dataContext . "\n\nSoru: " . $question;
             }
             
+            // Gemini farklı API formatı kullanıyor
+            if ($this->provider === 'gemini') {
+                return $this->askGemini($systemPrompt, $fullQuestion);
+            }
+            
+            // OpenAI uyumlu API'ler (Groq, OpenAI)
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
@@ -71,6 +77,36 @@ class AIService
         } catch (\Exception $e) {
             return 'Bağlantı hatası: ' . $e->getMessage();
         }
+    }
+
+    /**
+     * Gemini API ile soru sor (farklı format)
+     */
+    protected function askGemini(string $systemPrompt, string $question): string
+    {
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$this->model}:generateContent?key={$this->apiKey}";
+        
+        $response = Http::timeout(config('ai.timeout', 60))->post($url, [
+            'contents' => [
+                [
+                    'role' => 'user',
+                    'parts' => [
+                        ['text' => $systemPrompt . "\n\n" . $question]
+                    ]
+                ]
+            ],
+            'generationConfig' => [
+                'temperature' => config('ai.temperature', 0.7),
+                'maxOutputTokens' => config('ai.max_tokens', 4000),
+            ]
+        ]);
+
+        if ($response->successful()) {
+            $data = $response->json();
+            return $data['candidates'][0]['content']['parts'][0]['text'] ?? 'Yanıt alınamadı.';
+        }
+
+        return 'Gemini API hatası: ' . $response->body();
     }
 
     /**

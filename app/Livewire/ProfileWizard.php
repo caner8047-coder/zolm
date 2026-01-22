@@ -21,13 +21,15 @@ class ProfileWizard extends Component
     public string $type = 'production';
     public string $description = '';
 
-    // Step 2: Örnek Girdi
-    public $sampleInputFile;
+    // Step 2: Örnek Girdi (Çoklu dosya desteği)
+    public $tempInputFile; // Geçici dosya (yükleme için)
+    public array $sampleInputFiles = []; // {path, name, structure}
     public array $inputStructure = [];
     public bool $inputAnalyzed = false;
 
-    // Step 3: Çıktı Tanımı
-    public $sampleOutputFile;
+    // Step 3: Çıktı Tanımı (Çoklu dosya desteği)
+    public $tempOutputFile; // Geçici dosya (yükleme için)
+    public array $sampleOutputFiles = []; // {path, name, structure}
     public string $aiPrompt = '';
     public array $outputStructure = [];
     public bool $outputAnalyzed = false;
@@ -52,7 +54,7 @@ class ProfileWizard extends Component
                 'type' => 'required|in:production,operation',
             ],
             2 => [
-                'sampleInputFile' => 'required|file|mimes:xlsx,xls|max:10240',
+                'sampleInputFiles' => 'required|array|min:1',
             ],
             3 => [
                 'aiPrompt' => 'required|string|min:20',
@@ -106,36 +108,107 @@ class ProfileWizard extends Component
         }
     }
 
-    // === FILE ANALYSIS ===
+    // === FILE MANAGEMENT ===
 
-    public function analyzeInputFile()
+    public function addInputFile()
     {
-        if (!$this->sampleInputFile) return;
+        if (!$this->tempInputFile) return;
 
         try {
             $analyzer = app(AIProfileAnalyzer::class);
-            $this->inputStructure = $analyzer->extractFileStructure(
-                $this->sampleInputFile->getRealPath()
-            );
-            $this->inputAnalyzed = true;
+            $structure = $analyzer->extractFileStructure($this->tempInputFile->getRealPath());
+            
+            $this->sampleInputFiles[] = [
+                'name' => $this->tempInputFile->getClientOriginalName(),
+                'file' => $this->tempInputFile,
+                'structure' => $structure,
+            ];
+            
+            $this->tempInputFile = null;
+            $this->updateInputStructure();
+            
         } catch (\Exception $e) {
-            $this->addError('sampleInputFile', 'Dosya analiz edilemedi: ' . $e->getMessage());
+            $this->addError('tempInputFile', 'Dosya analiz edilemedi: ' . $e->getMessage());
         }
+    }
+
+    public function removeInputFile($index)
+    {
+        if (isset($this->sampleInputFiles[$index])) {
+            unset($this->sampleInputFiles[$index]);
+            $this->sampleInputFiles = array_values($this->sampleInputFiles);
+            $this->updateInputStructure();
+        }
+    }
+
+    protected function updateInputStructure()
+    {
+        $this->inputStructure = ['sheets' => []];
+        foreach ($this->sampleInputFiles as $file) {
+            if (isset($file['structure']['sheets'])) {
+                foreach ($file['structure']['sheets'] as $sheet) {
+                    $sheet['file'] = $file['name'];
+                    $this->inputStructure['sheets'][] = $sheet;
+                }
+            }
+        }
+        $this->inputAnalyzed = !empty($this->sampleInputFiles);
+    }
+
+    public function addOutputFile()
+    {
+        if (!$this->tempOutputFile) return;
+
+        try {
+            $analyzer = app(AIProfileAnalyzer::class);
+            $structure = $analyzer->extractFileStructure($this->tempOutputFile->getRealPath());
+            
+            $this->sampleOutputFiles[] = [
+                'name' => $this->tempOutputFile->getClientOriginalName(),
+                'file' => $this->tempOutputFile,
+                'structure' => $structure,
+            ];
+            
+            $this->tempOutputFile = null;
+            $this->updateOutputStructure();
+            
+        } catch (\Exception $e) {
+            $this->addError('tempOutputFile', 'Dosya analiz edilemedi: ' . $e->getMessage());
+        }
+    }
+
+    public function removeOutputFile($index)
+    {
+        if (isset($this->sampleOutputFiles[$index])) {
+            unset($this->sampleOutputFiles[$index]);
+            $this->sampleOutputFiles = array_values($this->sampleOutputFiles);
+            $this->updateOutputStructure();
+        }
+    }
+
+    protected function updateOutputStructure()
+    {
+        $this->outputStructure = ['sheets' => []];
+        foreach ($this->sampleOutputFiles as $file) {
+            if (isset($file['structure']['sheets'])) {
+                foreach ($file['structure']['sheets'] as $sheet) {
+                    $sheet['file'] = $file['name'];
+                    $this->outputStructure['sheets'][] = $sheet;
+                }
+            }
+        }
+        $this->outputAnalyzed = !empty($this->sampleOutputFiles);
+    }
+
+    // Eski metodlar - geri uyumluluk için
+    public function analyzeInputFile()
+    {
+        $this->addInputFile();
     }
 
     public function analyzeOutputFile()
     {
-        if (!$this->sampleOutputFile) return;
-
-        try {
-            $analyzer = app(AIProfileAnalyzer::class);
-            $this->outputStructure = $analyzer->extractFileStructure(
-                $this->sampleOutputFile->getRealPath()
-            );
-            $this->outputAnalyzed = true;
-        } catch (\Exception $e) {
-            $this->addError('sampleOutputFile', 'Dosya analiz edilemedi: ' . $e->getMessage());
-        }
+        $this->addOutputFile();
     }
 
     // === AI ANALYSIS ===
@@ -149,12 +222,18 @@ class ProfileWizard extends Component
         try {
             $analyzer = app(AIProfileAnalyzer::class);
             
-            $outputPath = $this->sampleOutputFile 
-                ? $this->sampleOutputFile->getRealPath() 
+            // İlk girdi dosyasının yolunu al
+            $inputPath = !empty($this->sampleInputFiles) 
+                ? $this->sampleInputFiles[0]['file']->getRealPath() 
+                : null;
+            
+            // İlk çıktı dosyasının yolunu al
+            $outputPath = !empty($this->sampleOutputFiles) 
+                ? $this->sampleOutputFiles[0]['file']->getRealPath() 
                 : null;
 
             $this->generatedRules = $analyzer->analyze(
-                inputFilePath: $this->sampleInputFile->getRealPath(),
+                inputFilePath: $inputPath,
                 outputFilePath: $outputPath,
                 userDescription: $this->aiPrompt,
                 inputStructure: $this->inputStructure,
@@ -259,16 +338,20 @@ class ProfileWizard extends Component
         $this->isSaving = true;
 
         try {
-            // Dosyaları kaydet
-            $inputPath = null;
-            $outputPath = null;
-
-            if ($this->sampleInputFile) {
-                $inputPath = $this->sampleInputFile->store('profile-samples', 'local');
+            // Girdi dosyalarını kaydet
+            $inputPaths = [];
+            foreach ($this->sampleInputFiles as $inputFile) {
+                if (isset($inputFile['file'])) {
+                    $inputPaths[] = $inputFile['file']->store('profile-samples', 'local');
+                }
             }
 
-            if ($this->sampleOutputFile) {
-                $outputPath = $this->sampleOutputFile->store('profile-samples', 'local');
+            // Çıktı dosyalarını kaydet
+            $outputPaths = [];
+            foreach ($this->sampleOutputFiles as $outputFile) {
+                if (isset($outputFile['file'])) {
+                    $outputPaths[] = $outputFile['file']->store('profile-samples', 'local');
+                }
             }
 
             // Profil oluştur
@@ -279,8 +362,8 @@ class ProfileWizard extends Component
                 'input_config' => $this->inputStructure,
                 'output_config' => $this->outputStructure,
                 'ai_prompt' => $this->aiPrompt,
-                'sample_input_path' => $inputPath,
-                'sample_output_path' => $outputPath,
+                'sample_input_path' => !empty($inputPaths) ? $inputPaths[0] : null,
+                'sample_output_path' => !empty($outputPaths) ? $outputPaths[0] : null,
                 'ai_generated_rules' => $this->generatedRules,
                 'is_ai_generated' => true,
                 'is_default' => false,
