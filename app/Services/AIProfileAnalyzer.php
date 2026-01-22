@@ -115,11 +115,12 @@ class AIProfileAnalyzer
         $prompt = "Sen bir Excel dönüşüm uzmanısın. Kullanıcının GİRDİ dosyasını ÇIKTI dosyasına dönüştürmek için gereken kuralları oluşturman gerekiyor.\n\n";
         
         // GİRDİ DOSYASI
-        $prompt .= "## GİRDİ DOSYASI: {$inputStructure['file_name']}\n\n";
+        $inputFileName = $inputStructure['file_name'] ?? 'Girdi Dosyası';
+        $prompt .= "## GİRDİ DOSYASI: {$inputFileName}\n\n";
         
-        foreach ($inputStructure['sheets'] as $sheet) {
+        foreach ($inputStructure['sheets'] ?? [] as $sheet) {
             $prompt .= "### Sayfa: {$sheet['name']} ({$sheet['row_count']} satır)\n";
-            $prompt .= "Kolonlar: " . implode(', ', $sheet['columns']) . "\n";
+            $prompt .= "Kolonlar: " . implode(', ', $sheet['columns'] ?? []) . "\n";
             
             if (!empty($sheet['sample_data'])) {
                 $prompt .= "Örnek veriler:\n";
@@ -139,7 +140,8 @@ class AIProfileAnalyzer
 
         // ÇIKTI DOSYASI
         if (!empty($outputStructure['sheets'])) {
-            $prompt .= "## HEDEF ÇIKTI DOSYASI: {$outputStructure['file_name']}\n\n";
+            $outputFileName = $outputStructure['file_name'] ?? 'Çıktı Dosyası';
+            $prompt .= "## HEDEF ÇIKTI DOSYASI: {$outputFileName}\n\n";
             $prompt .= "**ÖNEMLİ: Çıktı dosyasının yapısını TAM OLARAK taklit et!**\n\n";
             
             foreach ($outputStructure['sheets'] as $sheet) {
