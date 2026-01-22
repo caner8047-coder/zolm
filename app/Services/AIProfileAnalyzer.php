@@ -241,6 +241,12 @@ PROMPT;
             return $this->getDemoRules();
         }
 
+        // Gemini farklı API formatı kullanıyor
+        if ($provider === 'gemini') {
+            return $this->callGeminiAPI($prompt, $apiKey, $model);
+        }
+
+        // OpenAI uyumlu API'ler (Groq, OpenAI)
         $url = match ($provider) {
             'groq' => 'https://api.groq.com/openai/v1/chat/completions',
             'openai' => 'https://api.openai.com/v1/chat/completions',
@@ -262,7 +268,7 @@ PROMPT;
                     'content' => $prompt
                 ]
             ],
-            'max_tokens' => 4096,
+            'max_tokens' => config('ai.max_tokens', 4096),
             'temperature' => 0.2, // Daha tutarlı çıktı için düşük temperature
         ]);
 
@@ -273,6 +279,39 @@ PROMPT;
 
         $data = $response->json();
         return $data['choices'][0]['message']['content'] ?? '';
+    }
+
+    /**
+     * Gemini API çağrısı
+     */
+    protected function callGeminiAPI(string $prompt, string $apiKey, string $model): string
+    {
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$apiKey}";
+        
+        $systemPrompt = 'Sen bir Excel dönüşüm uzmanısın. Sadece geçerli JSON formatında yanıt ver. Açıklama yazma, sadece JSON döndür.';
+        
+        $response = Http::timeout(120)->post($url, [
+            'contents' => [
+                [
+                    'role' => 'user',
+                    'parts' => [
+                        ['text' => $systemPrompt . "\n\n" . $prompt]
+                    ]
+                ]
+            ],
+            'generationConfig' => [
+                'temperature' => 0.2,
+                'maxOutputTokens' => config('ai.max_tokens', 4096),
+            ]
+        ]);
+
+        if (!$response->successful()) {
+            Log::error('AIProfileAnalyzer: Gemini API hatası', ['response' => $response->body()]);
+            throw new \Exception('Gemini API hatası: ' . $response->body());
+        }
+
+        $data = $response->json();
+        return $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
     }
 
     /**
