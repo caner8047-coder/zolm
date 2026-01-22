@@ -81,7 +81,7 @@ class ProfileWizard extends Component
             return;
         }
 
-        if ($this->currentStep === 3 && $this->sampleOutputFile && !$this->outputAnalyzed) {
+        if ($this->currentStep === 3 && !empty($this->sampleOutputFiles) && !$this->outputAnalyzed) {
             $this->analyzeOutputFile();
         }
 
