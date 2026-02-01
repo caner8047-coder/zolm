@@ -217,6 +217,15 @@ class AIService
 - Türkçe yanıt ver
 - Kısa ve öz ol",
 
+            'legal' => "Sen kurumsal bir hukuk müşavirisiniz. Kargo firmalarına yazılacak resmi tazmin dilekçeleri hazırlıyorsun.
+
+ÖNEMLİ KURALLAR:
+- Son derece resmi ve hukuki bir dil kullan
+- Gereksiz nezaket sözcüklerinden kaçın, net ve talepkar ol
+- Yazım ve imla kurallarına dikkat et
+- Sadece dilekçe metnini (gövde) oluştur, başlık ve imza kısımlarını yazma
+- Paragraflar arasında boşluk bırak",
+
             default => "Sen bir E-ticaret, Üretim ve Operasyon Uzmanısın. Sipariş verilerini analiz edip profesyonel önerilerde bulunuyorsun.
 
 ÖNEMLİ KURALLAR:
@@ -232,10 +241,39 @@ class AIService
     }
 
     /**
+     * Tazmin dilekçesi metni oluştur
+     */
+    public function generatePetitionText(\App\Models\Compensation $compensation): string
+    {
+        $prompt = "Aşağıdaki bilgilere göre bir kargo tazmin dilekçesi metni oluştur. 
+        Giriş (Sayın Yetkili hitabıyla başla), olay örgüsü, talep ve kapanış bölümlerini içersin.
+        
+        Kargo Firması: {$compensation->cargo_company}
+        Takip No: {$compensation->takip_kodu}
+        Tarih: {$compensation->tarih->format('d.m.Y')}
+        Müşteri: {$compensation->musteri_adi}
+        Ürün: {$compensation->urun_adi}
+        Tazmin Sebebi: {$compensation->sebep_info['label']}
+        Talep Tutarı: " . number_format($compensation->talep_tutari, 2) . " TL
+        Ek Açıklama: {$compensation->aciklama}
+        
+        Durum: Bu kargo {$compensation->sebep_info['label']} durumundadır. Mağduriyet oluşmuştur ve tazmin edilmesini talep ediyoruz.";
+
+        return $this->ask('legal', $prompt);
+    }
+
+    /**
      * Demo response when API key is not configured
      */
     protected function getDemoResponse(string $role, string $question, ?Report $report): string
     {
+        if ($role === 'legal') {
+             return "Sayın Yetkili, (DEMO MODU)\n\n" .
+                   "Şirketimiz tarafından gönderilen kargo ile ilgili tazmin talebimiz mevcuttur. " .
+                   "Bu içerik DEMO modunda olduğunuz için otomatik oluşturulmuştur. Gerçek AI desteği için API anahtarı gereklidir.\n\n" .
+                   "Gereğinin yapılmasını arz ederiz.";
+        }
+
         $response = "⚠️ **Demo Modu**\n\nAI API anahtarı yapılandırılmamış. Gerçek veri analizi için:\n\n1. `.env` dosyasına `AI_API_KEY=gsk_xxx` ekleyin\n2. `php artisan config:clear` çalıştırın\n\n";
         
         if ($report) {

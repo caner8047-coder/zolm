@@ -58,8 +58,21 @@ Route::middleware('auth')->group(function () {
     // ============================================
     Route::get('/cargo-reports', \App\Livewire\CargoReports::class)->name('cargo-reports');
     Route::get('/supply-report', \App\Livewire\SupplyReport::class)->name('supply-report');
+
+    // Compensation Downloads
+    Route::prefix('compensation')->group(function () {
+        Route::get('/{id}/petition', [\App\Http\Controllers\CompensationDownloadController::class, 'downloadPetition'])->name('compensation.petition');
+        Route::get('/{id}/form', [\App\Http\Controllers\CompensationDownloadController::class, 'downloadForm'])->name('compensation.form');
+        Route::get('/{id}/download-all', [\App\Http\Controllers\CompensationDownloadController::class, 'downloadAll'])->name('compensation.download-all');
+    });
     Route::get('/marketplace-accounting', \App\Livewire\MarketplaceAccounting::class)->name('marketplace-accounting');
     Route::get('/api-dev', \App\Livewire\ApiDev::class)->name('api-dev');
+
+    // Route cache temizleme
+    Route::get('/fix-routes', function() {
+        \Illuminate\Support\Facades\Artisan::call('route:clear');
+        return 'Routes cleared! <a href="/dashboard">Return to Dashboard</a>';
+    });
 
     // Profile Management
     Route::get('/profiles', ProfileManager::class)

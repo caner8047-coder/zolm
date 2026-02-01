@@ -49,7 +49,7 @@
         }
     </style>
 </head>
-<body class="h-full bg-gray-50" x-data="{ sidebarOpen: false }">
+<body class="h-full bg-gray-50 overflow-x-hidden" x-data="{ sidebarOpen: false }">
     <div class="min-h-full flex">
         
         <!-- Mobile Sidebar Overlay -->
@@ -72,8 +72,8 @@
         >
             <!-- Logo -->
             <div class="h-16 flex items-center justify-between px-6 border-b border-gray-200">
-                <a href="{{ route('dashboard') }}" class="text-2xl font-bold text-gray-900 tracking-tight">
-                    zolm
+                <a href="{{ route('dashboard') }}" class="text-2xl font-bold text-gray-900 tracking-tight flex items-baseline">
+                    zolm <span class="text-xs font-normal text-gray-400 ml-1">v.0.3</span>
                 </a>
                 <!-- Mobile close button -->
                 <button 
@@ -124,6 +124,16 @@
                 </a>
                 @endif
 
+                <a href="{{ route('cargo-reports') }}" 
+                   @click="sidebarOpen = false"
+                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                          {{ request()->routeIs('cargo-reports') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
+                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                    </svg>
+                    Kargo Raporları
+                </a>
+
                 @if(auth()->user()->isAdmin())
                 <a href="{{ route('profiles') }}" 
                    @click="sidebarOpen = false"
@@ -142,16 +152,7 @@
                 <p class="px-4 text-xs text-gray-400 uppercase tracking-wider mb-2">Yakında</p>
 
                 <!-- Coming Soon Items -->
-                <a href="{{ route('cargo-reports') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                          {{ request()->routeIs('cargo-reports') ? 'bg-gray-900 text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                    </svg>
-                    Kargo Raporları
-                    <span class="ml-auto text-xs bg-yellow-100 text-yellow-600 px-1.5 py-0.5 rounded">🚧</span>
-                </a>
+
 
                 <a href="{{ route('supply-report') }}" 
                    @click="sidebarOpen = false"
