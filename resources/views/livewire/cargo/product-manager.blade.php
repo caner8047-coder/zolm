@@ -171,11 +171,12 @@
 
     {{-- Ürün Tablosu --}}
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden max-w-full">
-        <div class="overflow-x-auto max-w-full">
-            <table class="w-full divide-y divide-gray-200 table-fixed">
+        {{-- Desktop: Tablo Görünümü --}}
+        <div class="hidden lg:block overflow-x-auto">
+            <table class="w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-3 py-2 sm:px-6 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 whitespace-nowrap"
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 whitespace-nowrap"
                             wire:click="sortBy('stok_kodu')">
                             <span class="flex items-center gap-1">
                                 Stok Kodu
@@ -187,26 +188,26 @@
                                 @endif
                             </span>
                         </th>
-                        <th class="px-2 py-2 sm:px-4 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-[35%]"
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                             wire:click="sortBy('urun_adi')">
                             Ürün Adı
                         </th>
-                        <th class="px-3 py-2 sm:px-6 sm:py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 whitespace-nowrap"
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 whitespace-nowrap w-20"
                             wire:click="sortBy('parca')">
                             Parça
                         </th>
-                        <th class="px-3 py-2 sm:px-6 sm:py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 whitespace-nowrap"
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 whitespace-nowrap w-24"
                             wire:click="sortBy('desi')">
                             Desi
                         </th>
-                        <th class="px-3 py-2 sm:px-6 sm:py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 whitespace-nowrap"
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 whitespace-nowrap w-28"
                             wire:click="sortBy('tutar')">
                             Tutar
                         </th>
-                        <th class="px-2 py-2 sm:px-4 sm:py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
                             Kategori
                         </th>
-                        <th class="px-2 py-2 sm:px-4 sm:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
+                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
                             İşlem
                         </th>
                     </tr>
@@ -216,38 +217,38 @@
                         <tr class="hover:bg-gray-50 transition">
                             @if($editingId === $product->id)
                                 {{-- Düzenleme Modu --}}
-                                <td class="px-3 py-2 sm:px-6 sm:py-3">
+                                <td class="px-4 py-3">
                                     <input type="text" wire:model="editingProduct.stok_kodu"
                                            class="w-full px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500">
                                 </td>
-                                <td class="px-3 py-2 sm:px-6 sm:py-3">
+                                <td class="px-4 py-3">
                                     <input type="text" wire:model="editingProduct.urun_adi"
                                            class="w-full px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500">
                                 </td>
-                                <td class="px-3 py-2 sm:px-6 sm:py-3 text-center">
+                                <td class="px-4 py-3 text-center">
                                     <input type="number" wire:model="editingProduct.parca" min="1"
                                            class="w-16 px-2 py-1 text-sm border rounded text-center focus:ring-2 focus:ring-blue-500">
                                 </td>
-                                <td class="px-3 py-2 sm:px-6 sm:py-3 text-center">
+                                <td class="px-4 py-3 text-center">
                                     <input type="number" wire:model="editingProduct.desi" step="0.01"
                                            class="w-20 px-2 py-1 text-sm border rounded text-center focus:ring-2 focus:ring-blue-500">
                                 </td>
-                                <td class="px-3 py-2 sm:px-6 sm:py-3 text-center">
+                                <td class="px-4 py-3 text-center">
                                     <input type="number" wire:model="editingProduct.tutar" step="0.01"
                                            class="w-24 px-2 py-1 text-sm border rounded text-center focus:ring-2 focus:ring-blue-500">
                                 </td>
-                                <td class="px-3 py-2 sm:px-6 sm:py-3 text-center">
+                                <td class="px-4 py-3 text-center">
                                     <span class="text-gray-400 text-sm">{{ $product->kategori }}</span>
                                 </td>
-                                <td class="px-3 py-2 sm:px-6 sm:py-3 text-right">
+                                <td class="px-4 py-3 text-right">
                                     <div class="flex justify-end gap-2">
                                         <button wire:click="saveEdit" class="text-green-600 hover:text-green-800 p-2">
-                                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                                             </svg>
                                         </button>
                                         <button wire:click="cancelEdit" class="text-gray-600 hover:text-gray-800 p-2">
-                                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                                             </svg>
                                         </button>
@@ -255,33 +256,30 @@
                                 </td>
                             @else
                                 {{-- Normal Görünüm --}}
-                                <td class="px-3 py-2 sm:px-6 sm:py-3 whitespace-nowrap">
+                                <td class="px-4 py-3 whitespace-nowrap">
                                     <span class="font-mono text-xs text-gray-900">{{ $product->stok_kodu }}</span>
                                 </td>
-                                <td class="px-2 py-2 sm:px-4 sm:py-3 truncate max-w-0">
-                                    <span class="text-gray-900 text-xs" title="{{ $product->urun_adi }}">{{ $product->urun_adi }}</span>
+                                <td class="px-4 py-3">
+                                    <span class="text-gray-900 text-sm line-clamp-2" title="{{ $product->urun_adi }}">{{ $product->urun_adi }}</span>
                                 </td>
-                                <td class="px-3 py-2 sm:px-6 sm:py-3 text-center whitespace-nowrap">
+                                <td class="px-4 py-3 text-center whitespace-nowrap">
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                         {{ $product->parca }}
                                     </span>
                                 </td>
-                                <td class="px-3 py-2 sm:px-6 sm:py-3 text-center whitespace-nowrap">
-                                    <span class="text-gray-900 font-medium text-xs">{{ number_format($product->desi, 2) }}</span>
-                                    @if($product->desi > 100)
-                                        <span class="text-xs text-orange-600 block">100+ desi</span>
-                                    @endif
+                                <td class="px-4 py-3 text-center whitespace-nowrap">
+                                    <span class="text-gray-900 font-medium text-sm">{{ number_format($product->desi, 2) }}</span>
                                 </td>
-                                <td class="px-3 py-2 sm:px-6 sm:py-3 text-center whitespace-nowrap">
-                                    <span class="text-gray-900 font-medium text-xs">{{ number_format($product->tutar, 2) }} ₺</span>
+                                <td class="px-4 py-3 text-center whitespace-nowrap">
+                                    <span class="text-gray-900 font-medium text-sm">{{ number_format($product->tutar, 2) }} ₺</span>
                                 </td>
-                                <td class="px-2 py-2 sm:px-4 sm:py-3 text-center hidden lg:table-cell">
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                <td class="px-4 py-3 text-center">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
                                         {{ $product->kategori ?? '-' }}
                                     </span>
                                 </td>
-                                <td class="px-2 py-2 sm:px-4 sm:py-3 text-right">
-                                    <div class="flex justify-end gap-2">
+                                <td class="px-4 py-3 text-right">
+                                    <div class="flex justify-end gap-1">
                                         <button 
                                             wire:click="startEdit({{ $product->id }})"
                                             class="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded"
@@ -320,6 +318,88 @@
                     @endforelse
                 </tbody>
             </table>
+        </div>
+
+        {{-- Mobile: Kart Görünümü --}}
+        <div class="lg:hidden divide-y divide-gray-200">
+            @forelse($this->products as $product)
+                <div class="p-4 hover:bg-gray-50">
+                    @if($editingId === $product->id)
+                        {{-- Mobil Düzenleme Modu --}}
+                        <div class="space-y-3">
+                            <input type="text" wire:model="editingProduct.stok_kodu" placeholder="Stok Kodu"
+                                   class="w-full px-3 py-2 text-sm border rounded-lg">
+                            <input type="text" wire:model="editingProduct.urun_adi" placeholder="Ürün Adı"
+                                   class="w-full px-3 py-2 text-sm border rounded-lg">
+                            <div class="grid grid-cols-3 gap-2">
+                                <input type="number" wire:model="editingProduct.parca" min="1" placeholder="Parça"
+                                       class="px-3 py-2 text-sm border rounded-lg text-center">
+                                <input type="number" wire:model="editingProduct.desi" step="0.01" placeholder="Desi"
+                                       class="px-3 py-2 text-sm border rounded-lg text-center">
+                                <input type="number" wire:model="editingProduct.tutar" step="0.01" placeholder="Tutar"
+                                       class="px-3 py-2 text-sm border rounded-lg text-center">
+                            </div>
+                            <div class="flex gap-2">
+                                <button wire:click="saveEdit" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm">
+                                    Kaydet
+                                </button>
+                                <button wire:click="cancelEdit" class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm">
+                                    İptal
+                                </button>
+                            </div>
+                        </div>
+                    @else
+                        {{-- Mobil Normal Görünüm --}}
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{{ $product->stok_kodu }}</span>
+                                    @if($product->kategori)
+                                    <span class="text-xs text-gray-400">{{ $product->kategori }}</span>
+                                    @endif
+                                </div>
+                                <p class="text-sm font-medium text-gray-900 line-clamp-2">{{ $product->urun_adi }}</p>
+                                <div class="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
+                                        {{ $product->parca }} parça
+                                    </span>
+                                    <span>{{ number_format($product->desi, 2) }} desi</span>
+                                    <span class="font-medium text-gray-900">{{ number_format($product->tutar, 2) }} ₺</span>
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <button 
+                                    wire:click="startEdit({{ $product->id }})"
+                                    class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                >
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                    </svg>
+                                </button>
+                                <button 
+                                    wire:click="confirmDelete({{ $product->id }})"
+                                    class="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                >
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    @endif
+                </div>
+            @empty
+                <div class="p-8 text-center text-gray-500">
+                    <svg class="w-12 h-12 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                    </svg>
+                    <p class="text-lg font-medium">Ürün bulunamadı</p>
+                    <p class="text-sm">Excel dosyası yükleyerek veya manuel olarak ürün ekleyebilirsiniz.</p>
+                </div>
+            @endforelse
         </div>
 
         {{-- Pagination --}}

@@ -33,35 +33,36 @@
         {{-- Tüm Hatalar Listesi --}}
         @if($viewMode === 'all_errors')
             <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full divide-y divide-gray-200 table-fixed">
+                {{-- Desktop: Tablo Görünümü --}}
+                <div class="hidden lg:block overflow-x-auto">
+                    <table class="w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50 text-gray-500">
                         <tr>
-                                <th class="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap w-24">Tarih</th>
-                                <th class="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap w-[20%]">Müşteri</th>
-                                <th class="px-2 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap w-[30%]">Ürün</th>
+                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap">Tarih</th>
+                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider">Müşteri</th>
+                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider">Ürün</th>
                                 <th class="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-20">Yanlış</th>
                                 <th class="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-20">Doğru</th>
                                 <th class="px-2 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap w-24">Fark</th>
-                                <th class="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-32">İşlem</th>
+                                <th class="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-32">İşlem</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             @forelse($this->allErrors as $error)
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-2 py-3 text-xs text-gray-500 whitespace-nowrap font-medium">{{ $error->tarih?->format('d.m.Y') }}</td>
-                                    <td class="px-2 py-3 truncate max-w-0" title="{{ $error->musteri_adi }}">
-                                        <span class="text-xs font-bold text-gray-800">{{ $error->musteri_adi }}</span>
+                                    <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap font-medium">{{ $error->tarih?->format('d.m.Y') }}</td>
+                                    <td class="px-3 py-3">
+                                        <span class="text-xs font-bold text-gray-800 line-clamp-1" title="{{ $error->musteri_adi }}">{{ $error->musteri_adi }}</span>
                                     </td>
-                                    <td class="px-2 py-3 truncate max-w-0" title="{{ $error->urun_adi }}">
-                                        <span class="text-xs text-gray-600">{{ $error->urun_adi }}</span>
+                                    <td class="px-3 py-3">
+                                        <span class="text-xs text-gray-600 line-clamp-1" title="{{ $error->urun_adi }}">{{ $error->urun_adi }}</span>
                                     </td>
                                     <td class="px-2 py-3 text-center text-xs text-red-600 font-bold whitespace-nowrap">{{ number_format($error->gercek_desi, 0) }}</td>
                                     <td class="px-2 py-3 text-center text-xs text-green-600 font-bold whitespace-nowrap">{{ number_format($error->beklenen_desi, 0) }}</td>
                                     <td class="px-2 py-3 text-right text-xs font-bold {{ $error->tutar_fark > 0 ? 'text-red-600' : 'text-green-600' }} whitespace-nowrap font-mono">
                                         {{ $error->tutar_fark > 0 ? '+' : '' }}{{ number_format($error->tutar_fark, 0) }} ₺
                                     </td>
-                                    <td class="px-2 py-3 text-center">
+                                    <td class="px-3 py-3 text-center">
                                         <button wire:click="openCreateModal({{ $error->id }})" 
                                             class="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors">
                                             Tazmin Oluştur
@@ -76,26 +77,71 @@
                         </tbody>
                     </table>
                 </div>
+
+                {{-- Mobile: Kart Görünümü --}}
+                <div class="lg:hidden divide-y divide-gray-200">
+                    @forelse($this->allErrors as $error)
+                        <div class="p-4 hover:bg-gray-50">
+                            {{-- Üst: Tarih ve Fark --}}
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-medium text-gray-500">{{ $error->tarih?->format('d.m.Y') }}</span>
+                                <span class="text-sm font-bold font-mono {{ $error->tutar_fark > 0 ? 'text-red-600' : 'text-green-600' }}">
+                                    {{ $error->tutar_fark > 0 ? '+' : '' }}{{ number_format($error->tutar_fark, 0) }} ₺
+                                </span>
+                            </div>
+
+                            {{-- Müşteri ve Ürün --}}
+                            <p class="text-sm font-bold text-gray-800 line-clamp-1 mb-1">{{ $error->musteri_adi }}</p>
+                            <p class="text-xs text-gray-600 line-clamp-2 mb-3">{{ $error->urun_adi }}</p>
+
+                            {{-- Desi Bilgileri --}}
+                            <div class="grid grid-cols-2 gap-3 text-center bg-gray-50 rounded-lg p-2 mb-3">
+                                <div>
+                                    <p class="text-[10px] text-gray-400">Yanlış Desi</p>
+                                    <p class="text-sm font-bold text-red-600">{{ number_format($error->gercek_desi, 0) }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-gray-400">Doğru Desi</p>
+                                    <p class="text-sm font-bold text-green-600">{{ number_format($error->beklenen_desi, 0) }}</p>
+                                </div>
+                            </div>
+
+                            {{-- Aksiyon --}}
+                            <button wire:click="openCreateModal({{ $error->id }})" 
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm font-medium">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                </svg>
+                                Tazmin Oluştur
+                            </button>
+                        </div>
+                    @empty
+                        <div class="p-8 text-center text-gray-400">Hata bulunamadı</div>
+                    @endforelse
+                </div>
+
                 <div class="px-4 py-3 bg-gray-50 border-t">
                     {{ $this->allErrors->links() }}
                 </div>
             </div>
         @endif
 
+
         {{-- Tüm Tazminler Listesi --}}
         @if($viewMode === 'all_compensations')
             <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full divide-y divide-gray-200 table-fixed">
+                {{-- Desktop: Tablo Görünümü --}}
+                <div class="hidden lg:block overflow-x-auto">
+                    <table class="w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50 text-gray-500">
                             <tr>
-                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap w-24">Tarih</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap w-[20%]">Müşteri</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap w-[15%]">Sebep</th>
+                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap">Tarih</th>
+                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider">Müşteri</th>
+                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap">Sebep</th>
                                 <th class="px-3 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap w-24">Talep</th>
                                 <th class="px-3 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap w-24">Onaylanan</th>
                                 <th class="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-28">Durum</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-56">Belgeler</th>
+                                <th class="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap">Belgeler</th>
                                 <th class="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-20">İşlem</th>
                             </tr>
                         </thead>
@@ -104,10 +150,10 @@
                                 @php $sebepInfo = $comp->sebep_info; $durumInfo = $comp->durum_info; @endphp
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-3 py-3 text-xs text-gray-900 font-medium whitespace-nowrap">{{ $comp->tarih->format('d.m.Y') }}</td>
-                                    <td class="px-3 py-3 truncate max-w-0" title="{{ $comp->musteri_adi }}">
-                                        <span class="text-xs font-bold text-gray-800">{{ $comp->musteri_adi }}</span>
+                                    <td class="px-3 py-3">
+                                        <span class="text-xs font-bold text-gray-800 line-clamp-1" title="{{ $comp->musteri_adi }}">{{ $comp->musteri_adi }}</span>
                                     </td>
-                                    <td class="px-3 py-3 whitespace-nowrap truncate max-w-0" title="{{ $sebepInfo['label'] }}">
+                                    <td class="px-3 py-3 whitespace-nowrap">
                                         <span class="text-xs text-gray-500">{{ $sebepInfo['icon'] }} {{ $sebepInfo['label'] }}</span>
                                     </td>
                                     <td class="px-3 py-3 text-right text-xs font-medium text-gray-900 whitespace-nowrap font-mono">{{ number_format($comp->talep_tutari, 0) }} ₺</td>
@@ -151,6 +197,67 @@
                         </tbody>
                     </table>
                 </div>
+
+                {{-- Mobile: Kart Görünümü --}}
+                <div class="lg:hidden divide-y divide-gray-200">
+                    @forelse($this->allCompensations as $comp)
+                        @php $sebepInfo = $comp->sebep_info; $durumInfo = $comp->durum_info; @endphp
+                        <div class="p-4 hover:bg-gray-50">
+                            {{-- Üst: Tarih ve Durum --}}
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-medium text-gray-500">{{ $comp->tarih->format('d.m.Y') }}</span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold
+                                    {{ $durumInfo['color'] === 'green' ? 'bg-green-100 text-green-800' : 
+                                       ($durumInfo['color'] === 'yellow' ? 'bg-yellow-100 text-yellow-800' : 
+                                       ($durumInfo['color'] === 'red' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')) }}">
+                                    {{ $durumInfo['icon'] }} {{ $durumInfo['label'] }}
+                                </span>
+                            </div>
+
+                            {{-- Müşteri ve Sebep --}}
+                            <p class="text-sm font-bold text-gray-800 line-clamp-1 mb-1">{{ $comp->musteri_adi }}</p>
+                            <p class="text-xs text-gray-500 mb-3">{{ $sebepInfo['icon'] }} {{ $sebepInfo['label'] }}</p>
+
+                            {{-- Tutar Bilgileri --}}
+                            <div class="grid grid-cols-2 gap-3 text-center bg-gray-50 rounded-lg p-2 mb-3">
+                                <div>
+                                    <p class="text-[10px] text-gray-400">Talep Edilen</p>
+                                    <p class="text-sm font-bold text-gray-900">{{ number_format($comp->talep_tutari, 0) }} ₺</p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-gray-400">Onaylanan</p>
+                                    <p class="text-sm font-bold text-green-600">{{ number_format($comp->onaylanan_tutar, 0) }} ₺</p>
+                                </div>
+                            </div>
+
+                            {{-- Belgeler --}}
+                            <div class="flex flex-wrap gap-2 mb-3">
+                                <a href="{{ route('compensation.petition', $comp->id) }}" class="text-xs bg-white text-gray-700 px-2 py-1.5 rounded border border-gray-300">
+                                    📄 Dilekçe
+                                </a>
+                                <a href="{{ route('compensation.form', $comp->id) }}" class="text-xs bg-white text-gray-700 px-2 py-1.5 rounded border border-gray-300">
+                                    📝 Form
+                                </a>
+                                <a href="{{ route('compensation.download-all', $comp->id) }}" class="text-xs bg-blue-50 text-blue-700 px-2 py-1.5 rounded border border-blue-200">
+                                    📦 ZIP
+                                </a>
+                                <button wire:click="openPetitionModal({{ $comp->id }})" class="text-xs bg-purple-50 text-purple-700 px-2 py-1.5 rounded border border-purple-200">
+                                    ✨ AI
+                                </button>
+                            </div>
+
+                            {{-- Düzenle Butonu --}}
+                            <button wire:click="openStatusModal({{ $comp->id }})" 
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                Durum Güncelle
+                            </button>
+                        </div>
+                    @empty
+                        <div class="p-8 text-center text-gray-400">Tazmin talebi bulunamadı</div>
+                    @endforelse
+                </div>
+
                 <div class="px-4 py-3 bg-gray-50 border-t">
                     {{ $this->allCompensations->links() }}
                 </div>

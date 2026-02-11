@@ -287,22 +287,23 @@
 
         {{-- Sonuç Tablosu --}}
         <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full divide-y divide-gray-200 table-fixed">
+            {{-- Desktop: Tablo Görünümü --}}
+            <div class="hidden lg:block overflow-x-auto">
+                <table class="w-full divide-y divide-gray-200">
                     <thead class="bg-gray-800 text-white">
                         <tr>
-                            <th class="px-2 py-2 text-left font-medium text-xs whitespace-nowrap w-[15%] sm:w-20">Tarih</th>
-                            <th class="px-2 py-2 text-left font-medium text-xs whitespace-nowrap w-[15%] hidden lg:table-cell">Müşteri</th>
-                            <th class="px-2 py-2 text-left font-medium text-xs whitespace-nowrap w-[12%] hidden xl:table-cell">Takip</th>
-                            <th class="px-2 py-2 text-left font-medium text-xs whitespace-nowrap w-[35%] sm:w-[25%]">Ürün</th>
-                            <th class="px-1 py-2 text-center font-medium text-xs whitespace-nowrap w-10 hidden sm:table-cell">Adet</th>
-                            <th class="px-1 py-2 text-center font-medium text-xs whitespace-nowrap w-10">Parça</th>
-                            <th class="px-1 py-2 text-center font-medium text-xs whitespace-nowrap hidden sm:table-cell">B.Desi</th>
-                            <th class="px-1 py-2 text-center font-medium text-xs whitespace-nowrap">G.Desi</th>
-                            <th class="px-1 py-2 text-center font-medium text-xs whitespace-nowrap hidden sm:table-cell">B.Tutar</th>
-                            <th class="px-1 py-2 text-center font-medium text-xs whitespace-nowrap">G.Tutar</th>
-                            <th class="px-1 py-2 text-center font-medium text-xs whitespace-nowrap w-24">Durum</th>
-                            <th class="px-1 py-2 text-center font-medium text-xs w-12 whitespace-nowrap">İşlem</th>
+                            <th class="px-3 py-2 text-left font-medium text-xs whitespace-nowrap">Tarih</th>
+                            <th class="px-3 py-2 text-left font-medium text-xs whitespace-nowrap">Müşteri</th>
+                            <th class="px-3 py-2 text-left font-medium text-xs whitespace-nowrap hidden xl:table-cell">Takip</th>
+                            <th class="px-3 py-2 text-left font-medium text-xs">Ürün</th>
+                            <th class="px-2 py-2 text-center font-medium text-xs whitespace-nowrap w-14">Adet</th>
+                            <th class="px-2 py-2 text-center font-medium text-xs whitespace-nowrap w-14">Parça</th>
+                            <th class="px-2 py-2 text-center font-medium text-xs whitespace-nowrap w-16">B.Desi</th>
+                            <th class="px-2 py-2 text-center font-medium text-xs whitespace-nowrap w-16">G.Desi</th>
+                            <th class="px-2 py-2 text-center font-medium text-xs whitespace-nowrap w-16">B.Tutar</th>
+                            <th class="px-2 py-2 text-center font-medium text-xs whitespace-nowrap w-16">G.Tutar</th>
+                            <th class="px-2 py-2 text-center font-medium text-xs whitespace-nowrap w-24">Durum</th>
+                            <th class="px-2 py-2 text-center font-medium text-xs w-12 whitespace-nowrap">İşlem</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
@@ -316,35 +317,22 @@
                                             ? ($item->isAgainstUs() ? 'bg-red-50' : 'bg-yellow-50') 
                                             : 'hover:bg-gray-50')) 
                             }}">
-                                <td class="px-2 py-2 whitespace-nowrap text-gray-500 text-xs truncate">
+                                <td class="px-3 py-2 whitespace-nowrap text-gray-500 text-xs">
                                     {{ $item->tarih?->format('d.m.Y') ?? '-' }}
                                 </td>
-                                <td class="px-2 py-2 hidden lg:table-cell group relative">
-                                    {{-- Müşteri Adı + Sipariş Detay Tooltip --}}
+                                <td class="px-3 py-2 group relative">
                                     <div class="relative" x-data="{ showTooltip: false }">
-                                        <div class="truncate cursor-help" @mouseenter="showTooltip = true" @mouseleave="showTooltip = false">
+                                        <div class="truncate max-w-[120px] cursor-help" @mouseenter="showTooltip = true" @mouseleave="showTooltip = false">
                                             <span class="font-medium text-gray-900 text-xs border-b border-dashed border-gray-400">{{ $item->musteri_adi }}</span>
                                         </div>
-                                        
-                                        {{-- Tooltip Popup --}}
                                         @if($item->siparis_detay && count($item->siparis_detay) > 0)
                                             <div 
                                                 x-show="showTooltip"
-                                                x-transition:enter="transition ease-out duration-200"
-                                                x-transition:enter-start="opacity-0 scale-95"
-                                                x-transition:enter-end="opacity-100 scale-100"
-                                                x-transition:leave="transition ease-in duration-150"
-                                                x-transition:leave-start="opacity-100 scale-100"
-                                                x-transition:leave-end="opacity-0 scale-95"
+                                                x-transition
                                                 class="absolute z-[100] left-0 mt-2 w-80 bg-gray-900 text-white rounded-lg shadow-xl p-3 text-xs whitespace-normal"
                                                 style="display: none;"
                                             >
-                                                <div class="font-bold text-yellow-400 mb-2 flex items-center gap-2">
-                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                                                    </svg>
-                                                    Sipariş Detayı
-                                                </div>
+                                                <div class="font-bold text-yellow-400 mb-2">Sipariş Detayı</div>
                                                 <table class="w-full">
                                                     <thead>
                                                         <tr class="text-gray-400 border-b border-gray-700">
@@ -367,57 +355,48 @@
                                         @endif
                                     </div>
                                 </td>
-                                <td class="px-2 py-2 hidden xl:table-cell truncate">
+                                <td class="px-3 py-2 hidden xl:table-cell">
                                     @if($item->tracking_url)
                                         <a href="{{ $item->tracking_url }}" target="_blank" 
-                                           title="{{ $item->takip_kodu }}"
-                                           class="text-blue-600 hover:text-blue-800 hover:underline font-mono text-xs block truncate">
+                                           class="text-blue-600 hover:underline font-mono text-xs block truncate max-w-[100px]">
                                             {{ $item->takip_kodu }}
-                                            <svg class="w-3 h-3 inline ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                                            </svg>
                                         </a>
                                     @else
-                                        <span class="font-mono text-xs text-gray-500" title="{{ $item->takip_kodu }}">{{ Str::limit($item->takip_kodu, 15) }}</span>
+                                        <span class="font-mono text-xs text-gray-500">{{ Str::limit($item->takip_kodu, 12) }}</span>
                                     @endif
                                 </td>
-                                <td class="px-2 py-2 truncate max-w-0">
-                                    <div class="truncate">
-                                        <span class="text-gray-900 text-xs font-medium" title="{{ $item->urun_adi }}">{{ $item->urun_adi }}</span>
-                                    </div>
-                                    <div class="truncate lg:hidden text-[10px] text-gray-500">
-                                        {{ $item->musteri_adi }}
-                                    </div>
+                                <td class="px-3 py-2">
+                                    <span class="text-gray-900 text-xs font-medium line-clamp-2" title="{{ $item->urun_adi }}">{{ $item->urun_adi }}</span>
                                 </td>
-                                <td class="px-1 py-2 text-center text-xs hidden sm:table-cell">{{ $item->adet }}</td>
-                                <td class="px-1 py-2 text-center text-xs">
+                                <td class="px-2 py-2 text-center text-xs">{{ $item->adet }}</td>
+                                <td class="px-2 py-2 text-center text-xs">
                                     <span class="{{ $item->parca_fark != 0 ? 'text-red-600 font-bold' : '' }}">
                                         {{ $item->gercek_parca }}
                                     </span>
                                 </td>
-                                <td class="px-1 py-2 text-center text-gray-600 text-xs hidden sm:table-cell">{{ number_format($item->beklenen_desi, 1) }}</td>
-                                <td class="px-1 py-2 text-center text-xs {{ $item->desi_fark > 2 ? 'text-red-600 font-bold' : ($item->desi_fark < -2 ? 'text-yellow-600 font-bold' : '') }}">
+                                <td class="px-2 py-2 text-center text-gray-600 text-xs">{{ number_format($item->beklenen_desi, 1) }}</td>
+                                <td class="px-2 py-2 text-center text-xs {{ $item->desi_fark > 2 ? 'text-red-600 font-bold' : ($item->desi_fark < -2 ? 'text-yellow-600 font-bold' : '') }}">
                                     {{ number_format($item->gercek_desi, 1) }}
                                 </td>
-                                <td class="px-1 py-2 text-center text-gray-600 text-xs hidden sm:table-cell">{{ number_format($item->beklenen_tutar, 0) }}</td>
-                                <td class="px-1 py-2 text-center text-xs {{ $item->tutar_fark > 5 ? 'text-red-600 font-bold' : ($item->tutar_fark < -5 ? 'text-yellow-600 font-bold' : '') }}">
+                                <td class="px-2 py-2 text-center text-gray-600 text-xs">{{ number_format($item->beklenen_tutar, 0) }}</td>
+                                <td class="px-2 py-2 text-center text-xs {{ $item->tutar_fark > 5 ? 'text-red-600 font-bold' : ($item->tutar_fark < -5 ? 'text-yellow-600 font-bold' : '') }}">
                                     {{ number_format($item->gercek_tutar, 0) }}
                                 </td>
-                                <td class="px-1 py-2 text-center">
+                                <td class="px-2 py-2 text-center">
                                     @php $errorInfo = $item->error_info; @endphp
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap
                                         {{ $errorInfo['color'] === 'red' ? 'bg-red-100 text-red-800' : 
                                            ($errorInfo['color'] === 'yellow' ? 'bg-yellow-100 text-yellow-800' : 
                                            ($errorInfo['color'] === 'green' ? 'bg-green-100 text-green-800' : 
                                            'bg-gray-100 text-gray-800')) }}">
-                                        {{ Str::limit($errorInfo['label'], 10) }}
+                                        {{ Str::limit($errorInfo['label'], 12) }}
                                     </span>
                                 </td>
-                                <td class="px-1 py-2 text-center">
+                                <td class="px-2 py-2 text-center">
                                     @if(auth()->user()?->isAdmin() && $item->stok_kodu && !$item->is_iade)
                                         <button 
                                             wire:click="openProductEditModal('{{ $item->stok_kodu }}', {{ $item->gercek_desi }}, {{ $item->gercek_tutar }}, {{ $item->gercek_parca }})"
-                                            class="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                            class="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
                                             title="Güncelle"
                                         >
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -439,6 +418,88 @@
                         @endforelse
                     </tbody>
                 </table>
+            </div>
+
+            {{-- Mobile: Kart Görünümü --}}
+            <div class="lg:hidden divide-y divide-gray-200">
+                @forelse($this->filteredItems as $item)
+                    @php $errorInfo = $item->error_info; @endphp
+                    <div class="p-4 {{ 
+                        $item->is_iade 
+                            ? 'bg-purple-50' 
+                            : ($item->is_parca_gonderi 
+                                ? 'bg-orange-50'
+                                : ($item->has_error 
+                                    ? ($item->isAgainstUs() ? 'bg-red-50' : 'bg-yellow-50') 
+                                    : '')) 
+                    }}">
+                        {{-- Üst: Tarih, Durum, İşlem --}}
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-500">{{ $item->tarih?->format('d.m.Y') ?? '-' }}</span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium
+                                    {{ $errorInfo['color'] === 'red' ? 'bg-red-100 text-red-800' : 
+                                       ($errorInfo['color'] === 'yellow' ? 'bg-yellow-100 text-yellow-800' : 
+                                       ($errorInfo['color'] === 'green' ? 'bg-green-100 text-green-800' : 
+                                       'bg-gray-100 text-gray-800')) }}">
+                                    {{ $errorInfo['label'] }}
+                                </span>
+                            </div>
+                            @if(auth()->user()?->isAdmin() && $item->stok_kodu && !$item->is_iade)
+                                <button 
+                                    wire:click="openProductEditModal('{{ $item->stok_kodu }}', {{ $item->gercek_desi }}, {{ $item->gercek_tutar }}, {{ $item->gercek_parca }})"
+                                    class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                >
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                    </svg>
+                                </button>
+                            @endif
+                        </div>
+
+                        {{-- Müşteri ve Ürün --}}
+                        <div class="mb-2">
+                            <p class="text-sm font-medium text-gray-900">{{ $item->musteri_adi }}</p>
+                            <p class="text-xs text-gray-600 line-clamp-2 mt-1">{{ $item->urun_adi }}</p>
+                        </div>
+
+                        {{-- Detaylar: Grid --}}
+                        <div class="grid grid-cols-4 gap-2 text-center text-xs bg-white/50 rounded-lg p-2 mt-2">
+                            <div>
+                                <p class="text-gray-400 text-[10px]">Adet</p>
+                                <p class="font-medium">{{ $item->adet }}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-400 text-[10px]">Parça</p>
+                                <p class="font-medium {{ $item->parca_fark != 0 ? 'text-red-600' : '' }}">{{ $item->gercek_parca }}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-400 text-[10px]">Desi</p>
+                                <p class="font-medium {{ $item->desi_fark > 2 ? 'text-red-600' : ($item->desi_fark < -2 ? 'text-yellow-600' : '') }}">
+                                    {{ number_format($item->gercek_desi, 1) }}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="text-gray-400 text-[10px]">Tutar</p>
+                                <p class="font-medium {{ $item->tutar_fark > 5 ? 'text-red-600' : ($item->tutar_fark < -5 ? 'text-yellow-600' : '') }}">
+                                    {{ number_format($item->gercek_tutar, 0) }} ₺
+                                </p>
+                            </div>
+                        </div>
+
+                        {{-- Fark Bilgisi (varsa) --}}
+                        @if($item->has_error)
+                            <div class="flex items-center gap-4 mt-2 text-[10px]">
+                                <span class="text-gray-400">Beklenen: {{ number_format($item->beklenen_desi, 1) }} desi / {{ number_format($item->beklenen_tutar, 0) }} ₺</span>
+                            </div>
+                        @endif
+                    </div>
+                @empty
+                    <div class="p-8 text-center text-gray-500">
+                        Sonuç bulunamadı
+                    </div>
+                @endforelse
             </div>
 
             {{-- Pagination --}}

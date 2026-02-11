@@ -72,11 +72,12 @@
 
     {{-- Rapor Tablosu --}}
     <div class="bg-white rounded-lg border border-gray-200 overflow-hidden max-w-full">
-        <div class="overflow-x-auto max-w-full">
-            <table class="w-full divide-y divide-gray-200 table-fixed">
+        {{-- Desktop: Tablo Görünümü --}}
+        <div class="hidden lg:block overflow-x-auto max-w-full">
+            <table class="w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50 text-gray-500">
                     <tr>
-                        <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-gray-100 whitespace-nowrap w-24"
+                        <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-gray-100 whitespace-nowrap"
                             wire:click="sortBy('report_date')">
                             Tarih
                             @if($sortField === 'report_date')
@@ -86,23 +87,23 @@
                                 </svg>
                             @endif
                         </th>
-                        <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-[25%]"
+                        <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                             wire:click="sortBy('name')">
                             Rapor Adı
                         </th>
-                        <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap hidden lg:table-cell w-[10%]">
+                        <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap">
                             Kargo
                         </th>
-                        <th class="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap hidden sm:table-cell w-[8%]">
+                        <th class="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap">
                             Sipariş
                         </th>
-                        <th class="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-[8%]">
+                        <th class="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap">
                             Hata
                         </th>
-                        <th class="px-2 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap hidden md:table-cell w-[12%]">
+                        <th class="px-2 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap">
                             Desi Farkı
                         </th>
-                        <th class="px-2 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap w-[15%]">
+                        <th class="px-2 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap">
                             Tutar Farkı
                         </th>
                         <th class="px-3 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap w-28">
@@ -112,12 +113,12 @@
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                     @forelse($this->reports as $report)
-                        <tr class="hover:bg-gray-50 transition border-b border-gray-100">
+                        <tr class="hover:bg-gray-50 transition">
                             <td class="px-3 py-3 whitespace-nowrap text-xs text-gray-900 font-medium">
                                 {{ $report->report_date->format('d.m.Y') }}
                             </td>
-                            <td class="px-3 py-3 truncate max-w-0">
-                                <div class="truncate" title="{{ $report->name }}">
+                            <td class="px-3 py-3">
+                                <div class="truncate max-w-[200px]" title="{{ $report->name }}">
                                     <span class="font-bold text-gray-800 text-xs">{{ $report->name }}</span>
                                 </div>
                                 <div class="truncate mt-0.5">
@@ -127,12 +128,12 @@
                                     </span>
                                 </div>
                             </td>
-                            <td class="px-3 py-3 whitespace-nowrap hidden lg:table-cell">
+                            <td class="px-3 py-3 whitespace-nowrap">
                                 <span class="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold bg-gray-100 text-gray-600 border border-gray-200">
                                     {{ $report->cargo_company ?? '-' }}
                                 </span>
                             </td>
-                            <td class="px-2 py-3 text-center text-xs whitespace-nowrap text-gray-600 hidden sm:table-cell">
+                            <td class="px-2 py-3 text-center text-xs whitespace-nowrap text-gray-600">
                                 {{ number_format($report->total_orders) }}
                             </td>
                             <td class="px-2 py-3 text-center whitespace-nowrap">
@@ -144,7 +145,7 @@
                                     <span class="text-green-500 font-bold text-xs">OK</span>
                                 @endif
                             </td>
-                            <td class="px-2 py-3 text-right text-xs whitespace-nowrap font-mono hidden md:table-cell {{ $report->total_desi_diff > 0 ? 'text-red-600' : 'text-green-600' }}">
+                            <td class="px-2 py-3 text-right text-xs whitespace-nowrap font-mono {{ $report->total_desi_diff > 0 ? 'text-red-600' : 'text-green-600' }}">
                                 {{ $report->total_desi_diff > 0 ? '+' : '' }}{{ number_format($report->total_desi_diff, 0) }}
                             </td>
                             <td class="px-2 py-3 text-right text-xs font-mono whitespace-nowrap font-bold {{ $report->total_tutar_diff > 0 ? 'text-red-700' : 'text-green-700' }}">
@@ -154,21 +155,21 @@
                                 <div class="flex items-center justify-end gap-1">
                                     <button 
                                         wire:click="viewReport({{ $report->id }})"
-                                        class="text-blue-600 hover:text-blue-800 p-1.5 hover:bg-blue-50 rounded transition-colors"
+                                        class="text-blue-600 hover:text-blue-800 p-1.5 hover:bg-blue-50 rounded"
                                         title="İncele"
                                     >
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                                     </button>
                                     <button 
                                         wire:click="downloadReport({{ $report->id }})"
-                                        class="text-green-600 hover:text-green-800 p-1.5 hover:bg-green-50 rounded transition-colors"
+                                        class="text-green-600 hover:text-green-800 p-1.5 hover:bg-green-50 rounded"
                                         title="İndir"
                                     >
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                                     </button>
                                     <button 
                                         wire:click="confirmDelete({{ $report->id }})"
-                                        class="text-red-600 hover:text-red-800 p-1.5 hover:bg-red-50 rounded transition-colors"
+                                        class="text-red-600 hover:text-red-800 p-1.5 hover:bg-red-50 rounded"
                                         title="Sil"
                                     >
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
@@ -192,9 +193,89 @@
             </table>
         </div>
 
+        {{-- Mobile: Kart Görünümü --}}
+        <div class="lg:hidden divide-y divide-gray-200">
+            @forelse($this->reports as $report)
+                <div class="p-4 hover:bg-gray-50">
+                    {{-- Üst: Tarih ve Kargo --}}
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-medium text-gray-900">{{ $report->report_date->format('d.m.Y') }}</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-600">
+                                {{ $report->cargo_company ?? '-' }}
+                            </span>
+                        </div>
+                        @if($report->error_count > 0)
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                                {{ $report->error_count }} hata
+                            </span>
+                        @else
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
+                                OK
+                            </span>
+                        @endif
+                    </div>
+
+                    {{-- Rapor Adı --}}
+                    <p class="text-sm font-bold text-gray-800 mb-1 line-clamp-1">{{ $report->name }}</p>
+                    <p class="text-[10px] text-gray-500 mb-3">
+                        {{ $report->user?->name }} • {{ number_format($report->total_orders) }} sipariş
+                    </p>
+
+                    {{-- Fark Bilgileri --}}
+                    <div class="grid grid-cols-2 gap-3 text-center bg-gray-50 rounded-lg p-2 mb-3">
+                        <div>
+                            <p class="text-[10px] text-gray-400">Desi Farkı</p>
+                            <p class="text-sm font-bold {{ $report->total_desi_diff > 0 ? 'text-red-600' : 'text-green-600' }}">
+                                {{ $report->total_desi_diff > 0 ? '+' : '' }}{{ number_format($report->total_desi_diff, 0) }}
+                            </p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-gray-400">Tutar Farkı</p>
+                            <p class="text-sm font-bold {{ $report->total_tutar_diff > 0 ? 'text-red-700' : 'text-green-700' }}">
+                                {{ $report->total_tutar_diff > 0 ? '+' : '' }}{{ number_format($report->total_tutar_diff, 0) }} ₺
+                            </p>
+                        </div>
+                    </div>
+
+                    {{-- Aksiyonlar --}}
+                    <div class="flex items-center justify-end gap-2">
+                        <button 
+                            wire:click="viewReport({{ $report->id }})"
+                            class="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg text-xs font-medium"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                            İncele
+                        </button>
+                        <button 
+                            wire:click="downloadReport({{ $report->id }})"
+                            class="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-lg"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        </button>
+                        <button 
+                            wire:click="confirmDelete({{ $report->id }})"
+                            class="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                    </div>
+                </div>
+            @empty
+                <div class="p-8 text-center text-gray-500">
+                    <svg class="w-12 h-12 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <p class="text-lg font-medium">Rapor bulunamadı</p>
+                    <p class="text-sm">Seçili tarih aralığında kayıtlı rapor yok.</p>
+                </div>
+            @endforelse
+        </div>
+
         {{-- Pagination --}}
         @if($this->reports->hasPages())
-            <div class="px-6 py-4 border-t border-gray-200">
+            <div class="px-4 lg:px-6 py-4 border-t border-gray-200">
                 {{ $this->reports->links() }}
             </div>
         @endif
@@ -244,17 +325,18 @@
                     </div>
 
                     <div class="overflow-auto max-h-[60vh]">
-                        <table class="w-full divide-y divide-gray-200 table-fixed text-xs">
+                        {{-- Desktop: Tablo Görünümü --}}
+                        <table class="hidden md:table w-full divide-y divide-gray-200 table-fixed text-xs">
                             <thead class="bg-gray-800 text-white sticky top-0">
                                 <tr>
                                     <th class="px-2 py-2 text-left whitespace-nowrap w-24">Tarih</th>
                                     <th class="px-2 py-2 text-left whitespace-nowrap w-[15%]">Müşteri</th>
                                     <th class="px-2 py-2 text-left whitespace-nowrap w-[12%] hidden lg:table-cell">Stok Kodu</th>
-                                    <th class="px-2 py-2 text-left whitespace-nowrap w-[12%] hidden md:table-cell">Takip</th>
+                                    <th class="px-2 py-2 text-left whitespace-nowrap w-[12%]">Takip</th>
                                     <th class="px-2 py-2 text-left whitespace-nowrap w-[30%]">Ürün</th>
                                     <th class="px-1 py-1 text-center whitespace-nowrap w-12 text-[10px] uppercase font-bold text-gray-400">B.Desi</th>
                                     <th class="px-1 py-1 text-center whitespace-nowrap w-12 text-[10px] uppercase font-bold text-white">G.Desi</th>
-                                    <th class="px-1 py-1 text-center whitespace-nowrap w-14 text-[10px] uppercase font-bold text-gray-400 hidden sm:table-cell">B.Tutar</th>
+                                    <th class="px-1 py-1 text-center whitespace-nowrap w-14 text-[10px] uppercase font-bold text-gray-400">B.Tutar</th>
                                     <th class="px-1 py-1 text-center whitespace-nowrap w-14 text-[10px] uppercase font-bold text-white">G.Tutar</th>
                                     <th class="px-2 py-2 text-center whitespace-nowrap w-20">Durum</th>
                                 </tr>
@@ -275,13 +357,13 @@
                                         <td class="px-2 py-2 whitespace-nowrap truncate">{{ isset($item['tarih']) ? \Carbon\Carbon::parse($item['tarih'])->format('d.m.Y') : '-' }}</td>
                                         <td class="px-2 py-2 whitespace-nowrap truncate" title="{{ $item['musteri_adi'] ?? '-' }}">{{ Str::limit($item['musteri_adi'] ?? '-', 15) }}</td>
                                         <td class="px-2 py-2 font-mono text-gray-600 whitespace-nowrap truncate hidden lg:table-cell" title="{{ $item['stok_kodu'] ?? '-' }}">{{ Str::limit($item['stok_kodu'] ?? '-', 12) }}</td>
-                                        <td class="px-2 py-2 font-mono whitespace-nowrap truncate hidden md:table-cell" title="{{ $item['takip_kodu'] ?? '-' }}">{{ Str::limit($item['takip_kodu'] ?? '-', 12) }}</td>
+                                        <td class="px-2 py-2 font-mono whitespace-nowrap truncate" title="{{ $item['takip_kodu'] ?? '-' }}">{{ Str::limit($item['takip_kodu'] ?? '-', 12) }}</td>
                                         <td class="px-2 py-2 truncate max-w-0" title="{{ $item['urun_adi'] ?? '-' }}">{{ $item['urun_adi'] ?? '-' }}</td>
                                         <td class="px-1 py-1 text-center whitespace-nowrap text-gray-500">{{ number_format($item['beklenen_desi'] ?? 0, 1) }}</td>
                                         <td class="px-1 py-1 text-center whitespace-nowrap font-bold {{ ($item['desi_fark'] ?? 0) > 2 ? 'text-red-600' : '' }}">
                                             {{ number_format($item['gercek_desi'] ?? 0, 1) }}
                                         </td>
-                                        <td class="px-1 py-1 text-center whitespace-nowrap text-gray-500 hidden sm:table-cell">{{ number_format($item['beklenen_tutar'] ?? 0, 0) }}</td>
+                                        <td class="px-1 py-1 text-center whitespace-nowrap text-gray-500">{{ number_format($item['beklenen_tutar'] ?? 0, 0) }}</td>
                                         <td class="px-1 py-1 text-center whitespace-nowrap font-bold {{ ($item['tutar_fark'] ?? 0) > 5 ? 'text-red-600' : '' }}">
                                             {{ number_format($item['gercek_tutar'] ?? 0, 0) }}
                                         </td>
@@ -311,6 +393,73 @@
                                 @endforeach
                             </tbody>
                         </table>
+
+                        {{-- Mobile: Kart Görünümü --}}
+                        <div class="md:hidden divide-y divide-gray-200">
+                            @foreach($viewingItems as $item)
+                                @php
+                                    $cardClass = '';
+                                    if ($item['is_iade'] ?? false) {
+                                        $cardClass = 'bg-purple-50 border-l-4 border-purple-400';
+                                    } elseif ($item['is_parca_gonderi'] ?? false) {
+                                        $cardClass = 'bg-orange-50 border-l-4 border-orange-400';
+                                    } elseif ($item['has_error'] ?? false) {
+                                        $cardClass = 'bg-red-50 border-l-4 border-red-400';
+                                    }
+                                    
+                                    $errorType = $item['error_type'] ?? 'none';
+                                    if ($item['is_iade'] ?? false) {
+                                        $error = ['label' => '↩️ İade', 'class' => 'bg-purple-100 text-purple-800'];
+                                    } elseif ($item['is_parca_gonderi'] ?? false) {
+                                        $error = ['label' => '🔧 Parça', 'class' => 'bg-orange-100 text-orange-800'];
+                                    } else {
+                                        $errorLabels = [
+                                            'none' => ['label' => 'OK', 'class' => 'bg-green-100 text-green-800'],
+                                            'desi_fazla' => ['label' => 'Desi ↑', 'class' => 'bg-red-100 text-red-800'],
+                                            'tutar_fazla' => ['label' => 'Tutar ↑', 'class' => 'bg-red-100 text-red-800'],
+                                            'desi_eksik' => ['label' => 'Desi ↓', 'class' => 'bg-yellow-100 text-yellow-800'],
+                                            'eslesmedi' => ['label' => '?', 'class' => 'bg-gray-100 text-gray-800'],
+                                        ];
+                                        $error = $errorLabels[$errorType] ?? $errorLabels['none'];
+                                    }
+                                @endphp
+                                <div class="p-3 {{ $cardClass }}">
+                                    {{-- Üst: Tarih, Müşteri, Durum --}}
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs text-gray-500">{{ isset($item['tarih']) ? \Carbon\Carbon::parse($item['tarih'])->format('d.m') : '-' }}</span>
+                                            <span class="text-xs font-medium text-gray-900 truncate max-w-[120px]">{{ $item['musteri_adi'] ?? '-' }}</span>
+                                        </div>
+                                        <span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium {{ $error['class'] }}">
+                                            {{ $error['label'] }}
+                                        </span>
+                                    </div>
+                                    
+                                    {{-- Ürün Adı --}}
+                                    <p class="text-xs text-gray-700 mb-2 line-clamp-2">{{ $item['urun_adi'] ?? '-' }}</p>
+                                    
+                                    {{-- Desi ve Tutar Grid --}}
+                                    <div class="grid grid-cols-4 gap-2 text-center bg-gray-100 rounded-lg p-2">
+                                        <div>
+                                            <p class="text-[9px] text-gray-400 uppercase">B.Desi</p>
+                                            <p class="text-xs text-gray-600">{{ number_format($item['beklenen_desi'] ?? 0, 1) }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-[9px] text-gray-400 uppercase">G.Desi</p>
+                                            <p class="text-xs font-bold {{ ($item['desi_fark'] ?? 0) > 2 ? 'text-red-600' : 'text-gray-900' }}">{{ number_format($item['gercek_desi'] ?? 0, 1) }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-[9px] text-gray-400 uppercase">B.Tutar</p>
+                                            <p class="text-xs text-gray-600">{{ number_format($item['beklenen_tutar'] ?? 0, 0) }}</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-[9px] text-gray-400 uppercase">G.Tutar</p>
+                                            <p class="text-xs font-bold {{ ($item['tutar_fark'] ?? 0) > 5 ? 'text-red-600' : 'text-gray-900' }}">{{ number_format($item['gercek_tutar'] ?? 0, 0) }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
                     </div>
 
                     <div class="px-6 py-4 border-t border-gray-200 flex justify-end">

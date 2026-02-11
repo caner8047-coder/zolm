@@ -73,7 +73,7 @@
             <!-- Logo -->
             <div class="h-16 flex items-center justify-between px-6 border-b border-gray-200">
                 <a href="{{ route('dashboard') }}" class="text-2xl font-bold text-gray-900 tracking-tight flex items-baseline">
-                    zolm <span class="text-xs font-normal text-gray-400 ml-1">v.0.3</span>
+                    zolm <span class="text-xs font-normal text-gray-400 ml-1">v.0.4</span>
                 </a>
                 <!-- Mobile close button -->
                 <button 
@@ -134,6 +134,16 @@
                     Kargo Raporları
                 </a>
 
+                <a href="{{ route('supply-reports') }}" 
+                   @click="sidebarOpen = false"
+                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                          {{ request()->routeIs('supply-reports') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
+                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                    </svg>
+                    Tedarik Raporu
+                </a>
+
                 @if(auth()->user()->isAdmin())
                 <a href="{{ route('profiles') }}" 
                    @click="sidebarOpen = false"
@@ -152,18 +162,6 @@
                 <p class="px-4 text-xs text-gray-400 uppercase tracking-wider mb-2">Yakında</p>
 
                 <!-- Coming Soon Items -->
-
-
-                <a href="{{ route('supply-report') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                          {{ request()->routeIs('supply-report') ? 'bg-gray-900 text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-                    </svg>
-                    Tedarik Raporu
-                    <span class="ml-auto text-xs bg-yellow-100 text-yellow-600 px-1.5 py-0.5 rounded">🚧</span>
-                </a>
 
                 <a href="{{ route('marketplace-accounting') }}" 
                    @click="sidebarOpen = false"
@@ -203,7 +201,7 @@
         </aside>
 
         <!-- Main Content -->
-        <main class="flex-1 lg:ml-64 min-h-screen">
+        <main class="flex-1 lg:ml-64 min-h-screen w-full max-w-full overflow-x-hidden">
             <!-- Top Bar -->
             <header class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30">
                 <!-- Mobile menu button -->
@@ -240,7 +238,7 @@
             </header>
 
             <!-- Page Content -->
-            <div class="p-4 lg:p-8">
+            <div class="p-4 lg:p-8 w-full max-w-full">
                 {{ $slot }}
             </div>
         </main>

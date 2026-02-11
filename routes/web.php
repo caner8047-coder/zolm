@@ -57,7 +57,10 @@ Route::middleware('auth')->group(function () {
     // COMING SOON - V0.2 Features
     // ============================================
     Route::get('/cargo-reports', \App\Livewire\CargoReports::class)->name('cargo-reports');
-    Route::get('/supply-report', \App\Livewire\SupplyReport::class)->name('supply-report');
+    Route::get('/supply-reports', \App\Livewire\SupplyReports::class)->name('supply-reports');
+    
+    // Supply Label Download
+    Route::get('/supply-label/{id}', [\App\Http\Controllers\SupplyLabelController::class, 'download'])->name('supply.label');
 
     // Compensation Downloads
     Route::prefix('compensation')->group(function () {
