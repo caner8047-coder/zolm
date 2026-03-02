@@ -54,7 +54,7 @@ class ExcelService
     /**
      * Clean string for Excel compatibility
      */
-    protected function cleanString($value): mixed
+    public function cleanString($value): mixed
     {
         if ($value === null) {
             return null;

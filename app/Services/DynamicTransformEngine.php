@@ -447,6 +447,40 @@ class DynamicTransformEngine
         });
     }
 
+    /**
+     * Tekil bir ürün adını temizlemek için (Diğer servisler tarafından statik olarak çağrılabilir)
+     */
+    public static function normalizeSingleProduct(string $raw): string
+    {
+        if (class_exists('Normalizer')) {
+            $raw = \Normalizer::normalize($raw, \Normalizer::FORM_C);
+        }
+
+        $text = str_replace(["\xc2\xa0", "\xa0"], ' ', $raw);
+
+        $hardcodedStrip = [
+            '/Tsccv/iu',         
+            '/V[0-9]{2,}/iu',    
+            '/ -$/',             
+        ];
+
+        foreach ($hardcodedStrip as $pattern) {
+            $text = preg_replace($pattern, '', $text);
+        }
+
+        $text = preg_replace('/\s*,\s*/u', ', ', $text);
+        $text = preg_replace('/\s*\/\s*/u', '/', $text);
+        $text = preg_replace('/\s*-\s*/u', ' - ', $text);
+        $text = preg_replace('/\s+/u', ' ', trim($text));
+        $text = trim($text, " ,");
+
+        if ($text === '') {
+            $text = trim($raw);
+        }
+        
+        return mb_convert_case($text, MB_CASE_TITLE, 'UTF-8');
+    }
+
     protected function applyAddColumn(Collection $data, array $config): Collection
     {
         $column = $config['column'] ?? '';

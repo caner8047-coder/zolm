@@ -58,6 +58,7 @@ Route::middleware('auth')->group(function () {
     // ============================================
     Route::get('/cargo-reports', \App\Livewire\CargoReports::class)->name('cargo-reports');
     Route::get('/supply-reports', \App\Livewire\SupplyReports::class)->name('supply-reports');
+    Route::get('/tariff-optimizer', \App\Livewire\TariffOptimizer::class)->name('tariff-optimizer');
     
     // Supply Label Download
     Route::get('/supply-label/{id}', [\App\Http\Controllers\SupplyLabelController::class, 'download'])->name('supply.label');
@@ -68,7 +69,26 @@ Route::middleware('auth')->group(function () {
         Route::get('/{id}/form', [\App\Http\Controllers\CompensationDownloadController::class, 'downloadForm'])->name('compensation.form');
         Route::get('/{id}/download-all', [\App\Http\Controllers\CompensationDownloadController::class, 'downloadAll'])->name('compensation.download-all');
     });
-    Route::get('/marketplace-accounting', \App\Livewire\MarketplaceAccounting::class)->name('marketplace-accounting');
+    Route::get('/marketplace-accounting', \App\Livewire\MarketplaceAccounting::class)
+        ->name('marketplace-accounting')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-orders', \App\Livewire\MarketplaceOrders::class)
+        ->name('mp.orders')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-products', \App\Livewire\MpProductsManager::class)
+        ->name('mp.products')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    // Reçete Modülü
+    Route::get('/recipe-materials', \App\Livewire\RecipeMaterialsManager::class)
+        ->name('recipe.materials')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+    Route::get('/recipe-builder/{recipeId?}', \App\Livewire\RecipeBuilder::class)
+        ->name('recipe.builder')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
     Route::get('/api-dev', \App\Livewire\ApiDev::class)->name('api-dev');
 
     // Route cache temizleme

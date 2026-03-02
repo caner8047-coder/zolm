@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Report;
+use App\Models\AIConversation;
+use App\Models\OptimizationReport;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -226,6 +228,37 @@ class AIService
 - Sadece dilekçe metnini (gövde) oluştur, başlık ve imza kısımlarını yazma
 - Paragraflar arasında boşluk bırak",
 
+            'financial_advisor' => "Sen bir E-ticaret ve Finans Uzmanısın. Ürün maliyet ve satış fiyatı verilerini analiz ederek kârlılık artırıcı stratejiler öneriyorsun.
+
+ÖNEMLİ KURALLAR:
+- Verilen özet verileri dikkatle analiz et.
+- Fırsatları net bir şekilde vurgula.
+- Markdown formatında, okunabilir bir çıktı ver.
+- 3 bölüm halinde yanıtla: Durum Özeti, Fırsat Analizi, Aksiyon Planı.
+- Türkçe yanıt ver.",
+
+            'loss_auditor' => "Sen bir E-ticaret Finansal Denetçisisin (Financial Auditor).
+ÖNEMLİ: Sadece ZARAR EDEN ürünlere odaklanmalısın.
+GÖREV: Zararın kök nedenini (Root Cause Analysis) bul ve çözüm öner.
+
+ANALİZ ADIMLARI:
+1. Verilen ürünlerin neden zarar ettiğini tespit et. (Örn: 'Kargo maliyeti satış bedelinin %50'si', 'Komisyon çok yüksek' vb.)
+2. Markdown formatında profesyonel bir denetim raporu yaz.
+3. Rapor formatı:
+   - 🚨 **Kritik Tespitler**: En büyük zararı oluşturan kalemler.
+   - 📉 **Kök Neden Analizi**: Zararın ana kaynağı nedir?
+   - ✅ **Acil Çözüm Önerileri**: Fiyat artışı mı? Ürünü kaldırmak mı? Kargo desi güncellemesi mi?
+4. Türkçe, ciddi ve net bir dil kullan.",
+
+            'pricing_strategist' => "Sen uzman bir Fiyatlandırma Stratejistisin.
+GÖREV: Verilen ürün için psikolojik ve kârlı bir satış fiyatı öner.
+KURALLAR:
+1. Psikolojik Fiyatlandırma: Fiyatlar .90 veya .99 ile bitmeli. (Örn: 100 yerine 99.90).
+2. Kârlılık: Maliyetin üzerine en az %20-30 marj koymaya çalış, ama rekabetçi kal.
+3. Çıktı Formatı: SADECE JSON formatında yanıt ver. 
+   Örnek: { \"suggested_price\": 149.90, \"reason\": \"Maliyet bazlı %35 marj hedeflendi ve psikolojik sınır uygulandı.\" }
+4. JSON dışında hiçbir şey yazma.",
+
             default => "Sen bir E-ticaret, Üretim ve Operasyon Uzmanısın. Sipariş verilerini analiz edip profesyonel önerilerde bulunuyorsun.
 
 ÖNEMLİ KURALLAR:
@@ -284,6 +317,167 @@ class AIService
             }
         }
 
+        if ($role === 'financial_advisor') {
+            return "# 🤖 Finansal Analiz (DEMO)\n\n" .
+                "## Durum Özeti\n" .
+                "Raporunuzda **47 ürün** incelendi ve toplam **₺12,450 potansiyel kâr artışı** tespit edildi.\n\n" .
+                "## Fırsat Analizi\n" .
+                "- **En büyük fırsat:** Mobilya kategorisindeki ürünlerde Tarife 2'ye geçiş.\n" .
+                "- **Riskli ürünler:** 3 ürün şu an zararına satılıyor.\n\n" .
+                "## Aksiyon Planı\n" .
+                "1. Öncelikle en yüksek fırsat sunan ilk 5 ürünün fiyatlarını güncelleyin.\n" .
+                "2. Zarar eden ürünlerin maliyetlerini tekrar gözden geçirin.\n\n" .
+                "> *Not: Bu bir demo yanıtıdır. Gerçek analiz için API anahtarı gereklidir.*";
+        }
+
         return $response;
+    }
+
+    /**
+     * Optimizasyon raporunu analiz et
+     */
+    public function analyzeOptimizationReport(OptimizationReport $report): string
+    {
+        // Context oluştur
+        $context = "Rapor Özeti:\n";
+        $context .= "- Toplam Ürün: {$report->total_products}\n";
+        $context .= "- Fırsat Bulunan Ürün: {$report->opportunity_count}\n";
+        $context .= "- Mevcut Toplam Kâr: " . number_format($report->total_current_profit, 2) . " TL\n";
+        $context .= "- Optimize Toplam Kâr: " . number_format($report->total_optimized_profit, 2) . " TL\n";
+        $context .= "- Potansiyel Ekstra Kâr: " . number_format($report->total_extra_profit, 2) . " TL\n";
+        
+        $topOpportunities = \App\Models\OptimizationReportItem::where('report_id', $report->id)
+            ->where('action', 'update')
+            ->orderByDesc('extra_profit')
+            ->take(5)
+            ->get();
+            
+        if ($topOpportunities->isNotEmpty()) {
+            $context .= "\nEn Yüksek Fırsat İçeren İlk 5 Ürün:\n";
+            foreach ($topOpportunities as $item) {
+                $context .= "- {$item->product_name} ({$item->stock_code}): Mevcut Kâr " . number_format($item->current_net_profit, 2) . " TL -> Yeni Kâr " . number_format($item->suggested_net_profit, 2) . " TL (Fark: +" . number_format($item->extra_profit, 2) . " TL). Önerilen Tarife: {$item->suggested_tariff}\n";
+            }
+        }
+
+        $question = "Bu raporu analiz et ve kârlılığı artırmak için stratejik önerilerde bulun.\n\nVeriler:\n" . $context;
+        
+        return $this->ask('financial_advisor', $question);
+    }
+
+    /**
+     * Zarar eden ürünleri analiz et
+     */
+    public function analyzeLosses(OptimizationReport $report): string
+    {
+        $lossItems = \App\Models\OptimizationReportItem::where('report_id', $report->id)
+            ->where('current_net_profit', '<', 0)
+            ->orderBy('current_net_profit', 'asc') // En çok zarar eden en üste
+            ->take(20) // Token limiti için sınırla
+            ->get();
+
+        if ($lossItems->isEmpty()) {
+            return "Bu raporda zarar eden ürün bulunmamaktadır. Harika iş! 🎉";
+        }
+
+        $context = "ZARAR EDEN ÜRÜNLER LİSTESİ (İlk 20):\n";
+        foreach ($lossItems as $item) {
+            $totalCost = $item->production_cost + $item->shipping_cost;
+            $context .= "- Ürün: {$item->product_name} ({$item->stock_code})\n";
+            $context .= "  Satış Fiyatı: {$item->current_price} TL | Komisyon: %{$item->current_commission}\n";
+            $context .= "  Üretim: {$item->production_cost} TL | Kargo: {$item->shipping_cost} TL | Toplam Maliyet: {$totalCost} TL\n";
+            $context .= "  NET ZARAR: {$item->current_net_profit} TL\n";
+            $context .= "--------------------------------------------------\n";
+        }
+
+        $question = "Bu zarar eden ürünleri analiz et. Neden zarar ediyoruz? Kök nedenleri bul ve çözüm öner.\n\n" . $context;
+        
+        return $this->ask('loss_auditor', $question);
+    }
+
+    
+    /**
+     * Rapor ile sohbet et
+     */
+    public function chatWithReport(AIConversation $conversation, string $message): string
+    {
+        // Optimizasyon raporu mu yoksa normal rapor mu?
+        $optReport = $conversation->optimizationReport;
+        
+        $context = "";
+        
+        if ($optReport) {
+            // Optimization Report Context
+            $context = "Şu an incelenen rapor: '{$optReport->name}'\n";
+            $context .= "Toplam Ürün: {$optReport->total_products}, Fırsat: {$optReport->opportunity_count}, Toplam Ekstra Kâr: " . number_format($optReport->total_extra_profit, 2) . " TL.\n\n";
+            
+            // Eğer soru spesifik bir ürünle ilgiliyse (örn: "X ürünü")
+            // Basit bir kelime arama ile ilgili ürünü bulmaya çalışalım
+            $words = explode(' ', $message);
+            foreach ($words as $word) {
+                if (mb_strlen($word) > 3) {
+                    $foundItem = \App\Models\OptimizationReportItem::where('report_id', $optReport->id)
+                        ->where(function($q) use ($word) {
+                            $q->where('product_name', 'like', "%{$word}%")
+                              ->orWhere('stock_code', 'like', "%{$word}%");
+                        })->first();
+                        
+                    if ($foundItem) {
+                        $context .= "Kullanıcı muhtemelen şu üründen bahsediyor:\n";
+                        $context .= "- {$foundItem->product_name} ({$foundItem->stock_code})\n";
+                        $context .= "  Mevcut Fiyat: {$foundItem->current_price}, Maliyet: " . ($foundItem->production_cost + $foundItem->shipping_cost) . "\n";
+                        $context .= "  Net Kâr: {$foundItem->current_net_profit} -> Önerilen: {$foundItem->suggested_net_profit}\n";
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Sohbet geçmişini al (Son 5 mesaj)
+        $history = "";
+        if ($conversation->messages) {
+            $lastMessages = array_slice($conversation->messages, -5);
+            foreach ($lastMessages as $msg) {
+                $roleName = $msg['role'] === 'user' ? 'Kullanıcı' : 'Asistan';
+                $history .= "{$roleName}: {$msg['content']}\n";
+            }
+        }
+        
+        $prompt = "Sen yardımcı bir asistan değil, rapor verilerine hakim bir iş zekası (BI) uzmanısın.\n";
+        $prompt .= "Aşağıdaki bağlamı kullanarak kullanıcının sorusunu yanıtla.\n\n";
+        $prompt .= "CONTEXT:\n{$context}\n";
+        $prompt .= "SOHBET GEÇMİŞİ:\n{$history}\n";
+        $prompt .= "SORU: {$message}\n\n";
+        $prompt .= "Yanıtın kısa, net ve veriye dayalı olsun.";
+        
+        return $this->ask('qna', $prompt);
+    }
+
+    /**
+     * Akıllı Fiyat Önerisi
+     */
+    public function suggestPrice(string $productName, float $cost, float $currentPrice): array
+    {
+        $prompt = "Aşağıdaki ürün için optimum satış fiyatını belirle:\n\n";
+        $prompt .= "Ürün: {$productName}\n";
+        $prompt .= "Toplam Maliyet: " . number_format($cost, 2) . " TL\n";
+        $prompt .= "Mevcut Satış Fiyatı: " . number_format($currentPrice, 2) . " TL\n\n";
+        $prompt .= "Analiz et ve JSON döndür.";
+
+        $response = $this->ask('pricing_strategist', $prompt);
+        
+        // JSON temizleme (Markdown code block'larını sil)
+        $cleanJson = str_replace(['```json', '```'], '', $response);
+        $cleanJson = trim($cleanJson);
+        
+        try {
+            return json_decode($cleanJson, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\Exception $e) {
+            // Fallback: Basit kural tabanlı öneri
+            $fallbackPrice = ceil($cost * 1.35) - 0.10; // %35 marj + .90 bitiş
+            return [
+                'suggested_price' => $fallbackPrice, 
+                'reason' => 'AI yanıtı işlenemedi, varsayılan %35 kâr marjı uygulandı.'
+            ];
+        }
     }
 }

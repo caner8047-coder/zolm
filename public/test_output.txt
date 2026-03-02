@@ -1,0 +1,54 @@
+Total columns in Row 1: 21
+Headers (Row 1):
+Array
+(
+    [A] => Kayıt No / Fatura No
+    [B] => Ülke
+    [C] => İşlem Tipi
+    [D] => Sipariş No
+    [E] => Sipariş Tarihi
+    [F] => İşlem Tarihi
+    [G] => Satıcı
+    [H] => Satıcı Cari Adı
+    [I] => Ürün Adı / Açıklama
+    [J] => Barkod
+    [K] => Komisyon Oranı
+    [L] => TY Hakediş
+    [M] => Satıcı Hakediş
+    [N] => Stopaj
+    [O] => KDV (%)
+    [P] => Vade Süresi (İş Günü)
+    [Q] => Teslim Tarihi
+    [R] => Vade Tarihi
+    [S] => Toplam Tutar
+    [T] => Müşteri Adı
+    [U] => Paket Numarası
+)
+
+
+Data Sample (Row 2):
+Array
+(
+    [A] => 8303776864
+    [B] => Türkiye
+    [C] => Satış
+    [D] => 10557021016
+    [E] => 01.10.2025 11:48
+    [F] => 02.10.2025 11:32
+    [G] => Zem Home
+    [H] => ZÜCEM ZÜCCACİYE TEKS. KOZ.KONF.DAY.TÜK. MAL. İNŞ.GIDA TUR. OTO.SAN.VE TİC.LTD.ŞTİ.
+    [I] => Alaves Hazeranlı Bohem Berjer Ceviz Ahşap, Sütlü Kahve ZEMALVS1, one size
+    [J] => 00051997102
+    [K] => 14.5
+    [L] => 723.54999999999995
+    [M] => 4266.44999999999982
+    [N] => -45.3636
+    [O] => 10
+    [P] => 28
+    [Q] => 02.10.2025 11:32
+    [R] => 03.11.2025 11:48
+    [S] => 4990
+    [T] => ca**** ün****
+    [U] => 3245139085
+)
+

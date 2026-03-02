@@ -12,6 +12,7 @@ class AIConversation extends Model
     protected $fillable = [
         'user_id',
         'report_id',
+        'optimization_report_id',
         'messages',
     ];
 
@@ -27,6 +28,11 @@ class AIConversation extends Model
     public function report(): BelongsTo
     {
         return $this->belongsTo(Report::class);
+    }
+
+    public function optimizationReport(): BelongsTo
+    {
+        return $this->belongsTo(OptimizationReport::class);
     }
 
     public function addMessage(string $role, string $content): void
