@@ -1056,6 +1056,9 @@
                                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hakediş</th>
                                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Komisyon</th>
                                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Kargo</th>
+                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">COGS</th>
+                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Net Kâr</th>
+                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Margin</th>
                                     <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Detay</th>
                                 </tr>
                             </thead>
@@ -1114,6 +1117,20 @@
                                         </td>
                                         <td class="px-3 py-3 text-right text-sm {{ $isFuturePayment ? 'opacity-50' : '' }}">{{ number_format($order->commission_amount, 2, ',', '.') }} ₺</td>
                                         <td class="px-3 py-3 text-right text-sm {{ $isFuturePayment ? 'opacity-50' : '' }}">{{ number_format($order->cargo_amount, 2, ',', '.') }} ₺</td>
+                                        @php
+                                            $cogs = (float) $order->cogs_at_time;
+                                            $netProfit = $order->real_net_profit;
+                                            $margin = (float) $order->gross_amount > 0 ? round($netProfit / (float) $order->gross_amount * 100, 1) : 0;
+                                        @endphp
+                                        <td class="px-3 py-3 text-right text-sm {{ $cogs > 0 ? '' : 'text-gray-400' }}">
+                                            {{ $cogs > 0 ? number_format($cogs, 2, ',', '.') . ' ₺' : '—' }}
+                                        </td>
+                                        <td class="px-3 py-3 text-right text-sm font-semibold {{ $netProfit > 0 ? 'text-emerald-600' : ($netProfit < 0 ? 'text-red-600' : 'text-gray-400') }}">
+                                            {{ $netProfit != 0 ? number_format($netProfit, 2, ',', '.') . ' ₺' : '—' }}
+                                        </td>
+                                        <td class="px-3 py-3 text-right text-sm font-medium {{ $margin > 20 ? 'text-emerald-600' : ($margin > 0 ? 'text-amber-600' : ($margin < 0 ? 'text-red-600' : 'text-gray-400')) }}">
+                                            {{ $cogs > 0 ? '%' . $margin : '—' }}
+                                        </td>
                                         <td class="px-3 py-3 text-center">
                                             <button wire:click="showOrderDetail({{ $order->id }})" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
                                                 5N1K
