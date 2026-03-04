@@ -1067,23 +1067,56 @@
 
                 @if(isset($orders) && count($orders) > 0)
                     <div class="overflow-x-auto bg-white rounded-xl border border-gray-200">
-                        <table class="min-w-full divide-y divide-gray-200">
+                        {{-- Resize CSS --}}
+                        <style>
+                            .col-resize-handle {
+                                position: absolute; right: 0; top: 0; bottom: 0; width: 4px;
+                                cursor: col-resize; background: transparent; z-index: 10;
+                                transition: background 0.15s;
+                            }
+                            .col-resize-handle:hover, .col-resize-handle.active { background: #6366f1; }
+                            .sortable-th { cursor: pointer; user-select: none; position: relative; }
+                            .sortable-th:hover { background: #f3f4f6; }
+                        </style>
+                        <table class="min-w-full divide-y divide-gray-200" x-data="columnResize()" id="ordersTable">
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-3 py-3 w-8 text-center text-xs font-medium text-gray-500 uppercase">
+                                    <th class="px-3 py-3 w-8 text-center text-xs font-medium text-gray-500 uppercase" style="min-width:40px">
                                         <input type="checkbox" wire:model.live="selectAll" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
                                     </th>
-                                    @if(in_array('siparis', $visibleColumns))<th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sipariş</th>@endif
-                                    @if(in_array('urun', $visibleColumns))<th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ürün</th>@endif
-                                    @if(in_array('durum', $visibleColumns))<th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Durum</th>@endif
-                                    @if(in_array('brut', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Brüt</th>@endif
-                                    @if(in_array('hakedis', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hakediş</th>@endif
-                                    @if(in_array('komisyon', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Komisyon</th>@endif
-                                    @if(in_array('kargo', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Kargo</th>@endif
-                                    @if(in_array('cogs', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">COGS</th>@endif
-                                    @if(in_array('net_kar', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Net Kâr</th>@endif
-                                    @if(in_array('margin', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Margin</th>@endif
-                                    @if(in_array('detay', $visibleColumns))<th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Detay</th>@endif
+                                    @php
+                                        $sortableMap = \App\Livewire\MarketplaceAccounting::$sortableColumns;
+                                        $colAligns = [
+                                            'siparis' => 'text-left', 'urun' => 'text-left', 'durum' => 'text-left',
+                                            'brut' => 'text-right', 'hakedis' => 'text-right', 'komisyon' => 'text-right',
+                                            'kargo' => 'text-right', 'cogs' => 'text-right', 'net_kar' => 'text-right',
+                                            'margin' => 'text-right', 'detay' => 'text-center',
+                                        ];
+                                    @endphp
+                                    @foreach(\App\Livewire\MarketplaceAccounting::$allColumnDefs as $colKey => $colLabel)
+                                        @if(in_array($colKey, $visibleColumns))
+                                            @php
+                                                $isSortable = isset($sortableMap[$colKey]);
+                                                $dbCol = $sortableMap[$colKey] ?? null;
+                                                $isActive = $dbCol && $orderSortBy === $dbCol;
+                                                $align = $colAligns[$colKey] ?? 'text-left';
+                                            @endphp
+                                            <th class="px-3 py-3 {{ $align }} text-xs font-medium text-gray-500 uppercase {{ $isSortable ? 'sortable-th' : '' }}" style="position:relative; min-width:60px"
+                                                @if($isSortable) wire:click="sortOrders('{{ $colKey }}')" @endif>
+                                                <div class="flex items-center gap-1 {{ $align === 'text-right' ? 'justify-end' : ($align === 'text-center' ? 'justify-center' : '') }}">
+                                                    <span>{{ $colLabel }}</span>
+                                                    @if($isSortable)
+                                                        @if($isActive)
+                                                            <span class="text-indigo-600 text-[10px]">{{ $orderSortDir === 'asc' ? '▲' : '▼' }}</span>
+                                                        @else
+                                                            <span class="text-gray-300 text-[10px]">⇅</span>
+                                                        @endif
+                                                    @endif
+                                                </div>
+                                                <div class="col-resize-handle" @mousedown.stop.prevent="startResize($event, $el.parentElement)"></div>
+                                            </th>
+                                        @endif
+                                    @endforeach
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
@@ -1216,4 +1249,45 @@
     {{-- ═══════════════════════════════════════════════════════════════ --}}
     {{-- Orijinal Modal yerine yeni zenginleştirilmiş Sub-View --}}
     @include('livewire.mp-order-modal')
+
+    {{-- Column Resize Alpine.js Component --}}
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('columnResize', () => ({
+                resizing: false,
+                startX: 0,
+                startWidth: 0,
+                currentTh: null,
+                handle: null,
+
+                startResize(e, th) {
+                    this.resizing = true;
+                    this.startX = e.pageX;
+                    this.currentTh = th;
+                    this.startWidth = th.offsetWidth;
+                    this.handle = e.target;
+                    this.handle.classList.add('active');
+
+                    const onMouseMove = (ev) => {
+                        if (!this.resizing) return;
+                        const diff = ev.pageX - this.startX;
+                        const newWidth = Math.max(40, this.startWidth + diff);
+                        this.currentTh.style.width = newWidth + 'px';
+                        this.currentTh.style.minWidth = newWidth + 'px';
+                    };
+
+                    const onMouseUp = () => {
+                        this.resizing = false;
+                        if (this.handle) this.handle.classList.remove('active');
+                        this.currentTh = null;
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                    };
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                }
+            }));
+        });
+    </script>
 </div>

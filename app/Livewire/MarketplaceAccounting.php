@@ -143,6 +143,21 @@ class MarketplaceAccounting extends Component
     // Kolon Özelleştirme
     public array $visibleColumns = ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay'];
 
+    // Kolon Sıralama
+    public string $orderSortBy = 'order_date';
+    public string $orderSortDir = 'desc';
+
+    public static array $sortableColumns = [
+        'siparis'  => 'order_number',
+        'durum'    => 'status',
+        'brut'     => 'gross_amount',
+        'hakedis'  => 'net_hakedis',
+        'komisyon' => 'commission_amount',
+        'kargo'    => 'cargo_amount',
+        'cogs'     => 'cogs_at_time',
+        'net_kar'  => 'calculated_net_profit',
+    ];
+
     public static array $allColumnDefs = [
         'siparis'  => 'Sipariş',
         'urun'     => 'Ürün',
@@ -459,6 +474,21 @@ class MarketplaceAccounting extends Component
 
         $svc = new MpSettingsService();
         $svc->set('ui.visible_columns', $this->visibleColumns);
+    }
+
+    public function sortOrders(string $column)
+    {
+        $dbColumn = self::$sortableColumns[$column] ?? null;
+        if (!$dbColumn) return;
+
+        if ($this->orderSortBy === $dbColumn) {
+            $this->orderSortDir = $this->orderSortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            $this->orderSortBy = $dbColumn;
+            $this->orderSortDir = 'asc';
+        }
+
+        $this->resetPage();
     }
 
     public function updatedBulkFiles()
@@ -1316,8 +1346,8 @@ class MarketplaceAccounting extends Component
                 ->when($this->advancedOrderFilter === 'cancelled', fn($q) =>
                     $q->cancelled()
                 )
-            ->with(['period', 'settlement']) // Yıl/Ay ve Vade (Nakit Akışı) gösterimi için
-            ->orderByDesc('order_date');
+            ->with(['period', 'settlement'])
+            ->orderBy($this->orderSortBy, $this->orderSortDir);
 
         $orders = $ordersQuery->paginate($this->perPage);
 
