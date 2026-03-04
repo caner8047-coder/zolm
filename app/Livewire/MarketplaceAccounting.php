@@ -140,6 +140,23 @@ class MarketplaceAccounting extends Component
     public string $profitSortDir = 'asc';
     public bool $showOnlyBleeding = false;
 
+    // Kolon Özelleştirme
+    public array $visibleColumns = ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay'];
+
+    public static array $allColumnDefs = [
+        'siparis'  => 'Sipariş',
+        'urun'     => 'Ürün',
+        'durum'    => 'Durum',
+        'brut'     => 'Brüt',
+        'hakedis'  => 'Hakediş',
+        'komisyon' => 'Komisyon',
+        'kargo'    => 'Kargo',
+        'cogs'     => 'COGS',
+        'net_kar'  => 'Net Kâr',
+        'margin'   => 'Margin',
+        'detay'    => 'Detay',
+    ];
+
     // ─── Listeners ──────────────────────────────────────────────
     protected $listeners = ['refreshComponent' => '$refresh'];
 
@@ -229,6 +246,9 @@ class MarketplaceAccounting extends Component
 
         // Genel
         $this->settingsMarketplace = (string) ($all['general']['marketplace'] ?? 'Trendyol');
+
+        // UI — Kolon Görünürlüğü
+        $this->visibleColumns = (array) ($all['ui']['visible_columns'] ?? ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay']);
 
         // Desi fiyatlarını MpFinancialRule tablosundan yükle
         $this->loadDesiPrices();
@@ -427,6 +447,18 @@ class MarketplaceAccounting extends Component
     public function toggleSettingsSection(string $section)
     {
         $this->settingsActiveSection = ($this->settingsActiveSection === $section) ? '' : $section;
+    }
+
+    public function toggleColumn(string $column)
+    {
+        if (in_array($column, $this->visibleColumns)) {
+            $this->visibleColumns = array_values(array_diff($this->visibleColumns, [$column]));
+        } else {
+            $this->visibleColumns[] = $column;
+        }
+
+        $svc = new MpSettingsService();
+        $svc->set('ui.visible_columns', $this->visibleColumns);
     }
 
     public function updatedBulkFiles()

@@ -300,6 +300,9 @@ class MpSettingsService
                 'currency'              => 'TRY',
                 'default_cargo_company' => 'TEX',
             ],
+            'ui' => [
+                'visible_columns' => ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay'],
+            ],
         ];
     }
 

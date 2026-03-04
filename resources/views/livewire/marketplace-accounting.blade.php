@@ -1041,6 +1041,30 @@
                     </div>
                 </div>
 
+                {{-- ⚙️ Kolon Özelleştirme Butonu --}}
+                <div class="flex items-center justify-between mb-3">
+                    <div x-data="{ open: false }" class="relative">
+                        <button @click="open = !open" class="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-2 shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                            ⚙️ Kolonlar
+                        </button>
+                        <div x-show="open" @click.outside="open = false" x-transition
+                             class="absolute left-0 top-full mt-1 z-50 w-56 bg-white border border-gray-200 rounded-xl shadow-xl p-3 space-y-1.5">
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Görünür Kolonlar</p>
+                            @foreach(\App\Livewire\MarketplaceAccounting::$allColumnDefs as $colKey => $colLabel)
+                                <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded px-2 py-1.5 transition-colors">
+                                    <input type="checkbox" 
+                                           wire:click="toggleColumn('{{ $colKey }}')"
+                                           {{ in_array($colKey, $visibleColumns) ? 'checked' : '' }}
+                                           class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-200 w-4 h-4">
+                                    <span class="text-sm text-gray-700">{{ $colLabel }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    <span class="text-xs text-gray-400">{{ count($visibleColumns) }} / {{ count(\App\Livewire\MarketplaceAccounting::$allColumnDefs) }} kolon gösteriliyor</span>
+                </div>
+
                 @if(isset($orders) && count($orders) > 0)
                     <div class="overflow-x-auto bg-white rounded-xl border border-gray-200">
                         <table class="min-w-full divide-y divide-gray-200">
@@ -1049,17 +1073,17 @@
                                     <th class="px-3 py-3 w-8 text-center text-xs font-medium text-gray-500 uppercase">
                                         <input type="checkbox" wire:model.live="selectAll" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
                                     </th>
-                                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sipariş</th>
-                                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ürün</th>
-                                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Durum</th>
-                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Brüt</th>
-                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hakediş</th>
-                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Komisyon</th>
-                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Kargo</th>
-                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">COGS</th>
-                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Net Kâr</th>
-                                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Margin</th>
-                                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Detay</th>
+                                    @if(in_array('siparis', $visibleColumns))<th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sipariş</th>@endif
+                                    @if(in_array('urun', $visibleColumns))<th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ürün</th>@endif
+                                    @if(in_array('durum', $visibleColumns))<th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Durum</th>@endif
+                                    @if(in_array('brut', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Brüt</th>@endif
+                                    @if(in_array('hakedis', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hakediş</th>@endif
+                                    @if(in_array('komisyon', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Komisyon</th>@endif
+                                    @if(in_array('kargo', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Kargo</th>@endif
+                                    @if(in_array('cogs', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">COGS</th>@endif
+                                    @if(in_array('net_kar', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Net Kâr</th>@endif
+                                    @if(in_array('margin', $visibleColumns))<th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">Margin</th>@endif
+                                    @if(in_array('detay', $visibleColumns))<th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Detay</th>@endif
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
@@ -1069,11 +1093,16 @@
                                         if ($order->settlement && $order->settlement->due_date) {
                                             $isFuturePayment = \Carbon\Carbon::parse($order->settlement->due_date)->startOfDay()->isAfter(\Carbon\Carbon::today());
                                         }
+                                        $cogs = (float) $order->cogs_at_time;
+                                        $hasCogs = $cogs > 0;
+                                        $netProfit = $hasCogs ? $order->real_net_profit : null;
+                                        $margin = ($hasCogs && (float) $order->gross_amount > 0) ? round($netProfit / (float) $order->gross_amount * 100, 1) : null;
                                     @endphp
                                     <tr class="{{ $order->is_flagged ? 'bg-red-50' : ($order->is_reconciled ? 'bg-gray-100 opacity-75' : ($isFuturePayment ? 'bg-gray-50 opacity-80 border-l-4 border-amber-400' : 'hover:bg-gray-50')) }}">
                                         <td class="px-3 py-3 text-center">
                                             <input type="checkbox" wire:model.live="selectedOrders" value="{{ $order->id }}" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
                                         </td>
+                                        @if(in_array('siparis', $visibleColumns))
                                         <td class="px-3 py-3">
                                             <div class="flex items-center gap-2">
                                                 <div>
@@ -1099,43 +1128,59 @@
                                                 @endif
                                             </div>
                                         </td>
+                                        @endif
+                                        @if(in_array('urun', $visibleColumns))
                                         <td class="px-3 py-3">
                                             <p class="text-sm truncate max-w-xs">{{ $order->product_name ?: ($order->product?->product_name ?: 'Ürün Bilgisi Excel\'de Yok (Sadece Finansal Kayıt)') }}</p>
                                             <p class="text-xs text-gray-400">Barkod: {{ $order->barcode }} | Stok Kodu: {{ $order->stock_code ?: ($order->product?->stock_code ?: 'Belirtilmedi') }}</p>
                                         </td>
+                                        @endif
+                                        @if(in_array('durum', $visibleColumns))
                                         <td class="px-3 py-3">
                                             <span class="px-2 py-1 text-xs font-medium rounded-full {{ $order->status_color }}">
                                                 {{ $order->status }}
                                             </span>
                                         </td>
+                                        @endif
+                                        @if(in_array('brut', $visibleColumns))
                                         <td class="px-3 py-3 text-right text-sm font-medium {{ $isFuturePayment ? 'opacity-50' : '' }}">{{ number_format($order->gross_amount, 2, ',', '.') }} ₺</td>
+                                        @endif
+                                        @if(in_array('hakedis', $visibleColumns))
                                         <td class="px-3 py-3 text-right text-sm {{ $isFuturePayment ? 'font-bold text-amber-600' : '' }}">
                                             {{ number_format($order->net_hakedis, 2, ',', '.') }} ₺
                                             @if($isFuturePayment)
                                                 <div class="text-[10px] text-amber-500 font-normal">Henüz Yatmadı</div>
                                             @endif
                                         </td>
+                                        @endif
+                                        @if(in_array('komisyon', $visibleColumns))
                                         <td class="px-3 py-3 text-right text-sm {{ $isFuturePayment ? 'opacity-50' : '' }}">{{ number_format($order->commission_amount, 2, ',', '.') }} ₺</td>
+                                        @endif
+                                        @if(in_array('kargo', $visibleColumns))
                                         <td class="px-3 py-3 text-right text-sm {{ $isFuturePayment ? 'opacity-50' : '' }}">{{ number_format($order->cargo_amount, 2, ',', '.') }} ₺</td>
-                                        @php
-                                            $cogs = (float) $order->cogs_at_time;
-                                            $netProfit = $order->real_net_profit;
-                                            $margin = (float) $order->gross_amount > 0 ? round($netProfit / (float) $order->gross_amount * 100, 1) : 0;
-                                        @endphp
-                                        <td class="px-3 py-3 text-right text-sm {{ $cogs > 0 ? '' : 'text-gray-400' }}">
-                                            {{ $cogs > 0 ? number_format($cogs, 2, ',', '.') . ' ₺' : '—' }}
+                                        @endif
+                                        @if(in_array('cogs', $visibleColumns))
+                                        <td class="px-3 py-3 text-right text-sm {{ $hasCogs ? '' : 'text-gray-400' }}">
+                                            {{ $hasCogs ? number_format($cogs, 2, ',', '.') . ' ₺' : '—' }}
                                         </td>
-                                        <td class="px-3 py-3 text-right text-sm font-semibold {{ $netProfit > 0 ? 'text-emerald-600' : ($netProfit < 0 ? 'text-red-600' : 'text-gray-400') }}">
-                                            {{ $netProfit != 0 ? number_format($netProfit, 2, ',', '.') . ' ₺' : '—' }}
+                                        @endif
+                                        @if(in_array('net_kar', $visibleColumns))
+                                        <td class="px-3 py-3 text-right text-sm font-semibold {{ $netProfit !== null ? ($netProfit > 0 ? 'text-emerald-600' : ($netProfit < 0 ? 'text-red-600' : 'text-gray-400')) : 'text-gray-400' }}">
+                                            {{ $netProfit !== null ? number_format($netProfit, 2, ',', '.') . ' ₺' : '—' }}
                                         </td>
-                                        <td class="px-3 py-3 text-right text-sm font-medium {{ $margin > 20 ? 'text-emerald-600' : ($margin > 0 ? 'text-amber-600' : ($margin < 0 ? 'text-red-600' : 'text-gray-400')) }}">
-                                            {{ $cogs > 0 ? '%' . $margin : '—' }}
+                                        @endif
+                                        @if(in_array('margin', $visibleColumns))
+                                        <td class="px-3 py-3 text-right text-sm font-medium {{ $margin !== null ? ($margin > 20 ? 'text-emerald-600' : ($margin > 0 ? 'text-amber-600' : 'text-red-600')) : 'text-gray-400' }}">
+                                            {{ $margin !== null ? '%' . $margin : '—' }}
                                         </td>
+                                        @endif
+                                        @if(in_array('detay', $visibleColumns))
                                         <td class="px-3 py-3 text-center">
                                             <button wire:click="showOrderDetail({{ $order->id }})" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
                                                 5N1K
                                             </button>
                                         </td>
+                                        @endif
                                     </tr>
                                 @endforeach
                             </tbody>
