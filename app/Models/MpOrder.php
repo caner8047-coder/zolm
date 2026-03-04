@@ -206,11 +206,16 @@ class MpOrder extends Model
         $hakedis  = (float) $this->net_hakedis;
         $cogs     = (float) ($this->cogs_at_time ?? 0);
         $packing  = (float) ($this->packaging_cost_at_time ?? 0);
-        $vatPayable = $this->vat_balance; // KDV bakiyesi borç mu alacak mı?
         
-        // Hakediş - Ürün Maliyeti - Ambalaj Gideri - Ödenecek KDV
-        // (Eğer KDV bakiyesi negatifse çıkarma işlemi onu kâra artı olarak yansıtır)
-        return round($hakedis - $cogs - $packing - $vatPayable, 2);
+        // KDV hesaplama açık mı kontrol et
+        $svc = new \App\Services\MpSettingsService();
+        $vatDeduction = 0;
+        if ($svc->isKdvEnabled()) {
+            $vatDeduction = $this->vat_balance; // KDV bakiyesi borç mu alacak mı?
+        }
+        
+        // Hakediş - Ürün Maliyeti - Ambalaj Gideri - Ödenecek KDV (eğer açıksa)
+        return round($hakedis - $cogs - $packing - $vatDeduction, 2);
     }
 
     /**
@@ -252,5 +257,65 @@ class MpOrder extends Model
             'Kargoda'       => 'yellow',
             default         => 'blue',
         };
+    }
+    
+    /**
+     * Trendyol Vade Kurallarına Göre Gerçek Ödeme (Tahsilat) Tarihini Hesaplar
+     * Kural: Pzt, Sal, Çarş -> O haftanın İlk Perşembe Günü
+     *        Per, Cum, Cmt, Paz -> Sonraki haftanın İlk Pazartesi Günü
+     *
+     * Öncelik Sırası:
+     *  1. Settlement.settlement_date (Trendyol raporu ile mutabık gerçek ödeme)
+     *  2. Settlement.due_date üzerinden Trendyol algoritmasına göre hesaplanan tarih
+     *  3. payment_date varsa (nadir) onu kullan
+     */
+    public function getExpectedPaymentDateAttribute()
+    {
+        // 1. Gerçek ödeme zaten yatmışsa, onu döndür
+        if ($this->settlement && $this->settlement->settlement_date) {
+            return $this->settlement->settlement_date;
+        }
+
+        // 2. Vade Tarihi'ni önce Settlement'tan al, yoksa sipariş payment_date'ine bak
+        $vadeTarihi = $this->settlement?->due_date ?? ($this->payment_date ? \Carbon\Carbon::parse($this->payment_date) : null);
+
+        if (!$vadeTarihi) {
+            return null; // Vade tarihi belli değil, hesaplanamaz
+        }
+
+        $vade = \Carbon\Carbon::parse($vadeTarihi);
+        
+        // Trendyol Algoritması: ISO gün numaraları (Pazartesi=1 ... Pazar=7)
+        $dayOfWeek = $vade->dayOfWeekIso;
+
+        if (in_array($dayOfWeek, [1, 2, 3])) {
+            // Pazartesi, Salı, Çarşamba -> Aynı haftanın Perşembesi
+            $expected = $vade->copy()->startOfWeek()->addDays(3);
+        } else {
+            // Perşembe, Cuma, Cumartesi, Pazar -> Takip eden haftanın Pazartesisi
+            $expected = $vade->copy()->next(\Carbon\Carbon::MONDAY);
+        }
+
+        return $expected->startOfDay();
+    }
+
+    /**
+     * Siparişin Parası Bankaya Yattı Mı?
+     */
+    public function getIsPaidAttribute(): bool
+    {
+        // 1. Durum: Settlement tablosunda varsa, Trendyol bu siparişi kapatmış/ödemiştir.
+        if ($this->settlement && $this->settlement->settlement_date) {
+            return true;
+        }
+
+        // 2. Durum: Excel yok ama Tarih tabanlı varsayım.
+        // Eğer hesaplanan 'expected_payment_date' şu anki günden küçük/eşitse, hesaba yatmış VARSAYILIR.
+        $expected = $this->expected_payment_date;
+        if ($expected && $expected->startOfDay()->lte(\Carbon\Carbon::today())) {
+            return true;
+        }
+
+        return false;
     }
 }

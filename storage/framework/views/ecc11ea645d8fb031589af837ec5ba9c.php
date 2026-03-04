@@ -60,6 +60,35 @@
                     <p class="text-xs text-gray-400">Komisyon/kargo faturası KDV. Örn: %20 → 0.20</p>
                 </div>
             </div>
+
+            
+            <div class="mt-6 p-5 rounded-xl border-2 transition-all <?php echo e($settingsKdvHesaplamaAktif ? 'border-emerald-300 bg-emerald-50/50' : 'border-gray-200 bg-gray-50/50'); ?>">
+                <label class="flex items-center justify-between cursor-pointer">
+                    <div class="flex items-center gap-4">
+                        <div class="text-2xl"><?php echo e($settingsKdvHesaplamaAktif ? '✅' : '⬜'); ?></div>
+                        <div>
+                            <p class="font-bold text-gray-900 text-sm">Net KDV Yükü Hesaplaması</p>
+                            <p class="text-xs text-gray-500 mt-0.5">Kâr hesaplarında KDV yükümlülüğünü dahil et</p>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <input type="checkbox" wire:model.live="settingsKdvHesaplamaAktif" class="sr-only peer">
+                        <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-500 shadow-inner"></div>
+                    </div>
+                </label>
+
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!$settingsKdvHesaplamaAktif): ?>
+                <div class="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 flex items-start gap-2">
+                    <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span>KDV hesaplaması şu anda <strong>kapalı</strong>. Kâr hesaplarınızda Net KDV Yükü/Avantajı dikkate alınmıyor. Eğer KDV'nizi yerel veya başka kanallardan dengeliyorsanız kapalı bırakabilirsiniz.</span>
+                </div>
+                <?php else: ?>
+                <div class="mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-700 flex items-start gap-2">
+                    <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    <span>KDV hesaplaması <strong>aktif</strong>. Satış KDV'si ve Gider KDV'si (komisyon + kargo) mahsuplaşması yapılarak Net KDV Yükü kâr hesaplarınızdan düşülmektedir.</span>
+                </div>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            </div>
         </div>
         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
     </div>
@@ -533,4 +562,4 @@
     </div>
 
 </div>
-<?php /**PATH C:\laragon\www\zolm\resources\views/livewire/mp-settings-panel.blade.php ENDPATH**/ ?>
+<?php /**PATH /var/www/html/resources/views/livewire/mp-settings-panel.blade.php ENDPATH**/ ?>

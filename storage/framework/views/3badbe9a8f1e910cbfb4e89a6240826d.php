@@ -376,17 +376,37 @@
                     isDragging: false, 
                     fileCount: 0,
                     fileNames: [],
+                    detectedTypes: { orders: [], transactions: [], stopaj: [], invoices: [], settlements: [], unknown: [] },
+                    detectType(name) {
+                        let n = name.toLowerCase();
+                        if (n.includes('siparis') || n.includes('sipariş')) return 'orders';
+                        if (n.includes('cari') || n.includes('ekstre')) return 'transactions';
+                        if (n.includes('stopaj') || n.includes('tevkifat')) return 'stopaj';
+                        if (n.includes('fatura') || n.includes('invoice') || n.includes('toplu')) return 'invoices';
+                        if (n.includes('ödeme') || n.includes('odeme') || n.includes('hakediş') || n.includes('hakedis')) return 'settlements';
+                        return 'unknown';
+                    },
+                    typeLabel(t) {
+                        return {orders:'📦 Sipariş',transactions:'🏦 Cari',stopaj:'🏛️ Stopaj',invoices:'🧾 Fatura',settlements:'💸 Ödeme',unknown:'❓ Bilinmiyor'}[t] || t;
+                    },
+                    typeBadge(t) {
+                        return {orders:'bg-indigo-100 text-indigo-800 border-indigo-200',transactions:'bg-teal-100 text-teal-800 border-teal-200',stopaj:'bg-purple-100 text-purple-800 border-purple-200',invoices:'bg-amber-100 text-amber-800 border-amber-200',settlements:'bg-emerald-100 text-emerald-800 border-emerald-200',unknown:'bg-gray-100 text-gray-600 border-gray-200'}[t] || '';
+                    },
                     handleFiles(files) {
                         this.fileCount = files.length;
                         this.fileNames = Array.from(files).map(f => f.name);
+                        this.detectedTypes = { orders: [], transactions: [], stopaj: [], invoices: [], settlements: [], unknown: [] };
+                        this.fileNames.forEach(n => { let t = this.detectType(n); this.detectedTypes[t].push(n); });
                         window.Livewire.find('<?php echo e($_instance->getId()); ?>').uploadMultiple('bulkFiles', files);
-                    }
+                    },
+                    hasType(t) { return this.detectedTypes[t] && this.detectedTypes[t].length > 0; }
                  }"
                  x-on:dragover.prevent="isDragging = true"
                  x-on:dragleave.prevent="isDragging = false"
                  x-on:drop.prevent="isDragging = false; handleFiles($event.dataTransfer.files)"
                  :class="{'border-blue-500 border-dashed bg-blue-100 ring-4 ring-blue-50': isDragging, 'border-blue-200 bg-blue-50': !isDragging}"
-                 class="mb-6 border-2 rounded-xl p-4 lg:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm relative overflow-hidden transition-all duration-300 group">
+                 class="mb-6 border-2 rounded-xl p-4 lg:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm relative overflow-hidden transition-all duration-300 group"
+                 id="bulkUploadZone">
                 
                 <div class="flex-grow w-full relative z-10 pointer-events-none">
                     <h3 class="font-bold text-blue-900 text-lg flex items-center gap-2">
@@ -404,15 +424,21 @@
                     </div>
 
                     
-                    <div x-show="fileCount > 0" x-transition.opacity class="mt-4 p-3 bg-blue-100/50 rounded border border-blue-200 pointer-events-auto">
-                        <p class="text-sm font-semibold text-blue-900 mb-1">
-                            ✅ <span x-text="fileCount"></span> adet dosya algılandı ve sisteme yükleniyor:
+                    <div x-show="fileCount > 0" x-transition.opacity class="mt-4 p-3 bg-blue-100/50 rounded-lg border border-blue-200 pointer-events-auto">
+                        <p class="text-sm font-semibold text-blue-900 mb-2">
+                            ✅ <span x-text="fileCount"></span> adet dosya algılandı — Otomatik tip tanıma sonuçları:
                         </p>
-                        <ul class="text-xs text-blue-700 space-y-1 list-disc list-inside">
-                            <template x-for="name in fileNames" :key="name">
-                                <li x-text="name" class="truncate"></li>
+                        <div class="space-y-1.5">
+                            <template x-for="fname in fileNames" :key="fname">
+                                <div class="flex items-center gap-2 text-xs">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-bold" :class="typeBadge(detectType(fname))" x-text="typeLabel(detectType(fname))"></span>
+                                    <span class="text-blue-800 truncate" x-text="fname"></span>
+                                </div>
                             </template>
-                        </ul>
+                        </div>
+                        <template x-if="detectedTypes.unknown.length > 0">
+                            <p class="text-xs text-amber-600 mt-2 font-medium">⚠️ Tanımlanamayan dosyalar atlanacaktır. Dosya isminde anahtar kelime (sipariş, cari, fatura vb.) olmalıdır.</p>
+                        </template>
                     </div>
                     
                     <div wire:loading wire:target="bulkFiles" class="mt-2 text-xs font-medium text-blue-600 flex items-center gap-2">
@@ -434,7 +460,6 @@
                             </span>
                         </div>
                     </button>
-                    <!-- Loading Progress Bar Under Button -->
                     <div x-show="isProcessing" class="w-full h-1.5 bg-blue-200 rounded-full overflow-hidden" style="display: none;">
                         <div class="h-full bg-blue-600 transition-all duration-300" x-bind:style="'width: ' + procProgress + '%'"></div>
                     </div>
@@ -456,36 +481,35 @@
 
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
                 
-                <div class="bg-white rounded-xl border border-gray-200 p-4 lg:p-6 shadow-sm">
-                    <h3 class="font-semibold text-gray-900 mb-3">📦 Sipariş Verileri</h3>
-                    <p class="text-sm text-gray-500 mb-4">Trendyol siparişler Excel dosyası</p>
-                    
-                    <div x-data="{ isUploading: false, progress: 0 }"
-                         x-on:livewire-upload-start="isUploading = true"
-                         x-on:livewire-upload-finish="isUploading = false"
-                         x-on:livewire-upload-error="isUploading = false"
-                         x-on:livewire-upload-progress="progress = $event.detail.progress">
-                         
-                        <input type="file" wire:model="ordersFile" accept=".xlsx,.xls" id="ordersFileInput"
-                               class="w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-300 transition-colors cursor-pointer">
-                        
-                        
-                        <div x-show="isUploading" class="mt-3">
-                            <div class="flex justify-between text-xs mb-1">
-                                <span class="font-medium text-emerald-600">Dosya sisteme yükleniyor...</span>
-                                <span class="font-bold text-emerald-600" x-text="progress + '%'"></span>
-                            </div>
-                            <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200">
-                                <div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" x-bind:style="'width: ' + progress + '%'"></div>
+                <div class="rounded-xl border p-4 lg:p-6 shadow-sm transition-all duration-500"
+                     :class="hasType('orders') ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-200 animate-pulse' : 'bg-white border-gray-200'">
+                    <div class="flex items-center justify-between mb-1">
+                        <h3 class="font-semibold text-gray-900">📦 Sipariş Verileri</h3>
+                        <div x-data="{ show: false }" class="relative">
+                            <button @click="show = !show" @click.outside="show = false" class="text-gray-400 hover:text-blue-600 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
+                            <div x-show="show" x-transition class="absolute right-0 top-8 z-50 w-72 p-3 bg-gray-900 text-white text-xs rounded-xl shadow-2xl border border-gray-700 leading-relaxed">
+                                <p class="font-bold text-indigo-300 mb-1">📍 Nereden İndirilir?</p>
+                                <p>Trendyol Satıcı Paneli → Sipariş → Siparişlerim → "Tümü" seçip Excel İndir</p>
+                                <p class="font-bold text-indigo-300 mt-2 mb-1">📊 Ne İçerir?</p>
+                                <p>Sipariş No, Tarih, Tutar, Komisyon, Kargo Bedeli, Hizmet Bedeli, Net Hakediş, Sipariş Durumu</p>
+                                <p class="font-bold text-indigo-300 mt-2 mb-1">🔗 Neyle Bağlantılı?</p>
+                                <p>Dashboard KPI'ları (Brüt Ciro, Lojistik Zararı, Net Hakediş), Denetim Motoru, Kârlılık Analizi</p>
                             </div>
                         </div>
                     </div>
-
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($ordersFile): ?>
-                        <p class="text-xs text-green-700 font-medium mt-3 bg-green-50 p-2 rounded border border-green-100">
-                            ✅ <?php echo e($ordersFile->getClientOriginalName()); ?> (<?php echo e(number_format($ordersFile->getSize() / 1024, 0)); ?> KB) — Seçildi
-                        </p>
-                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    <p class="text-sm text-gray-500 mb-3">Trendyol Paneli → Sipariş → Excel İndir</p>
+                    <template x-if="hasType('orders')">
+                        <p class="text-xs font-bold text-indigo-700 bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-1.5 mb-3 flex items-center gap-1.5">✅ Toplu yüklemede algılandı — <span x-text="detectedTypes.orders.length"></span> dosya</p>
+                    </template>
+                    
+                    <div x-data="{ isUploading: false, progress: 0 }" x-on:livewire-upload-start="isUploading = true" x-on:livewire-upload-finish="isUploading = false" x-on:livewire-upload-error="isUploading = false" x-on:livewire-upload-progress="progress = $event.detail.progress">
+                        <input type="file" wire:model="ordersFile" accept=".xlsx,.xls" id="ordersFileInput" class="w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-300 transition-colors cursor-pointer">
+                        <div x-show="isUploading" class="mt-3">
+                            <div class="flex justify-between text-xs mb-1"><span class="font-medium text-emerald-600">Dosya sisteme yükleniyor...</span><span class="font-bold text-emerald-600" x-text="progress + '%'"></span></div>
+                            <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200"><div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" x-bind:style="'width: ' + progress + '%'"></div></div>
+                        </div>
+                    </div>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($ordersFile): ?><p class="text-xs text-green-700 font-medium mt-3 bg-green-50 p-2 rounded border border-green-100">✅ <?php echo e($ordersFile->getClientOriginalName()); ?> (<?php echo e(number_format($ordersFile->getSize() / 1024, 0)); ?> KB) — Seçildi</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['ordersFile'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
@@ -494,49 +518,39 @@ $message = $__bag->first($__errorArgs[0]); ?> <p class="text-red-500 text-xs mt-
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                    
-                    <div class="mt-4 flex justify-end flex-col sm:flex-row gap-2 relative">
-                        <button wire:click="importOrders" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="ordersFile,importOrders,importAll"
-                                class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden">
-                            <div x-show="isProcessing" class="absolute inset-0 bg-gray-700 transition-all duration-300 origin-left" x-bind:style="'transform: scaleX(' + (procProgress/100) + ')'"></div>
-                            <div class="relative z-10">
-                                <span wire:loading.remove wire:target="importOrders">Sadece Bunu Kaydet</span>
-                                <span wire:loading wire:target="importOrders">⏳ Kaydediliyor <span x-text="'%' + Math.floor(procProgress)"></span></span>
-                            </div>
-                        </button>
-                    </div>
+                    <div class="mt-4 flex justify-end"><button wire:click="importOrders" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="ordersFile,importOrders,importAll" class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden"><div class="relative z-10"><span wire:loading.remove wire:target="importOrders">Sadece Bunu Kaydet</span><span wire:loading wire:target="importOrders">⏳ Kaydediliyor</span></div></button></div>
                 </div>
 
                 
-                <div class="bg-white rounded-xl border border-gray-200 p-4 lg:p-6 shadow-sm">
-                    <h3 class="font-semibold text-gray-900 mb-3">🏦 Cari Hesap Ekstresi</h3>
-                    <p class="text-sm text-gray-500 mb-4">Trendyol cari hesap ekstresi</p>
-                    
-                    <div x-data="{ isUploading: false, progress: 0 }"
-                         x-on:livewire-upload-start="isUploading = true"
-                         x-on:livewire-upload-finish="isUploading = false"
-                         x-on:livewire-upload-error="isUploading = false"
-                         x-on:livewire-upload-progress="progress = $event.detail.progress">
-                         
-                        <input type="file" wire:model="transactionsFile" accept=".xlsx,.xls" id="transactionsFileInput"
-                               class="w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-300 transition-colors cursor-pointer">
-                        
-                        <div x-show="isUploading" class="mt-3">
-                            <div class="flex justify-between text-xs mb-1">
-                                <span class="font-medium text-emerald-600">Dosya sisteme yükleniyor...</span>
-                                <span class="font-bold text-emerald-600" x-text="progress + '%'"></span>
-                            </div>
-                            <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200">
-                                <div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" x-bind:style="'width: ' + progress + '%'"></div>
+                <div class="rounded-xl border p-4 lg:p-6 shadow-sm transition-all duration-500"
+                     :class="hasType('transactions') ? 'bg-teal-50 border-teal-400 ring-2 ring-teal-200 animate-pulse' : 'bg-white border-gray-200'">
+                    <div class="flex items-center justify-between mb-1">
+                        <h3 class="font-semibold text-gray-900">🏦 Cari Hesap Ekstresi</h3>
+                        <div x-data="{ show: false }" class="relative">
+                            <button @click="show = !show" @click.outside="show = false" class="text-gray-400 hover:text-teal-600 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
+                            <div x-show="show" x-transition class="absolute right-0 top-8 z-50 w-72 p-3 bg-gray-900 text-white text-xs rounded-xl shadow-2xl border border-gray-700 leading-relaxed">
+                                <p class="font-bold text-teal-300 mb-1">📍 Nereden İndirilir?</p>
+                                <p>Trendyol Satıcı Paneli → Finansman → Cari Hesap Ekstresi → Dönem seçip İndir</p>
+                                <p class="font-bold text-teal-300 mt-2 mb-1">📊 Ne İçerir?</p>
+                                <p>İşlem Tarihi, Fiş Türü, Dekont No, Borç/Alacak, Barkod, Sipariş No, Açıklama</p>
+                                <p class="font-bold text-teal-300 mt-2 mb-1">🔗 Neyle Bağlantılı?</p>
+                                <p>Siparişlerdeki eksik Barkodu tamamlar → Ürün Maliyeti (COGS) eşleşir → Kârlılık hesaplanır. Fatura Mutabakat Sistemi bu veriyi kullanır.</p>
                             </div>
                         </div>
                     </div>
-
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($transactionsFile): ?>
-                        <p class="text-xs text-green-700 font-medium mt-3 bg-green-50 p-2 rounded border border-green-100">
-                            ✅ <?php echo e($transactionsFile->getClientOriginalName()); ?> (<?php echo e(number_format($transactionsFile->getSize() / 1024, 0)); ?> KB) — Seçildi
-                        </p>
-                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    <p class="text-sm text-gray-500 mb-3">Finansman → Cari Hesap Ekstresi → İndir</p>
+                    <template x-if="hasType('transactions')">
+                        <p class="text-xs font-bold text-teal-700 bg-teal-100 border border-teal-200 rounded-lg px-3 py-1.5 mb-3 flex items-center gap-1.5">✅ Toplu yüklemede algılandı — <span x-text="detectedTypes.transactions.length"></span> dosya</p>
+                    </template>
+                    
+                    <div x-data="{ isUploading: false, progress: 0 }" x-on:livewire-upload-start="isUploading = true" x-on:livewire-upload-finish="isUploading = false" x-on:livewire-upload-error="isUploading = false" x-on:livewire-upload-progress="progress = $event.detail.progress">
+                        <input type="file" wire:model="transactionsFile" accept=".xlsx,.xls" id="transactionsFileInput" class="w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-300 transition-colors cursor-pointer">
+                        <div x-show="isUploading" class="mt-3">
+                            <div class="flex justify-between text-xs mb-1"><span class="font-medium text-emerald-600">Dosya sisteme yükleniyor...</span><span class="font-bold text-emerald-600" x-text="progress + '%'"></span></div>
+                            <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200"><div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" x-bind:style="'width: ' + progress + '%'"></div></div>
+                        </div>
+                    </div>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($transactionsFile): ?><p class="text-xs text-green-700 font-medium mt-3 bg-green-50 p-2 rounded border border-green-100">✅ <?php echo e($transactionsFile->getClientOriginalName()); ?> (<?php echo e(number_format($transactionsFile->getSize() / 1024, 0)); ?> KB) — Seçildi</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['transactionsFile'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
@@ -545,49 +559,39 @@ $message = $__bag->first($__errorArgs[0]); ?> <p class="text-red-500 text-xs mt-
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                    
-                    <div class="mt-4 flex justify-end flex-col sm:flex-row gap-2 relative">
-                        <button wire:click="importTransactions" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="transactionsFile,importTransactions,importAll"
-                                class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden">
-                            <div x-show="isProcessing" class="absolute inset-0 bg-gray-700 transition-all duration-300 origin-left" x-bind:style="'transform: scaleX(' + (procProgress/100) + ')'"></div>
-                            <div class="relative z-10">
-                                <span wire:loading.remove wire:target="importTransactions">Sadece Bunu Kaydet</span>
-                                <span wire:loading wire:target="importTransactions">⏳ Kaydediliyor <span x-text="'%' + Math.floor(procProgress)"></span></span>
-                            </div>
-                        </button>
-                    </div>
+                    <div class="mt-4 flex justify-end"><button wire:click="importTransactions" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="transactionsFile,importTransactions,importAll" class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden"><div class="relative z-10"><span wire:loading.remove wire:target="importTransactions">Sadece Bunu Kaydet</span><span wire:loading wire:target="importTransactions">⏳ Kaydediliyor</span></div></button></div>
                 </div>
 
                 
-                <div class="bg-white rounded-xl border border-gray-200 p-4 lg:p-6 shadow-sm">
-                    <h3 class="font-semibold text-gray-900 mb-3">🏛️ Stopaj / Tevkifat</h3>
-                    <p class="text-sm text-gray-500 mb-4">E-Ticaret stopajı Excel dosyası</p>
-                    
-                    <div x-data="{ isUploading: false, progress: 0 }"
-                         x-on:livewire-upload-start="isUploading = true"
-                         x-on:livewire-upload-finish="isUploading = false"
-                         x-on:livewire-upload-error="isUploading = false"
-                         x-on:livewire-upload-progress="progress = $event.detail.progress">
-                         
-                        <input type="file" wire:model="stopajFile" accept=".xlsx,.xls" id="stopajFileInput"
-                               class="w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-300 transition-colors cursor-pointer">
-                        
-                        <div x-show="isUploading" class="mt-3">
-                            <div class="flex justify-between text-xs mb-1">
-                                <span class="font-medium text-emerald-600">Dosya sisteme yükleniyor...</span>
-                                <span class="font-bold text-emerald-600" x-text="progress + '%'"></span>
-                            </div>
-                            <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200">
-                                <div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" x-bind:style="'width: ' + progress + '%'"></div>
+                <div class="rounded-xl border p-4 lg:p-6 shadow-sm transition-all duration-500"
+                     :class="hasType('stopaj') ? 'bg-purple-50 border-purple-400 ring-2 ring-purple-200 animate-pulse' : 'bg-white border-gray-200'">
+                    <div class="flex items-center justify-between mb-1">
+                        <h3 class="font-semibold text-gray-900">🏛️ Stopaj / Tevkifat</h3>
+                        <div x-data="{ show: false }" class="relative">
+                            <button @click="show = !show" @click.outside="show = false" class="text-gray-400 hover:text-purple-600 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
+                            <div x-show="show" x-transition class="absolute right-0 top-8 z-50 w-72 p-3 bg-gray-900 text-white text-xs rounded-xl shadow-2xl border border-gray-700 leading-relaxed">
+                                <p class="font-bold text-purple-300 mb-1">📍 Nereden İndirilir?</p>
+                                <p>Trendyol Satıcı Paneli → Finansman → E-Ticaret Stopajı (veya gelir.gov.tr GİB Portal)</p>
+                                <p class="font-bold text-purple-300 mt-2 mb-1">📊 Ne İçerir?</p>
+                                <p>Sipariş No, Matrah (KDV Hariç Tutar), Hesaplanan Stopaj Tutarı (%1)</p>
+                                <p class="font-bold text-purple-300 mt-2 mb-1">🔗 Neyle Bağlantılı?</p>
+                                <p>Dashboard "Stopaj KPI" kartı, 193 Kodu Excel exportu (Mali Müşavir için), Denetim Motoru stopaj doğrulaması</p>
                             </div>
                         </div>
                     </div>
-
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($stopajFile): ?>
-                        <p class="text-xs text-green-700 font-medium mt-3 bg-green-50 p-2 rounded border border-green-100">
-                            ✅ <?php echo e($stopajFile->getClientOriginalName()); ?> (<?php echo e(number_format($stopajFile->getSize() / 1024, 0)); ?> KB) — Seçildi
-                        </p>
-                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    <p class="text-sm text-gray-500 mb-3">Finansman → E-Ticaret Stopajı → İndir</p>
+                    <template x-if="hasType('stopaj')">
+                        <p class="text-xs font-bold text-purple-700 bg-purple-100 border border-purple-200 rounded-lg px-3 py-1.5 mb-3 flex items-center gap-1.5">✅ Toplu yüklemede algılandı — <span x-text="detectedTypes.stopaj.length"></span> dosya</p>
+                    </template>
+                    
+                    <div x-data="{ isUploading: false, progress: 0 }" x-on:livewire-upload-start="isUploading = true" x-on:livewire-upload-finish="isUploading = false" x-on:livewire-upload-error="isUploading = false" x-on:livewire-upload-progress="progress = $event.detail.progress">
+                        <input type="file" wire:model="stopajFile" accept=".xlsx,.xls" id="stopajFileInput" class="w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-300 transition-colors cursor-pointer">
+                        <div x-show="isUploading" class="mt-3">
+                            <div class="flex justify-between text-xs mb-1"><span class="font-medium text-emerald-600">Dosya sisteme yükleniyor...</span><span class="font-bold text-emerald-600" x-text="progress + '%'"></span></div>
+                            <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200"><div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" x-bind:style="'width: ' + progress + '%'"></div></div>
+                        </div>
+                    </div>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($stopajFile): ?><p class="text-xs text-green-700 font-medium mt-3 bg-green-50 p-2 rounded border border-green-100">✅ <?php echo e($stopajFile->getClientOriginalName()); ?> (<?php echo e(number_format($stopajFile->getSize() / 1024, 0)); ?> KB) — Seçildi</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['stopajFile'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
@@ -596,49 +600,39 @@ $message = $__bag->first($__errorArgs[0]); ?> <p class="text-red-500 text-xs mt-
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                    
-                    <div class="mt-4 flex justify-end flex-col sm:flex-row gap-2 relative">
-                        <button wire:click="importStopaj" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="stopajFile,importStopaj,importAll"
-                                class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden">
-                            <div x-show="isProcessing" class="absolute inset-0 bg-gray-700 transition-all duration-300 origin-left" x-bind:style="'transform: scaleX(' + (procProgress/100) + ')'"></div>
-                            <div class="relative z-10">
-                                <span wire:loading.remove wire:target="importStopaj">Sadece Bunu Kaydet</span>
-                                <span wire:loading wire:target="importStopaj">⏳ Kaydediliyor <span x-text="'%' + Math.floor(procProgress)"></span></span>
-                            </div>
-                        </button>
-                    </div>
+                    <div class="mt-4 flex justify-end"><button wire:click="importStopaj" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="stopajFile,importStopaj,importAll" class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden"><div class="relative z-10"><span wire:loading.remove wire:target="importStopaj">Sadece Bunu Kaydet</span><span wire:loading wire:target="importStopaj">⏳ Kaydediliyor</span></div></button></div>
                 </div>
 
                 
-                <div class="bg-white rounded-xl border border-gray-200 p-4 lg:p-6 shadow-sm">
-                    <h3 class="font-semibold text-gray-900 mb-3">🧾 Faturalar</h3>
-                    <p class="text-sm text-gray-500 mb-4">Trendyol toplu faturalar</p>
-                    
-                    <div x-data="{ isUploading: false, progress: 0 }"
-                         x-on:livewire-upload-start="isUploading = true"
-                         x-on:livewire-upload-finish="isUploading = false"
-                         x-on:livewire-upload-error="isUploading = false"
-                         x-on:livewire-upload-progress="progress = $event.detail.progress">
-                         
-                        <input type="file" wire:model="invoicesFile" accept=".xlsx,.xls" id="invoicesFileInput"
-                               class="w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-300 transition-colors cursor-pointer">
-                        
-                        <div x-show="isUploading" class="mt-3">
-                            <div class="flex justify-between text-xs mb-1">
-                                <span class="font-medium text-emerald-600">Dosya sisteme yükleniyor...</span>
-                                <span class="font-bold text-emerald-600" x-text="progress + '%'"></span>
-                            </div>
-                            <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200">
-                                <div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" x-bind:style="'width: ' + progress + '%'"></div>
+                <div class="rounded-xl border p-4 lg:p-6 shadow-sm transition-all duration-500"
+                     :class="hasType('invoices') ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-200 animate-pulse' : 'bg-white border-gray-200'">
+                    <div class="flex items-center justify-between mb-1">
+                        <h3 class="font-semibold text-gray-900">🧾 Faturalar</h3>
+                        <div x-data="{ show: false }" class="relative">
+                            <button @click="show = !show" @click.outside="show = false" class="text-gray-400 hover:text-amber-600 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
+                            <div x-show="show" x-transition class="absolute right-0 top-8 z-50 w-72 p-3 bg-gray-900 text-white text-xs rounded-xl shadow-2xl border border-gray-700 leading-relaxed">
+                                <p class="font-bold text-amber-300 mb-1">📍 Nereden İndirilir?</p>
+                                <p>Trendyol Satıcı Paneli → Finansman → Faturalarım → Toplu İndir</p>
+                                <p class="font-bold text-amber-300 mt-2 mb-1">📊 Ne İçerir?</p>
+                                <p>Fatura No, Tarih, Tip (Komisyon/Kargo/Hizmet), KDV Tutarı, KDV Hariç ve Dahil Tutarlar</p>
+                                <p class="font-bold text-amber-300 mt-2 mb-1">🔗 Neyle Bağlantılı?</p>
+                                <p>Dashboard "Net KDV" kartı, Aylık Fatura Mutabakat paneli (Komisyon ve Kargo eşleştirmesi), Vergi hesaplamaları</p>
                             </div>
                         </div>
                     </div>
-
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($invoicesFile): ?>
-                        <p class="text-xs text-green-700 font-medium mt-3 bg-green-50 p-2 rounded border border-green-100">
-                            ✅ <?php echo e($invoicesFile->getClientOriginalName()); ?> (<?php echo e(number_format($invoicesFile->getSize() / 1024, 0)); ?> KB) — Seçildi
-                        </p>
-                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    <p class="text-sm text-gray-500 mb-3">Finansman → Faturalarım → Toplu İndir</p>
+                    <template x-if="hasType('invoices')">
+                        <p class="text-xs font-bold text-amber-700 bg-amber-100 border border-amber-200 rounded-lg px-3 py-1.5 mb-3 flex items-center gap-1.5">✅ Toplu yüklemede algılandı — <span x-text="detectedTypes.invoices.length"></span> dosya</p>
+                    </template>
+                    
+                    <div x-data="{ isUploading: false, progress: 0 }" x-on:livewire-upload-start="isUploading = true" x-on:livewire-upload-finish="isUploading = false" x-on:livewire-upload-error="isUploading = false" x-on:livewire-upload-progress="progress = $event.detail.progress">
+                        <input type="file" wire:model="invoicesFile" accept=".xlsx,.xls" id="invoicesFileInput" class="w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-300 transition-colors cursor-pointer">
+                        <div x-show="isUploading" class="mt-3">
+                            <div class="flex justify-between text-xs mb-1"><span class="font-medium text-emerald-600">Dosya sisteme yükleniyor...</span><span class="font-bold text-emerald-600" x-text="progress + '%'"></span></div>
+                            <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200"><div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" x-bind:style="'width: ' + progress + '%'"></div></div>
+                        </div>
+                    </div>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($invoicesFile): ?><p class="text-xs text-green-700 font-medium mt-3 bg-green-50 p-2 rounded border border-green-100">✅ <?php echo e($invoicesFile->getClientOriginalName()); ?> (<?php echo e(number_format($invoicesFile->getSize() / 1024, 0)); ?> KB) — Seçildi</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['invoicesFile'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
@@ -647,49 +641,39 @@ $message = $__bag->first($__errorArgs[0]); ?> <p class="text-red-500 text-xs mt-
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                    
-                    <div class="mt-4 flex justify-end flex-col sm:flex-row gap-2 relative">
-                        <button wire:click="importInvoices" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="invoicesFile,importInvoices,importAll"
-                                class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden">
-                            <div x-show="isProcessing" class="absolute inset-0 bg-gray-700 transition-all duration-300 origin-left" x-bind:style="'transform: scaleX(' + (procProgress/100) + ')'"></div>
-                            <div class="relative z-10">
-                                <span wire:loading.remove wire:target="importInvoices">Sadece Bunu Kaydet</span>
-                                <span wire:loading wire:target="importInvoices">⏳ Kaydediliyor <span x-text="'%' + Math.floor(procProgress)"></span></span>
-                            </div>
-                        </button>
-                    </div>
+                    <div class="mt-4 flex justify-end"><button wire:click="importInvoices" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="invoicesFile,importInvoices,importAll" class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden"><div class="relative z-10"><span wire:loading.remove wire:target="importInvoices">Sadece Bunu Kaydet</span><span wire:loading wire:target="importInvoices">⏳ Kaydediliyor</span></div></button></div>
                 </div>
 
                 
-                <div class="bg-white rounded-xl border border-gray-200 p-4 lg:p-6 shadow-sm">
-                    <h3 class="font-semibold text-gray-900 mb-3">💸 Ödeme Detay / Hakediş</h3>
-                    <p class="text-sm text-gray-500 mb-4">Trendyol haftalık ödeme detay excel'i</p>
-                    
-                    <div x-data="{ isUploading: false, progress: 0 }"
-                         x-on:livewire-upload-start="isUploading = true"
-                         x-on:livewire-upload-finish="isUploading = false"
-                         x-on:livewire-upload-error="isUploading = false"
-                         x-on:livewire-upload-progress="progress = $event.detail.progress">
-                         
-                        <input type="file" wire:model="settlementsFile" accept=".xlsx,.xls" id="settlementsFileInput"
-                               class="w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-300 transition-colors cursor-pointer">
-                        
-                        <div x-show="isUploading" class="mt-3">
-                            <div class="flex justify-between text-xs mb-1">
-                                <span class="font-medium text-emerald-600">Dosya sisteme yükleniyor...</span>
-                                <span class="font-bold text-emerald-600" x-text="progress + '%'"></span>
-                            </div>
-                            <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200">
-                                <div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" x-bind:style="'width: ' + progress + '%'"></div>
+                <div class="rounded-xl border p-4 lg:p-6 shadow-sm transition-all duration-500"
+                     :class="hasType('settlements') ? 'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-200 animate-pulse' : 'bg-white border-gray-200'">
+                    <div class="flex items-center justify-between mb-1">
+                        <h3 class="font-semibold text-gray-900">💸 Ödeme Detay / Hakediş</h3>
+                        <div x-data="{ show: false }" class="relative">
+                            <button @click="show = !show" @click.outside="show = false" class="text-gray-400 hover:text-emerald-600 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
+                            <div x-show="show" x-transition class="absolute right-0 top-8 z-50 w-72 p-3 bg-gray-900 text-white text-xs rounded-xl shadow-2xl border border-gray-700 leading-relaxed">
+                                <p class="font-bold text-emerald-300 mb-1">📍 Nereden İndirilir?</p>
+                                <p>Trendyol Satıcı Paneli → Finansman → Ödemelerim → Ödeme İndir</p>
+                                <p class="font-bold text-emerald-300 mt-2 mb-1">📊 Ne İçerir?</p>
+                                <p>Sipariş No, Teslim Tarihi, Vade Tarihi, Komisyon Oranı, TY Hakediş, Satıcı Hakediş, Stopaj Tutarı</p>
+                                <p class="font-bold text-emerald-300 mt-2 mb-1">🔗 Neyle Bağlantılı?</p>
+                                <p>Nakit Akışı Kanban tablosu, Ödeme Zaman Çizelgesi (Vade tarihleri), Banka Tahsilat durumu, Sipariş Detay ekranı</p>
                             </div>
                         </div>
                     </div>
-
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($settlementsFile): ?>
-                        <p class="text-xs text-green-700 font-medium mt-3 bg-green-50 p-2 rounded border border-green-100">
-                            ✅ <?php echo e($settlementsFile->getClientOriginalName()); ?> (<?php echo e(number_format($settlementsFile->getSize() / 1024, 0)); ?> KB) — Seçildi
-                        </p>
-                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    <p class="text-sm text-gray-500 mb-3">Finansman → Ödemelerim → Ödeme İndir</p>
+                    <template x-if="hasType('settlements')">
+                        <p class="text-xs font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-lg px-3 py-1.5 mb-3 flex items-center gap-1.5">✅ Toplu yüklemede algılandı — <span x-text="detectedTypes.settlements.length"></span> dosya</p>
+                    </template>
+                    
+                    <div x-data="{ isUploading: false, progress: 0 }" x-on:livewire-upload-start="isUploading = true" x-on:livewire-upload-finish="isUploading = false" x-on:livewire-upload-error="isUploading = false" x-on:livewire-upload-progress="progress = $event.detail.progress">
+                        <input type="file" wire:model="settlementsFile" accept=".xlsx,.xls" id="settlementsFileInput" class="w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-300 transition-colors cursor-pointer">
+                        <div x-show="isUploading" class="mt-3">
+                            <div class="flex justify-between text-xs mb-1"><span class="font-medium text-emerald-600">Dosya sisteme yükleniyor...</span><span class="font-bold text-emerald-600" x-text="progress + '%'"></span></div>
+                            <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200"><div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" x-bind:style="'width: ' + progress + '%'"></div></div>
+                        </div>
+                    </div>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($settlementsFile): ?><p class="text-xs text-green-700 font-medium mt-3 bg-green-50 p-2 rounded border border-green-100">✅ <?php echo e($settlementsFile->getClientOriginalName()); ?> (<?php echo e(number_format($settlementsFile->getSize() / 1024, 0)); ?> KB) — Seçildi</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['settlementsFile'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
@@ -698,19 +682,10 @@ $message = $__bag->first($__errorArgs[0]); ?> <p class="text-red-500 text-xs mt-
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                    
-                    <div class="mt-4 flex justify-end flex-col sm:flex-row gap-2 relative">
-                        <button wire:click="importSettlements" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="settlementsFile,importSettlements,importAll"
-                                class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden">
-                            <div x-show="isProcessing" class="absolute inset-0 bg-gray-700 transition-all duration-300 origin-left" x-bind:style="'transform: scaleX(' + (procProgress/100) + ')'"></div>
-                            <div class="relative z-10">
-                                <span wire:loading.remove wire:target="importSettlements">Sadece Bunu Kaydet</span>
-                                <span wire:loading wire:target="importSettlements">⏳ Kaydediliyor <span x-text="'%' + Math.floor(procProgress)"></span></span>
-                            </div>
-                        </button>
-                    </div>
+                    <div class="mt-4 flex justify-end"><button wire:click="importSettlements" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="settlementsFile,importSettlements,importAll" class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden"><div class="relative z-10"><span wire:loading.remove wire:target="importSettlements">Sadece Bunu Kaydet</span><span wire:loading wire:target="importSettlements">⏳ Kaydediliyor</span></div></button></div>
                 </div>
             </div>
+
 
             
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(count($importErrors) > 0): ?>
@@ -1108,6 +1083,11 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
                                 class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-all <?php echo e($advancedOrderFilter === 'returned' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'); ?>">
                             📦 Sadece İadeler
                         </button>
+
+                        <button wire:click="$set('advancedOrderFilter', 'cancelled')" 
+                                class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-all <?php echo e($advancedOrderFilter === 'cancelled' ? 'bg-rose-600 text-white border-rose-600 shadow-sm' : 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50'); ?>">
+                            🚫 Sadece İptaller
+                        </button>
                     </div>
                 </div>
 
@@ -1167,8 +1147,8 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
                                             </div>
                                         </td>
                                         <td class="px-3 py-3">
-                                            <p class="text-sm truncate max-w-xs"><?php echo e($order->product_name); ?></p>
-                                            <p class="text-xs text-gray-400"><?php echo e($order->barcode); ?></p>
+                                            <p class="text-sm truncate max-w-xs"><?php echo e($order->product_name ?: ($order->product?->product_name ?: 'Ürün Bilgisi Excel\'de Yok (Sadece Finansal Kayıt)')); ?></p>
+                                            <p class="text-xs text-gray-400">Barkod: <?php echo e($order->barcode); ?> | Stok Kodu: <?php echo e($order->stock_code ?: ($order->product?->stock_code ?: 'Belirtilmedi')); ?></p>
                                         </td>
                                         <td class="px-3 py-3">
                                             <span class="px-2 py-1 text-xs font-medium rounded-full <?php echo e($order->status_color); ?>">
@@ -1226,4 +1206,4 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
     
     <?php echo $__env->make('livewire.mp-order-modal', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 </div>
-<?php /**PATH C:\laragon\www\zolm\resources\views/livewire/marketplace-accounting.blade.php ENDPATH**/ ?>
+<?php /**PATH /var/www/html/resources/views/livewire/marketplace-accounting.blade.php ENDPATH**/ ?>

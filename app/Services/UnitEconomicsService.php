@@ -69,6 +69,13 @@ class UnitEconomicsService
         // Net KDV: Pozitif = devlete ödenir, Negatif = avantaj (mahsup fazlası)
         $netVat = round($salesVat - $totalExpenseVat, 2);
 
+        // KDV hesaplama kapalıysa tüm KDV değerlerini sıfırla
+        if (!$svc->isKdvEnabled()) {
+            $salesVat = 0;
+            $totalExpenseVat = 0;
+            $netVat = 0;
+        }
+
         // ─── Gerçek Net Kâr ─────────────────────────────────────
         $realNetProfit = round($hakedis - $cogs - $packaging + min(0, $netVat), 2);
         // Eğer KDV negatifse (avantaj), kâra eklenir. Pozitifse (yük), kârdan düşülmez

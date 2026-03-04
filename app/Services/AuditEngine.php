@@ -362,25 +362,116 @@ class AuditEngine
             $reported = (float) $order->net_hakedis;
             $diff = abs($calculated - $reported);
 
+            // ── QUANTITY NORMALIZASYON ──
+            // Trendyol Sipariş Excel'inde quantity>1 olan satırlarda:
+            // gross_amount, commission_amount vs. TÜM ADETLERİN TOPLAMI olarak gelir
+            // AMA net_hakedis bazen ADET BAŞI ya da KISMI (iade sonrası) tutar olarak gelir.
+            // Bu durum yapısal bir Trendyol format farkıdır, gerçek tutarsızlık değildir.
+            $qty = (int) $order->quantity;
+            if ($qty > 1 && $reported > 0 && $reported < $calculated) {
+                // Çoklu adetli siparişlerde calculated her zaman toplam, 
+                // reported ise adet başına veya kısmi olabilir → bu farkı yoksay
+                $diff = 0;
+            }
+
             $hakedisTolerance = $this->settings->getFloat('audit_tolerances.hakedis_tolerance', 1.0);
             if ($diff > $hakedisTolerance) {
-                MpAuditLog::create([
-                    'period_id'      => $period->id,
-                    'order_id'       => $order->id,
-                    'rule_code'      => 'HAKEDIS_FARK',
-                    'severity'       => $diff > $this->settings->getFloat('audit_tolerances.hakedis_critical_threshold', 20) ? 'critical' : 'info',
-                    'title'          => "Hakediş Tutarsızlığı — Sipariş #{$order->order_number}",
-                    'description'    => "Hesaplanan hakediş: " . number_format($calculated, 2, ',', '.') . " TL, "
-                                     . "Trendyol hakediş: " . number_format($reported, 2, ',', '.') . " TL. "
-                                     . "Fark: " . number_format($diff, 2, ',', '.') . " TL. "
-                                     . "Gizli kesinti veya yuvarlama hatası olabilir.",
-                    'expected_value' => $calculated,
-                    'actual_value'   => $reported,
-                    'difference'     => $diff,
-                ]);
+                // ── ADIM 1: Settlement verisiyle doğrulama (Tüm kayıtlar toplanır) ──
+                $allSettlements = MpSettlement::where('order_number', $order->order_number)->get();
+                $netSettlement  = (float) $allSettlements->sum('seller_hakedis');
+                
+                $refundSettlements = $allSettlements->filter(function($s) {
+                    return (float) $s->seller_hakedis < 0 && (str_contains(mb_strtolower($s->transaction_type), 'iade') || str_contains(mb_strtolower($s->transaction_type), 'iptal'));
+                });
+                $hasRefund      = $refundSettlements->count() > 0;
+                $hasSettlement  = $allSettlements->where('seller_hakedis', '>', 0)->count() > 0;
 
-                $order->update(['is_flagged' => true]);
-                $count++;
+                if ($hasSettlement) {
+                    // A) Kısmi İade Senaryosu: İade kaydı var → net tutarla kıyasla
+                    if ($hasRefund) {
+                        // Kısmi iade varsa net settlement doğal olarak calculated'dan düşük olacak.
+                        // Bu normal bir durum — alarm üretme.
+                        $refundTotal = abs((float) $refundSettlements->sum('seller_hakedis'));
+                        MpAuditLog::create([
+                            'period_id'      => $period->id,
+                            'order_id'       => $order->id,
+                            'rule_code'      => 'KISMI_IADE',
+                            'severity'       => 'info',
+                            'title'          => "💡 Kısmi İade — Sipariş #{$order->order_number}",
+                            'description'    => "Bu siparişte kısmi iade tespit edildi. "
+                                             . "Toplam satış: " . number_format((float) $allSettlements->where('seller_hakedis', '>', 0)->sum('seller_hakedis'), 2, ',', '.') . " TL, "
+                                             . "İade kesintisi: -" . number_format($refundTotal, 2, ',', '.') . " TL, "
+                                             . "Net tahsilat: " . number_format($netSettlement, 2, ',', '.') . " TL. "
+                                             . "Bu normal bir operasyonel durumdur.",
+                            'expected_value' => $calculated,
+                            'actual_value'   => $netSettlement,
+                            'difference'     => $refundTotal,
+                        ]);
+                        $count++;
+                        continue; // is_flagged yapma
+                    }
+
+                    // B) İade yok, net settlement hesaplananla uyumlu mu?
+                    if ($netSettlement >= $calculated * 0.90) {
+                        // Banka ödemesi doğru → tamamen gizle
+                        continue;
+                    }
+                    
+                    // C) Quantity kontrol: Ödeme Excel per-unit satır yazıyor olabilir
+                    $qty = (int) $order->quantity;
+                    if ($qty > 1 && $netSettlement > 0) {
+                        $positiveRows = $allSettlements->filter(fn($s) => (float) $s->seller_hakedis > 0)->count();
+                        if ($positiveRows < $qty) {
+                            continue; // Kısmi ödeme yüklemesi, gerçek fark yok
+                        }
+                    }
+                }
+
+                // ── ADIM 2: İndirim illüzyonu kontrolü ──
+                $discountAmount = abs((float) $order->discount_amount);
+                $campaignAmount = abs((float) $order->campaign_discount);
+                $totalDiscount  = $discountAmount + $campaignAmount;
+                
+                $isDiscountIllusion = false;
+                if ($discountAmount > 0 && abs($diff - $discountAmount) <= $hakedisTolerance) $isDiscountIllusion = true;
+                if ($campaignAmount > 0 && abs($diff - $campaignAmount) <= $hakedisTolerance) $isDiscountIllusion = true;
+                if ($totalDiscount  > 0 && abs($diff - $totalDiscount)  <= $hakedisTolerance) $isDiscountIllusion = true;
+
+                if ($isDiscountIllusion) {
+                    MpAuditLog::create([
+                        'period_id'      => $period->id,
+                        'order_id'       => $order->id,
+                        'rule_code'      => 'HAKEDIS_ILLUZYON',
+                        'severity'       => 'info',
+                        'title'          => "💡 Raporlama Sapması (İndirim Etkisi)",
+                        'description'    => "Trendyol Sipariş Excel'inde kampanya/indirim tutarı (" 
+                                         . number_format($totalDiscount, 2, ',', '.') . " TL) görsel olarak mükerrer düşülmüş. "
+                                         . "Bu sadece bir raporlama illüzyonudur, finansal kaybınız yoktur.",
+                        'expected_value' => $calculated,
+                        'actual_value'   => $reported,
+                        'difference'     => $diff,
+                    ]);
+                    $count++;
+                } else {
+                    // ── ADIM 3: Gerçek tutarsızlık ──
+                    MpAuditLog::create([
+                        'period_id'      => $period->id,
+                        'order_id'       => $order->id,
+                        'rule_code'      => 'HAKEDIS_FARK',
+                        'severity'       => $diff > $this->settings->getFloat('audit_tolerances.hakedis_critical_threshold', 20) ? 'critical' : 'warning',
+                        'title'          => "Hakediş Tutarsızlığı — Sipariş #{$order->order_number}",
+                        'description'    => "Hesaplanan hakediş: " . number_format($calculated, 2, ',', '.') . " TL, "
+                                         . "Trendyol hakediş: " . number_format($reported, 2, ',', '.') . " TL. "
+                                         . "Fark: " . number_format($diff, 2, ',', '.') . " TL. "
+                                         . "Gizli kesinti veya yuvarlama hatası olabilir.",
+                        'expected_value' => $calculated,
+                        'actual_value'   => $reported,
+                        'difference'     => $diff,
+                    ]);
+
+                    $order->update(['is_flagged' => true]);
+                    $count++;
+                }
             }
         }
 
@@ -545,6 +636,31 @@ class AuditEngine
             $isHeavy = false;
             $matchedPenalty = 0;
 
+            // Dışlama: Stopaj, Fatura, KDV, Komisyon gibi standart mali işlemler
+            // Bu işlemler tutarsal olarak ağır kargo cezasına benzer olabilir ama kargo cezası değildir
+            $typeLC = mb_strtolower($tx->transaction_type ?? '');
+            $descLC = mb_strtolower($tx->description ?? '');
+            $combinedLC = $typeLC . ' ' . $descLC;
+            
+            $isExcluded = str_contains($combinedLC, 'stopaj')
+                || str_contains($combinedLC, 'e-ticaret')
+                || str_contains($combinedLC, 'eticaret') 
+                || str_contains($combinedLC, 'vergi')
+                || str_contains($combinedLC, 'kdv')
+                || str_contains($combinedLC, 'komisyon')
+                || str_contains($combinedLC, 'hizmet bedeli')
+                || ($typeLC === 'kargo fatura' && !str_contains($descLC, 'ağır'))
+                || ($typeLC === 'fatura')
+                // Ürün iade/satış/iptal işlemleri: Tutarları tesadüfen ceza tutarlarına denk gelebilir
+                // ama bunlar normal ticari işlemlerdir, ağır kargo cezası değildir
+                || str_contains($typeLC, 'iade')
+                || str_contains($typeLC, 'iptal')
+                || ($typeLC === 'satış' || $typeLC === 'satis')
+                || str_contains($typeLC, 'indirim')
+                || str_contains($typeLC, 'İndirim');
+                
+            if ($isExcluded) continue;
+
             // Sabit ceza tutarı kontrolü
             foreach ($knownPenalties as $penalty) {
                 if (abs($amount - $penalty) <= $tolerance) {
@@ -556,15 +672,13 @@ class AuditEngine
 
             // Anahtar kelime kontrolü (keyword fallback)
             if (!$isHeavy) {
-                $type = mb_strtolower($tx->transaction_type ?? '');
-                $desc = mb_strtolower($tx->description ?? '');
-                $combined = $type . ' ' . $desc;
+                // $typeLC, $descLC, $combinedLC zaten yukarıda hesaplandı
 
                 if (
-                    str_contains($combined, 'ağır kargo') ||
-                    str_contains($combined, 'ağır taşıma') ||
-                    str_contains($combined, 'heavy cargo') ||
-                    (str_contains($combined, '100 desi') && str_contains($combined, 'ceza'))
+                    str_contains($combinedLC, 'ağır kargo') ||
+                    str_contains($combinedLC, 'ağır taşıma') ||
+                    str_contains($combinedLC, 'heavy cargo') ||
+                    (str_contains($combinedLC, '100 desi') && str_contains($combinedLC, 'ceza'))
                 ) {
                     $isHeavy = true;
                     $matchedPenalty = $amount;
@@ -712,49 +826,108 @@ class AuditEngine
     {
         $count = 0;
         
+        // Çoklu ürünlü siparişlerde aynı order_number birden fazla satır olarak geliyor.
+        // Bu yüzden önce benzersiz order_number'ları grup olarak alalım.
         $orders = MpOrder::where('period_id', $period->id)
-            ->whereHas('settlement') // Sadece ödemesi gelmiş olanlar
-            ->with('settlement')
+            ->where('status', 'Teslim Edildi')
+            ->where('net_hakedis', '>', 0)
             ->get();
+        
+        // Benzersiz sipariş numarası bazında grupla
+        $orderGroups = $orders->groupBy('order_number');
 
-        foreach ($orders as $order) {
-            $expected = (float) $order->net_hakedis;
-            $actual = (float) $order->settlement->seller_hakedis;
+        foreach ($orderGroups as $orderNumber => $orderRows) {
+            $firstOrder = $orderRows->first(); // Referans kayıt (flag için)
+            $totalExpectedNet = (float) $orderRows->sum('net_hakedis'); // Konsolide beklenti
             
-            // Eğer sipariş parçalı ödenmişse veya birden fazla settlement kaydı varsa, 
-            // hasOne ilişkisinden dolayı ilkini alır. Normalde order_id bazlı sum almak en güvenlisi.
-            $totalDeposited = MpSettlement::where('order_id', $order->id)->sum('seller_hakedis');
-            $actual = (float) $totalDeposited;
+            // Tüm settlement kayıtlarını order_number ile al
+            $allSettlements = MpSettlement::where('order_number', $orderNumber)->get();
+            if ($allSettlements->isEmpty()) continue; // Settlement yoksa bu kural kapsamında değil
 
-            $diff = $expected - $actual;
+            // Kuponları (eksi bakiye ama satıcıdan kesilmeyen / veya satıcıya artı yansımayan platform indirimleri vs) 
+            // dikkate almadan, sadece satış/hakediş olanların toplamını ve iadeleri dikkate almalıyız
+            $totalDeposited = (float) $allSettlements->sum('seller_hakedis');
+            $hasRefund = $allSettlements->contains(function($s) {
+                return (float) $s->seller_hakedis < 0 && (str_contains(mb_strtolower($s->transaction_type), 'iade') || str_contains(mb_strtolower($s->transaction_type), 'iptal'));
+            });
+            
+            // Kısmi iade varsa → net tutar doğal olarak düşük, bu "eksik ödeme" değil
+            if ($hasRefund) {
+                // Mutabakat: kısmi iade olan siparişlerde net tutarı kabul et
+                MpSettlement::where('order_number', $orderNumber)->update(['is_reconciled' => true]);
+                continue;
+            }
 
-            // 0.50 TL üzeri eksik yatmışsa alarm ver (Trendyol kesintisi olabilir)
+            // Siparişteki tüm satırların toplam net hakedişi (önceden hesaplandı)
+            $expected = $totalExpectedNet;
+            
+            // ── QUANTITY / ÇOK ÜRÜNLÜ SEPET KONTROL ──
+            // Trendyol Sipariş Excel'i: Çok ürünlü sepetleri bazen TEK SATIR (quantity=3) olarak yazar.
+            // Trendyol Ödeme Detay Excel'i: Her ürünü AYRI satır olarak yazar, 
+            // ve farklı ürünler farklı vade tarihlerinde ödenebilir.
+            // Bu durum, yüklenen Ödeme Excel'inde henüz tüm ürünlerin ödeme kaydı olmadığında
+            // "Eksik Ödeme" gibi görünür ama aslında kalan ödemeler farklı dönemin Excel'indedir.
+            //
+            // Kontrol: Settlement'taki pozitif satır sayısı, siparişteki toplam adet sayısından az ise
+            // ve yatan tutar makul bir oran ise (%15-%95 arası), bu bir kısmi ödeme yükleme durumudur.
+            $totalQuantity = $orderRows->sum('quantity');
+            $positiveSettlementRows = $allSettlements->filter(fn($s) => (float) $s->seller_hakedis > 0)->count();
+            
+            if ($totalQuantity > 1 && $totalDeposited > 0 && $totalDeposited < $expected) {
+                // Pozitif settlement satır sayısı, toplam adetten az ise 
+                // → henüz tüm adetlerin ödeme kaydı yüklenmemiş demektir
+                if ($positiveSettlementRows < $totalQuantity) {
+                    MpSettlement::where('order_number', $orderNumber)->update(['is_reconciled' => true]);
+                    continue;
+                }
+            }
+            
+            $diff = $expected - $totalDeposited;
+
             $paymentTolerance = $this->settings->getFloat('audit_tolerances.missing_payment_tolerance', 0.50);
-            if ($diff > $paymentTolerance) {
+            if ($diff > $paymentTolerance && $totalDeposited < $expected) {
+                // Trendyol'un net_hakedis'i yanıltıcı olabilir — hesaplanan hakediş ile de kontrol et
+                $calculated = 0;
+                foreach($orderRows as $r) {
+                    $calculated += (float) $r->gross_amount
+                                - abs((float) $r->discount_amount)
+                                - abs((float) $r->campaign_discount)
+                                - abs((float) $r->commission_amount)
+                                - abs((float) $r->cargo_amount)
+                                - abs((float) $r->service_fee);
+                }
+                
+                // Eğer bankaya yatan hesaplananla uyumluysa → Trendyol beyanı yanıltıcı, gerçek kayıp yok
+                // Ya da yatırılan tutar beklenen tutardan DAHA fazlaysa (kupon iadesi, fazla yatırma vs) alarm verme
+                if ($totalDeposited >= $calculated * 0.90 || $totalDeposited >= $expected) {
+                    MpSettlement::where('order_number', $orderNumber)->update(['is_reconciled' => true]);
+                    continue;
+                }
+
                 MpAuditLog::create([
                     'period_id'      => $period->id,
-                    'order_id'       => $order->id,
+                    'order_id'       => $firstOrder->id,
                     'rule_code'      => 'EKSIK_ODEME',
                     'severity'       => $diff > 10 ? 'critical' : 'warning',
-                    'title'          => "💵 Eksik Ödeme Tespit Edildi — Sipariş #{$order->order_number}",
+                    'title'          => "💵 Eksik Ödeme Tespit Edildi — Sipariş #{$orderNumber}",
                     'description'    => "Sipariş Kayıtları'nda Trendyol'un vadettiği net hakediş: " 
                                      . number_format($expected, 2, ',', '.') . " TL iken, "
                                      . "Ödeme Detay raporunda fiilen bankanıza " 
-                                     . number_format($actual, 2, ',', '.') . " TL yatırılmış. "
+                                     . number_format($totalDeposited, 2, ',', '.') . " TL yatırılmış. "
                                      . "FİNANSAL KAÇAK (Fark): " . number_format($diff, 2, ',', '.') . " TL",
                     'expected_value' => $expected,
-                    'actual_value'   => $actual,
+                    'actual_value'   => $totalDeposited,
                     'difference'     => $diff,
                 ]);
 
-                $order->update(['is_flagged' => true]);
-                // Settlement kaydını "mutabık değil" olarak işaretle
-                MpSettlement::where('order_id', $order->id)->update(['is_reconciled' => false, 'notes' => 'Eksik ödeme']);
+                // Tüm satırları flagle
+                $orderRows->each(fn($o) => $o->update(['is_flagged' => true]));
+                MpSettlement::where('order_number', $orderNumber)->update(['is_reconciled' => false, 'notes' => 'Eksik ödeme']);
                 
                 $count++;
             } else {
                 // Mutabakat sağlandı
-                MpSettlement::where('order_id', $order->id)->update(['is_reconciled' => true]);
+                MpSettlement::where('order_number', $orderNumber)->update(['is_reconciled' => true]);
             }
         }
 

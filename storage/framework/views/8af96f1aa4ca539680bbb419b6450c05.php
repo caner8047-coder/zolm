@@ -293,4 +293,4 @@
 
 </body>
 </html>
-<?php /**PATH C:\laragon\www\zolm\resources\views/layouts/app.blade.php ENDPATH**/ ?>
+<?php /**PATH /var/www/html/resources/views/layouts/app.blade.php ENDPATH**/ ?>

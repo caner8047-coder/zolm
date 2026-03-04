@@ -66,11 +66,11 @@ class ProcessMarketplaceImport implements ShouldQueue
             $period  = MpPeriod::findOrFail($this->periodId);
             $service = new MarketplaceImportService();
 
-            // Temp dosyadan UploadedFile simüle et
-            $fullPath = storage_path('app/' . $this->tempFilePath);
+            // Get correct path from Storage facade
+            $fullPath = Storage::disk('local')->path($this->tempFilePath);
 
             if (!file_exists($fullPath)) {
-                throw new \Exception("Geçici dosya bulunamadı: {$this->tempFilePath}");
+                throw new \Exception("Geçici dosya bulunamadı: {$fullPath}");
             }
 
             $fakeFile = new \Illuminate\Http\UploadedFile(
@@ -88,6 +88,7 @@ class ProcessMarketplaceImport implements ShouldQueue
                 'transactions' => $service->importTransactions($fakeFile, $period),
                 'stopaj'       => $service->importWithholdingTax($fakeFile, $period),
                 'invoices'     => $service->importInvoices($fakeFile, $period),
+                'settlements'  => $service->importSettlements($fakeFile, $period),
                 default        => throw new \Exception("Bilinmeyen import tipi: {$this->importType}"),
             };
 
@@ -139,9 +140,7 @@ class ProcessMarketplaceImport implements ShouldQueue
             MpPeriod::where('id', $this->periodId)->update(['status' => 'error']);
         } finally {
             // Temp dosyayı temizle
-            if (file_exists(storage_path('app/' . $this->tempFilePath))) {
-                @unlink(storage_path('app/' . $this->tempFilePath));
-            }
+            Storage::disk('local')->delete($this->tempFilePath);
         }
     }
 

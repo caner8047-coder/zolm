@@ -67,66 +67,81 @@ class User extends Authenticatable
 
     // === ROLE CHECKING (New System) ===
 
+    public function roleSlug(): ?string
+    {
+        // Eğer role bir nesneyse (ilişki yüklendiyse veya Role modeli ise)
+        if ($this->role instanceof Role) {
+            return $this->role->slug;
+        }
+
+        // Eğer role alanı string ise (DB'deki 'role' sütunu)
+        if (is_string($this->role)) {
+            return $this->role;
+        }
+
+        // Eğer hiçbiriyse ve bir ilişki varsa onu deneyelim (ama sonsuz döngüye girmemeye dikkat)
+        // Eğer role_id varsa ve ilişki henüz yüklenmediyse slug'ı ordan alabiliriz
+        // Ancak genellikle $this->role string geliyorsa o tercih ediliyor demektir.
+        
+        return null;
+    }
+
     public function isAdmin(): bool
     {
-        // Önce yeni role alanını kontrol et, yoksa eski sisteme bak
-        if ($this->role) {
-            return $this->role === 'admin';
-        }
-        return $this->role?->slug === 'admin';
+        return $this->roleSlug() === 'admin';
     }
 
     public function isManager(): bool
     {
-        return in_array($this->role, ['admin', 'manager']);
+        return in_array($this->roleSlug(), ['admin', 'manager']);
     }
 
     public function isOperator(): bool
     {
-        return in_array($this->role, ['admin', 'manager', 'operator']);
+        return in_array($this->roleSlug(), ['admin', 'manager', 'operator']);
     }
 
     public function hasRole(string $slug): bool
     {
-        if ($this->role) {
-            return $this->role === $slug;
-        }
-        return $this->role?->slug === $slug;
+        return $this->roleSlug() === $slug;
     }
 
     // === ACCESS CONTROL ===
 
     public function canAccessAdmin(): bool
     {
-        return $this->role === 'admin';
+        return $this->roleSlug() === 'admin';
     }
 
     public function canAccessProduction(): bool
     {
-        return in_array($this->role, ['admin', 'manager']) || 
-               in_array($this->role?->slug, ['admin', 'uretim_sorumlusu']);
+        $role = $this->roleSlug();
+        return in_array($role, ['admin', 'manager', 'uretim_sorumlusu']);
     }
 
     public function canAccessOperation(): bool
     {
-        return in_array($this->role, ['admin', 'manager', 'operator']) ||
-               in_array($this->role?->slug, ['admin', 'operasyon_sorumlusu']);
+        $role = $this->roleSlug();
+        return in_array($role, ['admin', 'manager', 'operator', 'operasyon_sorumlusu']);
     }
 
     public function canAccessReports(): bool
     {
-        return in_array($this->role, ['admin', 'manager']) ||
-               in_array($this->role?->slug, ['admin', 'crm_sorumlusu', 'uretim_sorumlusu', 'operasyon_sorumlusu']);
+        $role = $this->roleSlug();
+        return in_array($role, ['admin', 'manager', 'crm_sorumlusu', 'uretim_sorumlusu', 'operasyon_sorumlusu']);
     }
 
     // === HELPERS ===
 
     public function getRoleLabelAttribute(): string
     {
-        return match ($this->role) {
+        return match ($this->roleSlug()) {
             'admin' => 'Yönetici',
             'manager' => 'Müdür',
             'operator' => 'Operatör',
+            'uretim_sorumlusu' => 'Üretim Sorumlusu',
+            'operasyon_sorumlusu' => 'Operasyon Sorumlusu',
+            'crm_sorumlusu' => 'CRM Sorumlusu',
             default => 'Bilinmiyor',
         };
     }

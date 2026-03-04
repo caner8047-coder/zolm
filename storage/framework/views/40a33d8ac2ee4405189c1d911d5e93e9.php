@@ -50,16 +50,48 @@
                                     Riskli İşlem
                                 </span>
                             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(isset($set['has_partial_refund']) && $set['has_partial_refund']): ?>
+                                <span class="px-2 py-1 flex items-center gap-1 text-xs font-bold bg-orange-100 text-orange-700 rounded-lg border border-orange-200">
+                                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+                                    Kısmi İade
+                                </span>
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>
-                        <p class="text-sm text-gray-500 line-clamp-1 font-medium mt-1">
-                            <span class="px-2 py-0.5 bg-gray-100 rounded text-gray-700 mr-2"><?php echo e($basic['quantity'] ?? 1); ?> Adet</span>
-                            <?php echo e($basic['product_name'] ?: 'Ürün Bilgisi Excel\'de Yok (Sadece Finansal Kayıt)'); ?>
+                        
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($basic['sibling_items'])): ?>
+                            
+                            <div class="mt-2 space-y-1.5">
+                                <div class="flex items-center gap-2 text-xs text-gray-500">
+                                    <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                                    <span class="font-semibold">Sepet İçeriği (<?php echo e(1 + count($basic['sibling_items'])); ?> farklı ürün)</span>
+                                </div>
+                                
+                                <div class="flex items-center gap-2 pl-5">
+                                    <span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px] font-bold"><?php echo e($basic['quantity']); ?>×</span>
+                                    <span class="text-sm text-gray-700 font-medium truncate max-w-xs"><?php echo e($basic['product_name'] ?: 'İsimsiz Ürün'); ?></span>
+                                    <span class="text-[10px] text-gray-400 font-mono"><?php echo e($basic['barcode'] ?: ''); ?></span>
+                                </div>
+                                
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $basic['sibling_items']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $sib): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoop($loop->index); ?><?php endif; ?>
+                                    <div class="flex items-center gap-2 pl-5">
+                                        <span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-bold"><?php echo e($sib['quantity']); ?>×</span>
+                                        <span class="text-sm text-gray-600 truncate max-w-xs"><?php echo e($sib['product_name'] ?: 'İsimsiz Ürün'); ?></span>
+                                        <span class="text-[10px] text-gray-400 font-mono"><?php echo e($sib['barcode'] ?: ''); ?></span>
+                                    </div>
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
+                            </div>
+                        <?php else: ?>
+                            
+                            <p class="text-sm text-gray-500 line-clamp-1 font-medium mt-1">
+                                <span class="px-2 py-0.5 bg-gray-100 rounded text-gray-700 mr-2"><?php echo e($basic['quantity'] ?? 1); ?> Adet</span>
+                                <?php echo e($basic['product_name'] ?: 'Ürün Bilgisi Excel\'de Yok (Sadece Finansal Kayıt)'); ?>
 
-                        </p>
-                        <p class="text-xs text-gray-400 mt-1">
-                            Barkod: <span class="font-mono"><?php echo e($basic['barcode'] ?: 'Belirtilmedi'); ?></span> 
-                            | Stok Kodu: <span class="font-mono"><?php echo e($basic['stock_code'] ?: 'Belirtilmedi'); ?></span>
-                        </p>
+                            </p>
+                            <p class="text-xs text-gray-400 mt-1">
+                                Barkod: <span class="font-mono"><?php echo e($basic['barcode'] ?: 'Belirtilmedi'); ?></span> 
+                                | Stok Kodu: <span class="font-mono"><?php echo e($basic['stock_code'] ?: 'Belirtilmedi'); ?></span>
+                            </p>
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     </div>
                     <button wire:click="closeOrderModal" type="button" class="bg-white rounded-md text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 transition-colors">
                         <span class="sr-only">Kapat</span>
@@ -134,13 +166,13 @@
 
                                         <!-- Vade/Hakediş -->
                                         <div>
-                                            <div class="h-8 w-8 rounded-full <?php echo e($set ? ($set['due_date'] ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400') : 'bg-gray-100 text-gray-400'); ?> flex items-center justify-center ring-4 ring-white shadow" title="<?php echo e(!$set ? 'Ödeme Detay Exceli Yüklenmemiş' : ''); ?>">
+                                            <div class="h-8 w-8 rounded-full <?php echo e($set['has_settlement'] && $set['due_date'] ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'); ?> flex items-center justify-center ring-4 ring-white shadow" title="<?php echo e(!$set['has_settlement'] ? 'Ödeme Detay Exceli Yüklenmemiş' : ''); ?>">
                                                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                                             </div>
                                             <div class="mt-3 hidden sm:block text-center">
                                                 <span class="text-xs font-semibold text-gray-900 block">Vade Tarihi</span>
-                                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($set): ?>
-                                                    <span class="text-xs text-gray-500"><?php echo e($set['due_date'] ?? 'Hesaplanmadı'); ?></span>
+                                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($set['has_settlement'] && $set['due_date']): ?>
+                                                    <span class="text-xs text-gray-500"><?php echo e($set['due_date']); ?></span>
                                                 <?php else: ?>
                                                     <span class="text-[10px] text-red-500 block leading-tight mt-1" title="Vade tarihini görmek için Ödeme Detay Excel'ini sisteme yükleyin.">Ödeme Excel'i<br>Eksik</span>
                                                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
@@ -149,15 +181,25 @@
 
                                         <!-- Bankaya Yatan -->
                                         <div>
-                                            <div class="h-8 w-8 rounded-full <?php echo e($set && $set['settlement_date'] ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-400'); ?> flex items-center justify-center ring-4 ring-white shadow" title="<?php echo e(!$set ? 'Ödeme Detay Exceli Yüklenmemiş' : ''); ?>">
+                                            <div class="h-8 w-8 rounded-full <?php echo e($set['has_settlement'] && $set['settlement_date'] ? 'bg-emerald-500 text-white' : ($set['is_paid'] ? 'bg-emerald-300 text-emerald-700' : ($set['expected_date'] ? 'bg-amber-100 text-amber-500' : 'bg-gray-100 text-gray-400'))); ?> flex items-center justify-center ring-4 ring-white shadow">
                                                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                             </div>
                                             <div class="mt-3 hidden sm:block text-right">
-                                                <span class="text-xs font-semibold text-gray-900 block">Tahsil Edildi</span>
-                                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($set): ?>
-                                                    <span class="text-xs text-gray-500"><?php echo e($set['settlement_date'] ?? 'Henüz Yatmadı'); ?></span>
+                                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($set['has_settlement'] && $set['settlement_date']): ?>
+                                                    
+                                                    <span class="text-xs font-semibold text-gray-900 block">Tahsil Edildi</span>
+                                                    <span class="text-xs text-emerald-600 font-medium"><?php echo e($set['settlement_date']); ?></span>
+                                                <?php elseif($set['is_paid']): ?>
+                                                    
+                                                    <span class="text-xs font-semibold text-gray-900 block">Yatmış Olmalı</span>
+                                                    <span class="text-[10px] text-emerald-600 block leading-tight mt-1 font-medium" title="Vade tarihi geçti, Excel yüklenmedi.">Tahmini:<br><?php echo e($set['expected_date']); ?></span>
+                                                <?php elseif($set['expected_date']): ?>
+                                                    
+                                                    <span class="text-xs font-semibold text-gray-900 block">Tahsil Edilecek</span>
+                                                    <span class="text-[10px] text-amber-600 block leading-tight mt-1 font-medium" title="Trendyol ödeme gününe göre beklenen tahsilat tarihi.">Öngörülen:<br><?php echo e($set['expected_date']); ?></span>
                                                 <?php else: ?>
-                                                    <span class="text-[10px] text-red-500 block leading-tight mt-1" title="Ödeme gününü görmek için Ödeme Detay Excel'ini yükleyin.">Ödeme Excel'i<br>Eksik</span>
+                                                    <span class="text-xs font-semibold text-gray-900 block">Tahsilat Durumu</span>
+                                                    <span class="text-[10px] text-red-500 block leading-tight mt-1">Tarih Yok</span>
                                                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                             </div>
                                         </div>
@@ -257,24 +299,55 @@
                                 </div>
 
                                 <!-- Alt Toplam Sınırı -->
-                                <div class="mt-5 bg-gray-50 p-4 rounded-lg border border-gray-200 flex justify-between items-center">
-                                    <span class="text-sm font-bold text-gray-700">Tahmini Net Hakediş (Trendyol Beyanı):</span>
-                                    <span class="text-lg font-black text-gray-900"><?php echo e(number_format($fin['expected_net'], 2, ',', '.')); ?> ₺</span>
+                                <div class="mt-5 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm font-bold text-gray-700">Tahmini Net Hakediş (Trendyol Beyanı):</span>
+                                        <span class="text-lg font-black text-gray-900"><?php echo e(number_format($fin['expected_net'], 2, ',', '.')); ?> ₺</span>
+                                    </div>
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(isset($set['has_partial_refund']) && $set['has_partial_refund']): ?>
+                                        <p class="text-[10px] text-orange-600 mt-2 leading-tight">
+                                            ⚠️ Bu tutar siparişin orijinal (iade öncesi) beyanıdır. Kısmi iade sonrası gerçek banka tahsilatı farklıdır — sağdaki panele bakınız.
+                                        </p>
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 </div>
                             </div>
                             
                             <!-- 3. DENETİM BİLDİRİMLERİ (Audit Logs) -->
                             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(count($order['audits']) > 0): ?>
-                                <div class="bg-red-50 p-5 rounded-xl border border-red-200 shadow-sm">
-                                    <h4 class="text-xs font-bold text-red-800 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                <?php
+                                    $hasRealError = collect($order['audits'])->contains(fn($a) => in_array($a['severity'], ['critical', 'warning']));
+                                    $panelBg = $hasRealError ? 'bg-red-50 border-red-200' : 'bg-blue-50/50 border-blue-200';
+                                    $panelTitleColor = $hasRealError ? 'text-red-800' : 'text-blue-800';
+                                ?>
+                                <div class="<?php echo e($panelBg); ?> p-5 rounded-xl border shadow-sm">
+                                    <h4 class="text-xs font-bold <?php echo e($panelTitleColor); ?> uppercase tracking-wider mb-3 flex items-center gap-2">
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($hasRealError): ?>
+                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                        <?php else: ?>
+                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                         Denetim Motoru Bulguları
                                     </h4>
                                     <ul class="space-y-3">
                                         <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $order['audits']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $audit): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoop($loop->index); ?><?php endif; ?>
-                                            <li class="bg-white p-3 rounded shadow-sm border-l-4 <?php echo e($audit['severity'] === 'critical' ? 'border-red-600' : 'border-orange-400'); ?>">
-                                                <p class="text-sm font-bold text-gray-900"><?php echo e($audit['title']); ?></p>
-                                                <p class="text-xs text-gray-600 mt-1"><?php echo e($audit['description']); ?></p>
+                                            <?php
+                                                $borderColor = 'border-orange-400';
+                                                $bgClass = 'bg-white';
+                                                $titleColor = 'text-gray-900';
+                                                $descColor = 'text-gray-600';
+                                                
+                                                if ($audit['severity'] === 'critical') {
+                                                    $borderColor = 'border-red-600';
+                                                } elseif (in_array($audit['rule_code'], ['HAKEDIS_ILLUZYON', 'KISMI_IADE']) || $audit['severity'] === 'info') {
+                                                    $borderColor = 'border-blue-400';
+                                                    $bgClass = 'bg-blue-50/70';
+                                                    $titleColor = 'text-blue-800';
+                                                    $descColor = 'text-blue-700';
+                                                }
+                                            ?>
+                                            <li class="<?php echo e($bgClass); ?> p-3 rounded shadow-sm border-l-4 <?php echo e($borderColor); ?>">
+                                                <p class="text-sm font-bold <?php echo e($titleColor); ?>"><?php echo e($audit['title']); ?></p>
+                                                <p class="text-xs <?php echo e($descColor); ?> mt-1"><?php echo e($audit['description']); ?></p>
                                             </li>
                                         <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                     </ul>
@@ -295,7 +368,8 @@
                                 
                                 <h4 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 z-10 relative">Banka Tahsilatı (Gerçekleşen)</h4>
                                 
-                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($set && $set['settlement_date']): ?>
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($set['has_settlement'] && $set['settlement_date']): ?>
+                                    
                                     <div class="flex items-baseline gap-1 my-3 z-10 relative">
                                         <span class="text-4xl font-black text-emerald-400"><?php echo e(number_format($set['seller_hakedis'], 2, ',', '.')); ?></span>
                                         <span class="text-lg font-medium text-emerald-200">₺</span>
@@ -304,17 +378,64 @@
                                         Kayıt: <strong><?php echo e($set['settlement_date']); ?></strong>
                                     </div>
                                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($set['is_reconciled']): ?>
-                                        <div class="mt-4 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-medium z-10 relative">
+                                        <div class="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-medium z-10 relative"
+                                             title="Banka yatışı: <?php echo e(number_format($set['seller_hakedis'], 2, ',', '.')); ?> ₺ | Sipariş beyanı: <?php echo e(number_format($set['expected_net'] ?? 0, 2, ',', '.')); ?> ₺&#10;Not: <?php echo e($set['variance'] > 0 ? 'Fark, Hizmet Bedeli\'nin Cari Hesap üzerinden ayrıca kesildiğini gösterir — normaldir.' : 'Beyanla örtüşüyor.'); ?>">
                                             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                            Trendyol raporu ile mutabık
+                                            Ödeme Alındı
                                         </div>
                                     <?php else: ?>
-                                        <div class="mt-4 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-500/20 border border-red-500/30 text-rose-300 text-xs font-medium z-10 relative">
+                                        
+                                        <div class="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-500/20 border border-red-500/30 text-rose-300 text-xs font-medium z-10 relative"
+                                             title="Beklenen: <?php echo e(number_format($set['expected_net'] ?? 0, 2, ',', '.')); ?> ₺ | Yatan: <?php echo e(number_format($set['seller_hakedis'], 2, ',', '.')); ?> ₺ | Fark: <?php echo e(number_format(abs($set['variance'] ?? 0), 2, ',', '.')); ?> ₺">
                                             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                                            Eksik Ödeme!
+                                            Eksik Ödeme — <?php echo e(number_format(abs($set['variance'] ?? 0), 2, ',', '.')); ?> ₺ Açık
                                         </div>
                                     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(isset($set['settlement_details']) && count($set['settlement_details']) > 1): ?>
+                                        <div class="mt-4 pt-3 border-t border-gray-700/50 z-10 relative">
+                                            <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2">Ekstre İşlem Detayı (Banka Cüzdanı)</p>
+                                            <ul class="space-y-1">
+                                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $set['settlement_details']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $sd): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoop($loop->index); ?><?php endif; ?>
+                                                    <li class="flex justify-between items-center text-xs">
+                                                        <span class="text-gray-300 truncate w-36" title="<?php echo e($sd['type']); ?>">
+                                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(str_contains(mb_strtolower($sd['type']), 'iade')): ?>
+                                                                <span class="text-rose-400 font-bold">Kısmi İade Kesintisi</span>
+                                                            <?php else: ?>
+                                                                <?php echo e($sd['type']); ?>
+
+                                                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                                        </span>
+                                                        <span class="<?php echo e($sd['amount'] >= 0 ? 'text-emerald-400' : 'text-rose-400'); ?> font-mono tracking-tight">
+                                                            <?php echo e($sd['amount'] > 0 ? '+' : ''); ?><?php echo e(number_format($sd['amount'], 2, ',', '.')); ?> ₺
+                                                        </span>
+                                                    </li>
+                                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
+                                            </ul>
+                                        </div>
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+                                <?php elseif($set['is_paid']): ?>
+                                    
+                                    <div class="py-6 text-center z-10 relative">
+                                        <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 mb-3 border border-emerald-500/30">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        </div>
+                                        <p class="text-emerald-300 text-sm font-medium">Yatmış Olmalı</p>
+                                        <p class="text-emerald-400 text-xs mt-1">Tahmini: <strong><?php echo e($set['expected_date']); ?></strong></p>
+                                        <p class="text-gray-500 text-[10px] mt-2">Teyit için Ödeme Excel'i yükleyin.</p>
+                                    </div>
+                                <?php elseif($set['expected_date']): ?>
+                                    
+                                    <div class="py-6 text-center z-10 relative">
+                                        <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 mb-3 border border-amber-500/30">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        </div>
+                                        <p class="text-gray-300 text-sm font-medium">Ödeme Bekliyor</p>
+                                        <p class="text-amber-400 text-xs mt-1">Öngörülen: <strong><?php echo e($set['expected_date']); ?></strong></p>
+                                    </div>
                                 <?php else: ?>
+                                    
                                     <div class="py-6 text-center z-10 relative">
                                         <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-700 text-gray-400 mb-3">
                                             <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -452,4 +573,4 @@
         </div>
     </div>
 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-<?php /**PATH C:\laragon\www\zolm\resources\views/livewire/mp-order-modal.blade.php ENDPATH**/ ?>
+<?php /**PATH /var/www/html/resources/views/livewire/mp-order-modal.blade.php ENDPATH**/ ?>

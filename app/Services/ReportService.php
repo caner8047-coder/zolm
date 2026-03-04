@@ -96,6 +96,17 @@ class ReportService
     public function netVatPayable(int $periodId): array
     {
         $svc = new \App\Services\MpSettingsService();
+        
+        // KDV hesaplama kapalıysa sıfır döndür
+        if (!$svc->isKdvEnabled()) {
+            return [
+                'sales_vat'   => 0,
+                'expense_vat' => 0,
+                'net_vat'     => 0,
+                'is_payable'  => false,
+            ];
+        }
+
         $expenseVatRate = $svc->getExpenseVatRate();
         $defaultVatRate = $svc->getDefaultProductVatRate();
 

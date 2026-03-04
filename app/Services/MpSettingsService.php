@@ -135,6 +135,15 @@ class MpSettingsService
         return $this->getFloat('tax.expense_vat_rate', 0.20);
     }
 
+    /**
+     * Net KDV Yükü hesaplaması açık mı?
+     * Kapalıysa (varsayılan) KDV kâr hesaplarında dikkate alınmaz.
+     */
+    public function isKdvEnabled(): bool
+    {
+        return (bool) $this->get('tax.kdv_hesaplama_aktif', false);
+    }
+
     public function getBaremLimit(): float
     {
         return $this->getFloat('cargo.barem_limit', 300);
@@ -240,6 +249,7 @@ class MpSettingsService
                 'stopaj_rate'              => 0.01,
                 'default_product_vat_rate' => 0.10,
                 'expense_vat_rate'         => 0.20,
+                'kdv_hesaplama_aktif'      => false,
             ],
             'cargo' => [
                 'barem_limit'           => 300,

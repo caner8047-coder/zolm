@@ -178,4 +178,4 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
         </div>
     </div>
 </div>
-<?php /**PATH C:\laragon\www\zolm\resources\views/livewire/production-motor.blade.php ENDPATH**/ ?>
+<?php /**PATH /var/www/html/resources/views/livewire/production-motor.blade.php ENDPATH**/ ?>

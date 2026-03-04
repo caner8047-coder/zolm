@@ -115,4 +115,4 @@
     </div>
 </body>
 </html>
-<?php /**PATH C:\laragon\www\zolm\resources\views/auth/login.blade.php ENDPATH**/ ?>
+<?php /**PATH /var/www/html/resources/views/auth/login.blade.php ENDPATH**/ ?>
