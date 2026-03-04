@@ -68,6 +68,7 @@ class MarketplaceAccounting extends Component
     public float $settingsStopajRate = 0.01;
     public float $settingsDefaultProductVatRate = 0.10;
     public float $settingsExpenseVatRate = 0.20;
+    public bool $settingsKdvHesaplamaAktif = false;
 
     // Bölüm 2: Kargo & Barem
     public float $settingsBaremLimit = 300;
@@ -149,10 +150,20 @@ class MarketplaceAccounting extends Component
         $this->selectedYear = (int) date('Y');
         $this->selectedMonth = (int) date('n');
 
+        // Öncelikle içinde sipariş verisi bulunan en güncel dönemi bul
         $lastPeriod = MpPeriod::where('user_id', Auth::id())
+            ->whereHas('orders')
             ->orderBy('year', 'desc')
             ->orderBy('month', 'desc')
             ->first();
+
+        // Eğer veri olan dönem yoksa, herhangi bir dönemi al
+        if (!$lastPeriod) {
+            $lastPeriod = MpPeriod::where('user_id', Auth::id())
+                ->orderBy('year', 'desc')
+                ->orderBy('month', 'desc')
+                ->first();
+        }
 
         if ($lastPeriod) {
             $this->selectedPeriodId = $lastPeriod->id;
@@ -183,6 +194,7 @@ class MarketplaceAccounting extends Component
         $this->settingsStopajRate             = (float) ($all['tax']['stopaj_rate'] ?? 0.01);
         $this->settingsDefaultProductVatRate   = (float) ($all['tax']['default_product_vat_rate'] ?? 0.10);
         $this->settingsExpenseVatRate           = (float) ($all['tax']['expense_vat_rate'] ?? 0.20);
+        $this->settingsKdvHesaplamaAktif        = (bool) ($all['tax']['kdv_hesaplama_aktif'] ?? false);
 
         // Bölüm 2: Kargo
         $this->settingsBaremLimit              = (float) ($all['cargo']['barem_limit'] ?? 300);
@@ -269,6 +281,7 @@ class MarketplaceAccounting extends Component
                 'stopaj_rate'              => (float) $this->settingsStopajRate,
                 'default_product_vat_rate' => (float) $this->settingsDefaultProductVatRate,
                 'expense_vat_rate'         => (float) $this->settingsExpenseVatRate,
+                'kdv_hesaplama_aktif'      => (bool) $this->settingsKdvHesaplamaAktif,
             ],
             'cargo' => [
                 'barem_limit'           => (float) $this->settingsBaremLimit,
@@ -1031,11 +1044,22 @@ class MarketplaceAccounting extends Component
 
             // Güncelle — birim maliyet × sipariş adedi
             $qty = max(1, (int) $order->quantity);
-            $order->update([
+            
+            $updateData = [
                 'cogs_at_time'          => round((float)$product->cogs * $qty, 2),
                 'packaging_cost_at_time' => round((float)($product->packaging_cost ?? 0) * $qty, 2),
                 'product_vat_rate'      => $product->vat_rate ?? 10,
-            ]);
+            ];
+
+            // Ürün adı veya stok kodu boşsa sync işleminde onu da doldur
+            if (empty($order->product_name) && !empty($product->product_name)) {
+                $updateData['product_name'] = $product->product_name;
+            }
+            if (empty($order->stock_code) && !empty($product->stock_code)) {
+                $updateData['stock_code'] = $product->stock_code;
+            }
+
+            $order->update($updateData);
             $updated++;
         }
 
@@ -1256,6 +1280,9 @@ class MarketplaceAccounting extends Component
                 )
                 ->when($this->advancedOrderFilter === 'returned', fn($q) =>
                     $q->returned()
+                )
+                ->when($this->advancedOrderFilter === 'cancelled', fn($q) =>
+                    $q->cancelled()
                 )
             ->with(['period', 'settlement']) // Yıl/Ay ve Vade (Nakit Akışı) gösterimi için
             ->orderByDesc('order_date');
