@@ -23,6 +23,257 @@ class AuditEngine
 {
     protected MpSettingsService $settings;
 
+    /**
+     * Tüm denetim kuralları — yeni kural eklendiğinde buraya da eklenmeli.
+     */
+    public const RULES = [
+        'checkStopaj',
+        'checkBaremExcess',
+        'checkCommissionRefund',
+        'checkSunkCost',
+        'checkHakedisDiscrepancy',
+        'checkOperationalPenalties',
+        'checkMultipleCart',
+        'checkEarsivReminder',
+        'checkHeavyCargoPenalty',
+        'checkCommissionRefundTracking',
+        'checkMissingPayments',
+        'checkDelayedPayments',
+        'checkTransactionDiscrepancy',
+        'checkExtremeMargins',
+        'checkCommissionMismatch',
+        // ── Yeni Kurallar ──
+        'checkMissingCogs',
+        'checkPriceDrop',
+        'checkNegativeHakedis',
+        'checkCargoOverCost',
+        'checkHighReturnRate',
+        // ── Faz 3 Kurallar ──
+        'checkCampaignLoss',
+        'checkCommissionRateChange',
+        'checkServiceFeeIncrease',
+        'checkHighCancellationRate',
+    ];
+
+    /**
+     * Her kuralın kullanıcıya gösterilecek metadata bilgisi.
+     * Tooltip, kural listesi ve audit log badge'lerinde kullanılır.
+     */
+    public const RULE_META = [
+        'checkStopaj' => [
+            'code'     => 'STOPAJ',
+            'title'    => 'Stopaj Doğrulaması',
+            'tooltip'  => 'Brüt satış × %1 ≈ kesilen stopaj mı? Vergi dairesine fazla/eksik ödeme riskini tespit eder.',
+            'severity' => 'warning',
+            'category' => 'Vergi',
+            'icon'     => '🏛️',
+        ],
+        'checkBaremExcess' => [
+            'code'     => 'BAREM_ASIMI',
+            'title'    => 'Barem Aşımı',
+            'tooltip'  => 'Kargo tutarı, barem limitini aşıyor mu? Trendyol\'un fazla kestiği kargo bedellerini tespit eder.',
+            'severity' => 'critical',
+            'category' => 'Kargo',
+            'icon'     => '📦',
+        ],
+        'checkCommissionRefund' => [
+            'code'     => 'KOMISYON_IADE',
+            'title'    => 'Komisyon İade Kontrolü',
+            'tooltip'  => 'İade edilen siparişteki komisyon geri iade edilmiş mi? Trendyol\'un iade sonrası komisyonu geri vermemesini tespit eder.',
+            'severity' => 'critical',
+            'category' => 'Komisyon',
+            'icon'     => '💸',
+        ],
+        'checkSunkCost' => [
+            'code'     => 'YANIK_MALIYET',
+            'title'    => 'Yanık/Batık Maliyet',
+            'tooltip'  => 'İptal veya iade olan siparişteki batık maliyet (COGS + kargo). Geri dönüşü olmayan kayıpları gösterir.',
+            'severity' => 'critical',
+            'category' => 'Maliyet',
+            'icon'     => '🔥',
+        ],
+        'checkHakedisDiscrepancy' => [
+            'code'     => 'HAKEDIS_FARK',
+            'title'    => 'Hakediş Tutarsızlığı',
+            'tooltip'  => 'Beklenen hakediş vs gerçek yatan tutar farkını karşılaştırır. Kısmi iade ve illüzyon hakedişlerini tespit eder.',
+            'severity' => 'critical',
+            'category' => 'Ödeme',
+            'icon'     => '🔍',
+        ],
+        'checkOperationalPenalties' => [
+            'code'     => 'OPERASYONEL_CEZA',
+            'title'    => 'Operasyonel Ceza/Tazminat',
+            'tooltip'  => 'Trendyol tarafından kesilen operasyonel cezaları ve kayıp tazminatlarını tespit eder.',
+            'severity' => 'critical',
+            'category' => 'Ceza',
+            'icon'     => '⚠️',
+        ],
+        'checkMultipleCart' => [
+            'code'     => 'COKLU_SEPET',
+            'title'    => 'Çoklu Sepet Tespiti',
+            'tooltip'  => 'Aynı siparişteki çoklu ürün kartlarını tespit eder. Desi/kargo paylaştırmasının doğruluğunu kontrol eder.',
+            'severity' => 'warning',
+            'category' => 'Sipariş',
+            'icon'     => '🛒',
+        ],
+        'checkEarsivReminder' => [
+            'code'     => 'EARSIV_UYARI',
+            'title'    => 'E-Arşiv Fatura Hatırlatması',
+            'tooltip'  => 'İade edilen sipariş için E-Arşiv fatura iptali veya iade faturası çıkarılması gerektiğini hatırlatır.',
+            'severity' => 'info',
+            'category' => 'Fatura',
+            'icon'     => '🧾',
+        ],
+        'checkHeavyCargoPenalty' => [
+            'code'     => 'AGIR_KARGO_CEZA',
+            'title'    => 'Ağır Kargo Cezası',
+            'tooltip'  => '100 desi üstü ağır kargo taşıma bedelini tespit eder. Bilinen ceza tutarlarıyla karşılaştırır.',
+            'severity' => 'critical',
+            'category' => 'Kargo',
+            'icon'     => '🏋️',
+        ],
+        'checkCommissionRefundTracking' => [
+            'code'     => 'KOMISYON_IADE_TAKIP',
+            'title'    => 'Komisyon İade Takibi',
+            'tooltip'  => 'İade sonrası komisyon iade sürecini takip eder. Henüz iade edilmemiş komisyonları listeler.',
+            'severity' => 'warning',
+            'category' => 'Komisyon',
+            'icon'     => '📋',
+        ],
+        'checkMissingPayments' => [
+            'code'     => 'EKSIK_ODEME',
+            'title'    => 'Eksik Yatan Ödeme',
+            'tooltip'  => 'Trendyol\'un vadettiği net hakediş ile Ödeme Detay raporundaki fiilen yatırılan tutarı karşılaştırır.',
+            'severity' => 'critical',
+            'category' => 'Ödeme',
+            'icon'     => '💰',
+        ],
+        'checkDelayedPayments' => [
+            'code'     => 'KAYIP_ODEME',
+            'title'    => 'Geciken/Kayıp Ödeme',
+            'tooltip'  => 'Vadesi geçmiş ancak henüz ödenmemiş siparişleri tespit eder. Bankaya yatmayan ödemeleri gösterir.',
+            'severity' => 'critical',
+            'category' => 'Ödeme',
+            'icon'     => '⏰',
+        ],
+        'checkTransactionDiscrepancy' => [
+            'code'     => 'CARI_UYUMSUZLUK',
+            'title'    => 'Cari-Hakediş Uyumu',
+            'tooltip'  => 'Cari hesap ekstresi ile hakediş fatura tutarlarının uyumunu kontrol eder.',
+            'severity' => 'warning',
+            'category' => 'Fatura',
+            'icon'     => '🏦',
+        ],
+        'checkExtremeMargins' => [
+            'code'     => 'EXTREME_MARGIN',
+            'title'    => 'Kritik Kâr Marjı İhlali',
+            'tooltip'  => 'Kâr marjı %100\'ü aşan veya -%100\'ü geçen siparişleri tespit eder. Veri hatası veya fiyatlama sorunu göstergesi.',
+            'severity' => 'critical',
+            'category' => 'Kârlılık',
+            'icon'     => '📊',
+        ],
+        'checkCommissionMismatch' => [
+            'code'     => 'KOMISYON_TUTARSIZLIGI',
+            'title'    => 'Komisyon Kuruş Tutarsızlığı',
+            'tooltip'  => 'Komisyon tutarı ile brüt×oran hesabı arasındaki kuruş farklarını tespit eder.',
+            'severity' => 'warning',
+            'category' => 'Komisyon',
+            'icon'     => '🔢',
+        ],
+        // ── Yeni Kurallar ──
+        'checkMissingCogs' => [
+            'code'     => 'COGS_EKSIK',
+            'title'    => 'Maliyet Tanımsız Ürünler',
+            'tooltip'  => 'COGS (ürün maliyeti) tanımlı olmayan siparişleri tespit eder. Kârlılık hesabı güvenilmez — Pazaryeri Ürünlerim\'den maliyet girilmelidir.',
+            'severity' => 'critical',
+            'category' => 'Maliyet',
+            'icon'     => '🏷️',
+        ],
+        'checkPriceDrop' => [
+            'code'     => 'FIYAT_DUSME',
+            'title'    => 'Fiyat Düşme Alarmı',
+            'tooltip'  => 'Aynı ürünün ortalama satış fiyatı önceki döneme göre %15+ düşmüşse alarm verir. Kampanya etkisi veya piyasa değişimini gösterir.',
+            'severity' => 'warning',
+            'category' => 'Fiyat',
+            'icon'     => '📉',
+        ],
+        'checkNegativeHakedis' => [
+            'code'     => 'NEGATIF_HAKEDIS',
+            'title'    => 'Negatif Hakediş Tespiti',
+            'tooltip'  => 'Teslim edilmiş ama negatif hakediş olan siparişleri tespit eder. Kampanya zararı veya kayıt dışı iade göstergesi.',
+            'severity' => 'critical',
+            'category' => 'Ödeme',
+            'icon'     => '🚨',
+        ],
+        'checkCargoOverCost' => [
+            'code'     => 'KARGO_MALIYET_ASIMI',
+            'title'    => 'Kargo Maliyet Aşımı',
+            'tooltip'  => 'Kendi kargo maliyeti, ürün kâr marjının %50\'sini aşıyorsa uyarır. Desi/ambalaj optimizasyonu gerekebilir.',
+            'severity' => 'warning',
+            'category' => 'Kargo',
+            'icon'     => '🚛',
+        ],
+        'checkHighReturnRate' => [
+            'code'     => 'YUKSEK_IADE',
+            'title'    => 'Yüksek İade Oranı',
+            'tooltip'  => 'Aynı SKU\'da iade oranı %15\'i aşıyorsa uyarır. Ürün kalitesi, paketleme veya listing sorununa işaret eder.',
+            'severity' => 'warning',
+            'category' => 'İade',
+            'icon'     => '📦',
+        ],
+        // ── Faz 3 Kurallar ──
+        'checkCampaignLoss' => [
+            'code'     => 'KAMPANYA_ZARAR',
+            'title'    => 'Kampanya Zarar Analizi',
+            'tooltip'  => 'Kampanya indirimi uygulanan siparişlerde net kâr negatife dönmüşse uyarır. Sattıkça zarar eden kampanyaları tespit eder.',
+            'severity' => 'critical',
+            'category' => 'Kârlılık',
+            'icon'     => '🏷️',
+        ],
+        'checkCommissionRateChange' => [
+            'code'     => 'KOMISYON_ORANI_DEGISIMI',
+            'title'    => 'Komisyon Oranı Değişim Tespiti',
+            'tooltip'  => 'Aynı ürünün komisyon oranı önceki döneme göre artmışsa uyarır. Trendyol\'un sessiz komisyon artışlarını tespit eder.',
+            'severity' => 'warning',
+            'category' => 'Komisyon',
+            'icon'     => '📈',
+        ],
+        'checkServiceFeeIncrease' => [
+            'code'     => 'HIZMET_BEDELI_ARTISI',
+            'title'    => 'Hizmet Bedeli Artış Tespiti',
+            'tooltip'  => 'Service fee oranı önceki aya göre artmışsa uyarır. Gizli marj erozyonu göstergesi.',
+            'severity' => 'warning',
+            'category' => 'Komisyon',
+            'icon'     => '💹',
+        ],
+        'checkHighCancellationRate' => [
+            'code'     => 'IPTAL_ORANI',
+            'title'    => 'Yüksek İptal Oranı',
+            'tooltip'  => 'SKU bazında iptal oranı %10\'u aşarsa uyarır. Stok yönetimi, operasyonel ceza riski ve Trendyol algoritma sıralama düşüşü göstergesi.',
+            'severity' => 'warning',
+            'category' => 'İade',
+            'icon'     => '🚫',
+        ],
+    ];
+
+    public static function getRuleCount(): int
+    {
+        return count(self::RULES);
+    }
+
+    /**
+     * Kural kodu (STOPAJ, EXTREME_MARGIN vb.) ile RULE_META eşleşmesi
+     */
+    public static function getMetaByCode(string $ruleCode): ?array
+    {
+        foreach (self::RULE_META as $method => $meta) {
+            if ($meta['code'] === $ruleCode) {
+                return $meta;
+            }
+        }
+        return null;
+    }
+
     public function __construct(?MpSettingsService $settings = null)
     {
         $this->settings = $settings ?? new MpSettingsService();
@@ -30,37 +281,28 @@ class AuditEngine
     /**
      * Tüm denetim kurallarını çalıştır
      */
-    public function runAllRules(MpPeriod $period): array
+    public function runAllRules(MpPeriod $period, array $disabledRules = []): array
     {
         $results = [
             'total_errors'   => 0,
             'total_warnings' => 0,
             'total_amount'   => 0,
             'rules_run'      => [],
+            'rules_skipped'  => [],
         ];
 
         // Önceki audit loglarını temizle (her çalıştırmada taze sonuç)
         MpAuditLog::where('period_id', $period->id)->delete();
 
-        $rules = [
-            'checkStopaj',
-            'checkBaremExcess',
-            'checkCommissionRefund',
-            'checkSunkCost',
-            'checkHakedisDiscrepancy',
-            'checkOperationalPenalties',
-            'checkMultipleCart',
-            'checkEarsivReminder',
-            'checkHeavyCargoPenalty',          // Faz 2 — Ağır kargo cezası tespiti
-            'checkCommissionRefundTracking',   // Faz 2 — Komisyon iadesi takibi (enhanced)
-            'checkMissingPayments',            // Faz 4 — Eksik Yatan Ödeme (Net Hakediş vs Yatan)
-            'checkDelayedPayments',            // Faz 4 — Geciken/Kayıp Ödeme (Vadesi geçen)
-            'checkTransactionDiscrepancy',     // Faz 4 — Cari vs Hakediş Fatura Uyumu
-            'checkExtremeMargins',             // Epic 3 — İmkansız Kâr Marjları (Guard Rails)
-            'checkCommissionMismatch',         // Epic 7 — Komisyon Kuruş Tutarsızlığı
-        ];
+        $rules = self::RULES;
 
         foreach ($rules as $rule) {
+            // Kullanıcı tarafından devre dışı bırakılan kuralları atla
+            if (in_array($rule, $disabledRules)) {
+                $results['rules_skipped'][] = $rule;
+                continue;
+            }
+
             try {
                 $count = $this->$rule($period);
                 $results['rules_run'][$rule] = $count;
@@ -352,12 +594,7 @@ class AuditEngine
             // 'Tahmini Net Hakediş' (net_hakedis) sütunundan düşülmemiş halde gelir (!). 
             // Bu nedenle Audit motoru kıyaslama yaparken stopajı denkleme katmaz, aksi takdirde false-positive üretir.
             // Excel'den gelen gider değerleri negatif (-) bile gelse abs() ile mutlaka mutlak değer çıkarılır
-            $calculated = (float) $order->gross_amount
-                        - abs((float) $order->discount_amount)
-                        - abs((float) $order->campaign_discount)
-                        - abs((float) $order->commission_amount)
-                        - abs((float) $order->cargo_amount)
-                        - abs((float) $order->service_fee);
+            $calculated = $this->calculateExpectedNetFromOrder($order);
 
             $reported = (float) $order->net_hakedis;
             $diff = abs($calculated - $reported);
@@ -377,7 +614,9 @@ class AuditEngine
             $hakedisTolerance = $this->settings->getFloat('audit_tolerances.hakedis_tolerance', 1.0);
             if ($diff > $hakedisTolerance) {
                 // ── ADIM 1: Settlement verisiyle doğrulama (Tüm kayıtlar toplanır) ──
-                $allSettlements = MpSettlement::where('order_number', $order->order_number)->get();
+                $allSettlements = MpSettlement::where('period_id', $period->id)
+                    ->where('order_number', $order->order_number)
+                    ->get();
                 $netSettlement  = (float) $allSettlements->sum('seller_hakedis');
                 
                 $refundSettlements = $allSettlements->filter(function($s) {
@@ -841,7 +1080,9 @@ class AuditEngine
             $totalExpectedNet = (float) $orderRows->sum('net_hakedis'); // Konsolide beklenti
             
             // Tüm settlement kayıtlarını order_number ile al
-            $allSettlements = MpSettlement::where('order_number', $orderNumber)->get();
+            $allSettlements = MpSettlement::where('period_id', $period->id)
+                ->where('order_number', $orderNumber)
+                ->get();
             if ($allSettlements->isEmpty()) continue; // Settlement yoksa bu kural kapsamında değil
 
             // Kuponları (eksi bakiye ama satıcıdan kesilmeyen / veya satıcıya artı yansımayan platform indirimleri vs) 
@@ -854,7 +1095,9 @@ class AuditEngine
             // Kısmi iade varsa → net tutar doğal olarak düşük, bu "eksik ödeme" değil
             if ($hasRefund) {
                 // Mutabakat: kısmi iade olan siparişlerde net tutarı kabul et
-                MpSettlement::where('order_number', $orderNumber)->update(['is_reconciled' => true]);
+                MpSettlement::where('period_id', $period->id)
+                    ->where('order_number', $orderNumber)
+                    ->update(['is_reconciled' => true]);
                 continue;
             }
 
@@ -877,7 +1120,9 @@ class AuditEngine
                 // Pozitif settlement satır sayısı, toplam adetten az ise 
                 // → henüz tüm adetlerin ödeme kaydı yüklenmemiş demektir
                 if ($positiveSettlementRows < $totalQuantity) {
-                    MpSettlement::where('order_number', $orderNumber)->update(['is_reconciled' => true]);
+                    MpSettlement::where('period_id', $period->id)
+                        ->where('order_number', $orderNumber)
+                        ->update(['is_reconciled' => true]);
                     continue;
                 }
             }
@@ -889,18 +1134,15 @@ class AuditEngine
                 // Trendyol'un net_hakedis'i yanıltıcı olabilir — hesaplanan hakediş ile de kontrol et
                 $calculated = 0;
                 foreach($orderRows as $r) {
-                    $calculated += (float) $r->gross_amount
-                                - abs((float) $r->discount_amount)
-                                - abs((float) $r->campaign_discount)
-                                - abs((float) $r->commission_amount)
-                                - abs((float) $r->cargo_amount)
-                                - abs((float) $r->service_fee);
+                    $calculated += $this->calculateExpectedNetFromOrder($r);
                 }
                 
                 // Eğer bankaya yatan hesaplananla uyumluysa → Trendyol beyanı yanıltıcı, gerçek kayıp yok
                 // Ya da yatırılan tutar beklenen tutardan DAHA fazlaysa (kupon iadesi, fazla yatırma vs) alarm verme
                 if ($totalDeposited >= $calculated * 0.90 || $totalDeposited >= $expected) {
-                    MpSettlement::where('order_number', $orderNumber)->update(['is_reconciled' => true]);
+                    MpSettlement::where('period_id', $period->id)
+                        ->where('order_number', $orderNumber)
+                        ->update(['is_reconciled' => true]);
                     continue;
                 }
 
@@ -922,12 +1164,16 @@ class AuditEngine
 
                 // Tüm satırları flagle
                 $orderRows->each(fn($o) => $o->update(['is_flagged' => true]));
-                MpSettlement::where('order_number', $orderNumber)->update(['is_reconciled' => false, 'notes' => 'Eksik ödeme']);
+                MpSettlement::where('period_id', $period->id)
+                    ->where('order_number', $orderNumber)
+                    ->update(['is_reconciled' => false, 'notes' => 'Eksik ödeme']);
                 
                 $count++;
             } else {
                 // Mutabakat sağlandı
-                MpSettlement::where('order_number', $orderNumber)->update(['is_reconciled' => true]);
+                MpSettlement::where('period_id', $period->id)
+                    ->where('order_number', $orderNumber)
+                    ->update(['is_reconciled' => true]);
             }
         }
 
@@ -947,8 +1193,13 @@ class AuditEngine
         // Teslim edilmiş, iptal olmayan ve henüz settlement dosyasına girmemiş siparişler
         $orders = MpOrder::where('period_id', $period->id)
             ->where('status', 'Teslim Edildi')
-            ->whereDoesntHave('settlement')
             ->whereNotNull('delivery_date')
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('mp_settlements')
+                    ->whereColumn('mp_settlements.order_number', 'mp_orders.order_number')
+                    ->whereColumn('mp_settlements.period_id', 'mp_orders.period_id');
+            })
             ->get();
 
         foreach ($orders as $order) {
@@ -968,7 +1219,7 @@ class AuditEngine
                                      . $order->delivery_date->format('d.m.Y') . "). "
                                      . "Ancak yüklediğiniz Ödeme Detay (Hakediş) dosyalarının hiçbirinde "
                                      . "bu siparişe ait banka transfer kaydı bulunmuyor! "
-                                     . "Beklenen tutar: " . number_format($order->net_hakedis, 2, ',', '.') . " TL ieride kalmış olabilir.",
+                                     . "Beklenen tutar: " . number_format($order->net_hakedis, 2, ',', '.') . " TL içeride kalmış olabilir.",
                     'expected_value' => $order->net_hakedis,
                     'actual_value'   => 0,
                     'difference'     => (float) $order->net_hakedis,
@@ -1028,6 +1279,464 @@ class AuditEngine
                 ]);
 
                 $order->update(['is_flagged' => true]);
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * Sipariş satırından beklenen net hakedişi hesapla.
+     * Ham sipariş dosyasındaki iade/iptal/ceza gibi ekstra kalemler varsa hesaba dahil eder.
+     */
+    protected function calculateExpectedNetFromOrder(MpOrder $order): float
+    {
+        $base = (float) $order->gross_amount
+            - abs((float) $order->discount_amount)
+            - abs((float) $order->campaign_discount)
+            - abs((float) $order->commission_amount)
+            - abs((float) $order->cargo_amount)
+            - abs((float) $order->service_fee);
+
+        $raw = is_array($order->raw_data) ? $order->raw_data : [];
+        if (empty($raw)) {
+            return $base;
+        }
+
+        $extraDeductions = abs($this->rawToFloat($raw['refund_amount'] ?? 0))
+            + abs($this->rawToFloat($raw['cancel_amount'] ?? 0))
+            + abs($this->rawToFloat($raw['return_cargo_amount'] ?? 0))
+            + abs($this->rawToFloat($raw['penalty_amount'] ?? 0))
+            + abs($this->rawToFloat($raw['other_amount'] ?? 0))
+            + abs($this->rawToFloat($raw['intl_operation_refund'] ?? 0));
+
+        return $base - $extraDeductions;
+    }
+
+    protected function rawToFloat($value): float
+    {
+        if ($value === null || $value === '') {
+            return 0.0;
+        }
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+
+        $value = (string) $value;
+        $value = preg_replace('/[^\d.,-]/', '', $value) ?? '';
+        if ($value === '') {
+            return 0.0;
+        }
+
+        if (str_contains($value, ',') && str_contains($value, '.')) {
+            $value = str_replace('.', '', $value);
+            $value = str_replace(',', '.', $value);
+        } elseif (str_contains($value, ',')) {
+            $value = str_replace(',', '.', $value);
+        }
+
+        return is_numeric($value) ? (float) $value : 0.0;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // KURAL 16: COGS_EKSIK — Maliyet Tanımsız Ürünler
+    // Teslim edilen siparişlerde COGS=0 ise kârlılık hesabı güvenilmez
+    // ═══════════════════════════════════════════════════════════════
+    protected function checkMissingCogs(MpPeriod $period): int
+    {
+        $orders = MpOrder::where('period_id', $period->id)
+            ->where('status', 'Teslim Edildi')
+            ->where(function ($q) {
+                $q->whereNull('cogs_at_time')->orWhere('cogs_at_time', 0);
+            })
+            ->get();
+
+        if ($orders->isEmpty()) return 0;
+
+        // SKU bazlı grupla → özet alarm üret
+        $grouped = $orders->groupBy(fn($o) => ($o->barcode ?: $o->stock_code ?: 'unknown'));
+        $count = 0;
+
+        foreach ($grouped as $sku => $skuOrders) {
+            $totalGross = $skuOrders->sum('gross_amount');
+            $orderCount = $skuOrders->count();
+            $sampleName = $skuOrders->first()->product_name;
+
+            MpAuditLog::create([
+                'period_id'      => $period->id,
+                'rule_code'      => 'COGS_EKSIK',
+                'severity'       => 'critical',
+                'title'          => "Maliyet Tanımsız: {$sku}",
+                'description'    => "{$sampleName} — {$orderCount} sipariş, toplam {$totalGross} ₺ brüt ciro. COGS (üretim/alış maliyeti) tanımlanmamış, kârlılık hesabı güvenilmez. Pazaryeri Ürünlerim'den maliyet giriniz.",
+                'expected_value' => $totalGross,
+                'actual_value'   => 0,
+                'difference'     => $totalGross,
+            ]);
+            $count++;
+        }
+
+        return $count;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // KURAL 17: FIYAT_DUSME — Fiyat Düşme Alarmı
+    // Aynı ürünün ort. satış fiyatı önceki döneme göre %15+ düşmüşse alarm
+    // ═══════════════════════════════════════════════════════════════
+    protected function checkPriceDrop(MpPeriod $period): int
+    {
+        // Önceki dönemi bul
+        $prevMonth = $period->month - 1;
+        $prevYear  = $period->year;
+        if ($prevMonth < 1) { $prevMonth = 12; $prevYear--; }
+
+        $prevPeriod = MpPeriod::where('year', $prevYear)->where('month', $prevMonth)->first();
+        if (!$prevPeriod) return 0;
+
+        // Bu dönem SKU bazlı ortalama fiyat
+        $currentPrices = MpOrder::where('period_id', $period->id)
+            ->where('status', 'Teslim Edildi')
+            ->whereNotNull('barcode')->where('barcode', '!=', '')
+            ->where('gross_amount', '>', 0)
+            ->selectRaw('barcode, AVG(gross_amount / GREATEST(quantity, 1)) as avg_price, COUNT(*) as cnt, MIN(product_name) as product_name')
+            ->groupBy('barcode')
+            ->having('cnt', '>=', 3) // En az 3 sipariş olan ürünler
+            ->get()->keyBy('barcode');
+
+        // Önceki dönem SKU bazlı ortalama fiyat
+        $prevPrices = MpOrder::where('period_id', $prevPeriod->id)
+            ->where('status', 'Teslim Edildi')
+            ->whereNotNull('barcode')->where('barcode', '!=', '')
+            ->where('gross_amount', '>', 0)
+            ->selectRaw('barcode, AVG(gross_amount / GREATEST(quantity, 1)) as avg_price, COUNT(*) as cnt')
+            ->groupBy('barcode')
+            ->having('cnt', '>=', 3)
+            ->get()->keyBy('barcode');
+
+        $count = 0;
+        foreach ($currentPrices as $barcode => $current) {
+            if (!isset($prevPrices[$barcode])) continue;
+
+            $prev = $prevPrices[$barcode];
+            $dropPct = (($prev->avg_price - $current->avg_price) / $prev->avg_price) * 100;
+
+            if ($dropPct >= 15) {
+                MpAuditLog::create([
+                    'period_id'      => $period->id,
+                    'rule_code'      => 'FIYAT_DUSME',
+                    'severity'       => 'warning',
+                    'title'          => "Fiyat Düşüşü: %".round($dropPct)." — {$barcode}",
+                    'description'    => "{$current->product_name} — Ort. birim fiyat: ".number_format($prev->avg_price, 2)." ₺ → ".number_format($current->avg_price, 2)." ₺ (%".round($dropPct)." düşüş). Kampanya etkisi veya piyasa değişimi olabilir.",
+                    'expected_value' => round($prev->avg_price, 2),
+                    'actual_value'   => round($current->avg_price, 2),
+                    'difference'     => round($prev->avg_price - $current->avg_price, 2),
+                ]);
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // KURAL 18: NEGATIF_HAKEDIS — Teslim edilen sipariş, negatif hakediş
+    // ═══════════════════════════════════════════════════════════════
+    protected function checkNegativeHakedis(MpPeriod $period): int
+    {
+        $orders = MpOrder::where('period_id', $period->id)
+            ->where('status', 'Teslim Edildi')
+            ->where('net_hakedis', '<', 0)
+            ->get();
+
+        $count = 0;
+        foreach ($orders as $order) {
+            MpAuditLog::create([
+                'period_id'      => $period->id,
+                'order_id'       => $order->id,
+                'rule_code'      => 'NEGATIF_HAKEDIS',
+                'severity'       => 'critical',
+                'title'          => "Negatif Hakediş — Sipariş #{$order->order_number}",
+                'description'    => "{$order->product_name} — Teslim edilmiş ancak net hakediş: ".number_format($order->net_hakedis, 2)." ₺. Kampanya zararı veya kayıt dışı iade olabilir. Brüt: ".number_format($order->gross_amount, 2)." ₺.",
+                'expected_value' => $order->gross_amount,
+                'actual_value'   => $order->net_hakedis,
+                'difference'     => abs($order->net_hakedis),
+            ]);
+            $count++;
+        }
+
+        return $count;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // KURAL 19: KARGO_MALIYET_ASIMI — Kendi kargo maliyeti kâr marjını yiyor
+    // ═══════════════════════════════════════════════════════════════
+    protected function checkCargoOverCost(MpPeriod $period): int
+    {
+        $orders = MpOrder::where('period_id', $period->id)
+            ->where('status', 'Teslim Edildi')
+            ->where('own_cargo_cost_at_time', '>', 0)
+            ->where('net_hakedis', '>', 0)
+            ->get();
+
+        $count = 0;
+        foreach ($orders as $order) {
+            $profit = $order->net_hakedis - ($order->cogs_at_time ?? 0) - ($order->packaging_cost_at_time ?? 0);
+            if ($profit <= 0) continue; // Zaten zararda, başka kural yakalar
+
+            $cargoRatio = $order->own_cargo_cost_at_time / $profit;
+            if ($cargoRatio >= 0.50) { // Kargo maliyeti brüt kârın %50'sinden fazla
+                MpAuditLog::create([
+                    'period_id'      => $period->id,
+                    'order_id'       => $order->id,
+                    'rule_code'      => 'KARGO_MALIYET_ASIMI',
+                    'severity'       => 'warning',
+                    'title'          => "Kargo Maliyeti Aşımı %" . round($cargoRatio * 100) . " — #{$order->order_number}",
+                    'description'    => "{$order->product_name} — Brüt kâr (hakediş - COGS): ".number_format($profit, 2)." ₺, Kendi kargo maliyeti: ".number_format($order->own_cargo_cost_at_time, 2)." ₺ (%".round($cargoRatio * 100)."). Desi/ambalaj optimizasyonu düşünülmeli.",
+                    'expected_value' => round($profit, 2),
+                    'actual_value'   => round($order->own_cargo_cost_at_time, 2),
+                    'difference'     => round($order->own_cargo_cost_at_time, 2),
+                ]);
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // KURAL 20: YUKSEK_IADE — SKU bazlı yüksek iade oranı
+    // ═══════════════════════════════════════════════════════════════
+    protected function checkHighReturnRate(MpPeriod $period): int
+    {
+        // SKU bazlı sipariş ve iade sayısı
+        $stats = MpOrder::where('period_id', $period->id)
+            ->whereNotNull('barcode')->where('barcode', '!=', '')
+            ->selectRaw("
+                barcode,
+                MIN(product_name) as product_name,
+                SUM(CASE WHEN status = 'Teslim Edildi' THEN quantity ELSE 0 END) as delivered,
+                SUM(CASE WHEN status = 'İade Edildi' THEN quantity ELSE 0 END) as returned,
+                COUNT(*) as total_orders
+            ")
+            ->groupBy('barcode')
+            ->get();
+
+        $count = 0;
+        foreach ($stats as $stat) {
+            $total = $stat->delivered + $stat->returned;
+            if ($total < 5) continue; // Minimum sipariş eşiği
+
+            $returnRate = $total > 0 ? ($stat->returned / $total) * 100 : 0;
+            if ($returnRate >= 15) {
+                MpAuditLog::create([
+                    'period_id'      => $period->id,
+                    'rule_code'      => 'YUKSEK_IADE',
+                    'severity'       => 'warning',
+                    'title'          => "Yüksek İade Oranı: %" . round($returnRate) . " — {$stat->barcode}",
+                    'description'    => "{$stat->product_name} — Toplam {$total} adet, {$stat->returned} iade (%".round($returnRate)."). Ürün kalitesi, paketleme veya listing bilgilerini gözden geçirin.",
+                    'expected_value' => $total,
+                    'actual_value'   => $stat->returned,
+                    'difference'     => $stat->returned,
+                ]);
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // KURAL 21: KAMPANYA_ZARAR — Kampanya İndirimi Sonucu Zarar
+    // ═══════════════════════════════════════════════════════════════
+    protected function checkCampaignLoss(MpPeriod $period): int
+    {
+        $orders = MpOrder::where('period_id', $period->id)
+            ->where('status', 'Teslim Edildi')
+            ->where('campaign_discount', '>', 0)
+            ->where('cogs_at_time', '>', 0) // COGS tanımlı olmalı
+            ->get();
+
+        // SKU bazlı grupla
+        $grouped = $orders->groupBy(fn($o) => ($o->barcode ?: $o->stock_code ?: 'unknown'));
+        $count = 0;
+
+        foreach ($grouped as $sku => $skuOrders) {
+            $totalLoss = 0;
+            $lossOrders = 0;
+
+            foreach ($skuOrders as $order) {
+                $netProfit = $order->net_hakedis
+                    - ($order->cogs_at_time ?? 0)
+                    - ($order->packaging_cost_at_time ?? 0)
+                    - ($order->own_cargo_cost_at_time ?? 0);
+
+                if ($netProfit < 0) {
+                    $totalLoss += abs($netProfit);
+                    $lossOrders++;
+                }
+            }
+
+            if ($lossOrders > 0) {
+                $totalCampaignDiscount = $skuOrders->sum('campaign_discount');
+                $sampleName = $skuOrders->first()->product_name;
+
+                MpAuditLog::create([
+                    'period_id'      => $period->id,
+                    'rule_code'      => 'KAMPANYA_ZARAR',
+                    'severity'       => 'critical',
+                    'title'          => "Kampanya Zararı: {$sku} — {$lossOrders} sipariş",
+                    'description'    => "{$sampleName} — {$lossOrders}/{$skuOrders->count()} kampanyalı siparişte zarar. Toplam kampanya indirimi: ".number_format($totalCampaignDiscount, 2)." ₺, toplam zarar: ".number_format($totalLoss, 2)." ₺. Kampanya katılımını gözden geçirin.",
+                    'expected_value' => 0,
+                    'actual_value'   => round($totalLoss, 2),
+                    'difference'     => round($totalLoss, 2),
+                ]);
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // KURAL 22: KOMISYON_ORANI_DEGISIMI — Sessiz Komisyon Artışı
+    // ═══════════════════════════════════════════════════════════════
+    protected function checkCommissionRateChange(MpPeriod $period): int
+    {
+        $prevMonth = $period->month - 1;
+        $prevYear  = $period->year;
+        if ($prevMonth < 1) { $prevMonth = 12; $prevYear--; }
+
+        $prevPeriod = MpPeriod::where('year', $prevYear)->where('month', $prevMonth)->first();
+        if (!$prevPeriod) return 0;
+
+        // Bu dönem SKU bazlı ortalama komisyon oranı
+        $currentRates = MpOrder::where('period_id', $period->id)
+            ->where('status', 'Teslim Edildi')
+            ->whereNotNull('barcode')->where('barcode', '!=', '')
+            ->where('commission_rate', '>', 0)
+            ->selectRaw('barcode, AVG(commission_rate) as avg_rate, COUNT(*) as cnt, MIN(product_name) as product_name')
+            ->groupBy('barcode')
+            ->having('cnt', '>=', 3)
+            ->get()->keyBy('barcode');
+
+        // Önceki dönem
+        $prevRates = MpOrder::where('period_id', $prevPeriod->id)
+            ->where('status', 'Teslim Edildi')
+            ->whereNotNull('barcode')->where('barcode', '!=', '')
+            ->where('commission_rate', '>', 0)
+            ->selectRaw('barcode, AVG(commission_rate) as avg_rate, COUNT(*) as cnt')
+            ->groupBy('barcode')
+            ->having('cnt', '>=', 3)
+            ->get()->keyBy('barcode');
+
+        $count = 0;
+        foreach ($currentRates as $barcode => $current) {
+            if (!isset($prevRates[$barcode])) continue;
+
+            $prev = $prevRates[$barcode];
+            $diff = $current->avg_rate - $prev->avg_rate;
+
+            // %1 puandan fazla artış varsa uyar (ör: %15 → %16.5)
+            if ($diff >= 1.0) {
+                MpAuditLog::create([
+                    'period_id'      => $period->id,
+                    'rule_code'      => 'KOMISYON_ORANI_DEGISIMI',
+                    'severity'       => 'warning',
+                    'title'          => "Komisyon Artışı: +" . round($diff, 1) . " puan — {$barcode}",
+                    'description'    => "{$current->product_name} — Komisyon oranı: %" . round($prev->avg_rate, 1) . " → %" . round($current->avg_rate, 1) . " (+" . round($diff, 1) . " puan). Trendyol kategori/politika değişikliği olabilir.",
+                    'expected_value' => round($prev->avg_rate, 2),
+                    'actual_value'   => round($current->avg_rate, 2),
+                    'difference'     => round($diff, 2),
+                ]);
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // KURAL 23: HIZMET_BEDELI_ARTISI — Trendyol Hizmet Bedeli Artışı
+    // ═══════════════════════════════════════════════════════════════
+    protected function checkServiceFeeIncrease(MpPeriod $period): int
+    {
+        $prevMonth = $period->month - 1;
+        $prevYear  = $period->year;
+        if ($prevMonth < 1) { $prevMonth = 12; $prevYear--; }
+
+        $prevPeriod = MpPeriod::where('year', $prevYear)->where('month', $prevMonth)->first();
+        if (!$prevPeriod) return 0;
+
+        // Bu dönem: toplam hizmet bedeli / toplam brüt = oran
+        $currentStats = MpOrder::where('period_id', $period->id)
+            ->where('status', 'Teslim Edildi')
+            ->where('gross_amount', '>', 0)
+            ->selectRaw('SUM(service_fee) as total_service, SUM(gross_amount) as total_gross, COUNT(*) as cnt')
+            ->first();
+
+        $prevStats = MpOrder::where('period_id', $prevPeriod->id)
+            ->where('status', 'Teslim Edildi')
+            ->where('gross_amount', '>', 0)
+            ->selectRaw('SUM(service_fee) as total_service, SUM(gross_amount) as total_gross, COUNT(*) as cnt')
+            ->first();
+
+        if (!$currentStats || !$prevStats || $currentStats->total_gross <= 0 || $prevStats->total_gross <= 0) return 0;
+
+        $currentRate = ($currentStats->total_service / $currentStats->total_gross) * 100;
+        $prevRate    = ($prevStats->total_service / $prevStats->total_gross) * 100;
+        $diff        = $currentRate - $prevRate;
+
+        // %0.5 puandan fazla artış varsa uyar
+        if ($diff >= 0.5) {
+            MpAuditLog::create([
+                'period_id'      => $period->id,
+                'rule_code'      => 'HIZMET_BEDELI_ARTISI',
+                'severity'       => 'warning',
+                'title'          => "Hizmet Bedeli Artışı: +" . round($diff, 2) . " puan",
+                'description'    => "Trendyol hizmet bedeli oranı: %" . round($prevRate, 2) . " → %" . round($currentRate, 2) . ". Toplam hizmet bedeli: " . number_format($currentStats->total_service, 2) . " ₺ (önceki ay: " . number_format($prevStats->total_service, 2) . " ₺). Bu artış tüm siparişlerde marjınızı düşürür.",
+                'expected_value' => round($prevRate, 2),
+                'actual_value'   => round($currentRate, 2),
+                'difference'     => round($currentStats->total_service - $prevStats->total_service, 2),
+            ]);
+            return 1;
+        }
+
+        return 0;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // KURAL 24: IPTAL_ORANI — SKU Bazlı Yüksek İptal Oranı
+    // ═══════════════════════════════════════════════════════════════
+    protected function checkHighCancellationRate(MpPeriod $period): int
+    {
+        $stats = MpOrder::where('period_id', $period->id)
+            ->whereNotNull('barcode')->where('barcode', '!=', '')
+            ->selectRaw("
+                barcode,
+                MIN(product_name) as product_name,
+                COUNT(*) as total_orders,
+                SUM(CASE WHEN status = 'İptal Edildi' THEN 1 ELSE 0 END) as cancelled,
+                SUM(CASE WHEN status = 'Teslim Edildi' THEN 1 ELSE 0 END) as delivered
+            ")
+            ->groupBy('barcode')
+            ->get();
+
+        $count = 0;
+        foreach ($stats as $stat) {
+            if ($stat->total_orders < 5) continue;
+
+            $cancelRate = ($stat->cancelled / $stat->total_orders) * 100;
+            if ($cancelRate >= 10) {
+                MpAuditLog::create([
+                    'period_id'      => $period->id,
+                    'rule_code'      => 'IPTAL_ORANI',
+                    'severity'       => 'warning',
+                    'title'          => "Yüksek İptal Oranı: %" . round($cancelRate) . " — {$stat->barcode}",
+                    'description'    => "{$stat->product_name} — {$stat->total_orders} siparişten {$stat->cancelled} tanesi iptal (%" . round($cancelRate) . "). Stok yönetimi kontrol edilmeli, Trendyol algoritmik sıralama düşüşü ve operasyonel ceza riski var.",
+                    'expected_value' => $stat->total_orders,
+                    'actual_value'   => $stat->cancelled,
+                    'difference'     => $stat->cancelled,
+                ]);
                 $count++;
             }
         }

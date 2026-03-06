@@ -38,6 +38,7 @@ class UnitEconomicsService
         $cargoAmount      = (float) $order->cargo_amount;
         $cogs             = (float) ($order->cogs_at_time ?? 0);
         $packaging        = (float) ($order->packaging_cost_at_time ?? 0);
+        $ownCargo         = (float) ($order->own_cargo_cost_at_time ?? 0);
         $svc              = new \App\Services\MpSettingsService();
         $defaultVatRate   = $svc->getDefaultProductVatRate();
         
@@ -77,17 +78,18 @@ class UnitEconomicsService
         }
 
         // ─── Gerçek Net Kâr ─────────────────────────────────────
-        $realNetProfit = round($hakedis - $cogs - $packaging + min(0, $netVat), 2);
+        $realNetProfit = round($hakedis - $cogs - $packaging - $ownCargo + min(0, $netVat), 2);
         // Eğer KDV negatifse (avantaj), kâra eklenir. Pozitifse (yük), kârdan düşülmez
         // çünkü zaten satış fiyatı içinde tahsil edilmiş — devlete ödenmesi gereken tutar.
-        // Gerçek formül: Kâr = Hakediş - COGS - Ambalaj - max(0, netVat) [vergi yükü]
+        // Gerçek formül: Kâr = Hakediş - COGS - Ambalaj - Kargo - max(0, netVat) [vergi yükü]
         // Ancak kullanıcı "Net KDV Avantajı/Yükü" dahil etmek istiyor
-        $realNetProfitWithVat = round($hakedis - $cogs - $packaging - $netVat, 2);
+        $realNetProfitWithVat = round($hakedis - $cogs - $packaging - $ownCargo - $netVat, 2);
 
         // ─── Epik 8 / Düzeltme: Stopaj Yükü (Teorik veya Pratik) ───
         $actualStopaj = (float) $order->withholding_tax;
         if ($actualStopaj <= 0 && !in_array($order->status, ['İptal Edildi'])) {
-            $stopajRate = $svc->getStopajRate() / 100; // API returns e.g. 1.0 -> 0.01
+            // stopaj_rate ayarı 0.01 formatında tutulur (%1)
+            $stopajRate = $svc->getStopajRate();
             $totalDiscounts = abs((float) $order->discount_amount) + abs((float) $order->campaign_discount);
             $discountedGross = max(0, $grossAmount - $totalDiscounts);
             $vatExcludedBase = $discountedGross / (1 + $productVatRate);
@@ -108,6 +110,7 @@ class UnitEconomicsService
             'hakedis'          => $hakedis,
             'commission'       => $commissionAmount,
             'cargo'            => $cargoAmount,
+            'own_cargo'        => $ownCargo,
             'cogs'             => $cogs,
             'packaging'        => $packaging,
             'sales_vat'        => round($salesVat, 2),

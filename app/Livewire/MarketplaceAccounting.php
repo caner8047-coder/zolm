@@ -73,6 +73,7 @@ class MarketplaceAccounting extends Component
     // Bölüm 2: Kargo & Barem
     public float $settingsBaremLimit = 300;
     public string $settingsDefaultCargoCompany = 'TEX';
+    public bool $settingsUsesOwnCargo = false;
     public array $settingsCargoCompanies = [];
     public array $settingsHeavyCargoPenalties = [];
     public string $newCargoCompany = '';
@@ -132,6 +133,7 @@ class MarketplaceAccounting extends Component
 
     // Filter
     public string $auditFilter = 'all';
+    public array $disabledAuditRules = [];
     public string $orderStatusFilter = 'all';
     public string $advancedOrderFilter = 'all'; // 5N1K Hızlı Filtreleri
 
@@ -228,6 +230,9 @@ class MarketplaceAccounting extends Component
         $this->settingsExpenseVatRate           = (float) ($all['tax']['expense_vat_rate'] ?? 0.20);
         $this->settingsKdvHesaplamaAktif        = (bool) ($all['tax']['kdv_hesaplama_aktif'] ?? false);
 
+        // Kargo
+        $this->settingsUsesOwnCargo              = (bool) ($all['cargo']['uses_own_cargo'] ?? false);
+
         // Bölüm 2: Kargo
         $this->settingsBaremLimit              = (float) ($all['cargo']['barem_limit'] ?? 300);
         $this->settingsDefaultCargoCompany     = (string) ($all['general']['default_cargo_company'] ?? 'TEX');
@@ -322,6 +327,7 @@ class MarketplaceAccounting extends Component
                 'barem_limit'           => (float) $this->settingsBaremLimit,
                 'cargo_companies'       => $this->settingsCargoCompanies,
                 'heavy_cargo_penalties' => $this->settingsHeavyCargoPenalties,
+                'uses_own_cargo'        => (bool) $this->settingsUsesOwnCargo,
             ],
             'audit_tolerances' => [
                 'stopaj_tolerance'                       => (float) $this->settingsStopajTolerance,
@@ -680,16 +686,13 @@ class MarketplaceAccounting extends Component
             }
 
             if ($processed) {
-                $this->importStatus = "✅ İşlem sıraya alındı! Excel verileri arkaplanda işleniyor...";
-                session()->flash('import_success', "Dosyalar başarıyla sıraya alındı (Queue). Büyük Excel dosyaları arka planda parçalanarak işlenecek.");
+                $this->importStatus = "✅ Excel dosyaları başarıyla işlendi ve veritabanına kaydedildi.";
+                session()->flash('import_success', "Dosyalar başarıyla işlendi. Sonuçlar anında sisteme yansıtıldı.");
             }
         }
 
         if (!$processed) {
             session()->flash('import_error', 'Lütfen en az bir dosya seçin veya sürükleyin.');
-        } else {
-            // Faz 5: Dosyalar asenkron (arka planda) islendigi icin denetimi (Audit) simdi calistiramayiz.
-            // Kullanici islem bitince manuel calistirmalidir.
         }
         $this->dispatch('import-finished');
     }
@@ -699,29 +702,40 @@ class MarketplaceAccounting extends Component
      */
     public function resetAllData()
     {
+        $userId = Auth::id();
+        if (!$userId) {
+            session()->flash('import_error', 'Kullanıcı doğrulaması bulunamadı.');
+            return;
+        }
+
         try {
-            \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-            
-            \App\Models\MpAuditLog::truncate();
-            \App\Models\MpSettlement::truncate();
-            \App\Models\MpInvoice::truncate();
-            \App\Models\MpTransaction::truncate();
-            \App\Models\MpOrder::truncate();
-            \App\Models\MpPeriod::truncate();
-            
-            \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+            DB::transaction(function () use ($userId) {
+                $periodIds = \App\Models\MpPeriod::where('user_id', $userId)->pluck('id');
+
+                if ($periodIds->isEmpty()) {
+                    return;
+                }
+
+                \App\Models\MpAuditLog::whereIn('period_id', $periodIds)->delete();
+                \App\Models\MpSettlement::where(function ($q) use ($userId, $periodIds) {
+                    $q->where('user_id', $userId)
+                        ->orWhereIn('period_id', $periodIds);
+                })->delete();
+                \App\Models\MpInvoice::whereIn('period_id', $periodIds)->delete();
+                \App\Models\MpTransaction::whereIn('period_id', $periodIds)->delete();
+                \App\Models\MpOrder::whereIn('period_id', $periodIds)->delete();
+                \App\Models\MpPeriod::whereIn('id', $periodIds)->delete();
+            });
 
             $this->selectedPeriodId = null;
             $this->selectedYear = date('Y');
             $this->selectedMonth = date('m');
-            $this->periods = \App\Models\MpPeriod::where('user_id', Auth::id())->orderBy('year', 'desc')->orderBy('month', 'desc')->get();
             $this->importStatus = "✅ Sistemdeki tüm pazaryeri verileri sıfırlandı.";
             
             session()->flash('import_success', 'Tüm veri tabanı kalıcı olarak temizlendi. Artık dosyalarınızı sıfırdan yükleyebilirsiniz.');
             $this->dispatch('import-finished');
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=1;');
             session()->flash('import_error', 'Veriler sıfırlanırken bir hata oluştu: ' . $e->getMessage());
         }
     }
@@ -777,7 +791,7 @@ class MarketplaceAccounting extends Component
         
         if (empty($this->importErrors)) {
             $name = $file->getClientOriginalName();
-            $this->importStatus = "⏳ {$name} dosyası başarıyla kuyruğa atıldı. Arkaplanda işleniyor.";
+            $this->importStatus = "✅ {$name} dosyası başarıyla işlendi ve veritabanına kaydedildi.";
         }
         
         // File input'u sıfırla
@@ -870,12 +884,23 @@ class MarketplaceAccounting extends Component
         $engine = new AuditEngine();
 
         try {
-            $this->lastAuditResult = $engine->runAllRules($period);
+            $this->lastAuditResult = $engine->runAllRules($period, $this->disabledAuditRules);
+            $activeCount = count(\App\Services\AuditEngine::RULES) - count($this->disabledAuditRules);
             $this->importStatus = "🔍 Denetim tamamlandı! "
+                . $activeCount . " kural çalıştırıldı. "
                 . ($this->lastAuditResult['total_errors'] ?? 0) . " kritik, "
                 . ($this->lastAuditResult['total_warnings'] ?? 0) . " uyarı bulundu.";
         } catch (\Exception $e) {
             $this->importStatus = "❌ Denetim hatası: " . $e->getMessage();
+        }
+    }
+
+    public function toggleAuditRule(string $rule)
+    {
+        if (in_array($rule, $this->disabledAuditRules)) {
+            $this->disabledAuditRules = array_values(array_diff($this->disabledAuditRules, [$rule]));
+        } else {
+            $this->disabledAuditRules[] = $rule;
         }
     }
 
@@ -1108,9 +1133,10 @@ class MarketplaceAccounting extends Component
             $qty = max(1, (int) $order->quantity);
             
             $updateData = [
-                'cogs_at_time'          => round((float)$product->cogs * $qty, 2),
-                'packaging_cost_at_time' => round((float)($product->packaging_cost ?? 0) * $qty, 2),
-                'product_vat_rate'      => $product->vat_rate ?? 10,
+                'cogs_at_time'              => round((float)$product->cogs * $qty, 2),
+                'packaging_cost_at_time'    => round((float)($product->packaging_cost ?? 0) * $qty, 2),
+                'own_cargo_cost_at_time'    => round((float)($product->cargo_cost ?? 0) * $qty, 2),
+                'product_vat_rate'          => $product->vat_rate ?? 10,
             ];
 
             // Ürün adı veya stok kodu boşsa sync işleminde onu da doldur

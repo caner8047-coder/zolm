@@ -58,7 +58,15 @@ Route::middleware('auth')->group(function () {
     // ============================================
     Route::get('/cargo-reports', \App\Livewire\CargoReports::class)->name('cargo-reports');
     Route::get('/supply-reports', \App\Livewire\SupplyReports::class)->name('supply-reports');
-    Route::get('/tariff-optimizer', \App\Livewire\TariffOptimizer::class)->name('tariff-optimizer');
+    // Trendyol Kampanya Modülleri
+    Route::prefix('campaigns')->group(function () {
+        Route::get('/product-commission', \App\Livewire\TariffOptimizer::class)->name('campaigns.product-commission');
+        Route::get('/plus-commission', \App\Livewire\PlusCommission::class)->name('campaigns.plus-commission');
+        Route::get('/badge-pricing', \App\Livewire\BadgePricing::class)->name('campaigns.badge-pricing');
+        Route::get('/flash-products', \App\Livewire\FlashProducts::class)->name('campaigns.flash-products');
+    });
+    // Backwards compat alias
+    Route::get('/tariff-optimizer', fn() => redirect()->route('campaigns.product-commission'))->name('tariff-optimizer');
     
     // Supply Label Download
     Route::get('/supply-label/{id}', [\App\Http\Controllers\SupplyLabelController::class, 'download'])->name('supply.label');

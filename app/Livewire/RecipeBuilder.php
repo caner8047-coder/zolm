@@ -67,6 +67,7 @@ class RecipeBuilder extends Component
                 'id'                    => $l->id,
                 'material_id'           => $l->material_id,
                 'material_label'        => $l->material ? "{$l->material->code} — {$l->material->name}" : '',
+                'unit_price'            => $l->material->unit_price ?? 0,
                 'operation'             => $l->operation,
                 'usage_area'            => $l->usage_area ?? '',
                 'calc_type'             => $l->calc_type,
@@ -128,6 +129,7 @@ class RecipeBuilder extends Component
             'id'                    => null,
             'material_id'           => null,
             'material_label'        => '',
+            'unit_price'            => 0,
             'operation'             => 'terzihane',
             'usage_area'            => '',
             'calc_type'             => 'fabric_meter',
@@ -192,6 +194,7 @@ class RecipeBuilder extends Component
 
         $this->lines[$lineIndex]['material_id'] = $materialId;
         $this->lines[$lineIndex]['material_label'] = "{$material->code} — {$material->name}";
+        $this->lines[$lineIndex]['unit_price'] = $material->unit_price ?? 0;
 
         // Hesap tipini malzeme kategorisine göre otomatik ayarla
         $this->lines[$lineIndex]['calc_type'] = match ($material->category) {
@@ -368,7 +371,7 @@ class RecipeBuilder extends Component
             $this->saveRecipe();
         }
 
-        $recipe = Recipe::find($this->recipeId);
+        $recipe = Recipe::with('lines.material')->find($this->recipeId);
         if (!$recipe) return;
 
         // Aynı ürünün diğer aktif reçetelerini arşivle
@@ -381,7 +384,20 @@ class RecipeBuilder extends Component
 
         $recipe->update(['status' => 'active']);
         $this->status = 'active';
-        session()->flash('success', '✅ Reçete aktifleştirildi.');
+
+        // COGS Senkronizasyonu: Bağlı ürünün maliyetini güncelle
+        if ($recipe->mp_product_id) {
+            $totalCost = $recipe->total_cost;
+            if ($totalCost > 0) {
+                MpProduct::where('id', $recipe->mp_product_id)
+                    ->update(['cogs' => round($totalCost, 2)]);
+                session()->flash('success', '✅ Reçete aktifleştirildi ve ürün COGS güncellendi: ' . number_format($totalCost, 2) . ' ₺');
+            } else {
+                session()->flash('success', '✅ Reçete aktifleştirildi.');
+            }
+        } else {
+            session()->flash('success', '✅ Reçete aktifleştirildi.');
+        }
     }
 
     public function duplicateRecipe()
@@ -404,6 +420,39 @@ class RecipeBuilder extends Component
     public function getOperationGroupsProperty()
     {
         return collect($this->lines)->groupBy('operation');
+    }
+
+    /**
+     * Toplam reçete maliyeti (tüm satır maliyetlerinin toplamı)
+     */
+    public function getTotalCostProperty(): float
+    {
+        return collect($this->lines)->sum(function ($line) {
+            $unitPrice = (float) ($line['unit_price'] ?? 0);
+            $qty = (float) ($line['calculated_qty'] ?? 0);
+            return $unitPrice * $qty;
+        });
+    }
+
+    /**
+     * Operasyon bazlı maliyet dağılımı
+     */
+    public function getOperationCostsProperty(): array
+    {
+        return collect($this->lines)
+            ->groupBy('operation')
+            ->map(function ($group, $op) {
+                $cost = $group->sum(function ($line) {
+                    return (float) ($line['unit_price'] ?? 0) * (float) ($line['calculated_qty'] ?? 0);
+                });
+                return [
+                    'label' => RecipeLine::OPERATIONS[$op] ?? $op,
+                    'cost'  => $cost,
+                    'count' => $group->count(),
+                ];
+            })
+            ->filter(fn($g) => $g['cost'] > 0)
+            ->toArray();
     }
 
     // ─── Render ────────────────────────────────────────────

@@ -2,7 +2,7 @@
     {{-- Başlık --}}
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-            <h1 class="text-xl lg:text-2xl font-bold text-gray-900">📊 Kâr Motoru</h1>
+            <h1 class="text-xl lg:text-2xl font-bold text-gray-900">📊 Ürün Komisyon Tarifeleri</h1>
             <p class="text-sm lg:text-base text-gray-500 mt-1">Tarife optimizasyonu ile net kârınızı maksimize edin</p>
         </div>
     </div>
@@ -45,7 +45,7 @@
         {{-- ADIM 1: Setup & Yükleme --}}
         @if($step === 1)
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
-                {{-- Sol: Maliyet Veritabanı Durumu --}}
+                {{-- Sol: Ürün Veritabanı Durumu (MpProduct) --}}
                 <div class="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl p-4 lg:p-6 border border-blue-200">
                     <div class="flex items-start gap-4">
                         <div class="w-12 h-12 rounded-lg bg-white shadow flex items-center justify-center flex-shrink-0">
@@ -55,48 +55,30 @@
                             </svg>
                         </div>
                         <div class="flex-1 min-w-0">
-                            <h3 class="font-medium text-gray-900">Maliyet Veritabanı</h3>
-                            <p class="text-sm text-gray-500 mt-1">Üretim ve kargo maliyetleriniz</p>
-                            <div class="mt-3">
+                            <h3 class="font-medium text-gray-900">Ürün Veritabanı</h3>
+                            <p class="text-sm text-gray-500 mt-1">Pazaryeri Ürünlerim modülündeki maliyet verileri</p>
+                            <div class="mt-3 space-y-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                                        📦 {{ $this->productCount }} toplam ürün
+                                    </span>
+                                </div>
                                 @if($this->costCount > 0)
                                     <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                                        ✓ {{ $this->costCount }} ürünün maliyeti kayıtlı
+                                        ✓ {{ $this->costCount }} ürünün maliyeti tanımlı
                                     </span>
                                 @else
                                     <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
-                                        ⚠ Henüz maliyet yüklenmedi
+                                        ⚠ Henüz maliyet tanımlı ürün yok
                                     </span>
                                 @endif
                             </div>
-                            <div class="mt-4">
-                                <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Maliyet dosyası yükle</label>
-                                <input 
-                                    type="file" 
-                                    wire:model="costFile"
-                                    accept=".xlsx,.xls"
-                                    class="block w-full text-sm text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
-                                >
-                                @if($costFile)
-                                    <span class="text-xs text-green-600 mt-1 block">✓ {{ $costFile->getClientOriginalName() }}</span>
-                                @endif
-                                @error('costFile') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                            <div class="mt-4 p-3 bg-white/60 rounded-lg">
+                                <p class="text-xs text-gray-500">
+                                    💡 Maliyet verileri <strong>Pazaryeri Ürünlerim</strong> modülünden otomatik çekilir. 
+                                    Ayrı maliyet dosyası yüklemenize gerek yoktur.
+                                </p>
                             </div>
-                            @if($costFile)
-                                <button 
-                                    wire:click="importCosts"
-                                    wire:loading.attr="disabled"
-                                    class="mt-3 w-full sm:w-auto px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition flex justify-center items-center gap-2 min-h-[44px]"
-                                >
-                                    <span wire:loading.remove wire:target="importCosts">Maliyetleri Güncelle</span>
-                                    <span wire:loading wire:target="importCosts">
-                                        <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        Yükleniyor...
-                                    </span>
-                                </button>
-                            @endif
                         </div>
                     </div>
                 </div>
@@ -147,7 +129,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
                                   d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
                         </svg>
-                        <span>Maliyet veritabanı boş. Önce sol panelden maliyet dosyanızı (fiyatli_maliyet_eklenmis.xlsx) yükleyin. Aksi halde motor maliyetleri 0 kabul ederek çalışır.</span>
+                        <span>Pazaryeri Ürünlerim modülünde henüz maliyetli ürün yok. Önce ürünlerinizin COGS, ambalaj ve kargo maliyetlerini tanımlayın. Aksi halde motor maliyetleri 0 kabul ederek çalışır.</span>
                     </div>
                 </div>
             @endif
@@ -189,7 +171,7 @@
                         </svg>
                     </div>
                 </div>
-                <h2 class="mt-6 text-xl lg:text-2xl font-bold text-gray-900">Kâr Motoru Çalışıyor</h2>
+                <h2 class="mt-6 text-xl lg:text-2xl font-bold text-gray-900">Komisyon Analizi Çalışıyor</h2>
                 <div class="mt-4 space-y-2 text-sm lg:text-base text-gray-500 text-center" x-data="{ step: 0 }" x-init="setInterval(() => step = (step + 1) % 4, 1500)">
                     <p x-show="step === 0" x-transition>📊 Tarife verileri okunuyor...</p>
                     <p x-show="step === 1" x-transition>🔗 Maliyetler eşleştiriliyor...</p>
@@ -207,13 +189,22 @@
 
             {{-- Üst Butonlar --}}
             <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
-                <button wire:click="resetAnalysis"
-                    class="w-full sm:w-auto px-4 py-3 sm:py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 flex justify-center items-center gap-2 min-h-[44px]">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                    </svg>
-                    Yeni Analiz
-                </button>
+                <div class="flex gap-2 w-full sm:w-auto">
+                    <button wire:click="resetAnalysis"
+                        class="flex-1 sm:flex-none px-4 py-3 sm:py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 flex justify-center items-center gap-2 min-h-[44px]">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        </svg>
+                        Yeni Analiz
+                    </button>
+                    <button x-on:click="$dispatch('openAiPanel', { tab: 'campaign' })" class="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-indigo-100 text-indigo-700 font-medium rounded-lg hover:bg-indigo-200 border border-indigo-200 flex items-center justify-center gap-1.5 min-h-[44px] transition-colors">
+                        🤖 AI Analiz
+                    </button>
+                    <button x-on:click="$dispatch('openAiPanel', { tab: 'loss' })" class="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-red-100 text-red-700 font-medium rounded-lg hover:bg-red-200 border border-red-200 flex items-center justify-center gap-1.5 min-h-[44px] transition-colors">
+                        🔴 Zarar Denetimi
+                    </button>
+                </div>
+
                 <div class="flex items-center gap-2 w-full sm:w-auto">
                     @if(count($selectedItems) > 0)
                         <span class="text-sm text-gray-500">{{ count($selectedItems) }} ürün seçili</span>
@@ -292,10 +283,10 @@
                     @endif
                 </div>
 
-                {{-- Satır 2: Karlılık Aralığı (tarife seçildiyse göster) --}}
+                {{-- Satır 2: ROI Aralığı (tarife seçildiyse göster) --}}
                 @if($profitabilityTariffIndex !== null)
                     <div class="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100">
-                        <span class="text-xs font-semibold text-gray-500 mr-1">🎯 Karlılık %:</span>
+                        <span class="text-xs font-semibold text-gray-500 mr-1">🎯 ROI %:</span>
                         @php
                             $ranges = [[0,5],[5,10],[10,15],[15,20],[20,25],[25,30],[30,null]];
                         @endphp
@@ -470,8 +461,9 @@
                                                 <div class="space-y-0.5">
                                                     <div class="font-bold text-gray-900">{{ number_format($sc['price'], 0) }}₺</div>
                                                     <div class="{{ $idx === 0 ? 'text-orange-600 font-semibold' : 'text-gray-500 font-medium' }}">%{{ number_format($sc['commission'], 1) }}</div>
-                                                    <div class="font-bold text-xs {{ $sc['net_profit'] >= 0 ? 'text-green-600' : 'text-red-600' }} cursor-help" title="Karlılık: %{{ $item->production_cost > 0 ? number_format(($sc['net_profit'] / $item->production_cost) * 100, 1) : '0' }}">
+                                                    <div class="font-bold text-xs {{ $sc['net_profit'] >= 0 ? 'text-green-600' : 'text-red-600' }}">
                                                         {{ number_format($sc['net_profit'], 0) }}₺
+                                                        <span class="text-[9px] {{ $sc['net_profit'] >= 0 ? 'text-blue-500' : 'text-red-400' }} font-medium">%{{ $item->totalCost() > 0 ? number_format(($sc['net_profit'] / $item->totalCost()) * 100, 1) : '0' }}</span>
                                                     </div>
                                                     @if($isSelected)
                                                         <div class="text-[7px] bg-orange-500 text-white px-1 py-0.5 rounded font-bold inline-block">SEÇİLDİ</div>
@@ -629,7 +621,7 @@
                                             @if($sc)
                                                 <div class="text-[10px] font-bold">{{ number_format($sc['price'], 0) }}₺</div>
                                                 <div class="text-[9px] {{ $idx === 0 ? 'text-orange-600' : 'text-gray-400' }}">%{{ number_format($sc['commission'], 1) }}</div>
-                                                <div class="text-[10px] font-bold {{ $sc['net_profit'] >= 0 ? 'text-green-600' : 'text-red-600' }} cursor-help" title="Karlılık: %{{ $item->production_cost > 0 ? number_format(($sc['net_profit'] / $item->production_cost) * 100, 1) : '0' }}">{{ number_format($sc['net_profit'], 0) }}₺</div>
+                                                <div class="text-[10px] font-bold {{ $sc['net_profit'] >= 0 ? 'text-green-600' : 'text-red-600' }}">{{ number_format($sc['net_profit'], 0) }}₺ <span class="text-[8px] {{ $sc['net_profit'] >= 0 ? 'text-blue-500' : 'text-red-400' }}">%{{ $item->totalCost() > 0 ? number_format(($sc['net_profit'] / $item->totalCost()) * 100, 1) : '0' }}</span></div>
                                                 @if($isSelected)<div class="text-[7px] bg-orange-500 text-white px-0.5 rounded font-bold inline-block mt-0.5">SEÇİLDİ</div>
                                                 @elseif($isBest)<div class="text-[7px] bg-orange-500 text-white px-0.5 rounded font-bold inline-block mt-0.5">EN İYİ</div>@endif
                                             @else <span class="text-gray-300">—</span> @endif
@@ -737,8 +729,8 @@
                                             </div>
                                             <div class="text-xs font-bold text-gray-900">{{ number_format($sc['price'], 0) }}₺</div>
                                             <div class="text-[9px] {{ $idx === 0 ? 'text-orange-500' : 'text-gray-400' }}">%{{ number_format($sc['commission'], 1) }}</div>
-                                            <div class="text-xs font-bold mt-0.5 {{ $sc['net_profit'] >= 0 ? 'text-green-600' : 'text-red-500' }}" title="Karlılık: %{{ $item->production_cost > 0 ? number_format(($sc['net_profit'] / $item->production_cost) * 100, 1) : '0' }}">
-                                                {{ number_format($sc['net_profit'], 0) }}₺
+                                            <div class="text-xs font-bold mt-0.5 {{ $sc['net_profit'] >= 0 ? 'text-green-600' : 'text-red-500' }}">
+                                                {{ number_format($sc['net_profit'], 0) }}₺ <span class="text-[9px] {{ $sc['net_profit'] >= 0 ? 'text-blue-500' : 'text-red-400' }}">%{{ $item->totalCost() > 0 ? number_format(($sc['net_profit'] / $item->totalCost()) * 100, 1) : '0' }}</span>
                                             </div>
                                             @if($isSelected)
                                                 <div class="text-[7px] bg-orange-500 text-white px-1 py-0.5 rounded font-bold mt-0.5 inline-block">SEÇİLDİ</div>
@@ -941,194 +933,8 @@
         @endif
     @endif
 
-    {{-- ===================================================== --}}
-    {{-- CHAT DRAWER & FLOATING BUTTON (Minimal) --}}
-    {{-- ===================================================== --}}
-    
-    
-    {{-- Floating Action Button (Minimal) --}}
-    @if($activeReportId)
-        <button wire:click="toggleChat"
-            class="fixed bottom-5 right-5 w-11 h-11 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg shadow-indigo-600/25"
-            style="z-index: 9998;">
-            @if(!$showChat)
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
-                </svg>
-            @else
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            @endif
-        </button>
-
-        {{-- Chat Drawer --}}
-        <div x-data="{ show: @entangle('showChat') }"
-             x-show="show"
-             x-cloak
-             @keydown.escape.window="show = false"
-             class="fixed inset-y-0 right-0 w-full sm:w-96 bg-white shadow-2xl flex flex-col"
-             style="z-index: 9999;"
-             x-transition:enter="transition transform ease-out duration-250"
-             x-transition:enter-start="translate-x-full"
-             x-transition:enter-end="translate-x-0"
-             x-transition:leave="transition transform ease-in duration-200"
-             x-transition:leave-start="translate-x-0"
-             x-transition:leave-end="translate-x-full">
-            
-            {{-- Header --}}
-            <div class="px-4 py-2.5 bg-indigo-600 text-white flex justify-between items-center shrink-0">
-                <div class="flex items-center gap-2.5">
-                    <div class="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
-                        </svg>
-                    </div>
-                    <div>
-                        <h3 class="font-semibold text-sm">ZOLM AI</h3>
-                        <p class="text-[10px] text-indigo-200">Rapor Asistanı</p>
-                    </div>
-                </div>
-                <button @click="show = false" class="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/10 transition">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </div>
-
-            {{-- AI Araçları --}}
-            @if($this->activeReport)
-                <div x-data="{ toolsOpen: false }" class="px-3 py-2 bg-gray-50 border-b border-gray-100">
-                    <button type="button" @click="toolsOpen = !toolsOpen" class="w-full flex items-center justify-between text-xs">
-                        <span class="flex items-center gap-1.5 font-semibold text-gray-600">
-                            <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.42 15.17l-5.658 3.286 1.082-6.302-4.58-4.466 6.325-.919L11.42 1l2.83 5.769 6.326.919-4.58 4.466 1.081 6.302z"/></svg>
-                            AI Araçları
-                        </span>
-                        <svg class="w-3.5 h-3.5 text-gray-400 transition-transform" :class="toolsOpen && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    </button>
-
-                    <div x-show="toolsOpen" x-transition x-cloak class="mt-2 space-y-1.5">
-                        @php $report = $this->activeReport; @endphp
-
-                        {{-- AI Danışman --}}
-                        <div x-data="{ aiExpanded: false }" class="bg-white rounded-lg border border-gray-200 p-2">
-                            <div class="flex items-center justify-between">
-                                <div class="flex items-center gap-2">
-                                    <div class="w-5 h-5 rounded bg-indigo-100 flex items-center justify-center shrink-0">
-                                        <svg class="w-3 h-3 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                                    </div>
-                                    <span class="text-xs font-medium text-gray-700">AI Danışman</span>
-                                </div>
-                                @if($report->ai_analysis)
-                                    <button type="button" @click="aiExpanded = !aiExpanded" class="px-2 py-0.5 text-[10px] font-medium rounded text-indigo-600 hover:bg-indigo-50 transition">
-                                        <span x-text="aiExpanded ? 'Gizle' : 'Göster'">Göster</span>
-                                    </button>
-                                @elseif(!$isProcessing)
-                                    <button wire:click="generateAIAnalysis" class="px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-medium rounded hover:bg-indigo-700 transition">Analiz</button>
-                                @endif
-                            </div>
-                            @if($isProcessing && str_contains($message, 'Yapay zeka'))
-                                <div class="mt-1.5 animate-pulse"><div class="h-1 bg-indigo-100 rounded w-3/4"></div></div>
-                            @endif
-                            @if($report->ai_analysis)
-                                <div x-show="aiExpanded" x-transition x-cloak class="mt-2 prose prose-indigo prose-xs max-w-none bg-gray-50 rounded p-2 text-[11px] leading-relaxed max-h-48 overflow-y-auto border border-gray-100">
-                                    {!! Str::markdown($report->ai_analysis) !!}
-                                </div>
-                            @endif
-                        </div>
-
-                        {{-- Zarar Denetimi --}}
-                        @if($report->items->where('action', 'warning')->count() > 0)
-                            <div x-data="{ lossExpanded: false }" class="bg-white rounded-lg border border-gray-200 p-2">
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center gap-2">
-                                        <div class="w-5 h-5 rounded bg-red-50 flex items-center justify-center shrink-0">
-                                            <svg class="w-3 h-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-                                        </div>
-                                        <span class="text-xs font-medium text-gray-700">Zarar Denetimi</span>
-                                        <span class="text-[9px] text-red-500 font-medium">{{ $report->items->where('action', 'warning')->count() }}</span>
-                                    </div>
-                                    @if($report->loss_analysis)
-                                        <button type="button" @click="lossExpanded = !lossExpanded" class="px-2 py-0.5 text-[10px] font-medium rounded text-red-600 hover:bg-red-50 transition">
-                                            <span x-text="lossExpanded ? 'Gizle' : 'Göster'">Göster</span>
-                                        </button>
-                                    @elseif(!$isProcessing)
-                                        <button wire:click="analyzeLosses" class="px-2 py-0.5 bg-red-600 text-white text-[10px] font-medium rounded hover:bg-red-700 transition">Denetle</button>
-                                    @endif
-                                </div>
-                                @if($isProcessing && str_contains($message, 'Zarar'))
-                                    <div class="mt-1.5 animate-pulse"><div class="h-1 bg-red-100 rounded w-3/4"></div></div>
-                                @endif
-                                @if($report->loss_analysis)
-                                    <div x-show="lossExpanded" x-transition x-cloak class="mt-2 prose prose-red prose-xs max-w-none bg-gray-50 rounded p-2 text-[11px] leading-relaxed max-h-48 overflow-y-auto border border-gray-100">
-                                        {!! Str::markdown($report->loss_analysis) !!}
-                                    </div>
-                                @endif
-                            </div>
-                        @endif
-                    </div>
-                </div>
-            @endif
-
-            {{-- Messages Area --}}
-            <div class="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50" id="chat-messages">
-                @if($this->currentConversation)
-                    @foreach($this->currentConversation->messages as $msg)
-                        @if($msg['role'] === 'system') @continue @endif
-                        <div class="flex {{ $msg['role'] === 'user' ? 'justify-end' : 'justify-start' }}">
-                            <div class="max-w-[85%] rounded-xl p-2.5 text-sm {{ 
-                                $msg['role'] === 'user' 
-                                    ? 'bg-indigo-600 text-white rounded-br-sm' 
-                                    : 'bg-white text-gray-700 rounded-bl-sm border border-gray-100 shadow-sm' 
-                            }}">
-                                @if($msg['role'] !== 'user')
-                                    <div class="prose prose-sm max-w-none text-gray-700" style="font-size: 13px;">
-                                        {!! Str::markdown($msg['content']) !!}
-                                    </div>
-                                @else
-                                    {{ $msg['content'] }}
-                                @endif
-                                <div class="text-[9px] mt-1 {{ $msg['role'] === 'user' ? 'text-indigo-200' : 'text-gray-400' }} text-right">
-                                    {{ \Carbon\Carbon::parse($msg['timestamp'])->format('H:i') }}
-                                </div>
-                            </div>
-                        </div>
-                    @endforeach
-                    
-                    @if($isChatting)
-                        <div class="flex justify-start">
-                            <div class="bg-white text-gray-400 rounded-xl rounded-bl-sm p-2.5 text-xs border border-gray-100 shadow-sm">
-                                <div class="flex items-center gap-1">
-                                    <div class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce" style="animation-delay: 0ms;"></div>
-                                    <div class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce" style="animation-delay: 150ms;"></div>
-                                    <div class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce" style="animation-delay: 300ms;"></div>
-                                </div>
-                            </div>
-                        </div>
-                    @endif
-                @else
-                    <div class="text-center mt-12">
-                        <div class="w-10 h-10 mx-auto rounded-xl bg-indigo-50 flex items-center justify-center mb-3">
-                            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
-                        </div>
-                        <p class="text-gray-500 text-xs">Raporunuz hakkında soru sorun</p>
-                    </div>
-                @endif
-            </div>
-
-            {{-- Input Area --}}
-            <div class="p-2.5 bg-white border-t border-gray-100 shrink-0">
-                <form wire:submit.prevent="sendMessage" class="flex gap-2">
-                    <input type="text" 
-                        wire:model="chatMessage" 
-                        placeholder="Bir soru sorun..." 
-                        class="flex-1 rounded-lg text-sm min-h-[38px] px-3 border border-gray-200 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400 bg-gray-50"
-                        {{ $isChatting ? 'disabled' : '' }}>
-                    <button type="submit" 
-                        class="w-9 h-9 bg-indigo-600 text-white rounded-lg flex items-center justify-center hover:bg-indigo-700 transition disabled:opacity-50"
-                        {{ $isChatting ? 'disabled' : '' }}>
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
-                    </button>
-                </form>
-            </div>
-        </div>
-    @endif
+    {{-- Yüzen AI Paneli (Ortak Partial) --}}
+    @include('livewire.partials.campaign-ai-panel', ['themeColor' => 'indigo'])
 </div>
 @script
 <script>

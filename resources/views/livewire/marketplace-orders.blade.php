@@ -244,6 +244,14 @@
                 $netProfit = $hasFinancial ? $order->total_net_profit : null;
                 $netHakedis = $hasFinancial ? $order->total_net_hakedis : null;
                 $alert = $order->financial_alert;
+                $hasCost = $order->has_cost_data;
+                $estMargin = $order->estimated_margin;
+                $estMarginPct = $order->estimated_margin_percent;
+                $estCogs = $order->estimated_cogs;
+                $estCargo = $order->estimated_cargo;
+                $estPackaging = $order->estimated_packaging;
+                $estCommission = $order->estimated_commission;
+                $estDiscount = (float) $order->items->sum('discount_amount') + (float) $order->items->sum('trendyol_discount');
                 $st = mb_strtolower($order->status ?? '');
                 $color = 'bg-gray-100 text-gray-800';
                 if(str_contains($st, 'teslim') || str_contains($st, 'tamamlandı')) $color = 'bg-green-100 text-green-800';
@@ -301,17 +309,26 @@
                         </div>
                     </div>
 
-                    <!-- Alt: Kargo + Muhasebe (varsa) -->
+                    <!-- Alt: Kargo + Muhasebe + ROI (varsa) -->
                     <div class="mt-2 ml-6 flex items-center justify-between gap-2">
                         <span class="bg-gray-100 text-gray-700 text-[11px] px-2 py-0.5 rounded border border-gray-200">{{ $order->cargo_company ?? '-' }}</span>
                         @if($order->is_corporate_invoice === 'Evet')
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800">Kurumsal</span>
                         @endif
-                        @if($hasFinancial)
-                            <span class="text-xs font-bold {{ $netProfit >= 0 ? 'text-green-600' : 'text-red-600' }}">
-                                {{ $netProfit >= 0 ? '+' : '' }}₺{{ number_format($netProfit, 2, ',', '.') }}
-                            </span>
-                        @endif
+                        <div class="flex items-center gap-2">
+                            @if($hasCost && $estMargin !== null)
+                                <span class="text-[11px] font-bold {{ $estMargin >= 0 ? 'text-emerald-600' : 'text-red-600' }} bg-emerald-50 px-1.5 py-0.5 rounded border {{ $estMargin >= 0 ? 'border-emerald-200' : 'border-red-200 bg-red-50' }}">
+                                    <svg class="w-3 h-3 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                                    {{ $estMargin >= 0 ? '+' : '' }}₺{{ number_format($estMargin, 0, ',', '.') }}
+                                    <span class="text-[10px] font-medium {{ $estMarginPct >= 20 ? 'text-emerald-500' : ($estMarginPct >= 0 ? 'text-amber-500' : 'text-red-500') }}">({{ number_format($estMarginPct, 0) }}%)</span>
+                                </span>
+                            @endif
+                            @if($hasFinancial)
+                                <span class="text-xs font-bold {{ $netProfit >= 0 ? 'text-green-600' : 'text-red-600' }}">
+                                    {{ $netProfit >= 0 ? '+' : '' }}₺{{ number_format($netProfit, 2, ',', '.') }}
+                                </span>
+                            @endif
+                        </div>
                     </div>
                 </div>
 
@@ -353,6 +370,7 @@
                             <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lojistik</th>
                             <th scope="col" class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ciro</th>
                             <th scope="col" class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Muhasebe</th>
+                            <th scope="col" class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">ROI</th>
                             <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Durum</th>
                         </tr>
                     </thead>
@@ -363,6 +381,14 @@
                                 $netProfit = $hasFinancial ? $order->total_net_profit : null;
                                 $netHakedis = $hasFinancial ? $order->total_net_hakedis : null;
                                 $alert = $order->financial_alert;
+                                $hasCost = $order->has_cost_data;
+                                $estMargin = $order->estimated_margin;
+                                $estMarginPct = $order->estimated_margin_percent;
+                                $estCogs = $order->estimated_cogs;
+                                $estCargo = $order->estimated_cargo;
+                                $estPackaging = $order->estimated_packaging;
+                                $estCommission = $order->estimated_commission;
+                                $estDiscount = (float) $order->items->sum('discount_amount') + (float) $order->items->sum('trendyol_discount');
                                 $st = mb_strtolower($order->status ?? '');
                                 $color = 'bg-gray-100 text-gray-800';
                                 if(str_contains($st, 'teslim') || str_contains($st, 'tamamlandı')) $color = 'bg-green-100 text-green-800';
@@ -436,6 +462,27 @@
                                         <span class="text-xs text-gray-400 italic">Veri yok</span>
                                     @endif
                                 </td>
+                                <td class="px-3 py-4 whitespace-nowrap text-right">
+                                    @if($hasCost && $estMargin !== null)
+                                        <div class="text-[10px] text-gray-500">Maliyet</div>
+                                        <div class="text-xs text-red-500">₺{{ number_format($estCogs, 0, ',', '.') }}</div>
+                                        @if($estDiscount > 0)
+                                            <div class="text-[10px] text-rose-500">İnd: ₺{{ number_format($estDiscount, 0, ',', '.') }}</div>
+                                        @endif
+                                        @if($estCargo > 0)
+                                            <div class="text-[10px] text-orange-500">Kargo: ₺{{ number_format($estCargo, 0, ',', '.') }}</div>
+                                        @endif
+                                        @if($estCommission > 0)
+                                            <div class="text-[10px] text-rose-500">Kom: ₺{{ number_format($estCommission, 0, ',', '.') }}</div>
+                                        @endif
+                                        <div class="mt-0.5 text-xs font-bold {{ $estMargin >= 0 ? 'text-emerald-600' : 'text-red-600' }}">
+                                            {{ $estMargin >= 0 ? '+' : '' }}₺{{ number_format($estMargin, 0, ',', '.') }}
+                                            <span class="text-[10px] font-medium {{ $estMarginPct >= 20 ? 'text-emerald-500' : ($estMarginPct >= 0 ? 'text-amber-500' : 'text-red-500') }}">(%{{ number_format($estMarginPct, 0) }})</span>
+                                        </div>
+                                    @else
+                                        <span class="text-[10px] text-gray-400 italic">Maliyet yok</span>
+                                    @endif
+                                </td>
                                 <td class="px-3 py-4 whitespace-nowrap">
                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $color }}">
                                         {{ $order->status ?? 'Durum Yok' }}
@@ -452,7 +499,7 @@
                                 x-transition:enter-start="opacity-0 -translate-y-2"
                                 x-transition:enter-end="opacity-100 translate-y-0"
                                 x-cloak>
-                                <td colspan="7" class="p-0 border-b border-gray-200">
+                                <td colspan="8" class="p-0 border-b border-gray-200">
                                     <div class="p-4 pl-14 space-y-4">
                                         @include('livewire.partials.marketplace-order-detail', ['order' => $order, 'hasFinancial' => $hasFinancial, 'netProfit' => $netProfit])
                                     </div>
@@ -460,7 +507,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-6 py-10 text-center">
+                                <td colspan="8" class="px-6 py-10 text-center">
                                     <div class="flex flex-col items-center">
                                         <svg class="h-12 w-12 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />

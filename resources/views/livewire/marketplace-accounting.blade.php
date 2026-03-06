@@ -128,7 +128,7 @@
                     </button>
                     <button wire:click="exportStopajReport" class="w-full sm:w-auto px-4 py-3 sm:py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors flex items-center justify-center gap-2" title="Mali Müşavir (193 Kodu) Formu">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v1a3 3 0 106 0v-1m-5 4h4a1 1 0 001-1v-4a1 1 0 00-1-1H9a1 1 0 00-1 1v4a1 1 0 001 1zm8-9V7a2 2 0 00-2-2H9a2 2 0 00-2 2v5m14 0h-2m-2 0H5m-2 0h2m10 0v5a2 2 0 01-2 2h-4a2 2 0 01-2-2v-5z"/></svg>
-                        193 Stopaj Excel
+                        Stopaj Raporu (193 Kodu)
                     </button>
                 </div>
 
@@ -726,7 +726,7 @@
                 <div class="flex flex-col sm:flex-row gap-2">
                     <button wire:click="runAudit" wire:loading.attr="disabled"
                             class="w-full sm:w-auto px-4 py-3 sm:py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors">
-                        <span wire:loading.remove wire:target="runAudit">🔍 Denetimi Çalıştır (10 Kural)</span>
+                        <span wire:loading.remove wire:target="runAudit">🔍 Denetimi Çalıştır ({{ \App\Services\AuditEngine::getRuleCount() - count($disabledAuditRules) }}/{{ \App\Services\AuditEngine::getRuleCount() }} Kural)</span>
                         <span wire:loading wire:target="runAudit">Denetim yapılıyor...</span>
                     </button>
                     <button wire:click="exportAuditReport"
@@ -742,6 +742,54 @@
                     <option value="warning">🟡 Uyarı</option>
                     <option value="info">🔵 Bilgi</option>
                 </select>
+            </div>
+
+            {{-- ═══ Kural Yöneticisi Paneli (Açılır/Kapanır) ═══ --}}
+            <div x-data="{ showRules: false }" class="mb-6">
+                <button @click="showRules = !showRules"
+                        class="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-xl hover:border-gray-300 transition-all shadow-sm group">
+                    <div class="flex items-center gap-3">
+                        <span class="text-lg">🛡️</span>
+                        <div class="text-left">
+                            <p class="font-semibold text-gray-800 text-sm">Denetim Kuralları</p>
+                            <p class="text-xs text-gray-500">{{ \App\Services\AuditEngine::getRuleCount() - count($disabledAuditRules) }}/{{ \App\Services\AuditEngine::getRuleCount() }} kural aktif — Kuralları görmek ve yönetmek için tıklayın</p>
+                        </div>
+                    </div>
+                    <svg class="w-5 h-5 text-gray-400 group-hover:text-gray-600 transition-transform duration-200" :class="{'rotate-180': showRules}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+
+                <div x-show="showRules" x-collapse x-cloak class="mt-2 border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                    @php
+                        $categories = collect(\App\Services\AuditEngine::RULE_META)->groupBy('category');
+                    @endphp
+                    <div class="divide-y divide-gray-100">
+                        @foreach($categories as $category => $rules)
+                            <div class="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">{{ $category }}</span>
+                            </div>
+                            @foreach($rules as $method => $meta)
+                                @php $isDisabled = in_array($method, $disabledAuditRules); @endphp
+                                <label class="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors {{ $isDisabled ? 'opacity-60' : '' }}">
+                                    <input type="checkbox"
+                                           wire:click="toggleAuditRule('{{ $method }}')"
+                                           {{ !$isDisabled ? 'checked' : '' }}
+                                           class="mt-0.5 rounded border-gray-300 text-amber-600 shadow-sm focus:ring-amber-200 w-4 h-4 flex-shrink-0">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <span class="text-sm">{{ $meta['icon'] }}</span>
+                                            <span class="font-medium text-sm text-gray-900">{{ $meta['title'] }}</span>
+                                            <span class="px-1.5 py-0.5 text-[10px] font-mono rounded
+                                                {{ $meta['severity'] === 'critical' ? 'bg-red-100 text-red-700' : ($meta['severity'] === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700') }}">
+                                                {{ $meta['code'] }}
+                                            </span>
+                                        </div>
+                                        <p class="text-xs text-gray-500 mt-0.5 leading-relaxed">{{ $meta['tooltip'] }}</p>
+                                    </div>
+                                </label>
+                            @endforeach
+                        @endforeach
+                    </div>
+                </div>
             </div>
 
             @if($lastAuditResult)
@@ -765,15 +813,28 @@
             @if($auditLogs->isNotEmpty())
                 <div class="space-y-3">
                     @foreach($auditLogs as $log)
+                        @php $ruleMeta = \App\Services\AuditEngine::getMetaByCode($log->rule_code); @endphp
                         <div class="bg-white rounded-xl border p-4
                                     {{ $log->severity === 'critical' ? 'border-red-300 bg-red-50' : ($log->severity === 'warning' ? 'border-amber-300 bg-amber-50' : 'border-blue-200 bg-blue-50') }}">
                             <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-2 mb-1">
                                         <span class="text-sm">{{ $log->severity_icon }}</span>
-                                        <span class="px-2 py-0.5 text-xs font-mono rounded {{ $log->severity === 'critical' ? 'bg-red-200 text-red-800' : ($log->severity === 'warning' ? 'bg-amber-200 text-amber-800' : 'bg-blue-200 text-blue-800') }}">
-                                            {{ $log->rule_code }}
-                                        </span>
+                                        {{-- Tooltip'li Kural Badge --}}
+                                        <div x-data="{ tip: false }" class="relative inline-block">
+                                            <span @mouseenter="tip = true" @mouseleave="tip = false"
+                                                  class="px-2 py-0.5 text-xs font-mono rounded cursor-help {{ $log->severity === 'critical' ? 'bg-red-200 text-red-800' : ($log->severity === 'warning' ? 'bg-amber-200 text-amber-800' : 'bg-blue-200 text-blue-800') }}">
+                                                {{ $log->rule_code }}
+                                            </span>
+                                            @if($ruleMeta)
+                                            <div x-show="tip" x-transition.opacity
+                                                 class="absolute z-50 bottom-full left-0 mb-2 w-72 p-3 bg-gray-900 text-white text-xs rounded-xl shadow-2xl border border-gray-700 leading-relaxed pointer-events-none"
+                                                 style="display: none;">
+                                                <p class="font-bold text-amber-300 mb-1">{{ $ruleMeta['icon'] }} {{ $ruleMeta['title'] }}</p>
+                                                <p>{{ $ruleMeta['tooltip'] }}</p>
+                                            </div>
+                                            @endif
+                                        </div>
                                     </div>
                                     <p class="font-medium text-gray-900 text-sm">{{ $log->title }}</p>
                                     <p class="text-xs text-gray-600 mt-1 leading-relaxed">{{ $log->description }}</p>
@@ -791,7 +852,7 @@
                 <div class="text-center py-12 text-gray-400">
                     <p class="text-3xl mb-2">🛡️</p>
                     <p>Henüz denetim çalıştırılmamış</p>
-                    <p class="text-sm mt-1">Yukarıdaki butona tıklayarak 10 kuralı çalıştırın</p>
+                    <p class="text-sm mt-1">Yukarıdaki butona tıklayarak {{ \App\Services\AuditEngine::getRuleCount() }} kuralı çalıştırın</p>
                 </div>
             @endif
 
@@ -970,6 +1031,27 @@
                                 <option value="50">50 Satır</option>
                                 <option value="100">100 Satır</option>
                             </select>
+
+                            {{-- ⚙️ Kolon Özelleştirme Butonu --}}
+                            <div x-data="{ open: false }" class="relative">
+                                <button @click="open = !open" class="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-2 shadow-sm">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                                    ⚙️ Kolonlar
+                                </button>
+                                <div x-show="open" @click.outside="open = false" x-transition
+                                     class="absolute left-0 top-full mt-1 z-50 w-56 bg-white border border-gray-200 rounded-xl shadow-xl p-3 space-y-1.5">
+                                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Görünür Kolonlar</p>
+                                    @foreach(\App\Livewire\MarketplaceAccounting::$allColumnDefs as $colKey => $colLabel)
+                                        <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded px-2 py-1.5 transition-colors">
+                                            <input type="checkbox" 
+                                                   wire:click="toggleColumn('{{ $colKey }}')"
+                                                   {{ in_array($colKey, $visibleColumns) ? 'checked' : '' }}
+                                                   class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-200 w-4 h-4">
+                                            <span class="text-sm text-gray-700">{{ $colLabel }}</span>
+                                        </label>
+                                    @endforeach
+                                </div>
+                            </div>
                         </div>
                         
                         <button wire:click="exportAllOrders"
@@ -1041,32 +1123,12 @@
                     </div>
                 </div>
 
-                {{-- ⚙️ Kolon Özelleştirme Butonu --}}
-                <div class="flex items-center justify-between mb-3">
-                    <div x-data="{ open: false }" class="relative">
-                        <button @click="open = !open" class="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-2 shadow-sm">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
-                            ⚙️ Kolonlar
-                        </button>
-                        <div x-show="open" @click.outside="open = false" x-transition
-                             class="absolute left-0 top-full mt-1 z-50 w-56 bg-white border border-gray-200 rounded-xl shadow-xl p-3 space-y-1.5">
-                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Görünür Kolonlar</p>
-                            @foreach(\App\Livewire\MarketplaceAccounting::$allColumnDefs as $colKey => $colLabel)
-                                <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-50 rounded px-2 py-1.5 transition-colors">
-                                    <input type="checkbox" 
-                                           wire:click="toggleColumn('{{ $colKey }}')"
-                                           {{ in_array($colKey, $visibleColumns) ? 'checked' : '' }}
-                                           class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-200 w-4 h-4">
-                                    <span class="text-sm text-gray-700">{{ $colLabel }}</span>
-                                </label>
-                            @endforeach
-                        </div>
-                    </div>
-                    <span class="text-xs text-gray-400">{{ count($visibleColumns) }} / {{ count(\App\Livewire\MarketplaceAccounting::$allColumnDefs) }} kolon gösteriliyor</span>
-                </div>
+
 
                 @if(isset($orders) && count($orders) > 0)
-                    <div class="overflow-x-auto bg-white rounded-xl border border-gray-200">
+
+                    {{-- ═══ DESKTOP TABLO (md ve üstü) ═══ --}}
+                    <div class="hidden md:block overflow-x-auto bg-white rounded-xl border border-gray-200">
                         {{-- Resize CSS --}}
                         <style>
                             .col-resize-handle {
@@ -1077,6 +1139,13 @@
                             .col-resize-handle:hover, .col-resize-handle.active { background: #6366f1; }
                             .sortable-th { cursor: pointer; user-select: none; position: relative; }
                             .sortable-th:hover { background: #f3f4f6; }
+                            /* Kompakt yazı boyutları */
+                            #ordersTable .text-xs { font-size: 11px !important; }
+                            #ordersTable .text-sm { font-size: 13px !important; }
+                            #ordersTable .text-\[10px\] { font-size: 9px !important; }
+                            /* Kolon genişliği kontrolü */
+                            #ordersTable { table-layout: fixed; width: 100%; }
+                            #ordersTable th, #ordersTable td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
                         </style>
                         <table class="min-w-full divide-y divide-gray-200" x-data="columnResize()" id="ordersTable">
                             <thead class="bg-gray-50">
@@ -1190,7 +1259,15 @@
                                         <td class="px-3 py-3 text-right text-sm {{ $isFuturePayment ? 'opacity-50' : '' }}">{{ number_format($order->commission_amount, 2, ',', '.') }} ₺</td>
                                         @endif
                                         @if(in_array('kargo', $visibleColumns))
-                                        <td class="px-3 py-3 text-right text-sm {{ $isFuturePayment ? 'opacity-50' : '' }}">{{ number_format($order->cargo_amount, 2, ',', '.') }} ₺</td>
+                                        @php
+                                            $svcCargo = new \App\Services\MpSettingsService();
+                                            $kargoDisplay = $svcCargo->usesOwnCargo() 
+                                                ? (float)($order->own_cargo_cost_at_time ?? 0) 
+                                                : (float)$order->cargo_amount;
+                                        @endphp
+                                        <td class="px-3 py-3 text-right text-sm {{ $isFuturePayment ? 'opacity-50' : '' }}">
+                                            {{ $kargoDisplay > 0 ? number_format($kargoDisplay, 2, ',', '.') . ' ₺' : '0,00 ₺' }}
+                                        </td>
                                         @endif
                                         @if(in_array('cogs', $visibleColumns))
                                         <td class="px-3 py-3 text-right text-sm {{ $hasCogs ? '' : 'text-gray-400' }}">
@@ -1219,7 +1296,111 @@
                             </tbody>
                         </table>
                     </div>
-                    
+
+                    {{-- ═══ MOBİL KART GÖRÜNÜMÜ (md altı) ═══ --}}
+                    <div class="md:hidden space-y-3">
+                        @foreach($orders as $order)
+                            @php
+                                $isFuturePayment = false;
+                                if ($order->settlement && $order->settlement->due_date) {
+                                    $isFuturePayment = \Carbon\Carbon::parse($order->settlement->due_date)->startOfDay()->isAfter(\Carbon\Carbon::today());
+                                }
+                                $cogs = (float) $order->cogs_at_time;
+                                $hasCogs = $cogs > 0;
+                                $netProfit = $hasCogs ? $order->real_net_profit : null;
+                                $margin = ($hasCogs && (float) $order->gross_amount > 0) ? round($netProfit / (float) $order->gross_amount * 100, 1) : null;
+                            @endphp
+                            <div class="bg-white rounded-xl border border-gray-200 p-4 {{ $order->is_flagged ? 'border-red-300 bg-red-50' : ($order->is_reconciled ? 'opacity-75' : '') }}">
+                                {{-- Kart Başlık --}}
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="flex items-center gap-2">
+                                        <input type="checkbox" wire:model.live="selectedOrders" value="{{ $order->id }}" class="rounded border-gray-300 text-indigo-600 shadow-sm w-4 h-4">
+                                        <div>
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="text-sm font-bold text-gray-900">#{{ $order->order_number }}</span>
+                                                @if($order->is_reconciled)
+                                                    <svg class="w-3.5 h-3.5 text-gray-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipped-rule="evenodd" /></svg>
+                                                @endif
+                                            </div>
+                                            <p class="text-xs text-gray-400">{{ $order->order_date?->format('d.m.Y') }}</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2 py-1 text-xs font-medium rounded-full {{ $order->status_color }}">{{ $order->status }}</span>
+                                        <button wire:click="showOrderDetail({{ $order->id }})" class="px-2.5 py-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-semibold hover:bg-blue-100 transition-colors">
+                                            5N1K
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {{-- Ürün --}}
+                                <p class="text-xs text-gray-600 truncate mb-3">{{ $order->product_name ?: ($order->product?->product_name ?: 'Finansal Kayıt') }}</p>
+
+                                {{-- Finansal Grid --}}
+                                <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                    @if(in_array('brut', $visibleColumns))
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Brüt</span>
+                                        <span class="font-medium text-gray-700">{{ number_format($order->gross_amount, 2, ',', '.') }} ₺</span>
+                                    </div>
+                                    @endif
+                                    @if(in_array('hakedis', $visibleColumns))
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Hakediş</span>
+                                        <span class="font-medium {{ $isFuturePayment ? 'text-amber-600' : 'text-gray-700' }}">{{ number_format($order->net_hakedis, 2, ',', '.') }} ₺</span>
+                                    </div>
+                                    @endif
+                                    @if(in_array('komisyon', $visibleColumns))
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Komisyon</span>
+                                        <span class="font-medium text-gray-700">{{ number_format($order->commission_amount, 2, ',', '.') }} ₺</span>
+                                    </div>
+                                    @endif
+                                    @if(in_array('kargo', $visibleColumns))
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Kargo</span>
+                                        @php
+                                            $svcCargoM = new \App\Services\MpSettingsService();
+                                            $kargoDisplayM = $svcCargoM->usesOwnCargo() 
+                                                ? (float)($order->own_cargo_cost_at_time ?? 0) 
+                                                : (float)$order->cargo_amount;
+                                        @endphp
+                                        <span class="font-medium text-gray-700">{{ $kargoDisplayM > 0 ? number_format($kargoDisplayM, 2, ',', '.') . ' ₺' : '0,00 ₺' }}</span>
+                                    </div>
+                                    @endif
+                                    @if(in_array('cogs', $visibleColumns))
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">COGS</span>
+                                        <span class="font-medium {{ $hasCogs ? 'text-gray-700' : 'text-gray-300' }}">{{ $hasCogs ? number_format($cogs, 2, ',', '.') . ' ₺' : '—' }}</span>
+                                    </div>
+                                    @endif
+                                    @if(in_array('net_kar', $visibleColumns))
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Net Kâr</span>
+                                        <span class="font-semibold {{ $netProfit !== null ? ($netProfit > 0 ? 'text-emerald-600' : ($netProfit < 0 ? 'text-red-600' : 'text-gray-300')) : 'text-gray-300' }}">
+                                            {{ $netProfit !== null ? number_format($netProfit, 2, ',', '.') . ' ₺' : '—' }}
+                                        </span>
+                                    </div>
+                                    @endif
+                                    @if(in_array('margin', $visibleColumns))
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Margin</span>
+                                        <span class="font-semibold {{ $margin !== null ? ($margin > 20 ? 'text-emerald-600' : ($margin > 0 ? 'text-amber-600' : 'text-red-600')) : 'text-gray-300' }}">
+                                            {{ $margin !== null ? '%' . $margin : '—' }}
+                                        </span>
+                                    </div>
+                                    @endif
+                                </div>
+
+                                @if($isFuturePayment)
+                                    <div class="mt-2 text-center">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">⏳ Gelecek Vade</span>
+                                    </div>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+
                     @if($orders instanceof \Illuminate\Pagination\LengthAwarePaginator)
                         <div class="mt-4">{{ $orders->links() }}</div>
                     @endif

@@ -7,6 +7,7 @@ use App\Models\MpOrder;
 use App\Models\MpTransaction;
 use App\Models\MpInvoice;
 use App\Models\MpSettlement;
+use App\Models\MpProduct;
 use App\Models\ProductCost;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
@@ -50,7 +51,14 @@ class MarketplaceImportService
         'cargo_company'     => ['Kargo Firması', 'Cargo Company', 'Kargo', 'Taşıyıcı Şirket'],
         'cargo_desi'        => ['Desi', 'Desi Değeri', 'Hacimsel Ağırlık', 'Ağırlık', 'Kargodan alınan desi'],
         'cargo_amount'      => ['Kargo Tutarı', 'Gönderi Kargo Bedeli', 'Kargo Gideri', 'Kargo Kesintisi', 'Cargo Amount', 'Kargo Bedeli', 'Kargo Ücreti', 'Faturalanan Kargo Tutarı'],
-        'service_fee'       => ['Hizmet Bedeli', 'Platform Hizmet Bedeli', 'Uluslararası Hizmet Bedeli', 'Service Fee', 'İşlem Bedeli'],
+        'service_fee'       => ['Hizmet Bedeli', 'Platform Hizmet Bedeli', 'Service Fee', 'İşlem Bedeli'],
+        'international_service_fee' => ['Uluslararası Hizmet Bedeli'],
+        'refund_amount'     => ['İade', 'İade Tutarı'],
+        'cancel_amount'     => ['İptal', 'İptal Tutarı'],
+        'return_cargo_amount' => ['İade Kargo Bedeli'],
+        'penalty_amount'    => ['Ceza Bedeli', 'Ceza Tutarı'],
+        'other_amount'      => ['Diğer', 'Diğer Tutar'],
+        'intl_operation_refund' => ['Yurtdışı Operasyon İade Bedeli'],
         'net_hakedis'       => ['Net Hakediş', 'Net Tutar', 'Net Amount', 'Ödenecek Tutar', 'Tahmini Hakediş'],
         'status'            => ['Sipariş Durumu', 'Sipariş Statüsü', 'Durum', 'Status', 'Sipariş Durum', 'Siparişin Durumu', 'Sipariş Satır Durumu', 'Paket Durumu', 'Alternatif Teslimat Statüsü'],
         'delivery_date'     => ['Teslim Tarihi', 'Delivery Date', 'Teslimat Tarihi'],
@@ -60,7 +68,7 @@ class MarketplaceImportService
 
     protected array $transactionColumnAliases = [
         'transaction_date'  => ['İşlem Tarihi', 'Islem Tarihi', 'Transaction Date', 'Tarih'],
-        'document_number'   => ['Belge No', 'Dekont No', 'Fatura No', 'Document Number', 'Belge Numarası'],
+        'document_number'   => ['Belge No', 'Dekont No', 'Fatura No', 'Document Number', 'Belge Numarası', 'Kalem NO', 'Kalem No', 'Kalem Numarası'],
         'order_number'      => ['Sipariş No', 'Siparis No', 'Order No'],
         'transaction_type'  => ['İşlem Tipi', 'Fiş Türü', 'Islem Tipi', 'Transaction Type', 'İşlem Türü'],
         'description'       => ['Açıklama', 'Aciklama', 'Description'],
@@ -88,8 +96,9 @@ class MarketplaceImportService
     ];
 
     protected array $settlementColumnAliases = [
+        'document_number'   => ['Kayıt No / Fatura No', 'Kayıt No', 'Fatura No', 'Record No'],
         'transaction_type'  => ['İşlem Tipi', 'Islem Tipi'],
-        'order_number'      => ['Sipariş No', 'Siparis No', 'Kayıt No / Fatura No', 'Sipariş Numarası'],
+        'order_number'      => ['Sipariş No', 'Siparis No', 'Sipariş Numarası'],
         'transaction_date'  => ['İşlem Tarihi', 'Sipariş Tarihi', 'Tarih'],
         'settlement_date'   => ['Teslim Tarihi', 'Hakediş Tarihi', 'Ödeme Tarihi', 'Settlement Date'],
         'due_date'          => ['Vade Tarihi', 'Son Ödeme Tarihi', 'Ödeme Vadesi', 'Due Date'],
@@ -99,6 +108,8 @@ class MarketplaceImportService
         'total_amount'      => ['Toplam Tutar', 'Sipariş Tutarı', 'Brüt Tutar'],
         'stopaj'            => ['Stopaj', 'Stopaj Tutarı'],
         'delivery_date'     => ['Teslim Tarihi'],
+        'barcode'           => ['Barkod', 'Barcode'],
+        'product_name'      => ['Ürün Adı / Açıklama', 'Ürün Adı', 'Product Name'],
     ];
 
     public function __construct()
@@ -175,38 +186,75 @@ class MarketplaceImportService
 
                 $totalGross = $orderRows->sum(fn($r) => $this->parseNumber($r['gross_amount'] ?? 0));
                 $maxCargo   = $orderRows->max(fn($r) => $this->parseNumber($r['cargo_amount'] ?? 0));
-                $maxService = $orderRows->max(fn($r) => $this->parseNumber($r['service_fee'] ?? 0));
+                $maxService = $orderRows->max(function ($r) {
+                    return $this->parseNumber($r['service_fee'] ?? 0)
+                        + $this->parseNumber($r['international_service_fee'] ?? 0);
+                });
+
+                // Trendyol çoklu sepeti ayrı satır verdiğinde, finansal toplamları
+                // (net_hakedis, komisyon, indirim, stopaj) HER SATIRA AYNI TUTARI yazar.
+                // Bunları da max() ile alıp oransal dağıtmalıyız.
+                $maxNetHakedis     = $orderRows->max(fn($r) => $this->parseNumber($r['net_hakedis'] ?? 0));
+                $maxCommission     = $orderRows->max(fn($r) => abs($this->parseNumber($r['commission_amount'] ?? 0)));
+                $maxDiscount       = $orderRows->max(fn($r) => abs($this->parseNumber($r['discount_amount'] ?? 0)));
+                $maxCampaign       = $orderRows->max(fn($r) => abs($this->parseNumber($r['campaign_discount'] ?? 0)));
+                $maxWithholding    = $orderRows->max(fn($r) => abs($this->parseNumber($r['withholding_tax'] ?? 0)));
 
                 $cargoDistributed = 0;
                 $serviceDistributed = 0;
+                $hakedisDistributed = 0;
+                $commissionDistributed = 0;
+                $discountDistributed = 0;
+                $campaignDistributed = 0;
+                $withholdingDistributed = 0;
                 $rowCount = $orderRows->count();
                 $processedCount = 0;
+
+                // Dağıtılması gereken alanlardaki tüm satırlardaki değerler aynı mı kontrol et
+                // Eğer aynıysa Trendyol toplam tutarı her satıra yazmış → dağıtmamız gerekir
+                // Farklıysa her satırda zaten kendi değeri var → dağıtmaya gerek yok
+                $needsFinancialSplit = $rowCount > 1 && $this->allRowsSameValue($orderRows, 'net_hakedis');
 
                 foreach ($orderRows as $r) {
                     $processedCount++;
                     $rowGross = $this->parseNumber($r['gross_amount'] ?? 0);
 
                     if ($rowCount > 1) { // Çoklu Sepet
-                        if ($totalGross > 0) {
-                            $ratio = $rowGross / $totalGross;
-                            $allocatedCargo = round($maxCargo * $ratio, 2);
-                            $allocatedService = round($maxService * $ratio, 2);
-                        } else {
-                            $allocatedCargo = round($maxCargo / $rowCount, 2);
-                            $allocatedService = round($maxService / $rowCount, 2);
-                        }
+                        $ratio = $totalGross > 0 ? ($rowGross / $totalGross) : (1 / $rowCount);
+                        $isLastRow = ($processedCount === $rowCount);
 
-                        // Küsurattan yitirilen kuruşluk farkı son satıra giydir
-                        if ($processedCount === $rowCount) {
-                            $allocatedCargo = round($maxCargo - $cargoDistributed, 2);
-                            $allocatedService = round($maxService - $serviceDistributed, 2);
-                        }
+                        // Kargo ve hizmet bedeli her zaman dağıtılır
+                        $allocatedCargo   = $isLastRow ? round($maxCargo - $cargoDistributed, 2) : round($maxCargo * $ratio, 2);
+                        $allocatedService = $isLastRow ? round($maxService - $serviceDistributed, 2) : round($maxService * $ratio, 2);
 
                         $cargoDistributed += $allocatedCargo;
                         $serviceDistributed += $allocatedService;
 
                         $r['cargo_amount'] = $allocatedCargo;
                         $r['service_fee']  = $allocatedService;
+                        $r['_original_international_service_fee'] = $r['international_service_fee'] ?? 0;
+                        $r['international_service_fee'] = 0;
+
+                        // Finansal alanlar: sadece tüm satırlarda aynı değer varsa dağıt
+                        if ($needsFinancialSplit) {
+                            $allocatedHakedis    = $isLastRow ? round($maxNetHakedis - $hakedisDistributed, 2) : round($maxNetHakedis * $ratio, 2);
+                            $allocatedCommission = $isLastRow ? round($maxCommission - $commissionDistributed, 2) : round($maxCommission * $ratio, 2);
+                            $allocatedDiscount   = $isLastRow ? round($maxDiscount - $discountDistributed, 2) : round($maxDiscount * $ratio, 2);
+                            $allocatedCampaign   = $isLastRow ? round($maxCampaign - $campaignDistributed, 2) : round($maxCampaign * $ratio, 2);
+                            $allocatedWithholding = $isLastRow ? round($maxWithholding - $withholdingDistributed, 2) : round($maxWithholding * $ratio, 2);
+
+                            $hakedisDistributed += $allocatedHakedis;
+                            $commissionDistributed += $allocatedCommission;
+                            $discountDistributed += $allocatedDiscount;
+                            $campaignDistributed += $allocatedCampaign;
+                            $withholdingDistributed += $allocatedWithholding;
+
+                            $r['net_hakedis']       = $allocatedHakedis;
+                            $r['commission_amount'] = $allocatedCommission;
+                            $r['discount_amount']   = $allocatedDiscount;
+                            $r['campaign_discount'] = $allocatedCampaign;
+                            $r['withholding_tax']   = $allocatedWithholding;
+                        }
                     } 
                     
                     $adjustedMapped->push($r);
@@ -245,11 +293,13 @@ class MarketplaceImportService
                         $parsedOrderDate = $this->parseDate($row['order_date'] ?? null);
                         $targetPeriodId = $this->resolvePeriodId($parsedOrderDate, $period);
 
-                        // COGS ve ambalaj: birim maliyet × adet (SyncOperationalToFinancialJob ile tutarlı)
+                        // COGS, ambalaj ve kargo: birim maliyet × adet (SyncOperationalToFinancialJob ile tutarlı)
                         $unitCogs = (float) ($costData['production_cost'] ?? 0);
                         $unitPackaging = (float) ($costData['packaging_cost'] ?? 0);
+                        $unitCargo = (float) ($costData['cargo_cost'] ?? 0);
                         $totalCogs = $unitCogs > 0 ? round($unitCogs * $quantity, 2) : null;
                         $totalPackaging = $unitPackaging > 0 ? round($unitPackaging * $quantity, 2) : null;
+                        $totalOwnCargo = $unitCargo > 0 ? round($unitCargo * $quantity, 2) : null;
 
                         $data = [
                             'period_id'             => $targetPeriodId,
@@ -274,12 +324,14 @@ class MarketplaceImportService
                             'cargo_desi'            => abs($this->parseNumber($row['cargo_desi'] ?? 0)),
                             'cargo_amount'          => abs($this->parseNumber($row['cargo_amount'] ?? 0)),
                             'cargo_tax'             => round(abs($this->parseNumber($row['cargo_amount'] ?? 0)) * 0.20, 2),
-                            'service_fee'           => abs($this->parseNumber($row['service_fee'] ?? 0)),
+                            'service_fee'           => abs($this->parseNumber($row['service_fee'] ?? 0))
+                                + abs($this->parseNumber($row['international_service_fee'] ?? 0)),
                             'withholding_tax'       => abs($this->parseNumber($row['withholding_tax'] ?? 0)),
                             'net_hakedis'           => $this->parseNumber($row['net_hakedis'] ?? 0), // Can be negative
                             'product_vat_rate'      => $costData['vat_rate'] ?? $defaultVatRate,
                             'cogs_at_time'          => $totalCogs,
                             'packaging_cost_at_time' => $totalPackaging,
+                            'own_cargo_cost_at_time' => $totalOwnCargo,
                             'raw_data'              => $row,
                         ];
 
@@ -631,6 +683,10 @@ class MarketplaceImportService
 
             // Kullanıcının ID'si (chunk dışında bir kez alalım)
             $authUserId = \Illuminate\Support\Facades\Auth::id() ?? 1;
+            $userPeriodIds = MpPeriod::where('user_id', $authUserId)->pluck('id');
+            if ($userPeriodIds->isEmpty()) {
+                $userPeriodIds = collect([$period->id]);
+            }
 
             foreach ($mapped->chunk(1000) as $chunk) {
                 // N+1 sorgu hatasını ve mükerrer kayıt ezilmesini önlemek için mevcut kayıtları önbelleğe al
@@ -651,11 +707,16 @@ class MarketplaceImportService
                         ->get();
                         
                     foreach ($existingSettlements as $s) {
+                        $docNum = trim($s->document_number ?? '');
                         $dateStr = $s->transaction_date ? \Carbon\Carbon::parse($s->transaction_date)->format('Y-m-d') : '';
                         $amountStr = number_format((float) $s->seller_hakedis, 2, '.', '');
                         $typeStr = mb_strtolower(trim($s->transaction_type ?? 'hakediş'));
                         
-                        $key = "{$s->order_number}_{$dateStr}_{$typeStr}_{$amountStr}";
+                        // document_number benzersizdir — hash key'e dahil edilerek aynı siparişteki
+                        // çoklu adet satış satırlarının (qty>1) birbirini ezmesi önlenir
+                        $key = !empty($docNum)
+                            ? "{$s->order_number}_{$docNum}"
+                            : "{$s->order_number}_{$dateStr}_{$typeStr}_{$amountStr}";
                         if (!isset($existingMap[$key])) {
                             $existingMap[$key] = [];
                         }
@@ -673,8 +734,17 @@ class MarketplaceImportService
                             continue;
                         }
 
-                        // Find closest matching order system-wide (Cross-Period)
-                        $order = MpOrder::where('order_number', $orderNumber)->first(); 
+                        $settlementBarcode = trim((string) ($row['barcode'] ?? ''));
+                        // Önce sipariş no + barkod ile, bulunamazsa sadece sipariş no ile eşleştir.
+                        $order = MpOrder::where('order_number', $orderNumber)
+                            ->whereIn('period_id', $userPeriodIds)
+                            ->when($settlementBarcode !== '', fn($q) => $q->where('barcode', $settlementBarcode))
+                            ->first();
+                        if (!$order) {
+                            $order = MpOrder::where('order_number', $orderNumber)
+                                ->whereIn('period_id', $userPeriodIds)
+                                ->first();
+                        }
                         $orderId = $order ? $order->id : null;
                         
                         $parsedTransactionDate = $this->parseDate($row['transaction_date'] ?? null);
@@ -688,6 +758,7 @@ class MarketplaceImportService
                             'period_id'        => $effectivePeriodId,
                             'order_id'         => $orderId,
                             'order_number'     => $orderNumber,
+                            'document_number'  => mb_substr(trim($row['document_number'] ?? ''), 0, 100),
                             'transaction_type' => mb_substr($row['transaction_type'] ?? '', 0, 100),
                             'transaction_date' => $parsedTransactionDate,
 
@@ -733,12 +804,16 @@ class MarketplaceImportService
                         }
 
                         // Mükerrer satırları (aynı siparişteki aynı tutarlı 2 ürünü) ayırma mantığı
-                        // Normalde updateOrCreate kullanılırsa, aynı excel'deki 2 aynı satır birbirini ezer.
+                        // document_number (Kayıt No) her satır için benzersizdir — bu sayede
+                        // qty>1 siparişlerdeki adet-bazlı ödeme satırları birbirini ezmez.
+                        $docNumForHash = trim($row['document_number'] ?? '');
                         $dateStrForHash = $data['transaction_date'] ? \Carbon\Carbon::parse($data['transaction_date'])->format('Y-m-d') : '';
                         $amountStrForHash = number_format((float) $data['seller_hakedis'], 2, '.', '');
                         $typeStrForHash = mb_strtolower(trim($data['transaction_type'] ?? 'hakediş'));
                         
-                        $hashKey = "{$orderNumber}_{$dateStrForHash}_{$typeStrForHash}_{$amountStrForHash}";
+                        $hashKey = !empty($docNumForHash)
+                            ? "{$orderNumber}_{$docNumForHash}"
+                            : "{$orderNumber}_{$dateStrForHash}_{$typeStrForHash}_{$amountStrForHash}";
                         
                         if (!isset($localCounter[$hashKey])) {
                             $localCounter[$hashKey] = 0;
@@ -769,10 +844,33 @@ class MarketplaceImportService
                                 $updates['delivery_date'] = $deliveryDate;
                             }
 
+                            if (!empty($settlementBarcode) && empty($order->barcode)) {
+                                $updates['barcode'] = mb_substr($settlementBarcode, 0, 100);
+                            }
+
+                            $rawProductName = trim((string) ($row['product_name'] ?? ''));
+                            if ($rawProductName !== '' && empty($order->product_name)) {
+                                $updates['product_name'] = mb_substr($rawProductName, 0, 255);
+                            }
+
                             $stopaj = $this->parseNumber($row['stopaj'] ?? 0);
                             // Trendyol stopajı eksi yazar, biz pozitif (veya AuditEngine'e uygun) tutalım
                             if ($stopaj != 0 && $order->withholding_tax == 0) {
                                 $updates['withholding_tax'] = abs($stopaj);
+                            }
+
+                            if (!empty($settlementBarcode) && (empty($order->stock_code) || empty($order->product_name))) {
+                                $matchedProduct = MpProduct::where('user_id', $authUserId)
+                                    ->where('barcode', $settlementBarcode)
+                                    ->first();
+                                if ($matchedProduct) {
+                                    if (empty($order->stock_code) && !empty($matchedProduct->stock_code)) {
+                                        $updates['stock_code'] = mb_substr((string) $matchedProduct->stock_code, 0, 100);
+                                    }
+                                    if (empty($order->product_name) && !empty($matchedProduct->product_name)) {
+                                        $updates['product_name'] = mb_substr((string) $matchedProduct->product_name, 0, 255);
+                                    }
+                                }
                             }
 
                             if (!empty($updates)) {
@@ -921,6 +1019,18 @@ class MarketplaceImportService
      * Türkçe formatındaki sayıyı parse et
      * "1.049,90" → 1049.90
      */
+
+    /**
+     * Çoklu sepet satırlarındaki belirli bir alanın tüm satırlarda aynı mı olduğunu kontrol et.
+     * Trendyol toplam tutarı her satıra kopyalayarak yazdığında tüm değerler aynı olur → dağıtmamız gerekir.
+     * Her satırda farklı değer varsa zaten ürün bazlı verilmiş → dağıtmaya gerek yok.
+     */
+    protected function allRowsSameValue($rows, string $field): bool
+    {
+        $values = $rows->map(fn($r) => $this->parseNumber($r[$field] ?? 0))->unique();
+        return $values->count() === 1 && $values->first() != 0;
+    }
+
     protected function parseNumber($value): ?float
     {
         if ($value === null || $value === '') return null;

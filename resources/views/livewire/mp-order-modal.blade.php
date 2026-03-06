@@ -445,9 +445,10 @@
                                 <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 border-b pb-2">Gerçek Kârlılık Özeti</h4>
                                 
                                 <div class="space-y-4">
+                                    @php $hasOwnCargoInCost = (float)($sum['own_cargo_cost'] ?? 0) > 0; @endphp
                                     <div class="flex justify-between items-center">
                                         <span class="text-sm font-medium text-gray-600">
-                                            Ürün Maliyeti (COGS)
+                                            {{ $hasOwnCargoInCost ? 'Toplam Ürün + Kargo Maliyeti' : 'Ürün Maliyeti (COGS)' }}
                                             @if(($basic['quantity'] ?? 1) > 1)
                                                 <span class="text-xs text-gray-400 font-normal ml-1">({{ $basic['quantity'] }} adet)</span>
                                             @endif
@@ -522,21 +523,35 @@
                                                     <span class="text-green-600 font-medium">+{{ number_format($sum['vat_advantage'], 2, ',', '.') }} ₺</span>
                                                 </div>
                                                 @endif
+
+                                                @php
+                                                    $svcModalCargo = new \App\Services\MpSettingsService();
+                                                    $ownCargoModal = $svcModalCargo->usesOwnCargo() ? (float)($sum['own_cargo_cost'] ?? 0) : 0;
+                                                @endphp
+                                                @if($ownCargoModal > 0)
+                                                <div class="flex justify-between items-center text-gray-500">
+                                                    <span class="flex items-center gap-2">
+                                                        <span class="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
+                                                        Kendi Kargo Maliyeti
+                                                    </span>
+                                                    <span class="text-red-500 font-medium">-{{ number_format($ownCargoModal, 2, ',', '.') }} ₺</span>
+                                                </div>
+                                                @endif
                                                 
-                                                @php $toplamMaliyet = $sum['cost_of_goods'] + $sum['total_extra_debt']; @endphp
-                                                @if($toplamMaliyet > 0)
+                                                @php $urunMaliyeti = (float)($sum['product_cost'] ?? 0); @endphp
+                                                @if($urunMaliyeti > 0)
                                                 <div class="flex justify-between items-center text-gray-500">
                                                     <span class="flex items-center gap-2">
                                                         <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>
-                                                        Ürün & Ek Maliyetler
+                                                        Ürün Maliyeti (COGS)
                                                     </span>
-                                                    <span class="text-red-500 font-medium">-{{ number_format($toplamMaliyet, 2, ',', '.') }} ₺</span>
+                                                    <span class="text-red-500 font-medium">-{{ number_format($urunMaliyeti, 2, ',', '.') }} ₺</span>
                                                 </div>
                                                 @else
                                                 <div class="flex justify-between items-center text-gray-400">
                                                     <span class="flex items-center gap-2 shrink-0">
                                                         <span class="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
-                                                        Ürün & Ek Maliyetler
+                                                        Ürün Maliyeti (COGS)
                                                     </span>
                                                     <span class="font-medium">0,00 ₺</span>
                                                 </div>

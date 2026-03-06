@@ -145,17 +145,18 @@ class MpProduct extends Model
     }
 
     /**
-     * Kâr marjı (%) = (Satış Fiyatı - Toplam Maliyet - Komisyon) / Satış Fiyatı * 100
+     * ROI (%) = (Net Kâr / COGS) * 100
      */
     public function getProfitMarginAttribute(): ?float
     {
-        $salePrice = (float) $this->sale_price;
-        if ($salePrice <= 0) return null;
+        $cogs = (float) $this->cogs;
+        if ($cogs <= 0) return null;
 
+        $salePrice = (float) $this->sale_price;
         $commissionAmount = $salePrice * ((float) $this->commission_rate / 100);
         $profit = $salePrice - $this->total_cost - $commissionAmount;
 
-        return round(($profit / $salePrice) * 100, 1);
+        return round(($profit / $cogs) * 100, 1);
     }
 
     /**

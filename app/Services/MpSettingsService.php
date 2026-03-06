@@ -144,6 +144,15 @@ class MpSettingsService
         return (bool) $this->get('tax.kdv_hesaplama_aktif', false);
     }
 
+    /**
+     * Firma kendi kargo anlaşması ile mi çalışıyor?
+     * Açıksa, MpProduct.cargo_cost sipariş kâr hesabına dahil edilir.
+     */
+    public function usesOwnCargo(): bool
+    {
+        return (bool) $this->get('cargo.uses_own_cargo', false);
+    }
+
     public function getBaremLimit(): float
     {
         return $this->getFloat('cargo.barem_limit', 300);
@@ -254,6 +263,7 @@ class MpSettingsService
             'cargo' => [
                 'barem_limit'           => 300,
                 'cargo_companies'       => ['TEX', 'PTT', 'Aras', 'Sürat', 'Yurtiçi'],
+                'uses_own_cargo'        => false, // Kendi kargo anlaşması var mı?
                 'heavy_cargo_penalties' => [
                     'Aras'    => 4250,
                     'Sürat'   => 4500,

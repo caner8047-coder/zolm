@@ -30,7 +30,45 @@ class ExcelService
             throw new \Exception("Sayfa bulunamadı: {$sheetName}");
         }
 
-        $data = $sheet->toArray(null, true, true, true);
+        // Formül hesaplaması ile dene, hata olursa cached değerleri oku
+        try {
+            $data = $sheet->toArray(null, true, true, true);
+        } catch (\Exception $e) {
+            Log::warning('ExcelService: Formül hesaplama hatası, cached değerler okunuyor', [
+                'error' => $e->getMessage(),
+                'sheet' => $sheet->getTitle(),
+            ]);
+            
+            $data = [];
+            $highestRow = $sheet->getHighestRow();
+            $highestCol = $sheet->getHighestColumn();
+            $highestColIndex = Coordinate::columnIndexFromString($highestCol);
+            
+            for ($row = 1; $row <= $highestRow; $row++) {
+                $rowData = [];
+                for ($col = 1; $col <= $highestColIndex; $col++) {
+                    $colLetter = Coordinate::stringFromColumnIndex($col);
+                    $cell = $sheet->getCell($colLetter . $row);
+                    
+                    try {
+                        $value = $cell->getCalculatedValue();
+                    } catch (\Exception $cellEx) {
+                        // Formül hesaplanamıyor — cached veya raw değer al
+                        $value = $cell->getOldCalculatedValue();
+                        if ($value === null) {
+                            $value = $cell->getValue();
+                            // Formül string'ini temizle (= ile başlıyorsa)
+                            if (is_string($value) && str_starts_with($value, '=')) {
+                                $value = null;
+                            }
+                        }
+                    }
+                    
+                    $rowData[$colLetter] = $value;
+                }
+                $data[$row] = $rowData;
+            }
+        }
         
         $headers = array_shift($data);
         

@@ -199,6 +199,7 @@ class SyncOperationalToFinancialJob implements ShouldQueue
             $order->product_vat_rate = $product->vat_rate;
             $order->cogs_at_time = $product->cogs * $quantity;
             $order->packaging_cost_at_time = $product->packaging_cost * $quantity;
+            $order->own_cargo_cost_at_time = ($product->cargo_cost ?? 0) * $quantity;
         }
 
         // Net Kâr Motorunu çalıştır

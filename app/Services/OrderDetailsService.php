@@ -70,6 +70,7 @@ class OrderDetailsService
             $aggExpectedNet      = $allOrders->sum('net_hakedis');
             $aggCogs             = $allOrders->sum('cogs_at_time');
             $aggPackaging        = $allOrders->sum('packaging_cost_at_time');
+            $aggOwnCargo         = $allOrders->sum('own_cargo_cost_at_time');
             $aggVatBalance       = $allOrders->sum('vat_balance');
 
             // ─── Stopaj Konsolidasyonu ───
@@ -126,7 +127,8 @@ class OrderDetailsService
             $settlement = $order->settlement;
             
             // Fallback: FK ilişkisi yoksa, order_number ile arama yap
-            $allSettlements = \App\Models\MpSettlement::where('order_number', $order->order_number)
+            $allSettlements = \App\Models\MpSettlement::where('period_id', $order->period_id)
+                ->where('order_number', $order->order_number)
                 ->orderBy('id', 'asc') // Kronolojik işlenmiş sıraya göre
                 ->get();
 
@@ -138,7 +140,9 @@ class OrderDetailsService
                 // FK güncellemesi
                 if (!$settlement->order_id) {
                     $allSettlements->each(function($s) use($order) { 
-                        if (!$s->order_id) $s->update(['order_id' => $order->id]); 
+                        if (!$s->order_id && (int) $s->period_id === (int) $order->period_id) {
+                            $s->update(['order_id' => $order->id]);
+                        }
                     });
                 }
             }
@@ -257,6 +261,10 @@ class OrderDetailsService
             })->toArray();
 
             // 6. ÖZET SONUÇ (Gerçek Net Kazanç / Kayıp)
+            $svc = new \App\Services\MpSettingsService();
+            $kdvEnabled = $svc->isKdvEnabled();
+            $ownCargoAmount = 0.0;
+
             if ($order->status === 'İptal Edildi') {
                 $absoluteNetProfit = 0.0;
                 $vatPayable = 0.0;
@@ -276,12 +284,14 @@ class OrderDetailsService
                 $baseRevenue = $settlementData['has_settlement'] ? $settlementData['seller_hakedis'] : $financials['expected_net'];
                 $costOfGoods = (float) $aggCogs + (float) $aggPackaging;
                 
+                // Kendi kargo maliyetini dahil et (toggle açıksa)
+                $ownCargoAmount = $svc->usesOwnCargo() ? (float) $aggOwnCargo : 0;
+                $costOfGoods += $ownCargoAmount;
+
                 // Gerçek Net Kâr = Tahsilat - Tüm Maliyetler - Ekstra Cezalar + Komisyon İadeleri
                 $absoluteNetProfit = $baseRevenue - $costOfGoods - $totalExtraDebt + $totalRefundCredit;
                 
                 // KDV Yükümlülüğü (sadece ayarlardan açıksa hesapla)
-                $svc = new \App\Services\MpSettingsService();
-                $kdvEnabled = $svc->isKdvEnabled();
                 $vatPayable = $kdvEnabled ? (float) $aggVatBalance : 0;
                 if ($vatPayable > 0) {
                     $absoluteNetProfit -= $vatPayable;
@@ -294,12 +304,14 @@ class OrderDetailsService
 
             $summary = [
                 'base_revenue'        => $baseRevenue,
+                'product_cost'        => (float) $aggCogs,
                 'cost_of_goods'       => $costOfGoods,
                 'total_extra_debt'    => $totalExtraDebt,
                 'total_refund_credit' => $totalRefundCredit,
-                'vat_advantage'       => ($kdvEnabled ?? false) ? ($vatPayable < 0 ? abs($vatPayable) : 0) : 0,
-                'vat_payable'         => ($kdvEnabled ?? false) ? ($vatPayable > 0 ? $vatPayable : 0) : 0,
+                'vat_advantage'       => $kdvEnabled ? ($vatPayable < 0 ? abs($vatPayable) : 0) : 0,
+                'vat_payable'         => $kdvEnabled ? ($vatPayable > 0 ? $vatPayable : 0) : 0,
                 'stopaj_deduction'    => $stopajVal,
+                'own_cargo_cost'      => $ownCargoAmount,
                 'absolute_net_profit' => round($absoluteNetProfit, 2),
                 'is_loss'             => $absoluteNetProfit < 0
             ];

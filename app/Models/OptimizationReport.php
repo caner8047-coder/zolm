@@ -11,6 +11,7 @@ class OptimizationReport extends Model
     protected $fillable = [
         'user_id',
         'name',
+        'campaign_type',
         'total_products',
         'opportunity_count',
         'total_current_profit',
@@ -54,5 +55,13 @@ class OptimizationReport extends Model
     {
         if ($this->total_current_profit == 0) return 0;
         return round(($this->total_extra_profit / $this->total_current_profit) * 100, 1);
+    }
+
+    /**
+     * Kampanya tipine göre filtrele
+     */
+    public function scopeOfType($query, string $type)
+    {
+        return $query->where('campaign_type', $type);
     }
 }

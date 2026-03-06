@@ -144,15 +144,48 @@
                     Tedarik Raporu
                 </a>
 
-                <a href="{{ route('tariff-optimizer') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                          {{ request()->routeIs('tariff-optimizer') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
-                    </svg>
-                    Kâr Motoru
-                </a>
+                {{-- Trendyol Kampanyalar Dropdown --}}
+                <div x-data="{ campaignsOpen: {{ request()->routeIs('campaigns.*') ? 'true' : 'false' }} }">
+                    <button @click="campaignsOpen = !campaignsOpen"
+                        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                               {{ request()->routeIs('campaigns.*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                        <span class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                            </svg>
+                            Trendyol Kampanyalar
+                        </span>
+                        <svg :class="campaignsOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div x-show="campaignsOpen" x-collapse class="ml-8 mt-1 space-y-1">
+                        <a href="{{ route('campaigns.product-commission') }}"
+                           @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('campaigns.product-commission') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Ürün Komisyon Tarifeleri
+                        </a>
+                        <a href="{{ route('campaigns.plus-commission') }}"
+                           @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('campaigns.plus-commission') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Plus Komisyon Tarifeleri
+                        </a>
+                        <a href="{{ route('campaigns.badge-pricing') }}"
+                           @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('campaigns.badge-pricing') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Avantajlı Ürün Etiketleri
+                        </a>
+                        <a href="{{ route('campaigns.flash-products') }}"
+                           @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('campaigns.flash-products') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Flaş Ürünler
+                        </a>
+                    </div>
+                </div>
 
                 <a href="{{ route('mp.orders') }}" 
                    @click="sidebarOpen = false"

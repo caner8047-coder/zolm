@@ -206,7 +206,7 @@ class MarketplaceOrders extends Component
 
     protected function buildQuery()
     {
-        $query = MpOperationalOrder::with(['items', 'financialOrders'])->orderByDesc('order_date');
+        $query = MpOperationalOrder::with(['items.product', 'financialOrders'])->orderByDesc('order_date');
 
         if (!empty($this->search)) {
             $query->where(function ($q) {

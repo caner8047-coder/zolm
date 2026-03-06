@@ -65,4 +65,24 @@ return [
     | false: API key yoksa hata fırlatır
     */
     'demo_mode' => env('AI_DEMO_MODE', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Fallback Provider (Yedek AI)
+    |--------------------------------------------------------------------------
+    | Ana AI servisinde hata veya limit aşımı olursa devreye girecek yedek yapılandırma
+    */
+    'fallback_provider' => env('AI_FALLBACK_PROVIDER', ''),
+    'fallback_api_key' => env('AI_FALLBACK_API_KEY', ''),
+    'fallback_model' => env('AI_FALLBACK_MODEL', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Fallback 2 Provider (2. Yedek AI)
+    |--------------------------------------------------------------------------
+    | Tüm AI servislerinde sorun olursa (Örn. GPT-4o ve Groq çökerse) devreye girecek son çare
+    */
+    'fallback2_provider' => env('AI_FALLBACK2_PROVIDER', ''),
+    'fallback2_api_key' => env('AI_FALLBACK2_API_KEY', ''),
+    'fallback2_model' => env('AI_FALLBACK2_MODEL', ''),
 ];

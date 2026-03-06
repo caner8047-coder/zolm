@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Models\OptimizationReport;
 use App\Models\OptimizationReportItem;
-use App\Models\ProductCost;
+use App\Models\MpProduct;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -21,101 +21,35 @@ use Illuminate\Support\Facades\Log;
 class TariffOptimizerService
 {
     protected ExcelService $excelService;
-
-    // Maliyet dosyası kolon eşleştirme alternatifleri
-    protected array $costColumnAliases = [
-        'stock_code'      => ['Stok Kodu', 'STOK KODU', 'StokKodu', 'stok_kodu', 'SATICI STOK KODU'],
-        'barcode'         => ['Barkod', 'BARKOD', 'Ürün Barkodu', 'barcode'],
-        'product_name'    => ['Ürün Adı', 'ÜRÜN ADI', 'Ürün İsmi', 'ÜRÜN İSMİ', 'urun_adi'],
-        'production_cost' => ['Ü.Maliyeti', 'Üretim Maliyeti', 'ÜRETIM MALIYETI', 'Üretim Mal.', 'uretim_maliyeti'],
-        'shipping_cost'   => ['Kargo Maliyeti', 'KARGO MALIYETI', 'Kargo Mal.', 'kargo_maliyeti'],
-    ];
+    protected CampaignAnalysisService $campaignService;
 
     // Trendyol tarife dosyası kolon eşleştirme alternatifleri
     protected array $tariffColumnAliases = [
         'stock_code'       => ['SATICI STOK KODU', 'Satıcı Stok Kodu', 'Stok Kodu', 'STOK KODU'],
         'barcode'          => ['BARKOD', 'Barkod', 'Ürün Barkodu'],
         'product_name'     => ['ÜRÜN İSMİ', 'Ürün İsmi', 'Ürün Adı', 'ÜRÜN ADI'],
+        'model_code'       => ['MODEL KODU', 'Model Kodu'],
         'current_price'    => ['GÜNCEL TSF', 'Güncel TSF', 'Güncel Fiyat', 'GÜNCEL FIYAT', 'TSF'],
         'current_commission' => ['GÜNCEL KOMİSYON', 'Güncel Komisyon', 'GÜNCEL KOMISYON', 'Komisyon'],
+        'tariff1_price'    => ['1.Fiyat Alt Limit', '1. Fiyat Alt Limit'],
         'tariff2_price'    => ['2.Fiyat Üst Limiti', '2. Fiyat Üst Limiti', '2.FIYAT ÜST LİMİTİ'],
         'tariff2_commission' => ['2.KOMİSYON', '2. KOMİSYON', '2.Komisyon'],
         'tariff3_price'    => ['3.Fiyat Üst Limiti', '3. Fiyat Üst Limiti', '3.FIYAT ÜST LİMİTİ'],
         'tariff3_commission' => ['3.KOMİSYON', '3. KOMİSYON', '3.Komisyon'],
         'tariff4_price'    => ['4.Fiyat Üst Limiti', '4. Fiyat Üst Limiti', '4.FIYAT ÜST LİMİTİ'],
         'tariff4_commission' => ['4.KOMİSYON', '4. KOMİSYON', '4.Komisyon'],
+        'tariff1_commission' => ['1.KOMİSYON', '1. KOMİSYON', '1.Komisyon'],
     ];
 
-    public function __construct(ExcelService $excelService)
+    public function __construct(ExcelService $excelService, CampaignAnalysisService $campaignService)
     {
         $this->excelService = $excelService;
+        $this->campaignService = $campaignService;
     }
 
     // ===============================================
-    // 1. MALİYET İMPORT
+    // MALİYET KAYNAĞI: MpProduct (Pazaryeri Ürünlerim)
     // ===============================================
-
-    /**
-     * Maliyet Excel dosyasını oku ve product_costs tablosuna kaydet
-     */
-    public function importCosts(UploadedFile $file): array
-    {
-        try {
-            $data = $this->excelService->importOrderXls($file);
-
-            if ($data->isEmpty()) {
-                return ['success' => false, 'message' => 'Dosya boş veya okunamadı.', 'count' => 0];
-            }
-
-            $columnMap = $this->mapColumns($data->first(), $this->costColumnAliases);
-
-            if (!isset($columnMap['stock_code'])) {
-                return [
-                    'success' => false,
-                    'message' => 'Stok Kodu sütunu bulunamadı! Beklenen: ' . implode(', ', $this->costColumnAliases['stock_code']),
-                    'count'   => 0,
-                ];
-            }
-
-            $imported = 0;
-            $skipped = 0;
-
-            DB::beginTransaction();
-
-            foreach ($data as $row) {
-                $stockCode = trim($row[$columnMap['stock_code']] ?? '');
-                if (empty($stockCode)) {
-                    $skipped++;
-                    continue;
-                }
-
-                ProductCost::updateOrCreate(
-                    ['stock_code' => $stockCode],
-                    [
-                        'barcode'         => trim($row[$columnMap['barcode'] ?? '__none__'] ?? ''),
-                        'product_name'    => trim($row[$columnMap['product_name'] ?? '__none__'] ?? ''),
-                        'production_cost' => $this->parseNumber($row[$columnMap['production_cost'] ?? '__none__'] ?? 0),
-                        'shipping_cost'   => $this->parseNumber($row[$columnMap['shipping_cost'] ?? '__none__'] ?? 0),
-                    ]
-                );
-                $imported++;
-            }
-
-            DB::commit();
-
-            Log::info('TariffOptimizer: Maliyet import tamamlandı', ['imported' => $imported, 'skipped' => $skipped]);
-
-            return [
-                'success' => true,
-                'message' => "{$imported} ürünün maliyet bilgisi güncellendi." . ($skipped > 0 ? " ({$skipped} satır atlandı)" : ''),
-                'count'   => $imported,
-            ];
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('TariffOptimizer: Maliyet import hatası', ['error' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'Import hatası: ' . $e->getMessage(), 'count' => 0];
-        }
-    }
 
     // ===============================================
     // 2. TARİFE ANALİZ
@@ -133,7 +67,9 @@ class TariffOptimizerService
                 return ['success' => false, 'message' => 'Tarife dosyası boş veya okunamadı.', 'report_id' => null];
             }
 
-            $columnMap = $this->mapColumns($data->first(), $this->tariffColumnAliases);
+            $this->campaignService->initProductIndex(auth()->id());
+
+            $columnMap = $this->campaignService->mapColumns($data->first(), $this->tariffColumnAliases);
 
             if (!isset($columnMap['stock_code'])) {
                 return [
@@ -151,12 +87,6 @@ class TariffOptimizerService
                 ];
             }
 
-            // Tüm maliyetleri bir seferde çek + çoklu index oluştur (performans)
-            $allCostsRaw = ProductCost::all();
-            $costByStockCode = $allCostsRaw->keyBy(fn($c) => mb_strtolower(trim($c->stock_code)));
-            $costByBarcode = $allCostsRaw->filter(fn($c) => !empty($c->barcode))->keyBy(fn($c) => mb_strtolower(trim($c->barcode)));
-            $costByName = $allCostsRaw->filter(fn($c) => !empty($c->product_name))->keyBy(fn($c) => mb_strtolower(trim($c->product_name)));
-
             $items = [];
             $totalCurrentProfit = 0;
             $totalOptimizedProfit = 0;
@@ -167,48 +97,28 @@ class TariffOptimizerService
                 $stockCode = trim($row[$columnMap['stock_code']] ?? '');
                 if (empty($stockCode)) continue;
 
-                $currentPrice = $this->parseNumber($row[$columnMap['current_price'] ?? '__none__'] ?? 0);
-                $currentCommission = $this->parseNumber($row[$columnMap['current_commission'] ?? '__none__'] ?? 0);
+                $currentPrice = $this->campaignService->parseNumber($row[$columnMap['current_price'] ?? '__none__'] ?? 0);
+                $currentCommission = $this->campaignService->parseNumber($row[$columnMap['current_commission'] ?? '__none__'] ?? 0);
                 $barcode = trim($row[$columnMap['barcode'] ?? '__none__'] ?? '');
                 $productName = trim($row[$columnMap['product_name'] ?? '__none__'] ?? '');
+                $modelCode = trim($row[$columnMap['model_code'] ?? '__none__'] ?? '');
 
-                // === AKILLI EŞLEŞTİRME (3 Katmanlı) ===
-                // 1. Stok koduna göre tam eşleşme
-                $cost = $costByStockCode->get(mb_strtolower($stockCode));
+                // === AKILLI EŞLEŞTİRME (4 Katmanlı — MpProduct) ===
+                $product = $this->campaignService->matchProduct($barcode, $stockCode, $modelCode, $productName);
+                $costs = $this->campaignService->getProductCosts($product);
 
-                // 2. Barkoda göre tam eşleşme
-                if (!$cost && !empty($barcode)) {
-                    $cost = $costByBarcode->get(mb_strtolower($barcode));
-                }
+                $productionCost = $costs['cogs'];
+                $shippingCost = $costs['cargo_cost'];
+                $packagingCost = $costs['packaging_cost'];
+                $totalCost = $costs['total_cost'];
 
-                // 3. Ürün adına göre eşleşme (normalize + contains)
-                if (!$cost && !empty($productName)) {
-                    $normalizedName = mb_strtolower(trim($productName));
-
-                    // 3a. Tam eşleşme
-                    $cost = $costByName->get($normalizedName);
-
-                    // 3b. İçerik araması — Maliyet tablosundaki isim, tarife ismi içinde var mı?
-                    if (!$cost) {
-                        $cost = $allCostsRaw->first(function ($c) use ($normalizedName) {
-                            $costName = mb_strtolower(trim($c->product_name ?? ''));
-                            if (empty($costName)) return false;
-                            return str_contains($normalizedName, $costName) || str_contains($costName, $normalizedName);
-                        });
-                    }
-                }
-
-                $productionCost = $cost ? (float) $cost->production_cost : 0;
-                $shippingCost = $cost ? (float) $cost->shipping_cost : 0;
-                $totalCost = $productionCost + $shippingCost;
-
-                if (!$cost) {
+                if (!$product) {
                     $unmatchedCount++;
                 }
 
                 // === TÜM SENARYOLARI HESAPLA (P&L Analizi) ===
-                $currentRevenue = $currentPrice * (1 - $currentCommission / 100);
-                $currentNetProfit = round($currentRevenue - $totalCost, 2);
+                $currentRevenue = $this->campaignService->calculateRevenue($currentPrice, $currentCommission);
+                $currentNetProfit = $this->campaignService->calculateNetProfit($currentPrice, $currentCommission, $totalCost);
 
                 // Senaryo 1: Mevcut Durum
                 $allScenarios = [
@@ -224,16 +134,15 @@ class TariffOptimizerService
                 ];
 
                 // Senaryo 2, 3, 4: Tarife Alternatifleri
-                $tariffScenarios = $this->buildScenarios($row, $columnMap);
+                $tariffScenarios = $this->buildScenarios($row, $columnMap, $currentCommission);
                 foreach ($tariffScenarios as $scenario) {
-                    $revenue = $scenario['price'] * (1 - $scenario['commission'] / 100);
-                    $netProfit = round($revenue - $totalCost, 2);
+                    $netProfit = $this->campaignService->calculateNetProfit($scenario['price'], $scenario['commission'], $totalCost);
 
                     $allScenarios[] = [
                         'name'       => $scenario['name'],
                         'price'      => $scenario['price'],
                         'commission' => $scenario['commission'],
-                        'revenue'    => round($revenue, 2),
+                        'revenue'    => $this->campaignService->calculateRevenue($scenario['price'], $scenario['commission']),
                         'total_cost' => $totalCost,
                         'net_profit' => $netProfit,
                         'is_best'    => false,
@@ -269,7 +178,7 @@ class TariffOptimizerService
                 }
 
                 // Negatif kâr uyarısı
-                if ($cost && $currentNetProfit < 0 && !$bestScenario) {
+                if ($costs && $currentNetProfit < 0 && !$bestScenario) {
                     $action = 'warning';
                 }
 
@@ -439,52 +348,26 @@ class TariffOptimizerService
     // ===============================================
 
     /**
-     * Sütun eşleştirme — Esnek kolon isimleri desteği
-     */
-    protected function mapColumns(array $row, array $aliases): array
-    {
-        $headers = array_keys($row);
-        $map = [];
-
-        foreach ($aliases as $field => $possibleNames) {
-            foreach ($possibleNames as $name) {
-                // Tam eşleşme
-                foreach ($headers as $header) {
-                    if (mb_strtolower(trim($header)) === mb_strtolower(trim($name))) {
-                        $map[$field] = $header;
-                        break 2;
-                    }
-                }
-            }
-        }
-
-        Log::info('TariffOptimizer: Kolon eşleştirme', ['mapped' => array_keys($map), 'headers' => $headers]);
-        return $map;
-    }
-
-    /**
-     * Net kâr hesapla
-     */
-    protected function calculateNetProfit(float $price, float $commissionPercent, float $totalCost): float
-    {
-        $revenue = $price * (1 - $commissionPercent / 100);
-        return round($revenue - $totalCost, 2);
-    }
-
-    /**
      * Tarife senaryolarını oluştur
      */
-    protected function buildScenarios(array $row, array $columnMap): array
+    protected function buildScenarios(array $row, array $columnMap, float $currentCommission = 0): array
     {
         $scenarios = [];
+
+        // Tarife 1 komisyonu (genellikle mevcut komisyonla aynı)
+        $tariff1Commission = $currentCommission;
+        if (isset($columnMap['tariff1_commission'])) {
+            $parsed = $this->campaignService->parseNumber($row[$columnMap['tariff1_commission']] ?? 0);
+            if ($parsed > 0) $tariff1Commission = $parsed;
+        }
 
         for ($i = 2; $i <= 4; $i++) {
             $priceKey = "tariff{$i}_price";
             $commKey = "tariff{$i}_commission";
 
             if (isset($columnMap[$priceKey]) && isset($columnMap[$commKey])) {
-                $price = $this->parseNumber($row[$columnMap[$priceKey]] ?? 0);
-                $commission = $this->parseNumber($row[$columnMap[$commKey]] ?? 0);
+                $price = $this->campaignService->parseNumber($row[$columnMap[$priceKey]] ?? 0);
+                $commission = $this->campaignService->parseNumber($row[$columnMap[$commKey]] ?? 0);
 
                 // Geçerli senaryo kontrolü (fiyat ve komisyon > 0)
                 if ($price > 0 && $commission > 0) {
@@ -511,7 +394,7 @@ class TariffOptimizerService
         $maxProfit = $currentNetProfit;
 
         foreach ($scenarios as $scenario) {
-            $netProfit = $this->calculateNetProfit($scenario['price'], $scenario['commission'], $totalCost);
+            $netProfit = $this->campaignService->calculateNetProfit($scenario['price'], $scenario['commission'], $totalCost);
 
             // KRİTİK: Yeni kâr mevcut kârdan büyük VE pozitif olmalı
             if ($netProfit > $maxProfit && $netProfit > 0) {
@@ -521,34 +404,5 @@ class TariffOptimizerService
         }
 
         return $bestScenario;
-    }
-
-    /**
-     * Türkçe sayı formatını parse et (1.049,90 → 1049.90)
-     */
-    protected function parseNumber($value): float
-    {
-        if (is_numeric($value)) {
-            return (float) $value;
-        }
-
-        if (!is_string($value)) {
-            return 0;
-        }
-
-        $value = trim($value);
-        $value = str_replace(['%', '₺', ' ', "\xc2\xa0"], '', $value);
-
-        // Türkçe format: 1.049,90
-        if (preg_match('/^\d{1,3}(\.\d{3})*(,\d+)?$/', $value)) {
-            $value = str_replace('.', '', $value);
-            $value = str_replace(',', '.', $value);
-        }
-        // Sadece virgül: 49,90
-        elseif (preg_match('/^\d+,\d+$/', $value)) {
-            $value = str_replace(',', '.', $value);
-        }
-
-        return (float) $value;
     }
 }

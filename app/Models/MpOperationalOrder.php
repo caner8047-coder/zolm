@@ -157,4 +157,118 @@ class MpOperationalOrder extends Model
 
         return ['type' => null, 'label' => null, 'color' => null];
     }
+
+    // ─── Tahmini Karlılık Accessor'ları (MpProduct verileri) ─────
+
+    /**
+     * Tahmini toplam COGS (ürün maliyeti)
+     * Items üzerinden barcode eşleşmesiyle MpProduct'tan çeker
+     */
+    public function getEstimatedCogsAttribute(): float
+    {
+        return $this->items->sum(function ($item) {
+            $product = $item->relationLoaded('product') ? $item->product : null;
+            if (!$product) return 0;
+            return (float) $product->cogs * (int) $item->quantity;
+        });
+    }
+
+    /**
+     * Tahmini toplam kargo maliyeti (kendi kargo anlaşması)
+     */
+    public function getEstimatedCargoAttribute(): float
+    {
+        return $this->items->sum(function ($item) {
+            $product = $item->relationLoaded('product') ? $item->product : null;
+            if (!$product) return 0;
+            return (float) ($product->cargo_cost ?? 0) * (int) $item->quantity;
+        });
+    }
+
+    /**
+     * Tahmini toplam ambalaj maliyeti
+     */
+    public function getEstimatedPackagingAttribute(): float
+    {
+        return $this->items->sum(function ($item) {
+            $product = $item->relationLoaded('product') ? $item->product : null;
+            if (!$product) return 0;
+            return (float) ($product->packaging_cost ?? 0) * (int) $item->quantity;
+        });
+    }
+
+    /**
+     * Tahmini toplam komisyon (satır bazlı satış tutarı * komisyon oranı)
+     */
+    public function getEstimatedCommissionAttribute(): float
+    {
+        return $this->items->sum(function ($item) {
+            $billableAmount = (float) ($item->billable_amount ?? 0);
+            $salePrice = (float) ($item->sale_price ?? 0);
+            $discount = (float) ($item->discount_amount ?? 0) + (float) ($item->trendyol_discount ?? 0);
+            $commissionBase = $billableAmount > 0 ? $billableAmount : max(0, $salePrice - $discount);
+            $commissionRate = (float) ($item->commission_rate ?? 0);
+
+            if ($commissionBase <= 0 || $commissionRate <= 0) return 0;
+
+            return $commissionBase * ($commissionRate / 100);
+        });
+    }
+
+    /**
+     * Tahmini net satış (Faturalanacak Tutar varsa onu kullanır, yoksa satış - indirimler)
+     */
+    public function getEstimatedNetSalesAttribute(): float
+    {
+        return $this->items->sum(function ($item) {
+            $billableAmount = (float) ($item->billable_amount ?? 0);
+            if ($billableAmount > 0) return $billableAmount;
+
+            $salePrice = (float) ($item->sale_price ?? 0);
+            $discount = (float) ($item->discount_amount ?? 0) + (float) ($item->trendyol_discount ?? 0);
+
+            return max(0, $salePrice - $discount);
+        });
+    }
+
+    /**
+     * Tahmini net kâr = Net Satış - COGS - Kargo - Ambalaj - Komisyon
+     */
+    public function getEstimatedMarginAttribute(): ?float
+    {
+        $totalCost = $this->estimated_cogs
+            + $this->estimated_cargo
+            + $this->estimated_packaging
+            + $this->estimated_commission;
+
+        if ($totalCost <= 0) return null; // Maliyet verisi yok
+
+        $salesTotal = $this->estimated_net_sales;
+        return round($salesTotal - $totalCost, 2);
+    }
+
+    /**
+     * Tahmini ROI yüzdesi = (Kâr / COGS) * 100
+     */
+    public function getEstimatedMarginPercentAttribute(): ?float
+    {
+        $cogs = $this->estimated_cogs;
+        if ($cogs <= 0) return null;
+
+        $margin = $this->estimated_margin;
+        if ($margin === null) return null;
+
+        return round(($margin / $cogs) * 100, 1);
+    }
+
+    /**
+     * Maliyet verisi var mı kontrolü
+     */
+    public function getHasCostDataAttribute(): bool
+    {
+        return $this->items->contains(function ($item) {
+            $product = $item->relationLoaded('product') ? $item->product : null;
+            return $product && (float) $product->cogs > 0;
+        });
+    }
 }

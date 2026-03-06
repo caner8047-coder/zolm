@@ -14,6 +14,27 @@ class MpProductsManager extends Component
 {
     use WithPagination, WithFileUploads;
 
+    // ─── Kolon Tanımları ──────────────────────────────────
+    public static array $allColumnDefs = [
+        'urun'      => 'Ürün',
+        'fiyat'     => 'Fiyat',
+        'cogs'      => 'COGS',
+        'kargo'     => 'Kargo',
+        'stok'      => 'Stok',
+        'kdv'       => 'KDV',
+        'karlilik'  => 'ROI',
+        'durum'     => 'Durum',
+        'islem'     => 'İşlem',
+    ];
+
+    public static array $sortableColumns = [
+        'urun'  => 'product_name',
+        'fiyat' => 'sale_price',
+        'cogs'  => 'cogs',
+        'stok'  => 'stock_quantity',
+        'kdv'   => 'vat_rate',
+    ];
+
     // ─── Arama & Filtreleme ────────────────────────────────
     public string $search = '';
     public string $filterStatus = 'all';
@@ -24,6 +45,7 @@ class MpProductsManager extends Component
     public string $sortField = 'product_name';
     public string $sortDirection = 'asc';
     public int $perPage = 25;
+    public array $visibleColumns = ['urun','fiyat','cogs','kargo','stok','kdv','karlilik','durum','islem'];
 
     // ─── Import ────────────────────────────────────────────
     public $importFile;
@@ -221,6 +243,29 @@ class MpProductsManager extends Component
         }
     }
 
+    public function sortTable(string $columnKey)
+    {
+        $dbCol = static::$sortableColumns[$columnKey] ?? null;
+        if (!$dbCol) return;
+
+        if ($this->sortField === $dbCol) {
+            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            $this->sortField = $dbCol;
+            $this->sortDirection = 'asc';
+        }
+        $this->resetPage();
+    }
+
+    public function toggleColumn(string $column)
+    {
+        if (in_array($column, $this->visibleColumns)) {
+            $this->visibleColumns = array_values(array_diff($this->visibleColumns, [$column]));
+        } else {
+            $this->visibleColumns[] = $column;
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════
     //  İMPORT / EXPORT
     // ═══════════════════════════════════════════════════════════
@@ -374,6 +419,26 @@ class MpProductsManager extends Component
         MpProduct::where('user_id', Auth::id() ?? 1)->findOrFail($id)->delete();
         session()->flash('success', 'Ürün başarıyla silindi.');
         unset($this->products, $this->stats);
+    }
+
+    public function duplicateProduct(int $id)
+    {
+        $original = MpProduct::where('user_id', Auth::id() ?? 1)->findOrFail($id);
+        $clone = $original->replicate();
+        $clone->product_name = $original->product_name . ' (Kopya)';
+        $clone->save();
+        session()->flash('success', 'Ürün başarıyla çoğaltıldı.');
+        unset($this->products, $this->stats);
+    }
+
+    /**
+     * Inline fiyat güncelleme (tablo üzerinden)
+     */
+    public function updateSalePrice(int $id, $newPrice)
+    {
+        $newPrice = max(0, (float) $newPrice);
+        $product = MpProduct::where('user_id', Auth::id() ?? 1)->findOrFail($id);
+        $product->update(['sale_price' => $newPrice]);
     }
 
     public function closeEditModal()

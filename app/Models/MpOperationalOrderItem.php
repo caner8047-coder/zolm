@@ -36,6 +36,17 @@ class MpOperationalOrderItem extends Model
     }
 
     /**
+     * Ürün kütüphanesindeki eşleşen ürün (stock_code bazlı)
+     * COGS, packaging_cost, cargo_cost gibi maliyet verilerini çeker
+     * NOT: Sipariş barkodları Trendyol'un sayısal barkodlarıdır,
+     *      ürün barkodları ise satıcı SKU'sudur. Ortak alan stock_code'dur.
+     */
+    public function product()
+    {
+        return $this->belongsTo(MpProduct::class, 'stock_code', 'stock_code');
+    }
+
+    /**
      * Muhasebe modülündeki eşleşen finansal kayıt (barkod bazlı)
      */
     public function financialOrder()

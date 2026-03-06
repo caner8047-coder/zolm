@@ -4,7 +4,7 @@ namespace App\Livewire;
 
 use App\Models\OptimizationReport;
 use App\Models\OptimizationReportItem;
-use App\Models\ProductCost;
+use App\Services\CampaignAnalysisService;
 use App\Services\TariffOptimizerService;
 use App\Models\AIConversation;
 use Livewire\Attributes\Computed;
@@ -23,7 +23,6 @@ class TariffOptimizer extends Component
     public string $messageType = 'info';
 
     // File uploads
-    public $costFile;
     public $tariffFile;
     public string $reportName = '';
 
@@ -54,12 +53,21 @@ class TariffOptimizer extends Component
 
 
     /**
-     * Maliyet DB'deki kayıt sayısı
+     * MpProduct'ta maliyeti tanımlı ürün sayısı
      */
     #[Computed]
     public function costCount(): int
     {
-        return ProductCost::count();
+        return app(CampaignAnalysisService::class)->getProductWithCostCount(auth()->id());
+    }
+
+    /**
+     * MpProduct toplam ürün sayısı
+     */
+    #[Computed]
+    public function productCount(): int
+    {
+        return app(CampaignAnalysisService::class)->getProductCount(auth()->id());
     }
 
     /**
@@ -150,27 +158,6 @@ class TariffOptimizer extends Component
         usort($categories, fn($a, $b) => $b['profit'] <=> $a['profit']);
 
         return $categories;
-    }
-
-    // ===============================================
-    // MALİYET İMPORT
-    // ===============================================
-
-    public function importCosts()
-    {
-        $this->validate([
-            'costFile' => 'required|file|mimes:xlsx,xls|max:10240',
-        ]);
-
-        $this->isProcessing = true;
-
-        $service = app(TariffOptimizerService::class);
-        $result = $service->importCosts($this->costFile);
-
-        $this->isProcessing = false;
-        $this->message = $result['message'];
-        $this->messageType = $result['success'] ? 'success' : 'error';
-        $this->reset('costFile');
     }
 
     // ===============================================

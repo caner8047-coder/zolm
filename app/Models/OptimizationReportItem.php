@@ -25,6 +25,7 @@ class OptimizationReportItem extends Model
         'action',
         'is_selected',
         'scenario_details',
+        'campaign_data',
         'selected_tariff_index',
         'custom_price',
     ];
@@ -41,6 +42,7 @@ class OptimizationReportItem extends Model
         'shipping_cost' => 'decimal:2',
         'is_selected' => 'boolean',
         'scenario_details' => 'array',
+        'campaign_data' => 'array',
         'selected_tariff_index' => 'integer',
         'custom_price' => 'decimal:2',
     ];
@@ -64,5 +66,16 @@ class OptimizationReportItem extends Model
     public function totalCost(): float
     {
         return (float) $this->production_cost + (float) $this->shipping_cost;
+    }
+
+    /**
+     * Kâr marjı yüzdesi: (net_profit / total_cost) * 100
+     */
+    public function profitMarginPercent(?float $netProfit = null): float
+    {
+        $profit = $netProfit ?? (float) $this->current_net_profit;
+        $cost = $this->totalCost();
+        if ($cost <= 0) return 0;
+        return round(($profit / $cost) * 100, 1);
     }
 }

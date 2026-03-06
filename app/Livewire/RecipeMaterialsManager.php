@@ -601,7 +601,7 @@ class RecipeMaterialsManager extends Component
             ->paginate($this->perPage);
 
         $recipes = Recipe::where('user_id', Auth::id())
-            ->with('product', 'lines')
+            ->with('product', 'lines.material')
             ->orderByDesc('updated_at')
             ->get();
 

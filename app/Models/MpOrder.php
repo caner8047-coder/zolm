@@ -16,7 +16,7 @@ class MpOrder extends Model
         'commission_rate', 'commission_amount', 'commission_tax',
         'cargo_company', 'cargo_desi', 'cargo_amount', 'cargo_tax',
         'service_fee', 'withholding_tax', 'net_hakedis',
-        'product_vat_rate', 'cogs_at_time', 'packaging_cost_at_time',
+        'product_vat_rate', 'cogs_at_time', 'packaging_cost_at_time', 'own_cargo_cost_at_time',
         'calculated_net_profit', 'is_flagged', 'is_reconciled', 'raw_data',
         'erp_pushed_at', 'erp_status', 'erp_response',
     ];
@@ -43,6 +43,7 @@ class MpOrder extends Model
         'product_vat_rate'        => 'decimal:2',
         'cogs_at_time'            => 'decimal:2',
         'packaging_cost_at_time'  => 'decimal:2',
+        'own_cargo_cost_at_time'  => 'decimal:2',
         'calculated_net_profit'   => 'decimal:2',
         'is_flagged'              => 'boolean',
         'is_reconciled'           => 'boolean',
@@ -76,8 +77,8 @@ class MpOrder extends Model
      */
     public function product()
     {
-        return $this->belongsTo(MpProduct::class, 'barcode', 'barcode')
-                    ->where('user_id', $this->user_id);
+        // mp_orders tablosunda user_id alanı olmadığı için burada user filtresi uygulanamaz.
+        return $this->belongsTo(MpProduct::class, 'barcode', 'barcode');
     }
 
     /**
@@ -206,6 +207,7 @@ class MpOrder extends Model
         $hakedis  = (float) $this->net_hakedis;
         $cogs     = (float) ($this->cogs_at_time ?? 0);
         $packing  = (float) ($this->packaging_cost_at_time ?? 0);
+        $ownCargo = (float) ($this->own_cargo_cost_at_time ?? 0);
         
         // KDV hesaplama açık mı kontrol et
         $svc = new \App\Services\MpSettingsService();
@@ -214,8 +216,8 @@ class MpOrder extends Model
             $vatDeduction = $this->vat_balance; // KDV bakiyesi borç mu alacak mı?
         }
         
-        // Hakediş - Ürün Maliyeti - Ambalaj Gideri - Ödenecek KDV (eğer açıksa)
-        return round($hakedis - $cogs - $packing - $vatDeduction, 2);
+        // Hakediş - Ürün Maliyeti - Ambalaj Gideri - Kendi Kargo Maliyeti - Ödenecek KDV (eğer açıksa)
+        return round($hakedis - $cogs - $packing - $ownCargo - $vatDeduction, 2);
     }
 
     /**

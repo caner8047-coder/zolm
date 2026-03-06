@@ -124,6 +124,35 @@
                 </div>
             </div>
 
+            {{-- Kendi Kargo Toggle --}}
+            <div class="mt-4 p-5 rounded-xl border-2 transition-all {{ $settingsUsesOwnCargo ? 'border-emerald-300 bg-emerald-50/50' : 'border-gray-200 bg-gray-50/50' }}">
+                <label class="flex items-center justify-between cursor-pointer">
+                    <div class="flex items-center gap-4">
+                        <div class="text-2xl">{{ $settingsUsesOwnCargo ? '✅' : '⬜' }}</div>
+                        <div>
+                            <p class="font-bold text-gray-900 text-sm">Kendi Kargo Anlaşmam Var</p>
+                            <p class="text-xs text-gray-500 mt-0.5">Trendyol kargo kullanmıyorum, kendi anlaşmamla gönderiyorum</p>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <input type="checkbox" wire:model.live="settingsUsesOwnCargo" class="sr-only peer">
+                        <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-500 shadow-inner"></div>
+                    </div>
+                </label>
+
+                @if(!$settingsUsesOwnCargo)
+                <div class="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 flex items-start gap-2">
+                    <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span>Kendi kargo <strong>kapalı</strong>. Kâr hesaplarınızda Trendyol'un kargo kesintisi ($cargo_amount) kullanılır. Pazaryeri Ürünlerim'deki kargo maliyeti dikkate alınmaz.</span>
+                </div>
+                @else
+                <div class="mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-700 flex items-start gap-2">
+                    <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    <span>Kendi kargo <strong>aktif</strong>. Pazaryeri Ürünlerim'de tanımlı kargo maliyeti (ürün başına) sipariş kâr hesaplarından düşülecektir. <strong>COGS Senkronize Et</strong> butonuyla mevcut siparişlere de uygulanır.</span>
+                </div>
+                @endif
+            </div>
+
             {{-- Kargo Firmaları Listesi --}}
             <div class="space-y-3">
                 <h4 class="text-sm font-bold text-gray-700 border-b pb-2">Kargo Firmaları</h4>

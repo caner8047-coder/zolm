@@ -98,7 +98,7 @@
             <div class="text-sm font-bold text-orange-600">₺{{ number_format($order->total_cargo_amount, 2, ',', '.') }}</div>
         </div>
         <div>
-            <div class="text-[10px] text-gray-500 uppercase">Net Kâr</div>
+            <div class="text-[10px] text-gray-500 uppercase">Net Hakediş</div>
             <div class="text-sm font-bold {{ $netProfit >= 0 ? 'text-green-600' : 'text-red-600' }}">
                 {{ $netProfit >= 0 ? '+' : '' }}₺{{ number_format($netProfit, 2, ',', '.') }}
             </div>
@@ -140,7 +140,12 @@
                     @endif
                 @endif
                 @if($item->commission_rate > 0)
-                    @php $commissionTL = $item->sale_price * $item->commission_rate / 100; @endphp
+                    @php
+                        $commissionBase = $item->billable_amount > 0
+                            ? $item->billable_amount
+                            : max(0, $item->sale_price - $item->discount_amount - $item->trendyol_discount);
+                        $commissionTL = $commissionBase * $item->commission_rate / 100;
+                    @endphp
                     <span class="text-gray-600">Kom: %{{ number_format($item->commission_rate, 1) }}</span>
                     <span class="text-red-600 font-medium">-₺{{ number_format($commissionTL, 2, ',', '.') }}</span>
                 @endif
@@ -149,6 +154,13 @@
                 @endif
                 @if($item->cargo_desi)
                     <span class="text-gray-500">{{ number_format($item->cargo_desi, 1) }} desi</span>
+                @endif
+                @php $itemProduct = $item->relationLoaded('product') ? $item->product : null; @endphp
+                @if($itemProduct && (float)$itemProduct->cogs > 0)
+                    <span class="text-emerald-700 font-medium bg-emerald-50 px-1.5 py-0.5 rounded">COGS: ₺{{ number_format($itemProduct->cogs, 2, ',', '.') }}</span>
+                    @if((float)($itemProduct->cargo_cost ?? 0) > 0)
+                        <span class="text-orange-600 font-medium">Kargo: ₺{{ number_format($itemProduct->cargo_cost, 2, ',', '.') }}</span>
+                    @endif
                 @endif
             </div>
         </div>
@@ -181,6 +193,7 @@
                     <th class="px-3 py-2 font-medium text-right">Komisyon</th>
                     <th class="px-3 py-2 font-medium text-right">Faturalanacak</th>
                     <th class="px-3 py-2 font-medium text-center">Desi</th>
+                    <th class="px-3 py-2 font-medium text-right">Maliyet</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 text-sm">
@@ -213,7 +226,12 @@
                     </td>
                     <td class="px-3 py-2 text-right">
                         @if($item->commission_rate > 0)
-                            @php $commissionTL = $item->sale_price * $item->commission_rate / 100; @endphp
+                            @php
+                                $commissionBase = $item->billable_amount > 0
+                                    ? $item->billable_amount
+                                    : max(0, $item->sale_price - $item->discount_amount - $item->trendyol_discount);
+                                $commissionTL = $commissionBase * $item->commission_rate / 100;
+                            @endphp
                             <div class="text-gray-700 font-medium">%{{ number_format($item->commission_rate, 1) }}</div>
                             <div class="text-red-500 text-xs">-₺{{ number_format($commissionTL, 2, ',', '.') }}</div>
                         @else
@@ -225,6 +243,17 @@
                     </td>
                     <td class="px-3 py-2 text-center text-xs text-gray-600">
                         @if($item->cargo_desi) {{ number_format($item->cargo_desi, 1) }} @else <span class="text-gray-400">-</span> @endif
+                    </td>
+                    <td class="px-3 py-2 text-right">
+                        @php $itemProduct = $item->relationLoaded('product') ? $item->product : null; @endphp
+                        @if($itemProduct && (float)$itemProduct->cogs > 0)
+                            <div class="text-xs text-red-500 font-medium">₺{{ number_format($itemProduct->cogs * $item->quantity, 2, ',', '.') }}</div>
+                            @if((float)($itemProduct->cargo_cost ?? 0) > 0)
+                                <div class="text-[10px] text-orange-500">+₺{{ number_format($itemProduct->cargo_cost * $item->quantity, 2, ',', '.') }}</div>
+                            @endif
+                        @else
+                            <span class="text-gray-400 text-[10px] italic">-</span>
+                        @endif
                     </td>
                 </tr>
                 @endforeach
@@ -242,6 +271,15 @@
                         @if($totalBillable > 0) ₺{{ number_format($totalBillable, 2, ',', '.') }} @endif
                     </td>
                     <td class="px-3 py-2"></td>
+                    <td class="px-3 py-2 text-right text-red-500 font-medium">
+                        @php
+                            $totalCogs = $order->estimated_cogs;
+                            $totalCargo = $order->estimated_cargo;
+                        @endphp
+                        @if($totalCogs > 0)
+                            ₺{{ number_format($totalCogs + $totalCargo, 2, ',', '.') }}
+                        @endif
+                    </td>
                 </tr>
             </tfoot>
         </table>
