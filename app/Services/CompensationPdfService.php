@@ -14,7 +14,8 @@ class CompensationPdfService
      */
     public function generatePetition(Compensation $compensation)
     {
-        $pdf = Pdf::loadView('pdf.compensation.petition', compact('compensation'));
+        $settings = new \App\Services\MpSettingsService();
+        $pdf = Pdf::loadView('pdf.compensation.petition', compact('compensation', 'settings'));
         return $pdf->output();
     }
 
@@ -33,33 +34,46 @@ class CompensationPdfService
 
     private function prepareFormData(Compensation $compensation): array
     {
+        $settings = new \App\Services\MpSettingsService();
+        $companyName = $settings->get('company.name', 'Firma Adı Girilmemiş');
+        $address = $settings->get('company.address', 'Adres Girilmemiş');
+        $phone = $settings->get('company.phone', 'Telefon Girilmemiş');
+        $email = $settings->get('company.email', 'E-posta Girilmemiş');
+        $manager = $settings->get('company.manager', 'Yetkili Girilmemiş');
+        $taxNumber = $settings->get('company.tax_number', 'Vergi No Girilmemiş');
+        $taxOffice = $settings->get('company.tax_office', '');
+        $iban = $settings->get('company.iban', 'IBAN Girilmemiş');
+        $bank = $settings->get('company.bank', 'Banka Girilmemiş');
+        $branch = $settings->get('company.branch', 'Şube Girilmemiş');
+        $mersis = $settings->get('company.mersis', 'MERSİS Girilmemiş');
+
         return [
             "firmaBilgileri" => [
-                "unvan" => "Zem Dayanıklı Tüketim Malları İthalat İhracat Sanayi ve Ticaret Limited Şirketi",
-                "adres" => "Eskihisar Mah. 8018 Sk. No:5 İç Kapı No:1",
-                "telefon" => "0 507 298 40 85",
-                "email" => "zemhomedestek@gmail.com"
+                "unvan" => $companyName,
+                "adres" => $address,
+                "telefon" => $phone,
+                "email" => $email
             ],
             "basvuruBilgileri" => [
-                "adSoyad" => "Cuma Yıldırım",
-                "unvan" => "Şirket Sahibi",
-                "tcKimlikNo" => "48244509286",
+                "adSoyad" => $manager,
+                "unvan" => "Şirket Yetkilisi",
+                "tcKimlikNo" => $taxNumber,
                 "basvuruYapanTaraf" => "Gonderici",
-                "telefonNo" => "0 507 298 40 85",
-                "emailAdresi" => "zemhomedestek@gmail.com",
-                "ibanNo" => "TR880020500009775679300001",
-                "hesapSahibi" => "ZEM DAYANIKLI TÜKETİM MALLARI İTHALAT İHRACAT SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
-                "banka" => "Kuveyt Türk Katılım Bankası",
-                "sube" => "Nazilli Şubesi",
-                "vergiDairesiNumara" => "Gökpınar Vergi Dairesi - 997 166 2607",
-                "adres" => "Eskihisar Mah. 8018 Sk. No:5 İç Kapı No:1"
+                "telefonNo" => $phone,
+                "emailAdresi" => $email,
+                "ibanNo" => $iban,
+                "hesapSahibi" => $companyName,
+                "banka" => $bank,
+                "sube" => $branch,
+                "vergiDairesiNumara" => $taxOffice . " - " . $taxNumber,
+                "adres" => $address
             ],
-            "mersisNumarasi" => "0997 1662 6070 0001",
+            "mersisNumarasi" => $mersis,
             "kargoBilgileri" => [
                 "temaNo" => "",
                 "gonderiKodu" => $compensation->takip_kodu,
                 "gonderiTarihi" => $compensation->tarih ? $compensation->tarih->format('d.m.Y') : '',
-                "gondericiAdUnvan" => "Zem Dayanıklı Tüketim Malları İthalat İhracat Sanayi ve Ticaret Limited Şirketi",
+                "gondericiAdUnvan" => $companyName,
                 "aliciAdUnvan" => $compensation->musteri_adi,
                 "sevkIrsaliyeTarihi" => "",
                 "sevkIrsaliyeNo" => "",

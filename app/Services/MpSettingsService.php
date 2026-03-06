@@ -313,6 +313,18 @@ class MpSettingsService
             'ui' => [
                 'visible_columns' => ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay'],
             ],
+            'company' => [
+                'name'       => '',
+                'tax_number' => '',
+                'tax_office' => '',
+                'phone'      => '',
+                'email'      => '',
+            ],
+            'profitability' => [
+                'target_margin'          => 15.00,
+                'min_margin'             => 5.00,
+                'default_packaging_cost' => 0.00,
+            ],
         ];
     }
 

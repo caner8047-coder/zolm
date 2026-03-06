@@ -19,6 +19,133 @@
         </div>
     @endif
 
+    {{-- ═══════════════ BÖLÜM 0: FİRMA PROFİLİ ═══════════════ --}}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <button wire:click="toggleSettingsSection('company')" type="button"
+                class="w-full px-6 py-4 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white hover:from-gray-100 transition-all">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🏢</span>
+                <div class="text-left">
+                    <h3 class="text-base font-bold text-gray-900">Firma Profili</h3>
+                    <p class="text-xs text-gray-500">Şirket bilgileri, vergi numarası ve iletişim</p>
+                </div>
+            </div>
+            <svg class="w-5 h-5 text-gray-400 transition-transform {{ $settingsActiveSection === 'company' ? 'rotate-180' : '' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+        @if($settingsActiveSection === 'company')
+        <div class="p-6 border-t border-gray-100 space-y-5">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="space-y-1.5 md:col-span-2">
+                    <label class="block text-sm font-semibold text-gray-700">Firma / Şirket Adı</label>
+                    <input type="text" wire:model="settingsCompanyName" placeholder="Örn: ABC Tekstil Ltd. Şti." class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Vergi Numarası / T.C. Kimlik</label>
+                    <input type="text" wire:model="settingsCompanyTaxNumber" placeholder="10 haneli vergi no veya 11 haneli TC" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono tracking-wider">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Vergi Dairesi</label>
+                    <input type="text" wire:model="settingsCompanyTaxOffice" placeholder="Örn: Kadıköy" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Telefon</label>
+                    <input type="tel" wire:model="settingsCompanyPhone" placeholder="05XX XXX XX XX" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">E-posta</label>
+                    <input type="email" wire:model="settingsCompanyEmail" placeholder="muhasebe@firma.com" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div class="space-y-1.5 md:col-span-2">
+                    <label class="block text-sm font-semibold text-gray-700">Firma Açık Adresi</label>
+                    <textarea wire:model="settingsCompanyAddress" rows="2" placeholder="Firma tam adresi..." class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"></textarea>
+                </div>
+                <div class="space-y-1.5 md:col-span-2 text-sm font-bold text-gray-800 border-b pb-2 mt-2">Banka ve Yetkili Bilgileri (Tazmin vb. süreçler için)</div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">IBAN</label>
+                    <input type="text" wire:model="settingsCompanyIban" placeholder="TR..." class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono tracking-wider">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Banka Adı</label>
+                    <input type="text" wire:model="settingsCompanyBank" placeholder="Örn: Garanti BBVA" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Şube Adı</label>
+                    <input type="text" wire:model="settingsCompanyBranch" placeholder="Örn: Kadıköy Şubesi" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Yetkili Adı Soyadı</label>
+                    <input type="text" wire:model="settingsCompanyManager" placeholder="Örn: Ali Yılmaz" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">MERSİS Numarası</label>
+                    <input type="text" wire:model="settingsCompanyMersis" placeholder="Örn: 0123456789000015" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono tracking-wider">
+                </div>
+            </div>
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 flex items-start gap-2">
+                <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span>Firma bilgileri Excel raporlarının kapak sayfasında, e-Arşiv fatura hatırlatmalarında ve ERP entegrasyonunda kullanılır.</span>
+            </div>
+        </div>
+        @endif
+    </div>
+
+    {{-- ═══════════════ BÖLÜM 0B: KÂRLILIK HEDEFLERİ ═══════════════ --}}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <button wire:click="toggleSettingsSection('profitability')" type="button"
+                class="w-full px-6 py-4 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white hover:from-gray-100 transition-all">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">📊</span>
+                <div class="text-left">
+                    <h3 class="text-base font-bold text-gray-900">Kârlılık & Maliyet Hedefleri</h3>
+                    <p class="text-xs text-gray-500">Hedef kâr marjı, minimum eşik ve varsayılan ambalaj maliyeti</p>
+                </div>
+            </div>
+            <svg class="w-5 h-5 text-gray-400 transition-transform {{ $settingsActiveSection === 'profitability' ? 'rotate-180' : '' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+        @if($settingsActiveSection === 'profitability')
+        <div class="p-6 border-t border-gray-100 space-y-5">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Hedef Kâr Marjı</label>
+                    <div class="relative">
+                        <input type="number" step="0.5" wire:model="settingsTargetProfitMargin" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">%</span>
+                    </div>
+                    <p class="text-xs text-gray-400">Bu marjın altındaki ürünler denetim raporunda "uyarı" olarak işaretlenir</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Minimum Kâr Eşiği</label>
+                    <div class="relative">
+                        <input type="number" step="0.5" wire:model="settingsMinProfitMargin" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm">
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">%</span>
+                    </div>
+                    <p class="text-xs text-gray-400">Bu eşiğin altındaki ürünler "kritik" uyarı alır — fiyat güncelleme gerekir</p>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Varsayılan Ambalaj Maliyeti</label>
+                    <div class="relative">
+                        <input type="number" step="0.50" wire:model="settingsDefaultPackagingCost" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">TL / sipariş</span>
+                    </div>
+                    <p class="text-xs text-gray-400">Her siparişe uygulanacak varsayılan paketleme + kutu maliyeti</p>
+                </div>
+            </div>
+
+            {{-- Hedef Gösterge --}}
+            <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50/50 text-center">
+                    <p class="text-3xl font-bold text-emerald-600">%{{ number_format($settingsTargetProfitMargin, 1) }}</p>
+                    <p class="text-xs text-emerald-600 font-medium mt-1">🎯 Hedef Kâr Marjı</p>
+                </div>
+                <div class="p-4 rounded-xl border-2 border-red-200 bg-red-50/50 text-center">
+                    <p class="text-3xl font-bold text-red-600">%{{ number_format($settingsMinProfitMargin, 1) }}</p>
+                    <p class="text-xs text-red-600 font-medium mt-1">⚠️ Minimum Eşik</p>
+                </div>
+            </div>
+        </div>
+        @endif
+    </div>
+
     {{-- ═══════════════ BÖLÜM 1: VERGİ & KDV ═══════════════ --}}
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <button wire:click="toggleSettingsSection('tax')" type="button"
@@ -109,6 +236,17 @@
         @if($settingsActiveSection === 'cargo')
         <div class="p-6 border-t border-gray-100 space-y-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Pazaryeri</label>
+                    <select wire:model="settingsMarketplace" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
+                        <option value="Trendyol">🟠 Trendyol</option>
+                        <option value="Hepsiburada">🟣 Hepsiburada</option>
+                        <option value="N11">🔵 N11</option>
+                        <option value="Amazon">🟡 Amazon TR</option>
+                        <option value="Çiçeksepeti">🌸 Çiçeksepeti</option>
+                    </select>
+                    <p class="text-xs text-gray-400">Birden fazla pazaryeri desteği yakında eklenecek</p>
+                </div>
                 <div class="space-y-1.5">
                     <label class="block text-sm font-semibold text-gray-700">Kargo Barem Limiti (TL)</label>
                     <input type="number" step="1" wire:model="settingsBaremLimit" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
@@ -275,7 +413,7 @@
         <button wire:click="toggleSettingsSection('barem')" type="button"
                 class="w-full px-6 py-4 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white hover:from-gray-100 transition-all">
             <div class="flex items-center gap-3">
-                <span class="text-2xl">📊</span>
+                <span class="text-2xl">💰</span>
                 <div class="text-left">
                     <h3 class="text-base font-bold text-gray-900">Barem Fiyat Tablosu</h3>
                     <p class="text-xs text-gray-500">Sipariş tutarı aralıklarına göre barem kargo fiyatları</p>

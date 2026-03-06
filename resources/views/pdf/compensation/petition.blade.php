@@ -90,10 +90,10 @@
         <p>Saygılarımla,</p>
 
         <div class="signature-block">
-            <strong>Zem Dayanıklı Tüketim Malları İthalat İhracat Sanayi ve Ticaret Limited Şirketi</strong><br>
-            Adres: Eskihisar Mah. 8018 Sk. No:5 İç Kapı No:1<br>
-            Telefon: 0 507 298 40 85<br>
-            E-posta: zemhomedestek@gmail.com<br>
+            <strong>{{ $settings->get('company.name', 'Firma Adı Girilmemiş') }}</strong><br>
+            Adres: {{ $settings->get('company.address', 'Adres Girilmemiş') }}<br>
+            Telefon: {{ $settings->get('company.phone', 'Telefon Girilmemiş') }}<br>
+            E-posta: {{ $settings->get('company.email', 'E-posta Girilmemiş') }}<br>
             Tarih: {{ now()->format('d.m.Y') }}<br>
             <br>
             İmza

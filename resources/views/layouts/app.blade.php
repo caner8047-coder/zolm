@@ -73,7 +73,7 @@
             <!-- Logo -->
             <div class="h-16 flex items-center justify-between px-6 border-b border-gray-200">
                 <a href="{{ route('dashboard') }}" class="text-2xl font-bold text-gray-900 tracking-tight flex items-baseline">
-                    zolm <span class="text-xs font-normal text-gray-400 ml-1">v.0.5</span>
+                    zolm <span class="text-xs font-normal text-gray-400 ml-1">v.0.6</span>
                 </a>
                 <!-- Mobile close button -->
                 <button 
@@ -88,72 +88,140 @@
 
             <!-- Navigation -->
             <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-                @if(auth()->user()->canAccessProduction())
-                <a href="{{ route('production') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                          {{ request()->routeIs('production') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
-                    </svg>
-                    Üretim
-                </a>
-                @endif
+                {{-- Pazaryeri Dropdown --}}
+                <div x-data="{ pazaryeriOpen: {{ request()->routeIs('mp.*', 'marketplace-accounting', 'reports') ? 'true' : 'false' }} }">
+                    <button @click="pazaryeriOpen = !pazaryeriOpen"
+                        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                               {{ request()->routeIs('mp.*', 'marketplace-accounting', 'reports') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                        <span class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                            Pazaryeri
+                        </span>
+                        <svg :class="pazaryeriOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div x-show="pazaryeriOpen" x-collapse class="ml-8 mt-1 space-y-1">
+                        <a href="{{ route('mp.orders') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('mp.orders') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Siparişler
+                        </a>
+                        <a href="{{ route('mp.products') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('mp.products') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Ürünler
+                        </a>
+                        <a href="{{ route('marketplace-accounting') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('marketplace-accounting') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Muhasebe
+                        </a>
+                    </div>
+                </div>
 
-                @if(auth()->user()->canAccessOperation())
-                <a href="{{ route('operation') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                          {{ request()->routeIs('operation') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
-                    </svg>
-                    Operasyon
-                </a>
-                @endif
+                {{-- Araçlar Dropdown --}}
+                <div x-data="{ araclarOpen: {{ request()->routeIs('production', 'operation', 'custom-motors*', 'profiles*') ? 'true' : 'false' }} }">
+                    <button @click="araclarOpen = !araclarOpen"
+                        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                               {{ request()->routeIs('production', 'operation', 'custom-motors*', 'profiles*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                        <span class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                            </svg>
+                            Araçlar
+                        </span>
+                        <svg :class="araclarOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div x-show="araclarOpen" x-collapse class="ml-8 mt-1 space-y-1">
+                        @if(auth()->user()->canAccessProduction())
+                        <a href="{{ route('production') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('production') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Üretim Motoru
+                        </a>
+                        @endif
+                        @if(auth()->user()->canAccessOperation())
+                        <a href="{{ route('operation') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('operation') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Operasyon Motoru
+                        </a>
+                        @endif
+                        @if(auth()->user()->canAccessCustomMotor())
+                        <a href="{{ route('custom-motors') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('custom-motors*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Özel Motor
+                        </a>
+                        @endif
+                        @if(auth()->user()->canAccessReports())
+                        <a href="{{ route('reports') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('reports') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Motor Çıktıları
+                        </a>
+                        @endif
+                        @if(auth()->user()->isAdmin())
+                        <a href="{{ route('profiles') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('profiles*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Profiller
+                        </a>
+                        @endif
+                    </div>
+                </div>
 
-                @if(auth()->user()->canAccessReports())
-                <a href="{{ route('reports') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                          {{ request()->routeIs('reports') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    Geçmiş Raporlar
-                </a>
-                @endif
+                {{-- Fabrika Dropdown --}}
+                <div x-data="{ fabrikaOpen: {{ request()->routeIs('recipe.*') ? 'true' : 'false' }} }">
+                    <button @click="fabrikaOpen = !fabrikaOpen"
+                        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                               {{ request()->routeIs('recipe.*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                        <span class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                            </svg>
+                            Fabrika
+                        </span>
+                        <svg :class="fabrikaOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div x-show="fabrikaOpen" x-collapse class="ml-8 mt-1 space-y-1">
+                        <a href="#" @click.prevent="" class="flex items-center justify-between px-4 py-2 text-sm rounded-lg transition-colors text-gray-400 cursor-not-allowed">
+                            Üretim Online
+                            <span class="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded ml-2">YAKINDA</span>
+                        </a>
+                        <a href="{{ route('recipe.materials') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('recipe.*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Reçete
+                        </a>
+                        <a href="#" @click.prevent="" class="flex items-center justify-between px-4 py-2 text-sm rounded-lg transition-colors text-gray-400 cursor-not-allowed">
+                            Mamül / Yarı Mamül
+                            <span class="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded ml-2">YAKINDA</span>
+                        </a>
+                        <a href="#" @click.prevent="" class="flex items-center justify-between px-4 py-2 text-sm rounded-lg transition-colors text-gray-400 cursor-not-allowed">
+                            Personel / Makine / Hammadde
+                            <span class="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded ml-2">YAKINDA</span>
+                        </a>
+                    </div>
+                </div>
 
-                <a href="{{ route('cargo-reports') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                          {{ request()->routeIs('cargo-reports') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                    </svg>
-                    Kargo Raporları
-                </a>
-
-                <a href="{{ route('supply-reports') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                          {{ request()->routeIs('supply-reports') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-                    </svg>
-                    Tedarik Raporu
-                </a>
-
-                {{-- Trendyol Kampanyalar Dropdown --}}
+                {{-- Kampanyalar Dropdown --}}
                 <div x-data="{ campaignsOpen: {{ request()->routeIs('campaigns.*') ? 'true' : 'false' }} }">
                     <button @click="campaignsOpen = !campaignsOpen"
                         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
                                {{ request()->routeIs('campaigns.*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
                         <span class="flex items-center">
                             <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                             </svg>
-                            Trendyol Kampanyalar
+                            Kampanyalar
                         </span>
                         <svg :class="campaignsOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -176,7 +244,7 @@
                            @click="sidebarOpen = false"
                            class="block px-4 py-2 text-sm rounded-lg transition-colors
                                   {{ request()->routeIs('campaigns.badge-pricing') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
-                            Avantajlı Ürün Etiketleri
+                            Avantajlı Ürün Tarifeleri
                         </a>
                         <a href="{{ route('campaigns.flash-products') }}"
                            @click="sidebarOpen = false"
@@ -187,77 +255,41 @@
                     </div>
                 </div>
 
-                <a href="{{ route('mp.orders') }}" 
+                <a href="{{ route('cargo-reports') }}" 
                    @click="sidebarOpen = false"
                    class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                           {{ request()->routeIs('mp.orders') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
+                          {{ request()->routeIs('cargo-reports') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
                     <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                     </svg>
-                    Pazaryeri Siparişlerim
-                    <span class="ml-auto text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">YENİ</span>
+                    Kargo Raporu
                 </a>
 
-                <a href="{{ route('marketplace-accounting') }}" 
+                <a href="{{ route('supply-reports') }}" 
                    @click="sidebarOpen = false"
                    class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                           {{ request()->routeIs('marketplace-accounting') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
+                          {{ request()->routeIs('supply-reports') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
                     <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
                     </svg>
-                    Pazaryeri Muhasebe
+                    Tedarik Raporu
                 </a>
-
-                <a href="{{ route('mp.products') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                           {{ request()->routeIs('mp.products') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                    </svg>
-                    Pazaryeri Ürünlerim
-                    <span class="ml-auto text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded">YENİ</span>
-                </a>
-
-                <a href="{{ route('recipe.materials') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                            {{ request()->routeIs('recipe.*') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
-                    </svg>
-                    Reçete Hazırlama
-                    <span class="ml-auto text-xs bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded">YENİ</span>
-                </a>
-
-                @if(auth()->user()->isAdmin())
-                <a href="{{ route('profiles') }}" 
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                           {{ request()->routeIs('profiles*') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
-                    Profiller
-                </a>
-                @endif
 
                 <!-- Divider -->
                 <div class="border-t border-gray-200 my-4"></div>
-                <p class="px-4 text-xs text-gray-400 uppercase tracking-wider mb-2">Yakında</p>
 
                 <!-- Coming Soon Items -->
-
                 <a href="{{ route('api-dev') }}" 
                    @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                   class="flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
                           {{ request()->routeIs('api-dev') ? 'bg-gray-900 text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
-                    </svg>
-                    API / Dev
-                    <span class="ml-auto text-xs bg-yellow-100 text-yellow-600 px-1.5 py-0.5 rounded">🚧</span>
+                    <span class="flex items-center">
+                        <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                        </svg>
+                        Api/Dev Yakında
+                    </span>
+                    <span class="text-xs bg-yellow-100 text-yellow-600 px-1.5 py-0.5 rounded">🚧</span>
                 </a>
             </nav>
 

@@ -61,6 +61,10 @@ class CompensationDashboard extends Component
     public bool $showPetitionModal = false;
     public string $editingPetitionText = '';
 
+    // Ekleri Görüntüleme
+    public bool $showAttachmentsModal = false;
+    public array $viewingAttachments = [];
+
     // Mesaj
     public string $message = '';
     public string $messageType = 'info';
@@ -252,6 +256,39 @@ class CompensationDashboard extends Component
     }
 
     /**
+     * Tazmin istatistikleri detaylı dağılımı (Grafik Paneli için)
+     */
+    #[Computed]
+    public function statsBreakdown()
+    {
+        $comps = Compensation::all();
+        $total = $comps->count() ?: 1; // Sıfıra bölmeyi engellemek için
+
+        $statuses = [
+            'beklemede' => $comps->where('durum', 'beklemede')->count(),
+            'onaylandi' => $comps->where('durum', 'onaylandi')->count(),
+            'kismen_onaylandi' => $comps->where('durum', 'kismen_onaylandi')->count(),
+            'reddedildi' => $comps->where('durum', 'reddedildi')->count(),
+        ];
+
+        $reasons = [
+            'kayip_urun' => $comps->whereIn('sebep', ['kayip_urun', 'iade_kayip'])->count(),
+            'hasarli_urun' => $comps->where('sebep', 'hasarli_urun')->count(),
+            'desi_fazla' => $comps->where('sebep', 'desi_fazla')->count(),
+            'tutar_fazla' => $comps->where('sebep', 'tutar_fazla')->count(),
+        ];
+        
+        $reasons['diger'] = $comps->count() - array_sum($reasons);
+        if ($reasons['diger'] < 0 || $comps->count() === 0) $reasons['diger'] = 0;
+
+        return [
+            'total' => $comps->count(),
+            'statuses' => $statuses,
+            'reasons' => $reasons
+        ];
+    }
+
+    /**
      * Başarı oranı hesapla
      */
     protected function calculateSuccessRate(): float
@@ -424,7 +461,19 @@ class CompensationDashboard extends Component
         return Compensation::find($this->viewingCompensationId);
     }
 
-
+    /**
+     * Ekleri Görüntüle
+     */
+    public function viewAttachments(int $id)
+    {
+        $comp = Compensation::find($id);
+        if ($comp && !empty($comp->attachments)) {
+            $this->viewingAttachments = $comp->attachments;
+            $this->showAttachmentsModal = true;
+        } else {
+            $this->showMessage('Bu talebe ait görüntülecek ek/görsel bulunamadı.', 'warning');
+        }
+    }
 
     /**
      * Mesaj göster

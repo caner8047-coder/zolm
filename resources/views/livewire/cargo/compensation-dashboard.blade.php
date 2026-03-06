@@ -177,6 +177,11 @@
                                             <a href="{{ route('compensation.download-all', $comp->id) }}" class="text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 px-1.5 py-1 rounded border border-blue-200 transition-colors" title="Tümünü İndir (ZIP)">
                                                 📦 ZIP
                                             </a>
+                                            @if(!empty($comp->attachments))
+                                            <button wire:click="viewAttachments({{ $comp->id }})" class="inline-flex items-center gap-1 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-1.5 py-1 rounded border border-indigo-200 transition-colors" title="Ekleri / Kanıtları Görüntüle">
+                                                📸 Ekler
+                                            </button>
+                                            @endif
                                             <button wire:click="openPetitionModal({{ $comp->id }})" class="inline-flex items-center gap-1 text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-700 px-1.5 py-1 rounded border border-purple-200 transition-colors" title="Dilekçe İçeriği Düzenle">
                                                 <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16.0001 4.00003L17.0858 7.31422L20.4001 8.40003L17.0858 9.48584L16.0001 12.8L14.9142 9.48584L11.6001 8.40003L14.9142 7.31422L16.0001 4.00003Z" fill="currentColor"/><path d="M8.00006 4.00003L9.08581 7.31422L12.4001 8.40003L9.08581 9.48584L8.00006 12.8L6.91425 9.48584L3.60006 8.40003L6.91425 7.31422L8.00006 4.00003Z" fill="currentColor" fill-opacity="0.5"/><path d="M12.0001 14L13.0858 17.3142L16.4001 18.4L13.0858 19.4858L12.0001 22.8L10.9142 19.4858L7.60006 18.4L10.9142 17.3142L12.0001 14Z" fill="currentColor"/></svg>
                                                 AI
@@ -241,6 +246,11 @@
                                 <a href="{{ route('compensation.download-all', $comp->id) }}" class="text-xs bg-blue-50 text-blue-700 px-2 py-1.5 rounded border border-blue-200">
                                     📦 ZIP
                                 </a>
+                                @if(!empty($comp->attachments))
+                                <button wire:click="viewAttachments({{ $comp->id }})" class="text-xs bg-indigo-50 text-indigo-700 px-2 py-1.5 rounded border border-indigo-200">
+                                    📸 Ekler
+                                </button>
+                                @endif
                                 <button wire:click="openPetitionModal({{ $comp->id }})" class="text-xs bg-purple-50 text-purple-700 px-2 py-1.5 rounded border border-purple-200">
                                     ✨ AI
                                 </button>
@@ -305,7 +315,119 @@
     </div>
 
     {{-- Grafik Paneli --}}
+    @if($this->statsBreakdown['total'] > 0)
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6 mb-4 lg:mb-6">
+        {{-- Durumlara Göre Dağılım --}}
+        <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            <h3 class="font-bold text-gray-800 mb-5 flex items-center gap-2">
+                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                Durumlara Göre Dağılım
+            </h3>
+            <div class="space-y-5">
+                @php $st = $this->statsBreakdown['statuses']; $tot = $this->statsBreakdown['total'] ?: 1; @endphp
+                
+                {{-- Beklemede --}}
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="font-semibold text-gray-700">Beklemede</span>
+                        <span class="text-gray-500 font-medium">{{ $st['beklemede'] }} Talep <span class="text-gray-400">(%{{ round(($st['beklemede']/$tot)*100) }})</span></span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2.5">
+                        <div class="bg-yellow-400 h-2.5 rounded-full" style="width: {{ ($st['beklemede']/$tot)*100 }}%"></div>
+                    </div>
+                </div>
 
+                {{-- Onaylandı --}}
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="font-semibold text-gray-700">Onaylandı</span>
+                        <span class="text-gray-500 font-medium">{{ $st['onaylandi'] }} Talep <span class="text-gray-400">(%{{ round(($st['onaylandi']/$tot)*100) }})</span></span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2.5">
+                        <div class="bg-green-500 h-2.5 rounded-full" style="width: {{ ($st['onaylandi']/$tot)*100 }}%"></div>
+                    </div>
+                </div>
+
+                {{-- Kısmen Onaylandı --}}
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="font-semibold text-gray-700">Kısmen Onaylandı</span>
+                        <span class="text-gray-500 font-medium">{{ $st['kismen_onaylandi'] }} Talep <span class="text-gray-400">(%{{ round(($st['kismen_onaylandi']/$tot)*100) }})</span></span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2.5">
+                        <div class="bg-blue-400 h-2.5 rounded-full" style="width: {{ ($st['kismen_onaylandi']/$tot)*100 }}%"></div>
+                    </div>
+                </div>
+
+                {{-- Reddedildi --}}
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="font-semibold text-gray-700">Reddedildi</span>
+                        <span class="text-gray-500 font-medium">{{ $st['reddedildi'] }} Talep <span class="text-gray-400">(%{{ round(($st['reddedildi']/$tot)*100) }})</span></span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2.5">
+                        <div class="bg-red-500 h-2.5 rounded-full" style="width: {{ ($st['reddedildi']/$tot)*100 }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{-- Sebeplere Göre Dağılım --}}
+        <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+            <h3 class="font-bold text-gray-800 mb-5 flex items-center gap-2">
+                <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
+                Tazmin Sebepleri Dağılımı
+            </h3>
+            <div class="space-y-5">
+                @php $rs = $this->statsBreakdown['reasons']; @endphp
+                
+                {{-- Kayıp Ürün --}}
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="font-semibold text-gray-700">Kayıp Ürün / İade Kayıp</span>
+                        <span class="text-gray-500 font-medium">{{ $rs['kayip_urun'] }} Talep <span class="text-gray-400">(%{{ round(($rs['kayip_urun']/$tot)*100) }})</span></span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2.5">
+                        <div class="bg-indigo-500 h-2.5 rounded-full" style="width: {{ ($rs['kayip_urun']/$tot)*100 }}%"></div>
+                    </div>
+                </div>
+
+                {{-- Hasarlı Ürün --}}
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="font-semibold text-gray-700">Hasarlı Ürün</span>
+                        <span class="text-gray-500 font-medium">{{ $rs['hasarli_urun'] }} Talep <span class="text-gray-400">(%{{ round(($rs['hasarli_urun']/$tot)*100) }})</span></span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2.5">
+                        <div class="bg-orange-400 h-2.5 rounded-full" style="width: {{ ($rs['hasarli_urun']/$tot)*100 }}%"></div>
+                    </div>
+                </div>
+
+                {{-- Hatalı Ölçüm --}}
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="font-semibold text-gray-700">Hatalı Desi / Tutar Fazla</span>
+                        <span class="text-gray-500 font-medium">{{ $rs['desi_fazla'] + $rs['tutar_fazla'] }} Talep <span class="text-gray-400">(%{{ round((($rs['desi_fazla']+$rs['tutar_fazla'])/$tot)*100) }})</span></span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2.5">
+                        <div class="bg-red-400 h-2.5 rounded-full" style="width: {{ (($rs['desi_fazla']+$rs['tutar_fazla'])/$tot)*100 }}%"></div>
+                    </div>
+                </div>
+
+                {{-- Diğer --}}
+                <div>
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="font-semibold text-gray-700">Diğer Nedenler</span>
+                        <span class="text-gray-500 font-medium">{{ $rs['diger'] }} Talep <span class="text-gray-400">(%{{ round(($rs['diger']/$tot)*100) }})</span></span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2.5">
+                        <div class="bg-gray-400 h-2.5 rounded-full" style="width: {{ ($rs['diger']/$tot)*100 }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 
     {{-- Alt Paneller --}}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
@@ -669,6 +791,45 @@
                                     class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                                 Güncelle
                             </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Ekleri/Görselleri Görüntüleme Modalı --}}
+    @if($showAttachmentsModal)
+        <div class="fixed inset-0 z-[60] overflow-y-auto" aria-modal="true">
+            <div class="flex items-center justify-center min-h-screen px-4">
+                <div class="fixed inset-0 bg-gray-900 bg-opacity-90 transition-opacity" wire:click="$set('showAttachmentsModal', false)"></div>
+                
+                <div class="relative bg-white rounded-lg max-w-4xl w-full shadow-2xl flex flex-col max-h-[90vh]">
+                    <div class="flex-none px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-lg flex justify-between items-center">
+                        <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            Kanıt Görselleri ({{ count($viewingAttachments) }})
+                        </h3>
+                        <button wire:click="$set('showAttachmentsModal', false)" class="text-gray-400 hover:text-gray-500 bg-white hover:bg-gray-100 rounded-full p-1 transition-colors">
+                            <span class="sr-only">Kapat</span>
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto p-6 bg-gray-100">
+                        <div class="space-y-6">
+                            @foreach($viewingAttachments as $index => $path)
+                                <div class="bg-white p-2 rounded-lg shadow-sm border border-gray-200">
+                                    <div class="flex justify-between items-center mb-2 px-2">
+                                        <span class="text-sm font-semibold text-gray-600">Görsel {{ $index + 1 }}</span>
+                                        <a href="{{ Storage::disk('public')->url($path) }}" target="_blank" class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium bg-blue-50 px-2 py-1 rounded">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                            Yeni Sekmede Aç
+                                        </a>
+                                    </div>
+                                    <img src="{{ Storage::disk('public')->url($path) }}" alt="Kanıt {{ $index + 1 }}" class="w-full h-auto rounded border border-gray-100 object-contain max-h-[60vh]">
+                                </div>
+                            @endforeach
                         </div>
                     </div>
                 </div>

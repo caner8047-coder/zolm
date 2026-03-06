@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Livewire\AIChat;
+use App\Livewire\CustomMotor;
+use App\Livewire\CustomMotorWizard;
 use App\Livewire\ProductionMotor;
 use App\Livewire\OperationMotor;
 use App\Livewire\ProfileManager;
@@ -24,15 +26,9 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->midd
 
 // Protected routes
 Route::middleware('auth')->group(function () {
-    // Dashboard (redirect to production by default)
+    // Dashboard (redirect to mp.orders by default)
     Route::get('/dashboard', function () {
-        if (auth()->user()->canAccessProduction()) {
-            return redirect()->route('production');
-        } elseif (auth()->user()->canAccessOperation()) {
-            return redirect()->route('operation');
-        } else {
-            return redirect()->route('reports');
-        }
+        return redirect()->route('mp.orders');
     })->name('dashboard');
 
     // Production Motor
@@ -44,6 +40,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/operation', OperationMotor::class)
         ->name('operation')
         ->middleware('can:accessOperation');
+
+    // Custom Motor
+    Route::get('/custom-motors', CustomMotor::class)
+        ->name('custom-motors')
+        ->middleware('can:accessCustomMotor');
 
     // Report History
     Route::get('/reports', ReportHistory::class)
@@ -114,6 +115,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/profiles/create', ProfileWizard::class)
         ->name('profile.wizard')
         ->middleware('can:admin');
+
+    // Custom Profile Wizard
+    Route::get('/custom-motors/create', CustomMotorWizard::class)
+        ->name('custom-motors.create')
+        ->middleware('can:accessCustomMotor');
 
     // File downloads - doğrudan binary response
     Route::get('/download/{reportFile}', function (\App\Models\ReportFile $reportFile) {

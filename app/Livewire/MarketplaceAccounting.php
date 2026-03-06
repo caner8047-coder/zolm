@@ -112,6 +112,26 @@ class MarketplaceAccounting extends Component
     // Genel
     public string $settingsMarketplace = 'Trendyol';
 
+    // Firma Profili
+    public string $settingsCompanyName = '';
+    public string $settingsCompanyTaxNumber = '';
+    public string $settingsCompanyTaxOffice = '';
+    public string $settingsCompanyPhone = '';
+    public string $settingsCompanyEmail = '';
+    public string $settingsCompanyAddress = '';
+    public string $settingsCompanyIban = '';
+    public string $settingsCompanyBank = '';
+    public string $settingsCompanyBranch = '';
+    public string $settingsCompanyManager = '';
+    public string $settingsCompanyMersis = '';
+
+    // Kârlılık Hedefleri
+    public float $settingsTargetProfitMargin = 15.00;
+    public float $settingsMinProfitMargin = 5.00;
+
+    // Varsayılan Ambalaj Maliyeti
+    public float $settingsDefaultPackagingCost = 0.00;
+
     // Ayar UI State
     public string $settingsActiveSection = '';
 
@@ -267,6 +287,26 @@ class MarketplaceAccounting extends Component
         // Genel
         $this->settingsMarketplace = (string) ($all['general']['marketplace'] ?? 'Trendyol');
 
+        // Firma Profili
+        $co = $all['company'] ?? [];
+        $this->settingsCompanyName       = (string) ($co['name'] ?? '');
+        $this->settingsCompanyTaxNumber  = (string) ($co['tax_number'] ?? '');
+        $this->settingsCompanyTaxOffice  = (string) ($co['tax_office'] ?? '');
+        $this->settingsCompanyPhone      = (string) ($co['phone'] ?? '');
+        $this->settingsCompanyEmail      = (string) ($co['email'] ?? '');
+        $this->settingsCompanyAddress    = (string) ($co['address'] ?? '');
+        $this->settingsCompanyIban       = (string) ($co['iban'] ?? '');
+        $this->settingsCompanyBank       = (string) ($co['bank'] ?? '');
+        $this->settingsCompanyBranch     = (string) ($co['branch'] ?? '');
+        $this->settingsCompanyManager    = (string) ($co['manager'] ?? '');
+        $this->settingsCompanyMersis     = (string) ($co['mersis'] ?? '');
+
+        // Kârlılık Hedefleri
+        $prof = $all['profitability'] ?? [];
+        $this->settingsTargetProfitMargin  = (float) ($prof['target_margin'] ?? 15.00);
+        $this->settingsMinProfitMargin     = (float) ($prof['min_margin'] ?? 5.00);
+        $this->settingsDefaultPackagingCost = (float) ($prof['default_packaging_cost'] ?? 0.00);
+
         // UI — Kolon Görünürlüğü
         $this->visibleColumns = (array) ($all['ui']['visible_columns'] ?? ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay']);
 
@@ -356,6 +396,18 @@ class MarketplaceAccounting extends Component
                 'marketplace'           => $this->settingsMarketplace,
                 'currency'              => 'TRY',
                 'default_cargo_company' => $this->settingsDefaultCargoCompany,
+            ],
+            'company' => [
+                'name'       => $this->settingsCompanyName,
+                'tax_number' => $this->settingsCompanyTaxNumber,
+                'tax_office' => $this->settingsCompanyTaxOffice,
+                'phone'      => $this->settingsCompanyPhone,
+                'email'      => $this->settingsCompanyEmail,
+            ],
+            'profitability' => [
+                'target_margin'          => (float) $this->settingsTargetProfitMargin,
+                'min_margin'             => (float) $this->settingsMinProfitMargin,
+                'default_packaging_cost' => (float) $this->settingsDefaultPackagingCost,
             ],
         ]);
 
@@ -1267,9 +1319,12 @@ class MarketplaceAccounting extends Component
         $commTolerance = $svc->getCommissionMatchTolerance();
         $cargoTolerance = $svc->getCargoMatchTolerance();
 
-        // Bizdeki sipariş 'commission_amount' genelde KDV dahil Trendyol kesintisidir.
-        $orderCommissionNet = \App\Models\MpOrder::where('period_id', $this->selectedPeriodId)->sum('commission_amount') / $vatDivisor;
-        $orderCargoNet = \App\Models\MpOrder::where('period_id', $this->selectedPeriodId)->sum('cargo_amount') / $vatDivisor;
+        // Bizdeki sipariş 'commission_amount' genelde KDV dahil Trendyol kesintisidir. Bazı iadelerde pozitif/negatif olabilir, mutlak toplam alınmalı.
+        $orderCommissionNet = \App\Models\MpOrder::where('period_id', $this->selectedPeriodId)
+            ->selectRaw('SUM(ABS(commission_amount)) as total')->value('total') / $vatDivisor;
+            
+        $orderCargoNet = \App\Models\MpOrder::where('period_id', $this->selectedPeriodId)
+            ->selectRaw('SUM(ABS(cargo_amount)) as total')->value('total') / $vatDivisor;
 
         // Fark (Mutlak Değer)
         $commissionDiff = abs(abs($invoiceCommission) - abs($orderCommissionNet));
