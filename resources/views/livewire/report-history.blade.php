@@ -44,6 +44,7 @@
                     <option value="all">Tümü</option>
                     <option value="production">Üretim</option>
                     <option value="operation">Operasyon</option>
+                    <option value="custom">Özel Motor</option>
                 </select>
             </div>
 
@@ -160,8 +161,11 @@
                                 class="rounded border-gray-300 text-gray-900 focus:ring-gray-500"
                             >
                             <span class="text-sm font-medium text-gray-900">{{ $report->original_filename }}</span>
-                            <span class="ml-2 px-2 py-0.5 text-xs rounded {{ $report->profile?->type === 'production' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700' }}">
-                                {{ $report->profile?->type === 'production' ? 'Üretim' : 'Operasyon' }}
+                            <span class="ml-2 px-2 py-0.5 text-xs rounded
+                                {{ $report->profile?->type === 'production' ? 'bg-blue-100 text-blue-700' : '' }}
+                                {{ $report->profile?->type === 'operation' ? 'bg-green-100 text-green-700' : '' }}
+                                {{ $report->profile?->type === 'custom' ? 'bg-indigo-100 text-indigo-700' : '' }}">
+                                {{ $report->profile?->type === 'production' ? 'Üretim' : ($report->profile?->type === 'custom' ? 'Özel Motor' : 'Operasyon') }}
                             </span>
                             @if($report->profile?->is_ai_generated)
                             <span class="px-2 py-0.5 text-xs rounded bg-purple-100 text-purple-700">AI</span>

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MpTransaction extends Model
 {
     protected $fillable = [
-        'period_id', 'transaction_date', 'document_number', 'order_number',
+        'period_id', 'transaction_date', 'document_number', 'source_line_number', 'order_number',
         'transaction_type', 'description', 'debt', 'credit', 'balance', 'is_matched',
     ];
 

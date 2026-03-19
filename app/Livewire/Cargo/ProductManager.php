@@ -3,15 +3,16 @@
 namespace App\Livewire\Cargo;
 
 use App\Models\Product;
+use App\Models\ProductReferenceHistory;
+use App\Services\ExcelService;
+use App\Services\MpSettingsService;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
-use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
  * Ürün/Desi Yönetim Bileşeni
@@ -24,6 +25,24 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 class ProductManager extends Component
 {
     use WithFileUploads, WithPagination;
+
+    public array $visibleColumns = ['stok_kodu', 'urun_adi', 'parca', 'desi', 'tutar', 'kategori'];
+    public static array $sortableColumns = [
+        'stok_kodu' => 'stok_kodu',
+        'urun_adi' => 'urun_adi',
+        'parca' => 'parca',
+        'desi' => 'desi',
+        'tutar' => 'tutar',
+        'kategori' => 'kategori',
+    ];
+    public static array $allColumnDefs = [
+        'stok_kodu' => 'Stok Kodu',
+        'urun_adi' => 'Ürün Adı',
+        'parca' => 'Parça',
+        'desi' => 'Desi',
+        'tutar' => 'Tutar',
+        'kategori' => 'Kategori',
+    ];
 
     // Arama ve filtreleme
     public string $search = '';
@@ -63,7 +82,6 @@ class ProductManager extends Component
     protected $queryString = [
         'search' => ['except' => ''],
         'filterCategory' => ['except' => ''],
-        'page' => ['except' => 1],
     ];
 
     protected function rules()
@@ -77,14 +95,21 @@ class ProductManager extends Component
         ];
     }
 
+    public function mount()
+    {
+        $this->visibleColumns = $this->normalizeVisibleColumns(
+            app(MpSettingsService::class)->getArray('cargo_reports.product_manager.visible_columns', $this->visibleColumns)
+        );
+    }
+
     public function updatedSearch()
     {
-        $this->resetPage();
+        $this->resetPage('productsPage');
     }
 
     public function updatedFilterCategory()
     {
-        $this->resetPage();
+        $this->resetPage('productsPage');
     }
 
     /**
@@ -94,12 +119,14 @@ class ProductManager extends Component
     public function products()
     {
         $query = Product::query();
+        $searchTerm = trim($this->search);
 
         // Arama
-        if (!empty($this->search)) {
-            $query->where(function ($q) {
-                $q->where('stok_kodu', 'like', "%{$this->search}%")
-                  ->orWhere('urun_adi', 'like', "%{$this->search}%");
+        if ($searchTerm !== '') {
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('stok_kodu', 'like', "%{$searchTerm}%")
+                  ->orWhere('urun_adi', 'like', "%{$searchTerm}%")
+                  ->orWhere('kategori', 'like', "%{$searchTerm}%");
             });
         }
 
@@ -111,7 +138,7 @@ class ProductManager extends Component
         // Sıralama
         $query->orderBy($this->sortField, $this->sortDirection);
 
-        return $query->paginate(20);
+        return $query->paginate(20, ['*'], 'productsPage');
     }
 
     /**
@@ -140,6 +167,20 @@ class ProductManager extends Component
         ];
     }
 
+    #[Computed]
+    public function recentHistory()
+    {
+        if (!$this->supportsReferenceHistory()) {
+            return collect();
+        }
+
+        return ProductReferenceHistory::query()
+            ->with('changedByUser')
+            ->latest()
+            ->limit(8)
+            ->get();
+    }
+
     /**
      * Sıralama değiştir
      */
@@ -153,6 +194,43 @@ class ProductManager extends Component
         }
     }
 
+    public function sortTable(string $columnKey): void
+    {
+        $field = static::$sortableColumns[$columnKey] ?? null;
+        if (!$field) {
+            return;
+        }
+
+        if ($this->sortField === $field) {
+            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            $this->sortField = $field;
+            $this->sortDirection = 'asc';
+        }
+
+        $this->resetPage('productsPage');
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        if (!array_key_exists($column, static::$allColumnDefs)) {
+            return;
+        }
+
+        if (in_array($column, $this->visibleColumns, true)) {
+            if (count($this->visibleColumns) === 1) {
+                return;
+            }
+
+            $this->visibleColumns = array_values(array_diff($this->visibleColumns, [$column]));
+        } else {
+            $this->visibleColumns[] = $column;
+            $this->visibleColumns = $this->normalizeVisibleColumns($this->visibleColumns);
+        }
+
+        app(MpSettingsService::class)->set('cargo_reports.product_manager.visible_columns', $this->visibleColumns);
+    }
+
     /**
      * Yeni ürün ekle
      */
@@ -161,7 +239,7 @@ class ProductManager extends Component
         $this->validate();
 
         try {
-            Product::create([
+            $product = Product::create([
                 'stok_kodu' => $this->newProduct['stok_kodu'],
                 'urun_adi' => $this->newProduct['urun_adi'],
                 'parca' => $this->newProduct['parca'],
@@ -169,6 +247,8 @@ class ProductManager extends Component
                 'tutar' => $this->newProduct['tutar'],
                 'updated_by' => auth()->id(),
             ]);
+
+            $this->logProductHistory($product, null, 'manual_create', 'Manuel ürün oluşturuldu.');
 
             $this->resetNewProduct();
             $this->showAddForm = false;
@@ -209,6 +289,8 @@ class ProductManager extends Component
             $product = Product::find($this->editingId);
             if (!$product) return;
 
+            $before = $product->toReferenceSnapshot();
+
             $product->update([
                 'stok_kodu' => $this->editingProduct['stok_kodu'],
                 'urun_adi' => $this->editingProduct['urun_adi'],
@@ -217,6 +299,8 @@ class ProductManager extends Component
                 'tutar' => $this->editingProduct['tutar'],
                 'updated_by' => auth()->id(),
             ]);
+
+            $this->logProductHistory($product->fresh(), $before, 'manual_update', 'Ürün referansı güncellendi.');
 
             $this->cancelEdit();
             $this->showMessage('Ürün güncellendi.', 'success');
@@ -253,7 +337,12 @@ class ProductManager extends Component
         if (!$this->deletingId) return;
 
         try {
+            $product = Product::find($this->deletingId);
+            $before = $product?->toReferenceSnapshot();
             Product::destroy($this->deletingId);
+            if ($product && $before) {
+                $this->logProductHistory($product, $before, 'manual_delete', 'Ürün referansı silindi.', null);
+            }
             $this->showMessage('Ürün silindi.', 'success');
         } catch (\Exception $e) {
             $this->showMessage('Silme hatası: ' . $e->getMessage(), 'error');
@@ -417,11 +506,37 @@ class ProductManager extends Component
 
             // Bulk Upsert İşlemi
             // uniqueBy: ['stok_kodu'], update: ['urun_adi', 'parca', 'desi', 'tutar', 'updated_by']
+            $stokKodlari = array_keys($upsertData);
+            $existingProducts = Product::query()
+                ->whereIn('stok_kodu', $stokKodlari)
+                ->get()
+                ->keyBy('stok_kodu');
+
             Product::upsert(
-                array_values($upsertData), 
-                ['stok_kodu'], 
+                array_values($upsertData),
+                ['stok_kodu'],
                 ['urun_adi', 'parca', 'desi', 'tutar', 'updated_by']
             );
+
+            $freshProducts = Product::query()
+                ->whereIn('stok_kodu', $stokKodlari)
+                ->get()
+                ->keyBy('stok_kodu');
+
+            foreach ($freshProducts as $stokKodu => $product) {
+                $existingProduct = $existingProducts->get($stokKodu);
+                $before = $existingProduct?->toReferenceSnapshot();
+                $after = $product->toReferenceSnapshot();
+
+                if ($before === null) {
+                    $this->logProductHistory($product, null, 'excel_import', 'Excel import ile yeni ürün eklendi.');
+                    continue;
+                }
+
+                if ($before !== $after) {
+                    $this->logProductHistory($product, $before, 'excel_import', 'Excel import ile referans güncellendi.');
+                }
+            }
 
             $this->showImportModal = false;
             $this->importFile = null;
@@ -447,40 +562,6 @@ class ProductManager extends Component
     {
         try {
             $products = Product::orderBy('stok_kodu')->get();
-
-            $spreadsheet = new Spreadsheet();
-            $sheet = $spreadsheet->getActiveSheet();
-            $sheet->setTitle('Ürün Listesi');
-
-            // Headers
-            $headers = ['Stok Kodu', 'Ürün Adı', 'Parça', 'Desi', 'Tutar', 'Kategori'];
-            $sheet->fromArray($headers, null, 'A1');
-
-            // Style headers
-            $sheet->getStyle('A1:F1')->getFont()->setBold(true);
-            $sheet->getStyle('A1:F1')->getFill()
-                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
-                ->getStartColor()->setRGB('4F46E5');
-            $sheet->getStyle('A1:F1')->getFont()->getColor()->setRGB('FFFFFF');
-
-            // Data
-            $row = 2;
-            foreach ($products as $product) {
-                $sheet->setCellValue('A' . $row, $product->stok_kodu);
-                $sheet->setCellValue('B' . $row, $product->urun_adi);
-                $sheet->setCellValue('C' . $row, $product->parca);
-                $sheet->setCellValue('D' . $row, $product->desi);
-                $sheet->setCellValue('E' . $row, $product->tutar);
-                $sheet->setCellValue('F' . $row, $product->kategori);
-                $row++;
-            }
-
-            // Auto width
-            foreach (range('A', 'F') as $col) {
-                $sheet->getColumnDimension($col)->setAutoSize(true);
-            }
-
-            // Save
             $fileName = 'urun_listesi_' . now()->format('Y-m-d_H-i') . '.xlsx';
             $tempPath = storage_path('app/temp/' . $fileName);
 
@@ -488,8 +569,19 @@ class ProductManager extends Component
                 mkdir(dirname($tempPath), 0755, true);
             }
 
-            $writer = new Xlsx($spreadsheet);
-            $writer->save($tempPath);
+            app(ExcelService::class)->exportToXlsx([
+                [
+                    'name' => 'Ürün Listesi',
+                    'data' => collect($products)->map(fn (Product $product) => [
+                        'Stok Kodu' => $product->stok_kodu,
+                        'Ürün Adı' => $product->urun_adi,
+                        'Parça' => (int) $product->parca,
+                        'Desi' => (float) $product->desi,
+                        'Tutar' => (float) $product->tutar,
+                        'Kategori' => $product->kategori,
+                    ])->all(),
+                ],
+            ], $tempPath);
 
             return response()->download($tempPath, $fileName)->deleteFileAfterSend();
 
@@ -537,5 +629,41 @@ class ProductManager extends Component
     public function render()
     {
         return view('livewire.cargo.product-manager');
+    }
+
+    protected function logProductHistory(?Product $product, ?array $beforeSnapshot, string $source, ?string $note = null, ?array $afterSnapshot = null): void
+    {
+        if (!$this->supportsReferenceHistory()) {
+            return;
+        }
+
+        ProductReferenceHistory::create([
+            'product_id' => $product?->id,
+            'stok_kodu' => $product?->stok_kodu ?? ($beforeSnapshot['stok_kodu'] ?? ''),
+            'change_source' => $source,
+            'note' => $note,
+            'previous_snapshot' => $beforeSnapshot,
+            'new_snapshot' => $afterSnapshot ?? $product?->toReferenceSnapshot(),
+            'changed_by' => auth()->id(),
+        ]);
+    }
+
+    protected function normalizeVisibleColumns(array $columns): array
+    {
+        $allowed = array_keys(static::$allColumnDefs);
+        $normalized = array_values(array_intersect($allowed, $columns));
+
+        return $normalized !== [] ? $normalized : ['stok_kodu', 'urun_adi', 'parca', 'desi', 'tutar', 'kategori'];
+    }
+
+    protected function supportsReferenceHistory(): bool
+    {
+        static $supportsReferenceHistory;
+
+        if ($supportsReferenceHistory === null) {
+            $supportsReferenceHistory = Schema::hasTable('product_reference_histories');
+        }
+
+        return $supportsReferenceHistory;
     }
 }

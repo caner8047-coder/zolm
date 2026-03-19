@@ -281,12 +281,12 @@
                 @if(!$settingsUsesOwnCargo)
                 <div class="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 flex items-start gap-2">
                     <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    <span>Kendi kargo <strong>kapalı</strong>. Kâr hesaplarınızda Trendyol'un kargo kesintisi ($cargo_amount) kullanılır. Pazaryeri Ürünlerim'deki kargo maliyeti dikkate alınmaz.</span>
+                    <span>Kendi kargo <strong>kapalı</strong>. Kâr hesaplarında ve <strong>Kargo Maliyeti Aşımı</strong> denetiminde Pazaryeri Ürünlerim'deki kendi kargo maliyeti dikkate alınmaz; yalnızca Trendyol kesintileri baz alınır.</span>
                 </div>
                 @else
                 <div class="mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-700 flex items-start gap-2">
                     <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    <span>Kendi kargo <strong>aktif</strong>. Pazaryeri Ürünlerim'de tanımlı kargo maliyeti (ürün başına) sipariş kâr hesaplarından düşülecektir. <strong>COGS Senkronize Et</strong> butonuyla mevcut siparişlere de uygulanır.</span>
+                    <span>Kendi kargo <strong>aktif</strong>. Pazaryeri Ürünlerim'de tanımlı kargo maliyeti (ürün başına) sipariş kâr hesaplarına ve <strong>Kargo Maliyeti Aşımı</strong> denetimine dahil edilir. <strong>COGS Senkronize Et</strong> butonuyla mevcut siparişlere de uygulanır.</span>
                 </div>
                 @endif
             </div>
@@ -469,80 +469,171 @@
             <svg class="w-5 h-5 text-gray-400 transition-transform {{ $settingsActiveSection === 'audit' ? 'rotate-180' : '' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
         @if($settingsActiveSection === 'audit')
-        <div class="p-6 border-t border-gray-100">
-            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-5 text-xs text-amber-700">
-                ⚠️ Tolerans değerlerini düşürmek daha fazla uyarı üretir, yükseltmek daha az uyarı üretir. Dikkatli ayarlayın.
+        <div class="p-4 lg:p-6 border-t border-gray-100 space-y-6">
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+                Toleransları düşürmek daha fazla alarm üretir, örneklem eşiklerini yükseltmek gürültüyü azaltır. Kural aç/kapa ve bilgi logu tercihleri anlık kaydedilir; sayısal eşikler alttaki kaydet butonuyla saklanır.
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
+                <label class="rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900">Bilgi Loglarını Dahil Et</p>
+                        <p class="text-xs text-gray-500 mt-1">E-Arşiv uyarısı, çoklu sepet, kısmi iade gibi hata dışı bilgilendirme kayıtlarını da rapora ekler.</p>
+                    </div>
+                    <input type="checkbox" wire:model.live="settingsLogInfoRules" class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-200 w-4 h-4">
+                </label>
+                <label class="rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900">Cari-Komisyon Kontrolü</p>
+                        <p class="text-xs text-gray-500 mt-1">Cari-Hakediş Uyumu denetiminde komisyon toplamını da karşılaştırır.</p>
+                    </div>
+                    <input type="checkbox" wire:model.live="settingsTransactionCheckCommissionEnabled" class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-200 w-4 h-4">
+                </label>
+                <label class="rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900">Cari-Kargo Kontrolü</p>
+                        <p class="text-xs text-gray-500 mt-1">Cari-Hakediş Uyumu denetiminde kargo toplamını da karşılaştırır.</p>
+                    </div>
+                    <input type="checkbox" wire:model.live="settingsTransactionCheckCargoEnabled" class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-200 w-4 h-4">
+                </label>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 overflow-hidden">
+                <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <h4 class="text-sm font-bold text-gray-800">Kural Yöneticisi</h4>
+                    <p class="text-xs text-gray-500 mt-1">Bir kuralı kapattığınızda audit ekranında da kapalı kalır. Bilgi logları kapalıysa bilgi seviyesi kurallar ayrıca pasifleşir.</p>
+                </div>
                 @php
-                    $toleranceFields = [
-                        ['model' => 'settingsStopajTolerance', 'label' => 'Stopaj Toleransı', 'unit' => 'TL', 'hint' => 'Stopaj hesaplama farkı eşiği'],
-                        ['model' => 'settingsCommissionMismatchTolerance', 'label' => 'Komisyon Uyuşmazlık', 'unit' => 'TL', 'hint' => 'Komisyon oranı hesaplama farkı'],
-                        ['model' => 'settingsBaremExcessTolerance', 'label' => 'Barem Aşım', 'unit' => 'TL', 'hint' => 'Barem fiyat aşımı eşiği'],
-                        ['model' => 'settingsCommissionRefundTolerance', 'label' => 'Komisyon İadesi', 'unit' => 'TL', 'hint' => 'İade komisyon geri ödeme farkı'],
-                        ['model' => 'settingsHakedisTolerance', 'label' => 'Hakediş Farkı', 'unit' => 'TL', 'hint' => 'Hesaplanan vs rapor hakediş farkı'],
-                        ['model' => 'settingsHeavyCargoTolerance', 'label' => 'Ağır Kargo', 'unit' => 'TL', 'hint' => 'Ağır kargo ceza eşleştirme toleransı'],
-                        ['model' => 'settingsCommissionRefundTrackingTolerance', 'label' => 'Komisyon İade Takip', 'unit' => 'TL', 'hint' => 'Komisyon iadesi takip eşiği'],
-                        ['model' => 'settingsMissingPaymentTolerance', 'label' => 'Eksik Ödeme', 'unit' => 'TL', 'hint' => 'Eksik ödeme tespit eşiği'],
-                        ['model' => 'settingsDelayedPaymentDays', 'label' => 'Geciken Ödeme', 'unit' => 'gün', 'hint' => 'Kaç gün sonra alarm tetiklensin?'],
-                    ];
+                    $auditCategories = collect(\App\Services\AuditEngine::RULE_META)->groupBy('category');
                 @endphp
-                @foreach($toleranceFields as $field)
-                <div class="space-y-1">
-                    <label class="block text-xs font-semibold text-gray-600">{{ $field['label'] }}</label>
-                    <div class="relative">
-                        <input type="number" step="0.01" wire:model="{{ $field['model'] }}" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-blue-400">
-                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">{{ $field['unit'] }}</span>
-                    </div>
-                    <p class="text-[10px] text-gray-400">{{ $field['hint'] }}</p>
+                <div class="p-4 lg:p-6 grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
+                    @foreach($auditCategories as $category => $rules)
+                        <div class="rounded-xl border border-gray-200 overflow-hidden">
+                            <div class="px-4 py-2.5 bg-white border-b border-gray-100">
+                                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider">{{ $category }}</p>
+                            </div>
+                            <div class="divide-y divide-gray-100">
+                                @foreach($rules as $method => $meta)
+                                    @php
+                                        $isDisabled = in_array($method, $disabledAuditRules);
+                                        $isImplicitlySuppressed = !$settingsLogInfoRules && ($meta['severity'] === 'info');
+                                    @endphp
+                                    <label class="px-4 py-3 flex items-start gap-3 cursor-pointer {{ ($isDisabled || $isImplicitlySuppressed) ? 'opacity-60' : '' }}">
+                                        <input type="checkbox"
+                                               wire:click="toggleAuditRule('{{ $method }}')"
+                                               {{ !$isDisabled ? 'checked' : '' }}
+                                               class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-200 w-4 h-4">
+                                        <div class="min-w-0 flex-1">
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <span class="text-sm">{{ $meta['icon'] }}</span>
+                                                <span class="text-sm font-semibold text-gray-900">{{ $meta['title'] }}</span>
+                                                <span class="px-2 py-0.5 text-[10px] font-mono rounded {{ $meta['severity'] === 'critical' ? 'bg-red-100 text-red-700' : ($meta['severity'] === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700') }}">
+                                                    {{ $meta['code'] }}
+                                                </span>
+                                                @if($isImplicitlySuppressed)
+                                                    <span class="px-2 py-0.5 text-[10px] font-mono rounded bg-slate-100 text-slate-600">
+                                                        Bilgi logu kapalı
+                                                    </span>
+                                                @endif
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-1 leading-relaxed">{{ $meta['tooltip'] }}</p>
+                                        </div>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
                 </div>
-                @endforeach
             </div>
 
-            {{-- Kritik Eşikler (severity belirleyiciler) --}}
-            <div class="mt-6 pt-4 border-t border-gray-100">
-                <h4 class="text-sm font-bold text-gray-700 mb-3">Kritik Alarm Eşikleri <span class="text-xs font-normal text-gray-400">(bu değeri aşan farklar "critical" olarak işaretlenir)</span></h4>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div class="space-y-1">
-                        <label class="text-xs font-semibold text-gray-600">Yanık Maliyet Eşiği</label>
-                        <div class="relative">
-                            <input type="number" step="1" wire:model="settingsSunkCostCriticalThreshold" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-                            <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">TL</span>
+            <div class="pt-1">
+                <h4 class="text-sm font-bold text-gray-700 mb-3">Temel Toleranslar</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
+                    @php
+                        $toleranceFields = [
+                            ['model' => 'settingsStopajTolerance', 'label' => 'Stopaj Toleransı', 'unit' => 'TL', 'hint' => 'Brüt×oran hesabı ile kesilen stopaj arasındaki kabul edilebilir fark', 'step' => '0.01'],
+                            ['model' => 'settingsCommissionMismatchTolerance', 'label' => 'Komisyon Toleransı', 'unit' => 'TL', 'hint' => 'Komisyon kuruş farkları için alarm eşiği', 'step' => '0.01'],
+                            ['model' => 'settingsBaremExcessTolerance', 'label' => 'Barem Aşımı', 'unit' => 'TL', 'hint' => 'Barem üzeri kargo farkı bu değeri geçerse alarm üretir', 'step' => '0.01'],
+                            ['model' => 'settingsCommissionRefundTolerance', 'label' => 'Komisyon İadesi', 'unit' => 'TL', 'hint' => 'İade siparişte eksik komisyon iadesi eşiği', 'step' => '0.01'],
+                            ['model' => 'settingsCommissionRefundTrackingTolerance', 'label' => 'Komisyon İade Takip', 'unit' => 'TL', 'hint' => 'Toplu iade takibinde sipariş bazlı açık fark eşiği', 'step' => '0.01'],
+                            ['model' => 'settingsHakedisTolerance', 'label' => 'Hakediş Farkı', 'unit' => 'TL', 'hint' => 'Beklenen hakediş ile raporlanan hakediş farkı', 'step' => '0.01'],
+                            ['model' => 'settingsMissingPaymentTolerance', 'label' => 'Eksik Ödeme', 'unit' => 'TL', 'hint' => 'Beklenen ödeme ile yatan ödeme farkı bu değeri aşarsa alarm', 'step' => '0.01'],
+                            ['model' => 'settingsDelayedPaymentDays', 'label' => 'Geciken Ödeme', 'unit' => 'gün', 'hint' => 'Teslimattan sonra kaç gün geçince kayıp ödeme sayılacağı', 'step' => '1'],
+                            ['model' => 'settingsHeavyCargoTolerance', 'label' => 'Ağır Kargo', 'unit' => 'TL', 'hint' => 'Bilinen ağır kargo ceza tutarına yakınlık eşiği', 'step' => '0.01'],
+                        ];
+                    @endphp
+                    @foreach($toleranceFields as $field)
+                        <div class="space-y-1.5">
+                            <label class="block text-xs font-semibold text-gray-600">{{ $field['label'] }}</label>
+                            <div class="relative">
+                                <input type="number" step="{{ $field['step'] }}" wire:model="{{ $field['model'] }}" class="w-full px-3 py-3 sm:py-2 border border-gray-200 rounded-lg text-base sm:text-sm focus:ring-1 focus:ring-blue-400">
+                                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">{{ $field['unit'] }}</span>
+                            </div>
+                            <p class="text-[10px] text-gray-400">{{ $field['hint'] }}</p>
                         </div>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-xs font-semibold text-gray-600">Hakediş Fark Eşiği</label>
-                        <div class="relative">
-                            <input type="number" step="1" wire:model="settingsHakedisCriticalThreshold" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-                            <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">TL</span>
-                        </div>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-xs font-semibold text-gray-600">Operasyonel Ceza Eşiği</label>
-                        <div class="relative">
-                            <input type="number" step="1" wire:model="settingsOperationalPenaltyCriticalThreshold" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-                            <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">TL</span>
-                        </div>
-                    </div>
+                    @endforeach
                 </div>
             </div>
 
-            {{-- Çoklu Sepet Ayarları --}}
-            <div class="mt-6 pt-4 border-t border-gray-100">
-                <h4 class="text-sm font-bold text-gray-700 mb-3">Çoklu Sepet Parametreleri</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="space-y-1">
-                        <label class="text-xs font-semibold text-gray-600">Çoklu Sepet Çarpanı</label>
-                        <input type="number" step="0.1" wire:model="settingsMultipleCartFactor" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-                        <p class="text-[10px] text-gray-400">Kargo fiyatı bu çarpanla barem fiyatını aşarsa çoklu sepet kontrol edilir</p>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-xs font-semibold text-gray-600">Desi Fiyat Yakınlık Toleransı</label>
-                        <div class="relative">
-                            <input type="number" step="0.5" wire:model="settingsMultipleCartDesiTolerance" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-                            <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">TL</span>
+            <div class="pt-1 border-t border-gray-100">
+                <h4 class="text-sm font-bold text-gray-700 mb-3">Kritik Eşikler ve Kârlılık Guardrail'leri</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
+                    @php
+                        $criticalFields = [
+                            ['model' => 'settingsSunkCostCriticalThreshold', 'label' => 'Yanık Maliyet Kritik Eşiği', 'unit' => 'TL', 'hint' => 'Bu toplam lojistik zarar üstü kritik sayılır', 'step' => '1'],
+                            ['model' => 'settingsHakedisCriticalThreshold', 'label' => 'Hakediş Kritik Eşiği', 'unit' => 'TL', 'hint' => 'Hakediş farkı bu değeri aşarsa kritik işaretlenir', 'step' => '1'],
+                            ['model' => 'settingsMissingPaymentCriticalThreshold', 'label' => 'Eksik Ödeme Kritik Eşiği', 'unit' => 'TL', 'hint' => 'Eksik ödeme farkı bu değeri aşarsa kritik olur', 'step' => '1'],
+                            ['model' => 'settingsOperationalPenaltyCriticalThreshold', 'label' => 'Operasyonel Ceza Kritik Eşiği', 'unit' => 'TL', 'hint' => 'Ceza tutarı bu değeri aşarsa kritik işaretlenir', 'step' => '1'],
+                            ['model' => 'settingsCargoOverCostRatio', 'label' => 'Kargo/Brüt Kâr Oranı', 'unit' => 'oran', 'hint' => 'Kendi kargo maliyeti, brüt kârın bu oranını aşarsa alarm üretir. %50 için 0.50', 'step' => '0.05'],
+                            ['model' => 'settingsNegativeHakedisThreshold', 'label' => 'Negatif Hakediş Eşiği', 'unit' => 'TL', 'hint' => 'Bu değerin altındaki net hakedişler alarm üretir. Her negatif için 0 bırakın', 'step' => '0.50'],
+                            ['model' => 'settingsExtremeMarginPositiveThreshold', 'label' => 'Aşırı Pozitif Marj', 'unit' => '%', 'hint' => 'Bu marj üstü siparişler veri hatası şüphesiyle işaretlenir', 'step' => '1'],
+                            ['model' => 'settingsExtremeMarginNegativeThreshold', 'label' => 'Aşırı Negatif Marj', 'unit' => '%', 'hint' => 'Bu marj altı siparişler veri hatası şüphesiyle işaretlenir', 'step' => '1'],
+                            ['model' => 'settingsCampaignLossMinTotalLoss', 'label' => 'Kampanya Zarar Min.', 'unit' => 'TL', 'hint' => 'Toplam zarar bu tutarın altındaysa kampanya alarmı üretmez', 'step' => '1'],
+                            ['model' => 'settingsCampaignLossMinOrderCount', 'label' => 'Kampanya Zarar Min. Sipariş', 'unit' => 'adet', 'hint' => 'Alarm için en az kaç zarar yazan kampanyalı sipariş gerektiği', 'step' => '1'],
+                            ['model' => 'settingsMultipleCartFactor', 'label' => 'Çoklu Sepet Çarpanı', 'unit' => 'kat', 'hint' => 'Kargo baremi bu çarpanı aşarsa çoklu sepet ihtimali kontrol edilir', 'step' => '0.1'],
+                            ['model' => 'settingsMultipleCartDesiTolerance', 'label' => 'Çoklu Sepet Desi Yakınlığı', 'unit' => 'TL', 'hint' => 'Gerçek kargo tutarı standart desi fiyatına bu kadar yakınsa bilgi alarmı üretir', 'step' => '0.5'],
+                        ];
+                    @endphp
+                    @foreach($criticalFields as $field)
+                        <div class="space-y-1.5">
+                            <label class="block text-xs font-semibold text-gray-600">{{ $field['label'] }}</label>
+                            <div class="relative">
+                                <input type="number" step="{{ $field['step'] }}" wire:model="{{ $field['model'] }}" class="w-full px-3 py-3 sm:py-2 border border-gray-200 rounded-lg text-base sm:text-sm focus:ring-1 focus:ring-blue-400">
+                                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">{{ $field['unit'] }}</span>
+                            </div>
+                            <p class="text-[10px] text-gray-400">{{ $field['hint'] }}</p>
                         </div>
-                    </div>
+                    @endforeach
+                </div>
+            </div>
+
+            <div class="pt-1 border-t border-gray-100">
+                <h4 class="text-sm font-bold text-gray-700 mb-3">Trend ve SKU Bazlı Gürültü Kontrolleri</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
+                    @php
+                        $trendFields = [
+                            ['model' => 'settingsPriceDropPercentage', 'label' => 'Fiyat Düşüş Oranı', 'unit' => '%', 'hint' => 'Önceki döneme göre bu yüzde kadar düşüş alarm üretir', 'step' => '0.5'],
+                            ['model' => 'settingsPriceDropMinOrders', 'label' => 'Fiyat Düşüş Min. Sipariş', 'unit' => 'adet', 'hint' => 'Her iki dönemde de en az bu kadar sipariş yoksa kıyas yapılmaz', 'step' => '1'],
+                            ['model' => 'settingsCommissionRateChangeThreshold', 'label' => 'Komisyon Artış Eşiği', 'unit' => 'puan', 'hint' => 'Komisyon oranı bu kadar puan artınca alarm üretir', 'step' => '0.1'],
+                            ['model' => 'settingsCommissionRateChangeMinOrders', 'label' => 'Komisyon Artış Min. Sipariş', 'unit' => 'adet', 'hint' => 'Komisyon karşılaştırması için iki dönemde de minimum örneklem', 'step' => '1'],
+                            ['model' => 'settingsServiceFeeIncreaseThreshold', 'label' => 'Hizmet Bedeli Artış Eşiği', 'unit' => 'puan', 'hint' => 'Aylık service fee oranı bu kadar puan artarsa alarm üretir', 'step' => '0.05'],
+                            ['model' => 'settingsServiceFeeIncreaseMinOrders', 'label' => 'Hizmet Bedeli Min. Sipariş', 'unit' => 'adet', 'hint' => 'Küçük örneklemde yanlış alarmı azaltmak için minimum sipariş sayısı', 'step' => '1'],
+                            ['model' => 'settingsHighReturnRateThreshold', 'label' => 'Yüksek İade Oranı', 'unit' => '%', 'hint' => 'SKU iade oranı bu eşik üstünde alarm verir', 'step' => '0.5'],
+                            ['model' => 'settingsHighReturnRateMinQuantity', 'label' => 'İade Min. Adet', 'unit' => 'adet', 'hint' => 'Toplam teslim+iade adedi bu sayının altındaysa alarm üretmez', 'step' => '1'],
+                            ['model' => 'settingsHighCancellationRateThreshold', 'label' => 'Yüksek İptal Oranı', 'unit' => '%', 'hint' => 'SKU iptal oranı bu eşik üstünde alarm verir', 'step' => '0.5'],
+                            ['model' => 'settingsHighCancellationRateMinOrders', 'label' => 'İptal Min. Sipariş', 'unit' => 'adet', 'hint' => 'Toplam sipariş bu sayının altındaysa iptal alarmı üretmez', 'step' => '1'],
+                        ];
+                    @endphp
+                    @foreach($trendFields as $field)
+                        <div class="space-y-1.5">
+                            <label class="block text-xs font-semibold text-gray-600">{{ $field['label'] }}</label>
+                            <div class="relative">
+                                <input type="number" step="{{ $field['step'] }}" wire:model="{{ $field['model'] }}" class="w-full px-3 py-3 sm:py-2 border border-gray-200 rounded-lg text-base sm:text-sm focus:ring-1 focus:ring-blue-400">
+                                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">{{ $field['unit'] }}</span>
+                            </div>
+                            <p class="text-[10px] text-gray-400">{{ $field['hint'] }}</p>
+                        </div>
+                    @endforeach
                 </div>
             </div>
         </div>
@@ -594,21 +685,37 @@
     </div>
 
     {{-- ═══════════════ ANA KAYDET / SIFIRLA BUTONLARI ═══════════════ --}}
-    <div class="flex items-center justify-between pt-2">
-        <button wire:click="resetToDefaults" wire:loading.attr="disabled"
-                wire:confirm="Tüm ayarlar fabrika değerlerine sıfırlanacak. Emin misiniz?"
-                class="px-5 py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors flex items-center gap-2 border border-gray-200">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-            Fabrika Ayarlarına Sıfırla
-        </button>
-        <button wire:click="saveSettings" wire:loading.attr="disabled"
-                class="px-8 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-2">
-            <span wire:loading.remove wire:target="saveSettings">
-                <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
-                Tüm Ayarları Kaydet
-            </span>
-            <span wire:loading wire:target="saveSettings">Kaydediliyor...</span>
-        </button>
+    <div class="space-y-3 pt-2">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <button wire:click="resetToDefaults" wire:loading.attr="disabled"
+                        wire:confirm="Tüm ayarlar fabrika değerlerine sıfırlanacak. Emin misiniz?"
+                        class="w-full sm:w-auto px-4 py-3 sm:py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 border border-gray-200">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    Fabrika Ayarlarına Sıfırla
+                </button>
+
+                <button wire:click="resetAllData" wire:loading.attr="disabled"
+                        wire:confirm="DİKKAT! Tüm pazaryeri muhasebe verileri (Siparişler, Ödemeler, Faturalar, Dönemler, Denetim Logları) kalıcı olarak silinecektir. Devam etmek istiyor musunuz?"
+                        class="w-full sm:w-auto px-4 py-3 sm:py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-2 shadow-sm focus:ring-2 focus:ring-red-500 focus:outline-none focus:ring-offset-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    Tüm Verileri Sıfırla
+                </button>
+            </div>
+
+            <button wire:click="saveSettings" wire:loading.attr="disabled"
+                    class="w-full sm:w-auto px-8 py-3 sm:py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm flex items-center justify-center gap-2">
+                <span wire:loading.remove wire:target="saveSettings">
+                    <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                    Tüm Ayarları Kaydet
+                </span>
+                <span wire:loading wire:target="saveSettings">Kaydediliyor...</span>
+            </button>
+        </div>
+
+        <p class="text-xs text-gray-500">
+            Fabrika ayarlarını sıfırlamak yalnızca parametreleri geri alır. Tüm verileri sıfırla işlemi ise dönem, sipariş ve finans kayıtlarını kalıcı olarak siler.
+        </p>
     </div>
 
     {{-- ═══════════════ ERP ENTEGRASYON (Mevcut) ═══════════════ --}}

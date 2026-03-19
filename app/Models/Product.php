@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Ürün Master Modeli
@@ -50,6 +51,11 @@ class Product extends Model
     public function updatedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function referenceHistories(): HasMany
+    {
+        return $this->hasMany(ProductReferenceHistory::class)->latest();
     }
 
     /**
@@ -121,6 +127,19 @@ class Product extends Model
             'parca' => $this->parca * $adet,
             'desi' => $this->desi * $adet,
             'tutar' => $this->tutar * $adet,
+        ];
+    }
+
+    public function toReferenceSnapshot(): array
+    {
+        return [
+            'stok_kodu' => $this->stok_kodu,
+            'urun_adi' => $this->urun_adi,
+            'parca' => $this->parca,
+            'desi' => (float) $this->desi,
+            'tutar' => (float) $this->tutar,
+            'kategori' => $this->kategori,
+            'is_active' => $this->is_active,
         ];
     }
 

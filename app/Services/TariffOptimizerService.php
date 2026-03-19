@@ -25,12 +25,12 @@ class TariffOptimizerService
 
     // Trendyol tarife dosyası kolon eşleştirme alternatifleri
     protected array $tariffColumnAliases = [
-        'stock_code'       => ['SATICI STOK KODU', 'Satıcı Stok Kodu', 'Stok Kodu', 'STOK KODU'],
+        'stock_code'       => ['SATICI STOK KODU', 'Satıcı Stok Kodu', 'Stok Kodu', 'STOK KODU', 'Barkod', 'BARKOD', 'Ürün Barkodu'],
         'barcode'          => ['BARKOD', 'Barkod', 'Ürün Barkodu'],
         'product_name'     => ['ÜRÜN İSMİ', 'Ürün İsmi', 'Ürün Adı', 'ÜRÜN ADI'],
         'model_code'       => ['MODEL KODU', 'Model Kodu'],
-        'current_price'    => ['GÜNCEL TSF', 'Güncel TSF', 'Güncel Fiyat', 'GÜNCEL FIYAT', 'TSF'],
-        'current_commission' => ['GÜNCEL KOMİSYON', 'Güncel Komisyon', 'GÜNCEL KOMISYON', 'Komisyon'],
+        'current_price'    => ['GÜNCEL TSF', 'Güncel TSF', 'Güncel Fiyat', 'GÜNCEL FIYAT', 'TSF', 'Mevcut Fiyat', 'MEVCUT FİYAT', 'Trendyol Satış Fiyatı', 'Piyasa Satış Fiyatı'],
+        'current_commission' => ['GÜNCEL KOMİSYON', 'Güncel Komisyon', 'GÜNCEL KOMISYON', 'Komisyon', 'Mevcut Komisyon', 'MEVCUT KOMİSYON', 'Mevcut Komisyon Oranı'],
         'tariff1_price'    => ['1.Fiyat Alt Limit', '1. Fiyat Alt Limit'],
         'tariff2_price'    => ['2.Fiyat Üst Limiti', '2. Fiyat Üst Limiti', '2.FIYAT ÜST LİMİTİ'],
         'tariff2_commission' => ['2.KOMİSYON', '2. KOMİSYON', '2.Komisyon'],
@@ -210,6 +210,7 @@ class TariffOptimizerService
 
             $report = OptimizationReport::create([
                 'user_id'                => auth()->id(),
+                'campaign_type'          => 'tariff',
                 'name'                   => $reportName ?: now()->format('d M Y H:i') . ' Analizi',
                 'total_products'         => count($items),
                 'opportunity_count'      => $opportunityCount,

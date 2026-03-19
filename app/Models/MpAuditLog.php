@@ -81,6 +81,11 @@ class MpAuditLog extends Model
      */
     public function getRuleLabelAttribute(): string
     {
+        $meta = \App\Services\AuditEngine::getMetaByCode($this->rule_code);
+        if ($meta && !empty($meta['title'])) {
+            return $meta['title'];
+        }
+
         return match ($this->rule_code) {
             'STOPAJ_HATA'      => 'Stopaj Hatası',
             'BAREM_ASIMI'      => 'Barem Aşımı',

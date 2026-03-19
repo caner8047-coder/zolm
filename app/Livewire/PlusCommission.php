@@ -37,6 +37,16 @@ class PlusCommission extends Component
     // Filters
     public string $searchQuery = '';
 
+    public function mount()
+    {
+        if (request()->has('report')) {
+            $reportId = (int) request()->query('report');
+            if ($reportId > 0) {
+                $this->viewReport($reportId);
+            }
+        }
+    }
+
     #[Computed]
     public function productCount(): int
     {
@@ -209,7 +219,9 @@ class PlusCommission extends Component
 
     public function deleteReport(int $reportId)
     {
-        $report = OptimizationReport::where('user_id', auth()->id())->find($reportId);
+        $report = OptimizationReport::where('user_id', auth()->id())
+            ->ofType('plus')
+            ->find($reportId);
         if ($report) {
             $report->items()->delete();
             $report->delete();

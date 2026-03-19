@@ -299,13 +299,48 @@ class MarketplaceOrders extends Component
 
     public function render()
     {
-        $stats = $this->getStats();
+        $query = $this->buildQuery();
+
+        // Stats — tek bir aggregate sorgusu ile tüm istatistikleri çek
+        $statsQuery = clone $query;
+        $rawStats = $statsQuery->reorder()->selectRaw("
+            COUNT(*) as total_orders,
+            COALESCE(SUM(total_gross_amount), 0) as total_revenue,
+            COALESCE(SUM(total_discount), 0) as total_discount,
+            COALESCE(AVG(total_gross_amount), 0) as avg_order_value,
+            SUM(CASE WHEN status = 'Teslim Edildi' THEN 1 ELSE 0 END) as delivered,
+            SUM(CASE WHEN status IN ('Kargoda', 'Tedarik Sürecinde') THEN 1 ELSE 0 END) as in_transit,
+            SUM(CASE WHEN status = 'İptal Edildi' THEN 1 ELSE 0 END) as cancelled,
+            SUM(CASE WHEN status = 'İade Edildi' THEN 1 ELSE 0 END) as returned
+        ")->first();
+
+        $stats = [
+            'total_orders'    => (int) $rawStats->total_orders,
+            'total_revenue'   => (float) $rawStats->total_revenue,
+            'total_discount'  => (float) $rawStats->total_discount,
+            'avg_order_value' => (float) $rawStats->avg_order_value,
+            'delivered'       => (int) $rawStats->delivered,
+            'in_transit'      => (int) $rawStats->in_transit,
+            'cancelled'       => (int) $rawStats->cancelled,
+            'returned'        => (int) $rawStats->returned,
+        ];
+
+        // Filtre dropdown'ları — 5 dakika cache'le (her sayfa yüklenişinde sorgulamayı engelle)
+        $uniqueStatuses = cache()->remember('mp_unique_statuses', 300, function () {
+            return MpOperationalOrder::select('status')->distinct()->whereNotNull('status')->pluck('status');
+        });
+        $uniqueCities = cache()->remember('mp_unique_cities', 300, function () {
+            return MpOperationalOrder::select('customer_city')->distinct()->whereNotNull('customer_city')->orderBy('customer_city')->pluck('customer_city');
+        });
+        $uniqueBrands = cache()->remember('mp_unique_brands', 300, function () {
+            return \App\Models\MpOperationalOrderItem::select('brand')->distinct()->whereNotNull('brand')->where('brand', '!=', '')->orderBy('brand')->pluck('brand');
+        });
 
         return view('livewire.marketplace-orders', [
-            'orders'         => $this->buildQuery()->paginate(30),
-            'uniqueStatuses' => MpOperationalOrder::select('status')->distinct()->whereNotNull('status')->pluck('status'),
-            'uniqueCities'   => MpOperationalOrder::select('customer_city')->distinct()->whereNotNull('customer_city')->orderBy('customer_city')->pluck('customer_city'),
-            'uniqueBrands'   => \App\Models\MpOperationalOrderItem::select('brand')->distinct()->whereNotNull('brand')->where('brand', '!=', '')->orderBy('brand')->pluck('brand'),
+            'orders'         => $query->paginate(30),
+            'uniqueStatuses' => $uniqueStatuses,
+            'uniqueCities'   => $uniqueCities,
+            'uniqueBrands'   => $uniqueBrands,
             'stats'          => $stats,
         ])->layout('layouts.app', ['title' => 'Pazaryeri Siparişlerim (İç Dağıtım)']);
     }

@@ -162,7 +162,7 @@
 
                                         <!-- Vade/Hakediş -->
                                         <div>
-                                            <div class="h-8 w-8 rounded-full {{ $set['has_settlement'] && $set['due_date'] ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400' }} flex items-center justify-center ring-4 ring-white shadow" title="{{ !$set['has_settlement'] ? 'Ödeme Detay Exceli Yüklenmemiş' : '' }}">
+                                            <div class="h-8 w-8 rounded-full {{ $set['has_settlement'] && $set['due_date'] ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400' }} flex items-center justify-center ring-4 ring-white shadow" title="{{ !$set['has_settlement'] ? ($set['missing_reason'] ?? 'Odeme Detay kaydi bulunamadi') : '' }}">
                                                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                                             </div>
                                             <div class="mt-3 hidden sm:block text-center">
@@ -170,7 +170,7 @@
                                                 @if($set['has_settlement'] && $set['due_date'])
                                                     <span class="text-xs text-gray-500">{{ $set['due_date'] }}</span>
                                                 @else
-                                                    <span class="text-[10px] text-red-500 block leading-tight mt-1" title="Vade tarihini görmek için Ödeme Detay Excel'ini sisteme yükleyin.">Ödeme Excel'i<br>Eksik</span>
+                                                    <span class="text-[10px] text-red-500 block leading-tight mt-1" title="{{ $set['missing_reason'] ?? 'Vade tarihini görmek icin Odeme Detay Excel kaydi gerekir.' }}">Odeme Detay<br>Kaydi Yok</span>
                                                 @endif
                                             </div>
                                         </div>
@@ -195,7 +195,7 @@
                                                     <span class="text-[10px] text-amber-600 block leading-tight mt-1 font-medium" title="Trendyol ödeme gününe göre beklenen tahsilat tarihi.">Öngörülen:<br>{{ $set['expected_date'] }}</span>
                                                 @else
                                                     <span class="text-xs font-semibold text-gray-900 block">Tahsilat Durumu</span>
-                                                    <span class="text-[10px] text-red-500 block leading-tight mt-1">Tarih Yok</span>
+                                                    <span class="text-[10px] text-red-500 block leading-tight mt-1" title="{{ $set['missing_reason'] ?? 'Odeme kaydi bulunamadi.' }}">Odeme Kaydi<br>Yok</span>
                                                 @endif
                                             </div>
                                         </div>
@@ -524,10 +524,7 @@
                                                 </div>
                                                 @endif
 
-                                                @php
-                                                    $svcModalCargo = new \App\Services\MpSettingsService();
-                                                    $ownCargoModal = $svcModalCargo->usesOwnCargo() ? (float)($sum['own_cargo_cost'] ?? 0) : 0;
-                                                @endphp
+                                                @php $ownCargoModal = (float)($sum['own_cargo_cost'] ?? 0); @endphp
                                                 @if($ownCargoModal > 0)
                                                 <div class="flex justify-between items-center text-gray-500">
                                                     <span class="flex items-center gap-2">

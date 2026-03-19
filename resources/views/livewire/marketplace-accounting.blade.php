@@ -1,3 +1,9 @@
+@php
+    $tabs = $this->tabs;
+    $tabKeys = array_keys($tabs);
+    $tabPositions = array_flip($tabKeys);
+@endphp
+
 <div>
     {{-- ═══════════════════════════════════════════════════════════════ --}}
     {{-- HEADER + DÖNEM SEÇİCİ --}}
@@ -59,288 +65,351 @@
     </div>
 
     {{-- ═══════════════════════════════════════════════════════════════ --}}
-    {{-- TAB NAVİGASYONU (6 Tab) --}}
+    {{-- TAB NAVİGASYONU --}}
     {{-- ═══════════════════════════════════════════════════════════════ --}}
-    <div class="border-b border-gray-200 bg-white overflow-x-auto">
-        <nav class="flex min-w-max px-4 lg:px-6">
-            @foreach([
-                'dashboard' => '📊 Dashboard',
-                'upload'    => '📁 Veri Yükleme',
-                'search'    => '🔍 Sipariş Ara',
-                'audit'     => '🛡️ Denetim',
-                'profit'    => '💰 Kârlılık',
-                'orders'    => '📋 Siparişler',
-                'settings'  => '⚙️ Ayarlar',
-            ] as $tab => $label)
-                <button wire:click="$set('activeTab', '{{ $tab }}')"
-                    class="px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
-                           {{ $activeTab === $tab ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                    {{ $label }}
-                </button>
-            @endforeach
-        </nav>
+    <div class="border-b border-gray-200 bg-white px-4 py-3 lg:px-6">
+        <div class="bg-white shadow rounded-lg border border-gray-200 p-2">
+            <nav class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-2" aria-label="Pazaryeri muhasebe sekmeleri">
+                @foreach($tabs as $tabKey => $tab)
+                    @php
+                        $isActive = $activeTab === $tabKey;
+                        $tabStep = ($tabPositions[$tabKey] ?? 0) + 1;
+                    @endphp
+
+                    <button
+                        type="button"
+                        wire:click="setTab('{{ $tabKey }}')"
+                        class="min-h-[44px] inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap {{ $isActive ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50' }}"
+                    >
+                        <span>{{ $tab['label'] }}</span>
+                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs {{ $isActive ? 'bg-white/15 text-white' : 'bg-gray-100 text-gray-500' }}">
+                            {{ $tabStep }}
+                        </span>
+                    </button>
+                @endforeach
+            </nav>
+        </div>
     </div>
 
     <div class="p-4 lg:p-6">
 
         {{-- ═══════════════════════════════════════════════════════════════ --}}
-        {{-- TAB 1: DASHBOARD (5 KPI KARTI) --}}
+        {{-- TAB 1: DASHBOARD --}}
         {{-- ═══════════════════════════════════════════════════════════════ --}}
         @if($activeTab === 'dashboard')
             @if($selectedPeriodId)
-                @php $stats = $this->dashboardStats; @endphp
+                @php
+                    $stats = $this->dashboardStats;
+                    $period = $this->selectedPeriod;
+                    $monthNames = [
+                        1 => 'Ocak', 2 => 'Şubat', 3 => 'Mart', 4 => 'Nisan',
+                        5 => 'Mayıs', 6 => 'Haziran', 7 => 'Temmuz', 8 => 'Ağustos',
+                        9 => 'Eylül', 10 => 'Ekim', 11 => 'Kasım', 12 => 'Aralık',
+                    ];
+                    $periodLabel = $period?->period_name ?? (($selectedMonth > 0 ? ($monthNames[(int) $selectedMonth] ?? 'Dönem') : 'Tüm Yıl') . ' ' . $selectedYear);
+                    $formatMoney = fn ($value) => number_format((float) $value, 0, ',', '.') . ' ₺';
+                    $formatMoneyDetailed = fn ($value) => number_format((float) $value, 2, ',', '.') . ' ₺';
+                    $formatCount = fn ($value) => number_format((float) $value, 0, ',', '.');
+                    $profitTotal = (float) ($stats['real_profit']['total_profit'] ?? 0);
+                    $profitPositive = $profitTotal >= 0;
+                    $profitCardClasses = $profitPositive
+                        ? 'border-emerald-200 bg-emerald-50/80'
+                        : 'border-rose-200 bg-rose-50/80';
+                    $profitTextClasses = $profitPositive
+                        ? 'text-emerald-700'
+                        : 'text-rose-700';
+                    $vatIsPayable = (bool) ($stats['net_vat']['is_payable'] ?? false);
+                    $cashFlowKanban = $stats['cash_flow']['kanban'] ?? [];
+                    $cashFlowToneMap = [
+                        'red' => [
+                            'panel' => 'border-rose-200 bg-rose-50/80',
+                            'text' => 'text-rose-700',
+                            'badge' => 'bg-rose-100 text-rose-700',
+                        ],
+                        'emerald' => [
+                            'panel' => 'border-emerald-200 bg-emerald-50/80',
+                            'text' => 'text-emerald-700',
+                            'badge' => 'bg-emerald-100 text-emerald-700',
+                        ],
+                        'blue' => [
+                            'panel' => 'border-sky-200 bg-sky-50/80',
+                            'text' => 'text-sky-700',
+                            'badge' => 'bg-sky-100 text-sky-700',
+                        ],
+                        'gray' => [
+                            'panel' => 'border-slate-200 bg-slate-50/80',
+                            'text' => 'text-slate-700',
+                            'badge' => 'bg-slate-100 text-slate-700',
+                        ],
+                    ];
+                @endphp
 
-                {{-- ⚠️ FİNANSAL KAÇAK UYARI BANNER'I --}}
-                @if($stats['audit_count'] > 0)
-                    <div class="mb-6 bg-red-50 border-2 border-red-300 rounded-xl p-4 lg:p-5 shadow-sm animate-pulse-slow">
-                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                            <div class="flex items-start gap-3">
-                                <span class="text-2xl flex-shrink-0 mt-0.5">⚠️</span>
-                                <div>
-                                    <p class="font-bold text-red-800 text-sm lg:text-base">
-                                        Dikkat: Finansal Kaçak/Ceza Tespit Edildi!
+                <div class="space-y-6">
+                    <x-zolm.section-card
+                        headerPadding="px-4 pt-4 pb-3 lg:px-6 lg:pt-6 lg:pb-3"
+                        bodyPadding="px-4 pb-4 lg:px-6 lg:pb-6"
+                    >
+                        <x-slot:header>
+                            <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 lg:gap-6">
+                                <div class="max-w-3xl">
+                                    <x-zolm.eyebrow>Dashboard</x-zolm.eyebrow>
+                                    <h2 class="mt-3 text-xl lg:text-2xl font-bold text-slate-900">Dönem özeti</h2>
+                                    <p class="mt-2 text-sm lg:text-base text-slate-500">
+                                        {{ $periodLabel }} dönemi için finansal görünüm, mutabakat durumu ve beklenen tahsilat akışını tek yerde görün.
                                     </p>
-                                    <p class="text-red-700 text-xs lg:text-sm mt-1">
-                                        Seçili dönemde <strong>{{ $stats['audit_count'] }} adet</strong> işlemde
-                                        <strong>{{ number_format($stats['audit_amount'], 0, ',', '.') }} ₺</strong>
-                                        tutarında finansal kaçak/ceza tespit edilmiştir.
-                                        Barem aşımı, ağır kargo cezası, iade yanık maliyeti ve komisyon iadesi sorunlarını inceleyin.
-                                    </p>
-                                </div>
-                            </div>
-                            <button wire:click="$set('activeTab', 'audit')"
-                                    class="flex-shrink-0 w-full sm:w-auto px-4 py-3 sm:py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors text-center">
-                                🛡️ Denetime Git
-                            </button>
-                        </div>
-                    </div>
-                @endif
-
-                {{-- Export Butonları --}}
-                <div class="flex flex-col sm:flex-row gap-2 mb-6">
-                    <button wire:click="exportMonthlyPivot" class="w-full sm:w-auto px-4 py-3 sm:py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        Aylık Özet Excel
-                    </button>
-                    <button wire:click="exportAllOrders" class="w-full sm:w-auto px-4 py-3 sm:py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        Tüm Siparişler Excel
-                    </button>
-                    <button wire:click="exportStopajReport" class="w-full sm:w-auto px-4 py-3 sm:py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors flex items-center justify-center gap-2" title="Mali Müşavir (193 Kodu) Formu">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v1a3 3 0 106 0v-1m-5 4h4a1 1 0 001-1v-4a1 1 0 00-1-1H9a1 1 0 00-1 1v4a1 1 0 001 1zm8-9V7a2 2 0 00-2-2H9a2 2 0 00-2 2v5m14 0h-2m-2 0H5m-2 0h2m10 0v5a2 2 0 01-2 2h-4a2 2 0 01-2-2v-5z"/></svg>
-                        Stopaj Raporu (193 Kodu)
-                    </button>
-                </div>
-
-                {{-- 5 KPI KARTI --}}
-                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 lg:gap-6 mb-6">
-
-                    {{-- KPI 1: Toplam Brüt Ciro --}}
-                    <div class="bg-white rounded-xl border border-gray-200 p-4 lg:p-5 shadow-sm">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Brüt Ciro</span>
-                            <span class="text-lg">💰</span>
-                        </div>
-                        <p class="text-xl lg:text-2xl font-bold text-gray-900">
-                            {{ number_format($stats['total_brut'], 0, ',', '.') }} ₺
-                        </p>
-                        <p class="text-xs text-gray-500 mt-1">
-                            {{ $stats['total_orders'] }} sipariş — {{ $stats['return_rate'] }}% iade
-                        </p>
-                    </div>
-
-                    {{-- KPI 2: Peşin Ödenen Stopaj --}}
-                    <div class="bg-white rounded-xl border border-gray-200 p-4 lg:p-5 shadow-sm">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Stopaj</span>
-                            <span class="text-lg">🏛️</span>
-                        </div>
-                        <p class="text-xl lg:text-2xl font-bold text-indigo-600">
-                            {{ number_format($stats['total_stopaj'], 0, ',', '.') }} ₺
-                        </p>
-                        <p class="text-xs text-gray-500 mt-1">
-                            %1 E-Ticaret stopajı — yılsonunda mahsup
-                        </p>
-                    </div>
-
-                    {{-- KPI 3: Lojistik Zararı --}}
-                    <div class="bg-white rounded-xl border border-red-200 p-4 lg:p-5 shadow-sm">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs font-semibold text-red-400 uppercase tracking-wider">Lojistik Zararı</span>
-                            <span class="text-lg">🔥</span>
-                        </div>
-                        <p class="text-xl lg:text-2xl font-bold text-red-600">
-                            -{{ number_format($stats['logistic_loss']['total'], 0, ',', '.') }} ₺
-                        </p>
-                        <p class="text-xs text-gray-500 mt-1">
-                            Sunk: {{ number_format($stats['logistic_loss']['sunk_cargo'], 0, ',', '.') }} ₺ + Dönüş: {{ number_format($stats['logistic_loss']['return_cargo'], 0, ',', '.') }} ₺
-                        </p>
-                    </div>
-
-                    {{-- KPI 4: Net KDV --}}
-                    <div class="bg-white rounded-xl border border-gray-200 p-4 lg:p-5 shadow-sm">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Net KDV</span>
-                            <span class="text-lg">📋</span>
-                        </div>
-                        <p class="text-xl lg:text-2xl font-bold {{ $stats['net_vat']['net_vat'] > 0 ? 'text-orange-600' : 'text-emerald-600' }}">
-                            {{ $stats['net_vat']['net_vat'] > 0 ? '' : '+' }}{{ number_format($stats['net_vat']['net_vat'], 0, ',', '.') }} ₺
-                        </p>
-                        <p class="text-xs text-gray-500 mt-1">
-                            {{ $stats['net_vat']['is_payable'] ? 'Devlete ödenecek' : 'KDV avantajı' }}
-                        </p>
-                    </div>
-
-                    {{-- KPI 5: Gerçek Net Kâr --}}
-                    <div class="rounded-xl border-2 p-4 lg:p-5 shadow-sm {{ $stats['real_profit']['total_profit'] >= 0 ? 'bg-emerald-50 border-emerald-300' : 'bg-red-50 border-red-300' }}">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs font-semibold {{ $stats['real_profit']['total_profit'] >= 0 ? 'text-emerald-600' : 'text-red-600' }} uppercase tracking-wider">Gerçek Net Kâr</span>
-                            <span class="text-lg">{{ $stats['real_profit']['total_profit'] >= 0 ? '📈' : '📉' }}</span>
-                        </div>
-                        <p class="text-xl lg:text-2xl font-bold {{ $stats['real_profit']['total_profit'] >= 0 ? 'text-emerald-700' : 'text-red-700' }}">
-                            {{ number_format($stats['real_profit']['total_profit'], 0, ',', '.') }} ₺
-                        </p>
-                        <p class="text-xs {{ $stats['real_profit']['total_profit'] >= 0 ? 'text-emerald-600' : 'text-red-600' }} mt-1">
-                            {{ $stats['real_profit']['profitable_count'] }} kârlı, {{ $stats['real_profit']['bleeding_count'] }} zararlı ürün
-                        </p>
-                        @if(!$stats['real_profit']['has_cogs'])
-                            <p class="text-xs text-amber-600 mt-1">⚠️ COGS verisi eksik — sonuçlar tahminidir</p>
-                        @endif
-                    </div>
-                </div>
-
-                {{-- Ek İstatistik Kartları --}}
-                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
-                    <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                        <p class="text-xs text-gray-400 uppercase mb-1">Net Hakediş</p>
-                        <p class="text-lg font-bold text-gray-900">{{ number_format($stats['total_hakedis'], 0, ',', '.') }} ₺</p>
-                    </div>
-                    <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                        <p class="text-xs text-gray-400 uppercase mb-1">İade Sayısı</p>
-                        <p class="text-lg font-bold text-gray-900">{{ $stats['total_returns'] }}</p>
-                        <p class="text-xs text-gray-500">{{ $stats['return_rate'] }}% iade oranı</p>
-                    </div>
-                    <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                        <p class="text-xs text-gray-400 uppercase mb-1">İptal Sayısı</p>
-                        <p class="text-lg font-bold text-gray-900">{{ $stats['total_cancels'] }}</p>
-                    </div>
-                    <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm {{ $stats['audit_count'] > 0 ? 'border-red-200' : '' }}">
-                        <p class="text-xs text-gray-400 uppercase mb-1">Denetim Uyarıları</p>
-                        <p class="text-lg font-bold {{ $stats['audit_count'] > 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $stats['audit_count'] }}</p>
-                        @if($stats['audit_amount'] > 0)
-                            <p class="text-xs text-red-500">{{ number_format($stats['audit_amount'], 0, ',', '.') }} ₺ fark</p>
-                        @endif
-                    </div>
-                </div>
-
-                {{-- EPIC 7: AYLIK FATURA EŞLEŞTİRME (INVOICE RECONCILIATION) --}}
-                @if($this->invoiceReconciliation)
-                    @php $recon = $this->invoiceReconciliation; @endphp
-                    <div class="mt-6 mb-6 bg-white rounded-xl border {{ ($recon['commission_match'] && $recon['cargo_match']) ? 'border-emerald-200' : 'border-amber-300' }} p-5 shadow-sm">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-sm font-bold text-gray-800 uppercase tracking-widest flex items-center gap-2">
-                                <svg class="w-5 h-5 {{ ($recon['commission_match'] && $recon['cargo_match']) ? 'text-emerald-500' : 'text-amber-500' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                Aylık Fatura Mutabakat Durumu
-                            </h3>
-                            @if($recon['commission_match'] && $recon['cargo_match'])
-                                <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full uppercase">Eşleşti 100%</span>
-                            @else
-                                <span class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full uppercase">Fark Var</span>
-                            @endif
-                        </div>
-
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                            {{-- Komisyon Kıyası --}}
-                            <div class="p-4 rounded-lg bg-gray-50 border {{ $recon['commission_match'] ? 'border-gray-200' : 'border-amber-200' }}">
-                                <p class="text-xs font-bold text-gray-500 uppercase mb-3">Komisyon Eşleştirmesi</p>
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-sm text-gray-600">Fatura Edilen (KDV Hariç):</span>
-                                    <span class="font-medium text-gray-900">{{ number_format($recon['invoice_commission'], 2, ',', '.') }} ₺</span>
-                                </div>
-                                <div class="flex justify-between items-center">
-                                    <span class="text-sm text-gray-600">Sipariş Toplamı (Netleştirilmiş):</span>
-                                    <span class="font-medium text-gray-900">{{ number_format($recon['order_commission'], 2, ',', '.') }} ₺</span>
-                                </div>
-                                <div class="mt-3 pt-3 border-t border-gray-200 flex justify-between items-center">
-                                    <span class="text-xs font-semibold {{ $recon['commission_match'] ? 'text-emerald-600' : 'text-amber-600' }}">
-                                        {{ $recon['commission_match'] ? 'Mutabık' : 'Uyuşmazlık' }}
-                                    </span>
-                                    <span class="text-sm font-bold {{ $recon['commission_match'] ? 'text-gray-900' : 'text-red-600' }}">
-                                        Fark: {{ number_format($recon['commission_diff'], 2, ',', '.') }} ₺
-                                    </span>
-                                </div>
-                            </div>
-
-                            {{-- Kargo Kıyası --}}
-                            <div class="p-4 rounded-lg bg-gray-50 border {{ $recon['cargo_match'] ? 'border-gray-200' : 'border-amber-200' }}">
-                                <p class="text-xs font-bold text-gray-500 uppercase mb-3">Kargo Eşleştirmesi</p>
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-sm text-gray-600">Fatura Edilen (KDV Hariç):</span>
-                                    <span class="font-medium text-gray-900">{{ number_format($recon['invoice_cargo'], 2, ',', '.') }} ₺</span>
-                                </div>
-                                <div class="flex justify-between items-center">
-                                    <span class="text-sm text-gray-600">Sipariş Toplamı (Netleştirilmiş):</span>
-                                    <span class="font-medium text-gray-900">{{ number_format($recon['order_cargo'], 2, ',', '.') }} ₺</span>
-                                </div>
-                                <div class="mt-3 pt-3 border-t border-gray-200 flex justify-between items-center">
-                                    <span class="text-xs font-semibold {{ $recon['cargo_match'] ? 'text-emerald-600' : 'text-amber-600' }}">
-                                        {{ $recon['cargo_match'] ? 'Mutabık' : 'Uyuşmazlık' }}
-                                    </span>
-                                    <span class="text-sm font-bold {{ $recon['cargo_match'] ? 'text-gray-900' : 'text-red-600' }}">
-                                        Fark: {{ number_format($recon['cargo_diff'], 2, ',', '.') }} ₺
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                @endif
-
-                {{-- NAKİT AKIŞI KANBAN (CASH FLOW) --}}
-                @if(isset($stats['cash_flow']) && count($stats['cash_flow']['kanban']) > 0)
-                    <div class="mt-6 mb-2">
-                        <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
-                            <h3 class="text-sm font-bold text-gray-800 uppercase tracking-widest flex items-center gap-2">
-                                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                Nakit Akışı (Beklenen Transferler)
-                            </h3>
-                            <span class="text-sm font-bold text-gray-900 bg-gray-100 px-4 py-1.5 rounded-full border border-gray-200 shadow-sm">
-                                Toplam Beklenen: {{ number_format($stats['cash_flow']['total_expected'], 2, ',', '.') }} ₺
-                            </span>
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            @foreach($stats['cash_flow']['kanban'] as $kanban)
-                                <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-                                    <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-{{ $kanban['color'] }}-500"></div>
-                                    <div class="pl-2">
-                                        <p class="text-xs font-bold text-{{ $kanban['color'] }}-600 uppercase mb-1">{{ $kanban['label'] }}</p>
-                                        <p class="text-xl lg:text-2xl font-bold text-gray-900">{{ number_format($kanban['amount'], 2, ',', '.') }} ₺</p>
-                                        <p class="text-xs text-gray-500 mt-1">{{ $kanban['count'] }} adet işlem bekleniyor</p>
+                                    <div class="mt-4 flex flex-wrap gap-2">
+                                        <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                                            {{ $formatCount($stats['total_orders']) }} sipariş
+                                        </span>
+                                        <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                                            {{ $formatCount($stats['total_returns']) }} iade
+                                        </span>
+                                        <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                                            {{ $formatCount($stats['total_cancels']) }} iptal
+                                        </span>
+                                        <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                                            %{{ number_format((float) $stats['return_rate'], 1, ',', '.') }} iade oranı
+                                        </span>
                                     </div>
                                 </div>
-                            @endforeach
+
+                                <div class="flex w-full xl:w-auto flex-col sm:flex-row gap-2 sm:gap-3">
+                                    <button wire:click="exportMonthlyPivot" class="min-h-[44px] w-full sm:w-auto rounded-lg bg-slate-900 px-4 py-3 sm:py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+                                        Aylık Özet Excel
+                                    </button>
+                                    <button wire:click="exportAllOrders" class="min-h-[44px] w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                        Tüm Siparişler Excel
+                                    </button>
+                                    <button wire:click="exportStopajReport" class="min-h-[44px] w-full sm:w-auto rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 sm:py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-100" title="Mali Müşavir (193 Kodu) Formu">
+                                        Stopaj 193
+                                    </button>
+                                </div>
+                            </div>
+                        </x-slot:header>
+
+                        <div class="space-y-4">
+                            @if($stats['audit_count'] > 0)
+                                <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4">
+                                    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                                        <div class="flex items-start gap-3">
+                                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86l-7.5 13A1 1 0 003.66 18h16.68a1 1 0 00.87-1.5l-7.5-13a1 1 0 00-1.74 0z" />
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-semibold text-rose-800">Açık finansal denetim bulguları var</p>
+                                                <p class="mt-1 text-sm text-rose-700">
+                                                    {{ $formatCount($stats['audit_count']) }} açık bulguda {{ $formatMoney($stats['audit_amount']) }} potansiyel fark görünüyor.
+                                                    Denetim sekmesinden detay inceleme yapabilirsiniz.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button wire:click="setTab('audit')" class="min-h-[44px] w-full sm:w-auto rounded-lg bg-rose-600 px-4 py-3 sm:py-2 text-sm font-medium text-white transition hover:bg-rose-700">
+                                            Denetime Git
+                                        </button>
+                                    </div>
+                                </div>
+                            @else
+                                <div class="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-4 text-sm text-emerald-700">
+                                    Açık denetim uyarısı görünmüyor. Dönem özeti temiz ilerliyor.
+                                </div>
+                            @endif
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
+                                <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Brüt Ciro</p>
+                                    <p class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{{ $formatMoney($stats['total_brut']) }}</p>
+                                    <p class="mt-2 text-xs text-slate-500">Dönem içindeki toplam brüt satış hacmi</p>
+                                </div>
+                                <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Net Hakediş</p>
+                                    <p class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{{ $formatMoney($stats['total_hakedis']) }}</p>
+                                    <p class="mt-2 text-xs text-slate-500">Teslim edilen siparişlerden beklenen net tahsilat</p>
+                                </div>
+                                <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Stopaj</p>
+                                    <p class="mt-2 text-2xl font-semibold tracking-tight text-indigo-600">{{ $formatMoney($stats['total_stopaj']) }}</p>
+                                    <p class="mt-2 text-xs text-slate-500">%1 e-ticaret stopajı, yıl sonu mahsup kalemi</p>
+                                </div>
+                                <div class="rounded-xl border p-4 {{ $profitCardClasses }}">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] {{ $profitTextClasses }}">Gerçek Net Kâr</p>
+                                    <p class="mt-2 text-2xl font-semibold tracking-tight {{ $profitTextClasses }}">{{ $formatMoney($stats['real_profit']['total_profit']) }}</p>
+                                    <p class="mt-2 text-xs {{ $profitTextClasses }}">
+                                        {{ $formatCount($stats['real_profit']['profitable_count']) }} kârlı, {{ $formatCount($stats['real_profit']['bleeding_count']) }} zararlı ürün
+                                    </p>
+                                    @if(!$stats['real_profit']['has_cogs'])
+                                        <p class="mt-2 text-xs text-amber-700">COGS verisi eksik, kâr hesabı tahmini ilerliyor.</p>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
+                                <div class="rounded-xl border border-rose-200 bg-rose-50/70 p-4">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-500">Lojistik Zararı</p>
+                                    <p class="mt-2 text-xl font-semibold tracking-tight text-rose-700">-{{ $formatMoney($stats['logistic_loss']['total']) }}</p>
+                                    <p class="mt-2 text-xs text-rose-600">
+                                        Gidiş: {{ $formatMoney($stats['logistic_loss']['sunk_cargo']) }} · Dönüş: {{ $formatMoney($stats['logistic_loss']['return_cargo']) }}
+                                    </p>
+                                </div>
+                                <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Net KDV</p>
+                                    <p class="mt-2 text-xl font-semibold tracking-tight {{ $vatIsPayable ? 'text-amber-600' : 'text-emerald-600' }}">
+                                        {{ $vatIsPayable ? '' : '+' }}{{ $formatMoney($stats['net_vat']['net_vat']) }}
+                                    </p>
+                                    <p class="mt-2 text-xs text-slate-500">
+                                        {{ $vatIsPayable ? 'Devlete ödenecek KDV yükü' : 'KDV avantajı / mahsup alanı' }}
+                                    </p>
+                                </div>
+                                <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">İade ve İptal</p>
+                                    <p class="mt-2 text-xl font-semibold tracking-tight text-slate-900">{{ $formatCount($stats['total_returns']) }} / {{ $formatCount($stats['total_cancels']) }}</p>
+                                    <p class="mt-2 text-xs text-slate-500">İade / iptal adetleri ve operasyon baskısı</p>
+                                </div>
+                                <div class="rounded-xl border {{ $stats['audit_count'] > 0 ? 'border-rose-200 bg-rose-50/70' : 'border-slate-200 bg-slate-50/70' }} p-4">
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] {{ $stats['audit_count'] > 0 ? 'text-rose-500' : 'text-slate-500' }}">Denetim Uyarıları</p>
+                                    <p class="mt-2 text-xl font-semibold tracking-tight {{ $stats['audit_count'] > 0 ? 'text-rose-700' : 'text-slate-900' }}">{{ $formatCount($stats['audit_count']) }}</p>
+                                    <p class="mt-2 text-xs {{ $stats['audit_count'] > 0 ? 'text-rose-600' : 'text-slate-500' }}">
+                                        {{ $stats['audit_amount'] > 0 ? $formatMoney($stats['audit_amount']) . ' fark' : 'Açık bulgu görünmüyor' }}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
+                    </x-zolm.section-card>
+
+                    <div class="grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-6 lg:gap-8">
+                        <x-zolm.section-card
+                            eyebrow="Aylık Kontrol"
+                            title="Fatura mutabakat durumu"
+                            description="Komisyon ve kargo faturalarını sipariş toplamlarıyla karşılaştırın."
+                            headerPadding="px-4 pt-4 pb-3 lg:px-6 lg:pt-6 lg:pb-3"
+                            bodyPadding="px-4 pb-4 lg:px-6 lg:pb-6"
+                        >
+                            @if($this->invoiceReconciliation)
+                                @php $recon = $this->invoiceReconciliation; @endphp
+                                <div class="space-y-4">
+                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                        <p class="text-sm text-slate-500">Aynı dönemde fatura edilen komisyon ve kargo kalemleri sipariş bazlı net tutarlarla kıyaslanır.</p>
+                                        <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium {{ ($recon['commission_match'] && $recon['cargo_match']) ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' }}">
+                                            {{ ($recon['commission_match'] && $recon['cargo_match']) ? 'Mutabık' : 'Fark Var' }}
+                                        </span>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
+                                        <div class="rounded-xl border {{ $recon['commission_match'] ? 'border-slate-200 bg-slate-50/60' : 'border-amber-200 bg-amber-50/70' }} p-4">
+                                            <div class="flex items-center justify-between gap-3">
+                                                <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Komisyon</p>
+                                                <span class="text-xs font-medium {{ $recon['commission_match'] ? 'text-emerald-700' : 'text-amber-700' }}">
+                                                    {{ $recon['commission_match'] ? 'Mutabık' : 'Uyuşmazlık' }}
+                                                </span>
+                                            </div>
+                                            <div class="mt-4 space-y-2 text-sm">
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <span class="text-slate-500">Fatura edilen (KDV hariç)</span>
+                                                    <span class="font-semibold text-slate-900">{{ $formatMoneyDetailed($recon['invoice_commission']) }}</span>
+                                                </div>
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <span class="text-slate-500">Sipariş toplamı</span>
+                                                    <span class="font-semibold text-slate-900">{{ $formatMoneyDetailed($recon['order_commission']) }}</span>
+                                                </div>
+                                            </div>
+                                            <div class="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
+                                                <span class="text-xs uppercase tracking-[0.14em] text-slate-500">Fark</span>
+                                                <span class="text-sm font-semibold {{ $recon['commission_match'] ? 'text-slate-900' : 'text-rose-600' }}">
+                                                    {{ $formatMoneyDetailed($recon['commission_diff']) }}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div class="rounded-xl border {{ $recon['cargo_match'] ? 'border-slate-200 bg-slate-50/60' : 'border-amber-200 bg-amber-50/70' }} p-4">
+                                            <div class="flex items-center justify-between gap-3">
+                                                <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Kargo</p>
+                                                <span class="text-xs font-medium {{ $recon['cargo_match'] ? 'text-emerald-700' : 'text-amber-700' }}">
+                                                    {{ $recon['cargo_match'] ? 'Mutabık' : 'Uyuşmazlık' }}
+                                                </span>
+                                            </div>
+                                            <div class="mt-4 space-y-2 text-sm">
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <span class="text-slate-500">Fatura edilen (KDV hariç)</span>
+                                                    <span class="font-semibold text-slate-900">{{ $formatMoneyDetailed($recon['invoice_cargo']) }}</span>
+                                                </div>
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <span class="text-slate-500">Sipariş toplamı</span>
+                                                    <span class="font-semibold text-slate-900">{{ $formatMoneyDetailed($recon['order_cargo']) }}</span>
+                                                </div>
+                                            </div>
+                                            <div class="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
+                                                <span class="text-xs uppercase tracking-[0.14em] text-slate-500">Fark</span>
+                                                <span class="text-sm font-semibold {{ $recon['cargo_match'] ? 'text-slate-900' : 'text-rose-600' }}">
+                                                    {{ $formatMoneyDetailed($recon['cargo_diff']) }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            @else
+                                <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+                                    Bu dönem için fatura mutabakatı gösterecek veri bulunmuyor.
+                                </div>
+                            @endif
+                        </x-zolm.section-card>
+
+                        <x-zolm.section-card
+                            eyebrow="Tahsilat"
+                            title="Nakit akışı"
+                            description="Vadesi yaklaşan ya da geciken transferleri öncelik sırasıyla görün."
+                            headerPadding="px-4 pt-4 pb-3 lg:px-6 lg:pt-6 lg:pb-3"
+                            bodyPadding="px-4 pb-4 lg:px-6 lg:pb-6"
+                        >
+                            @if(count($cashFlowKanban) > 0)
+                                <div class="space-y-3">
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                                        <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Toplam Beklenen</p>
+                                        <p class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{{ $formatMoneyDetailed($stats['cash_flow']['total_expected']) }}</p>
+                                        <p class="mt-2 text-xs text-slate-500">Vadesi gelen ve beklenen transferlerin toplam görünümü</p>
+                                    </div>
+
+                                    @foreach($cashFlowKanban as $kanban)
+                                        @php $tone = $cashFlowToneMap[$kanban['color']] ?? $cashFlowToneMap['gray']; @endphp
+                                        <div class="rounded-xl border p-4 {{ $tone['panel'] }}">
+                                            <div class="flex items-start justify-between gap-3">
+                                                <div class="min-w-0">
+                                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] {{ $tone['text'] }}">{{ $kanban['label'] }}</p>
+                                                    <p class="mt-2 text-xl font-semibold tracking-tight text-slate-900">{{ $formatMoneyDetailed($kanban['amount']) }}</p>
+                                                </div>
+                                                <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium {{ $tone['badge'] }}">
+                                                    {{ $formatCount($kanban['count']) }} işlem
+                                                </span>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @else
+                                <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+                                    Beklenen transfer verisi oluşmadı. İlgili settlement kayıtları geldiğinde burada listelenecek.
+                                </div>
+                            @endif
+                        </x-zolm.section-card>
                     </div>
-                @endif
-            @else
-                <div class="text-center py-16 text-gray-400">
-                    <p class="text-4xl mb-4">📊</p>
-                    <p class="text-lg font-medium">Dönem seçin veya yeni dönem oluşturun</p>
-                    <p class="text-sm mt-2">Dashboard KPI'ları burada görüntülenecek</p>
                 </div>
+            @else
+                <x-zolm.section-card
+                    eyebrow="Dashboard"
+                    title="Henüz dönem seçilmedi"
+                    description="Yukarıdan yıl ve ay seçip mevcut dönemi açın ya da yeni dönem oluşturun."
+                    headerPadding="px-4 pt-4 pb-3 lg:px-6 lg:pt-6 lg:pb-3"
+                    bodyPadding="px-4 pb-6 lg:px-6 lg:pb-8"
+                >
+                    <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm text-slate-500">
+                        Dashboard verileri seçilen döneme göre yüklenir.
+                    </div>
+                </x-zolm.section-card>
             @endif
 
         {{-- ═══════════════════════════════════════════════════════════════ --}}
         {{-- TAB 2: VERİ YÜKLEME --}}
         {{-- ═══════════════════════════════════════════════════════════════ --}}
         @elseif($activeTab === 'upload')
-
-        {{-- Tüm Verileri Sıfırla Butonu --}}
-        <div class="mb-6 flex justify-end">
-            <button wire:click="resetAllData" wire:confirm="DİKKAT! Tüm pazaryeri muhasebe verileri (Siparişler, Ödemeler, Faturalar, Dönemler, Denetim Logları) kalıcı olarak silinecektir. Devam etmek istiyor musunuz?" class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-2 shadow-sm focus:ring-2 focus:ring-red-500 focus:outline-none focus:ring-offset-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                Tüm Verileri Sıfırla
-            </button>
-        </div>
 
         <div x-data="{
             isProcessing: false,
@@ -369,6 +438,7 @@
             {{-- Toplu İşlem Kartı --}}
             <div x-data="{ 
                     isDragging: false, 
+                    showSafeOrder: false,
                     fileCount: 0,
                     fileNames: [],
                     detectedTypes: { orders: [], transactions: [], stopaj: [], invoices: [], settlements: [], unknown: [] },
@@ -402,12 +472,49 @@
                  :class="{'border-blue-500 border-dashed bg-blue-100 ring-4 ring-blue-50': isDragging, 'border-blue-200 bg-blue-50': !isDragging}"
                  class="mb-6 border-2 rounded-xl p-4 lg:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm relative overflow-hidden transition-all duration-300 group"
                  id="bulkUploadZone">
-                
+                 
                 <div class="flex-grow w-full relative z-10 pointer-events-none">
-                    <h3 class="font-bold text-blue-900 text-lg flex items-center gap-2">
-                        🚀 Toplu İşlem Seçeneği (Dosyaları Buraya Sürükleyin)
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h3 class="font-bold text-blue-900 text-lg flex items-center gap-2">
+                            🚀 Toplu İşlem Seçeneği (Dosyaları Buraya Sürükleyin)
+                        </h3>
+
+                        <div class="relative pointer-events-auto"
+                             @mouseenter="showSafeOrder = true"
+                             @mouseleave="showSafeOrder = false">
+                            <button type="button"
+                                    @focus="showSafeOrder = true"
+                                    @blur="showSafeOrder = false"
+                                    @click="showSafeOrder = !showSafeOrder"
+                                    class="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:ring-offset-2">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86l-7.12 12.3A1 1 0 004.03 18h15.94a1 1 0 00.86-1.84l-7.12-12.3a1 1 0 00-1.72 0z"/>
+                                </svg>
+                                Güvenli Yükleme Sırası
+                            </button>
+
+                            <div x-show="showSafeOrder"
+                                 x-transition
+                                 @click.outside="showSafeOrder = false"
+                                 class="absolute left-0 top-full z-50 mt-2 w-[22rem] max-w-[85vw] rounded-xl border border-slate-700 bg-slate-900 p-4 text-xs text-slate-100 shadow-2xl sm:left-auto sm:right-0">
+                                <p class="mb-2 font-bold text-amber-300">En güvenli yükleme sırası</p>
+                                <ol class="list-decimal space-y-1.5 pl-4 leading-relaxed">
+                                    <li>Ürünler tarafında ürün kütüphanesi ve COGS’ları önce hazır olsun.</li>
+                                    <li>Varsa Siparişler Detaylı operasyonel export’unu yükleyin.</li>
+                                    <li>Sipariş Kayıtları yükleyin.</li>
+                                    <li>Ödeme Detay dosyalarını yükleyin.</li>
+                                    <li>Cari Hesap Ekstresi yükleyin.</li>
+                                    <li>Stopaj dosyalarını yükleyin.</li>
+                                    <li>Faturaları en son yükleyin.</li>
+                                </ol>
+                                <p class="mt-3 text-[11px] text-slate-300">
+                                    Not: Sipariş ayı ile ödeme ayı farklı olabilir. Geciken/kayıp ödeme alarmını doğru görmek için takip eden haftaların ödeme dosyalarını da yükleyin.
+                                </p>
+                            </div>
+                        </div>
+
                         <span x-show="isDragging" x-transition class="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full animate-pulse">Bırakın yüklesin...</span>
-                    </h3>
+                    </div>
                     <p class="text-blue-700 text-sm mt-1 mb-3">
                         Trendyol Paneli'nden indirdiğiniz <strong>tüm Excel dosyalarını (Sipariş, Cari, Fatura, Stopaj, Ödeme)</strong> tek seferde sürükleyip bırakabilir veya çoklu seçebilirsiniz. Sistem dosyaları isimlerinden otomatik tanıyacaktır.
                     </p>
@@ -726,7 +833,7 @@
                 <div class="flex flex-col sm:flex-row gap-2">
                     <button wire:click="runAudit" wire:loading.attr="disabled"
                             class="w-full sm:w-auto px-4 py-3 sm:py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors">
-                        <span wire:loading.remove wire:target="runAudit">🔍 Denetimi Çalıştır ({{ \App\Services\AuditEngine::getRuleCount() - count($disabledAuditRules) }}/{{ \App\Services\AuditEngine::getRuleCount() }} Kural)</span>
+                        <span wire:loading.remove wire:target="runAudit">🔍 Denetimi Çalıştır ({{ $this->activeAuditRuleCount }}/{{ \App\Services\AuditEngine::getRuleCount() }} Kural)</span>
                         <span wire:loading wire:target="runAudit">Denetim yapılıyor...</span>
                     </button>
                     <button wire:click="exportAuditReport"
@@ -752,7 +859,7 @@
                         <span class="text-lg">🛡️</span>
                         <div class="text-left">
                             <p class="font-semibold text-gray-800 text-sm">Denetim Kuralları</p>
-                            <p class="text-xs text-gray-500">{{ \App\Services\AuditEngine::getRuleCount() - count($disabledAuditRules) }}/{{ \App\Services\AuditEngine::getRuleCount() }} kural aktif — Kuralları görmek ve yönetmek için tıklayın</p>
+                            <p class="text-xs text-gray-500">{{ $this->activeAuditRuleCount }}/{{ \App\Services\AuditEngine::getRuleCount() }} kural aktif — Seçimler firma ayarına kalıcı kaydedilir</p>
                         </div>
                     </div>
                     <svg class="w-5 h-5 text-gray-400 group-hover:text-gray-600 transition-transform duration-200" :class="{'rotate-180': showRules}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -768,8 +875,12 @@
                                 <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">{{ $category }}</span>
                             </div>
                             @foreach($rules as $method => $meta)
-                                @php $isDisabled = in_array($method, $disabledAuditRules); @endphp
-                                <label class="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors {{ $isDisabled ? 'opacity-60' : '' }}">
+                                @php
+                                    $isDisabled = in_array($method, $disabledAuditRules);
+                                    $isImplicitlySuppressed = !$settingsLogInfoRules && ($meta['severity'] === 'info');
+                                    $isInactive = $isDisabled || $isImplicitlySuppressed;
+                                @endphp
+                                <label class="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors {{ $isInactive ? 'opacity-60' : '' }}">
                                     <input type="checkbox"
                                            wire:click="toggleAuditRule('{{ $method }}')"
                                            {{ !$isDisabled ? 'checked' : '' }}
@@ -782,6 +893,11 @@
                                                 {{ $meta['severity'] === 'critical' ? 'bg-red-100 text-red-700' : ($meta['severity'] === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700') }}">
                                                 {{ $meta['code'] }}
                                             </span>
+                                            @if($isImplicitlySuppressed)
+                                                <span class="px-1.5 py-0.5 text-[10px] font-mono rounded bg-slate-100 text-slate-600">
+                                                    Bilgi logu kapalı
+                                                </span>
+                                            @endif
                                         </div>
                                         <p class="text-xs text-gray-500 mt-0.5 leading-relaxed">{{ $meta['tooltip'] }}</p>
                                     </div>
@@ -891,7 +1007,7 @@
 
                 {{-- COGS Coverage Info --}}
                 @php
-                    $cogsStats = \App\Models\MpProduct::where('user_id', auth()->id() ?? 1)
+                    $cogsStats = \App\Models\MpProduct::where('user_id', auth()->id())
                         ->selectRaw('COUNT(*) as total, SUM(CASE WHEN cogs > 0 THEN 1 ELSE 0 END) as with_cogs')
                         ->first();
                     $cogsPct = $cogsStats->total > 0 ? round($cogsStats->with_cogs / $cogsStats->total * 100) : 0;
@@ -973,7 +1089,9 @@
                                                 </p>
                                                 <p class="text-xs {{ $item['is_bleeding'] ? 'text-red-600' : 'text-gray-500' }}">
                                                     {{ $item['barcode'] }} · {{ $item['stock_code'] }}
-                                                    @if(!$item['has_cogs']) <span class="text-amber-500">⚠️ COGS yok</span> @endif
+                                                    @if(!$item['has_cogs'])
+                                                        <span class="text-amber-500" title="{{ $item['cogs_missing_reason'] ?? 'COGS eslesmesi bulunamadi' }}">⚠️ COGS yok</span>
+                                                    @endif
                                                 </p>
                                             </div>
                                         </td>
@@ -1192,13 +1310,13 @@
                                 @foreach($orders as $order)
                                     @php
                                         $isFuturePayment = false;
-                                        if ($order->settlement && $order->settlement->due_date) {
-                                            $isFuturePayment = \Carbon\Carbon::parse($order->settlement->due_date)->startOfDay()->isAfter(\Carbon\Carbon::today());
+                                        if ($order->expected_payment_date) {
+                                            $isFuturePayment = $order->expected_payment_date->copy()->startOfDay()->isAfter(\Carbon\Carbon::today());
                                         }
-                                        $cogs = (float) $order->cogs_at_time;
-                                        $hasCogs = $cogs > 0;
-                                        $netProfit = $hasCogs ? $order->real_net_profit : null;
-                                        $margin = ($hasCogs && (float) $order->gross_amount > 0) ? round($netProfit / (float) $order->gross_amount * 100, 1) : null;
+                                        $displayCogs = (float) $order->resolved_cogs_at_time;
+                                        $hasDisplayCogs = $displayCogs > 0;
+                                        $netProfit = $hasDisplayCogs ? $order->real_net_profit : null;
+                                        $margin = ($hasDisplayCogs && (float) $order->gross_amount > 0) ? round($netProfit / (float) $order->gross_amount * 100, 1) : null;
                                     @endphp
                                     <tr class="{{ $order->is_flagged ? 'bg-red-50' : ($order->is_reconciled ? 'bg-gray-100 opacity-75' : ($isFuturePayment ? 'bg-gray-50 opacity-80 border-l-4 border-amber-400' : 'hover:bg-gray-50')) }}">
                                         <td class="px-3 py-3 text-center">
@@ -1224,7 +1342,7 @@
                                                     <p class="text-xs text-gray-500">{{ $order->order_date?->format('d.m.Y') }}</p>
                                                 </div>
                                                 @if($isFuturePayment)
-                                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800" title="Vade Tarihi: {{ \Carbon\Carbon::parse($order->settlement->due_date)->format('d.m.Y') }}">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800" title="Beklenen Ödeme Tarihi: {{ $order->expected_payment_date?->format('d.m.Y') }}">
                                                         ⏳ Gelecek Vade
                                                     </span>
                                                 @endif
@@ -1233,8 +1351,8 @@
                                         @endif
                                         @if(in_array('urun', $visibleColumns))
                                         <td class="px-3 py-3">
-                                            <p class="text-sm truncate max-w-xs">{{ $order->product_name ?: ($order->product?->product_name ?: 'Ürün Bilgisi Excel\'de Yok (Sadece Finansal Kayıt)') }}</p>
-                                            <p class="text-xs text-gray-400">Barkod: {{ $order->barcode }} | Stok Kodu: {{ $order->stock_code ?: ($order->product?->stock_code ?: 'Belirtilmedi') }}</p>
+                                            <p class="text-sm truncate max-w-xs">{{ $order->resolved_product_name ?: 'Ürün Bilgisi Excel\'de Yok (Sadece Finansal Kayıt)' }}</p>
+                                            <p class="text-xs text-gray-400">Barkod: {{ $order->resolved_barcode ?: 'Belirtilmedi' }} | Stok Kodu: {{ $order->resolved_stock_code ?: 'Belirtilmedi' }}</p>
                                         </td>
                                         @endif
                                         @if(in_array('durum', $visibleColumns))
@@ -1261,8 +1379,8 @@
                                         @if(in_array('kargo', $visibleColumns))
                                         @php
                                             $svcCargo = new \App\Services\MpSettingsService();
-                                            $kargoDisplay = $svcCargo->usesOwnCargo() 
-                                                ? (float)($order->own_cargo_cost_at_time ?? 0) 
+                                            $kargoDisplay = $svcCargo->usesOwnCargo()
+                                                ? (float)($order->resolved_own_cargo_cost_at_time ?? 0)
                                                 : (float)$order->cargo_amount;
                                         @endphp
                                         <td class="px-3 py-3 text-right text-sm {{ $isFuturePayment ? 'opacity-50' : '' }}">
@@ -1270,8 +1388,9 @@
                                         </td>
                                         @endif
                                         @if(in_array('cogs', $visibleColumns))
-                                        <td class="px-3 py-3 text-right text-sm {{ $hasCogs ? '' : 'text-gray-400' }}">
-                                            {{ $hasCogs ? number_format($cogs, 2, ',', '.') . ' ₺' : '—' }}
+                                        <td class="px-3 py-3 text-right text-sm {{ $hasDisplayCogs ? '' : 'text-gray-400' }}"
+                                            @if(!$hasDisplayCogs && $order->cogs_missing_reason) title="{{ $order->cogs_missing_reason }}" @endif>
+                                            {{ $hasDisplayCogs ? number_format($displayCogs, 2, ',', '.') . ' ₺' : '—' }}
                                         </td>
                                         @endif
                                         @if(in_array('net_kar', $visibleColumns))
@@ -1302,13 +1421,13 @@
                         @foreach($orders as $order)
                             @php
                                 $isFuturePayment = false;
-                                if ($order->settlement && $order->settlement->due_date) {
-                                    $isFuturePayment = \Carbon\Carbon::parse($order->settlement->due_date)->startOfDay()->isAfter(\Carbon\Carbon::today());
+                                if ($order->expected_payment_date) {
+                                    $isFuturePayment = $order->expected_payment_date->copy()->startOfDay()->isAfter(\Carbon\Carbon::today());
                                 }
-                                $cogs = (float) $order->cogs_at_time;
-                                $hasCogs = $cogs > 0;
-                                $netProfit = $hasCogs ? $order->real_net_profit : null;
-                                $margin = ($hasCogs && (float) $order->gross_amount > 0) ? round($netProfit / (float) $order->gross_amount * 100, 1) : null;
+                                $displayCogs = (float) $order->resolved_cogs_at_time;
+                                $hasDisplayCogs = $displayCogs > 0;
+                                $netProfit = $hasDisplayCogs ? $order->real_net_profit : null;
+                                $margin = ($hasDisplayCogs && (float) $order->gross_amount > 0) ? round($netProfit / (float) $order->gross_amount * 100, 1) : null;
                             @endphp
                             <div class="bg-white rounded-xl border border-gray-200 p-4 {{ $order->is_flagged ? 'border-red-300 bg-red-50' : ($order->is_reconciled ? 'opacity-75' : '') }}">
                                 {{-- Kart Başlık --}}
@@ -1334,7 +1453,7 @@
                                 </div>
 
                                 {{-- Ürün --}}
-                                <p class="text-xs text-gray-600 truncate mb-3">{{ $order->product_name ?: ($order->product?->product_name ?: 'Finansal Kayıt') }}</p>
+                                <p class="text-xs text-gray-600 truncate mb-3">{{ $order->resolved_product_name ?: 'Finansal Kayıt' }}</p>
 
                                 {{-- Finansal Grid --}}
                                 <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
@@ -1361,8 +1480,8 @@
                                         <span class="text-gray-400">Kargo</span>
                                         @php
                                             $svcCargoM = new \App\Services\MpSettingsService();
-                                            $kargoDisplayM = $svcCargoM->usesOwnCargo() 
-                                                ? (float)($order->own_cargo_cost_at_time ?? 0) 
+                                            $kargoDisplayM = $svcCargoM->usesOwnCargo()
+                                                ? (float)($order->resolved_own_cargo_cost_at_time ?? 0)
                                                 : (float)$order->cargo_amount;
                                         @endphp
                                         <span class="font-medium text-gray-700">{{ $kargoDisplayM > 0 ? number_format($kargoDisplayM, 2, ',', '.') . ' ₺' : '0,00 ₺' }}</span>
@@ -1371,7 +1490,10 @@
                                     @if(in_array('cogs', $visibleColumns))
                                     <div class="flex justify-between">
                                         <span class="text-gray-400">COGS</span>
-                                        <span class="font-medium {{ $hasCogs ? 'text-gray-700' : 'text-gray-300' }}">{{ $hasCogs ? number_format($cogs, 2, ',', '.') . ' ₺' : '—' }}</span>
+                                        <span class="font-medium {{ $hasDisplayCogs ? 'text-gray-700' : 'text-gray-300' }}"
+                                            @if(!$hasDisplayCogs && $order->cogs_missing_reason) title="{{ $order->cogs_missing_reason }}" @endif>
+                                            {{ $hasDisplayCogs ? number_format($displayCogs, 2, ',', '.') . ' ₺' : '—' }}
+                                        </span>
                                     </div>
                                     @endif
                                     @if(in_array('net_kar', $visibleColumns))

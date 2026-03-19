@@ -177,10 +177,10 @@
                 </div>
 
                 {{-- Fabrika Dropdown --}}
-                <div x-data="{ fabrikaOpen: {{ request()->routeIs('recipe.*') ? 'true' : 'false' }} }">
+                <div x-data="{ fabrikaOpen: {{ request()->routeIs('recipe.*', 'factory.production-revenue') ? 'true' : 'false' }} }">
                     <button @click="fabrikaOpen = !fabrikaOpen"
                         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                               {{ request()->routeIs('recipe.*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                               {{ request()->routeIs('recipe.*', 'factory.production-revenue') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
                         <span class="flex items-center">
                             <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
@@ -196,6 +196,13 @@
                             Üretim Online
                             <span class="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded ml-2">YAKINDA</span>
                         </a>
+                        @if(auth()->user()->canAccessProduction())
+                        <a href="{{ route('factory.production-revenue') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('factory.production-revenue') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Üretim Ciro
+                        </a>
+                        @endif
                         <a href="{{ route('recipe.materials') }}" @click="sidebarOpen = false"
                            class="block px-4 py-2 text-sm rounded-lg transition-colors
                                   {{ request()->routeIs('recipe.*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
@@ -214,19 +221,21 @@
 
                 {{-- Kampanyalar Dropdown --}}
                 <div x-data="{ campaignsOpen: {{ request()->routeIs('campaigns.*') ? 'true' : 'false' }} }">
-                    <button @click="campaignsOpen = !campaignsOpen"
-                        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                               {{ request()->routeIs('campaigns.*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
-                        <span class="flex items-center">
+                    <div class="flex items-center justify-between px-2 py-1 rounded-lg transition-colors {{ request()->routeIs('campaigns.*') ? 'bg-gray-100' : 'hover:bg-gray-100' }}">
+                        <a href="{{ route('campaigns.index') }}"
+                           @click="sidebarOpen = false"
+                           class="flex-1 flex items-center py-2 px-2 text-sm font-medium {{ request()->routeIs('campaigns.*') ? 'text-gray-900' : 'text-gray-700' }}">
                             <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                             </svg>
                             Kampanyalar
-                        </span>
-                        <svg :class="campaignsOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                        </svg>
-                    </button>
+                        </a>
+                        <button @click="campaignsOpen = !campaignsOpen" class="p-2 text-gray-500 hover:text-gray-700 rounded-md focus:outline-none">
+                            <svg :class="campaignsOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                    </div>
                     <div x-show="campaignsOpen" x-collapse class="ml-8 mt-1 space-y-1">
                         <a href="{{ route('campaigns.product-commission') }}"
                            @click="sidebarOpen = false"

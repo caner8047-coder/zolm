@@ -24,7 +24,11 @@ class OperationMotor extends Component
 
     public function mount()
     {
-        $this->selectedProfileId = Profile::where('type', 'operation')
+        $userId = auth()->id();
+
+        $this->selectedProfileId = Profile::query()
+            ->where('user_id', $userId)
+            ->where('type', 'operation')
             ->where('is_default', true)
             ->first()?->id;
     }
@@ -39,8 +43,18 @@ class OperationMotor extends Component
         $this->message = '';
         $this->generatedFiles = [];
 
-        $profile = Profile::find($this->selectedProfileId) 
-            ?? Profile::where('type', 'operation')->where('is_default', true)->first();
+        $userId = auth()->id();
+
+        $profile = Profile::query()
+            ->where('user_id', $userId)
+            ->where('type', 'operation')
+            ->whereKey($this->selectedProfileId)
+            ->first()
+            ?? Profile::query()
+                ->where('user_id', $userId)
+                ->where('type', 'operation')
+                ->where('is_default', true)
+                ->first();
 
         if (!$profile) {
             $this->message = 'Operasyon profili bulunamadı!';
@@ -142,7 +156,9 @@ class OperationMotor extends Component
 
     public function getProfilesProperty()
     {
-        return Profile::where('type', 'operation')
+        return Profile::query()
+            ->where('user_id', auth()->id())
+            ->where('type', 'operation')
             ->where(function ($q) {
                 $q->where('status', 'ready')->orWhereNull('status');
             })
@@ -153,7 +169,10 @@ class OperationMotor extends Component
 
     public function getSelectedProfileProperty()
     {
-        return Profile::find($this->selectedProfileId);
+        return Profile::query()
+            ->where('user_id', auth()->id())
+            ->whereKey($this->selectedProfileId)
+            ->first();
     }
 
     public function render()

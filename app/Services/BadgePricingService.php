@@ -24,7 +24,7 @@ class BadgePricingService
         'model_code'         => ['MODEL KODU', 'Model Kodu'],
         'category'           => ['KATEGORİ', 'Kategori'],
         'brand'              => ['MARKA', 'Marka'],
-        'current_tsf'        => ['TRENDYOL SATIŞ FİYATI', 'Trendyol Satış Fiyatı'],
+        'current_tsf'        => ['TRENDYOL SATIŞ FİYATI', 'Trendyol Satış Fiyatı', 'GÜNCEL TSF', 'Güncel TSF', 'Mevcut Fiyat', 'MEVCUT FİYAT'],
         'customer_price'     => ['MÜŞTERİNİN GÖRDÜĞÜ FİYAT', 'Müşterinin Gördüğü Fiyat'],
         'star1_upper'        => ['1 YILDIZ ÜST FİYAT', '1 Yıldız Üst Fiyat'],
         'star1_lower'        => ['1 YILDIZ ALT FİYAT', '1 Yıldız Alt Fiyat'],

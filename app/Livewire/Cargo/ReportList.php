@@ -4,13 +4,13 @@ namespace App\Livewire\Cargo;
 
 use App\Models\CargoReport;
 use App\Models\CargoReportItem;
+use App\Services\ExcelService;
+use App\Services\MpSettingsService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithPagination;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 /**
  * Rapor Geçmişi Bileşeni
@@ -25,19 +25,44 @@ class ReportList extends Component
 {
     use WithPagination;
 
+    public array $visibleColumns = ['date', 'name', 'company', 'orders', 'errors', 'desi_diff', 'amount_diff', 'actions'];
+    public static array $sortableColumns = [
+        'date' => 'report_date',
+        'name' => 'name',
+        'company' => 'cargo_company',
+        'orders' => 'total_orders',
+        'errors' => 'error_count',
+        'desi_diff' => 'total_desi_diff',
+        'amount_diff' => 'total_tutar_diff',
+    ];
+    public static array $allColumnDefs = [
+        'date' => 'Tarih',
+        'name' => 'Rapor Adı',
+        'company' => 'Kargo',
+        'orders' => 'Sipariş',
+        'errors' => 'Hata',
+        'desi_diff' => 'Desi Farkı',
+        'amount_diff' => 'Tutar Farkı',
+        'actions' => 'İşlem',
+    ];
+
     // Filtreler
     public ?string $filterDate = null;
     public ?string $filterDateEnd = null;
     public string $filterCompany = '';
+    public string $filterMarketplace = '';
+    public string $filterStore = '';
+    public string $filterRecordType = 'all';
     public string $sortField = 'report_date';
     public string $sortDirection = 'desc';
 
     // Detay modalı
     public bool $showDetailModal = false;
     public ?int $viewingReportId = null;
-    public array $viewingItems = [];
     public string $itemFilterErrorType = 'all';
     public string $itemFilterType = 'all'; // all, siparis, iade, parca
+    public string $itemFilterClaim = 'all'; // all, claimable, with_compensation, without_compensation
+    public string $itemSearch = '';
 
     // Silme modalı
     public bool $showDeleteModal = false;
@@ -51,6 +76,39 @@ class ReportList extends Component
     {
         $this->filterDate = now()->subDays(30)->format('Y-m-d');
         $this->filterDateEnd = now()->format('Y-m-d');
+        $this->visibleColumns = $this->normalizeVisibleColumns(
+            app(MpSettingsService::class)->getArray('cargo_reports.report_list.visible_columns', $this->visibleColumns)
+        );
+    }
+
+    public function updatedFilterDate()
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterDateEnd()
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterCompany()
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterMarketplace()
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterStore()
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterRecordType()
+    {
+        $this->resetPage();
     }
 
     /**
@@ -75,6 +133,8 @@ class ReportList extends Component
             $query->where('cargo_company', $this->filterCompany);
         }
 
+        $this->applyItemScopeFilters($query);
+
         // Sıralama
         $query->orderBy($this->sortField, $this->sortDirection);
 
@@ -92,6 +152,28 @@ class ReportList extends Component
             ->pluck('cargo_company')
             ->sort()
             ->values();
+    }
+
+    #[Computed]
+    public function marketplaces()
+    {
+        return CargoReportItem::query()
+            ->whereNotNull('pazaryeri')
+            ->where('pazaryeri', '!=', '')
+            ->distinct()
+            ->orderBy('pazaryeri')
+            ->pluck('pazaryeri');
+    }
+
+    #[Computed]
+    public function stores()
+    {
+        return CargoReportItem::query()
+            ->whereNotNull('magaza')
+            ->where('magaza', '!=', '')
+            ->distinct()
+            ->orderBy('magaza')
+            ->pluck('magaza');
     }
 
     /**
@@ -112,6 +194,8 @@ class ReportList extends Component
             $query->where('cargo_company', $this->filterCompany);
         }
 
+        $this->applyItemScopeFilters($query);
+
         return [
             'total_reports' => $query->count(),
             'total_orders' => $query->sum('total_orders'),
@@ -124,14 +208,41 @@ class ReportList extends Component
     /**
      * Sıralama değiştir
      */
-    public function sortBy(string $field)
+    public function sortTable(string $columnKey)
     {
+        $field = static::$sortableColumns[$columnKey] ?? null;
+        if (!$field) {
+            return;
+        }
+
         if ($this->sortField === $field) {
             $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
         } else {
             $this->sortField = $field;
             $this->sortDirection = 'desc';
         }
+
+        $this->resetPage();
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        if (!array_key_exists($column, static::$allColumnDefs)) {
+            return;
+        }
+
+        if (in_array($column, $this->visibleColumns, true)) {
+            if (count($this->visibleColumns) === 1) {
+                return;
+            }
+
+            $this->visibleColumns = array_values(array_diff($this->visibleColumns, [$column]));
+        } else {
+            $this->visibleColumns[] = $column;
+            $this->visibleColumns = $this->normalizeVisibleColumns($this->visibleColumns);
+        }
+
+        app(MpSettingsService::class)->set('cargo_reports.report_list.visible_columns', $this->visibleColumns);
     }
 
     /**
@@ -140,20 +251,62 @@ class ReportList extends Component
     public function viewReport(int $id)
     {
         $this->viewingReportId = $id;
-        $this->loadReportItems();
+        $this->resetPage(pageName: 'detailPage');
         $this->showDetailModal = true;
     }
 
-    /**
-     * Rapor satırlarını yükle
-     */
-    protected function loadReportItems()
+    #[Computed]
+    public function viewingItems()
     {
-        if (!$this->viewingReportId) return;
+        if (!$this->viewingReportId) {
+            return CargoReportItem::query()->whereRaw('1 = 0')->paginate(25, pageName: 'detailPage');
+        }
 
-        $query = CargoReportItem::where('cargo_report_id', $this->viewingReportId);
+        return $this->buildViewingItemsQuery()
+            ->orderBy('has_error', 'desc')
+            ->orderByRaw('ABS(tutar_fark) desc')
+            ->orderByRaw('ABS(desi_fark) desc')
+            ->paginate(25, pageName: 'detailPage');
+    }
 
-        // Hata filtresi
+    #[Computed]
+    public function viewingReport(): ?CargoReport
+    {
+        if (!$this->viewingReportId) {
+            return null;
+        }
+
+        return CargoReport::find($this->viewingReportId);
+    }
+
+    #[Computed]
+    public function detailSummary(): array
+    {
+        if (!$this->viewingReportId) {
+            return [
+                'total' => 0,
+                'errors' => 0,
+                'claimable' => 0,
+                'with_compensation' => 0,
+            ];
+        }
+
+        $baseQuery = $this->buildViewingItemsQuery();
+
+        return [
+            'total' => (clone $baseQuery)->count(),
+            'errors' => (clone $baseQuery)->where('has_error', true)->count(),
+            'claimable' => (clone $baseQuery)->whereIn('error_type', $this->claimableErrorTypes())->count(),
+            'with_compensation' => (clone $baseQuery)->has('compensation')->count(),
+        ];
+    }
+
+    protected function buildViewingItemsQuery(): Builder
+    {
+        $query = CargoReportItem::query()
+            ->withExists('compensation')
+            ->where('cargo_report_id', $this->viewingReportId);
+
         if ($this->itemFilterErrorType !== 'all') {
             if ($this->itemFilterErrorType === 'errors') {
                 $query->where('has_error', true);
@@ -162,7 +315,6 @@ class ReportList extends Component
             }
         }
 
-        // Tip filtresi
         if ($this->itemFilterType === 'siparis') {
             $query->where('is_iade', false)->where('is_parca_gonderi', false);
         } elseif ($this->itemFilterType === 'iade') {
@@ -171,12 +323,31 @@ class ReportList extends Component
             $query->where('is_parca_gonderi', true);
         }
 
-        $this->viewingItems = $query
-            ->orderBy('has_error', 'desc')
-            ->orderBy('tutar_fark', 'desc')
-            ->limit(100)
-            ->get()
-            ->toArray();
+        if ($this->itemFilterClaim === 'claimable') {
+            $query->whereIn('error_type', $this->claimableErrorTypes());
+        } elseif ($this->itemFilterClaim === 'with_compensation') {
+            $query->has('compensation');
+        } elseif ($this->itemFilterClaim === 'without_compensation') {
+            $query->doesntHave('compensation');
+        }
+
+        if ($this->itemSearch !== '') {
+            $search = trim($this->itemSearch);
+            $query->where(function (Builder $subQuery) use ($search) {
+                $subQuery
+                    ->where('musteri_adi', 'like', '%' . $search . '%')
+                    ->orWhere('takip_kodu', 'like', '%' . $search . '%')
+                    ->orWhere('stok_kodu', 'like', '%' . $search . '%')
+                    ->orWhere('urun_adi', 'like', '%' . $search . '%');
+            });
+        }
+
+        return $query;
+    }
+
+    protected function claimableErrorTypes(): array
+    {
+        return ['desi_fazla', 'tutar_fazla', 'parca_eksik', 'parca_fazla', 'eslesmedi'];
     }
 
     /**
@@ -184,7 +355,7 @@ class ReportList extends Component
      */
     public function updatedItemFilterErrorType()
     {
-        $this->loadReportItems();
+        $this->resetPage(pageName: 'detailPage');
     }
 
     /**
@@ -192,7 +363,17 @@ class ReportList extends Component
      */
     public function updatedItemFilterType()
     {
-        $this->loadReportItems();
+        $this->resetPage(pageName: 'detailPage');
+    }
+
+    public function updatedItemFilterClaim()
+    {
+        $this->resetPage(pageName: 'detailPage');
+    }
+
+    public function updatedItemSearch()
+    {
+        $this->resetPage(pageName: 'detailPage');
     }
 
     /**
@@ -202,9 +383,11 @@ class ReportList extends Component
     {
         $this->showDetailModal = false;
         $this->viewingReportId = null;
-        $this->viewingItems = [];
         $this->itemFilterErrorType = 'all';
         $this->itemFilterType = 'all';
+        $this->itemFilterClaim = 'all';
+        $this->itemSearch = '';
+        $this->resetPage(pageName: 'detailPage');
     }
 
     /**
@@ -213,81 +396,35 @@ class ReportList extends Component
     public function downloadReport(int $id)
     {
         try {
-            $report = CargoReport::find($id); // with('items') kaldırıldı
+            $report = CargoReport::with('items')->find($id);
             if (!$report) {
                 $this->showMessage('Rapor bulunamadı.', 'error');
                 return;
             }
 
-            $spreadsheet = new Spreadsheet();
-
-            // 1. Özet Sayfası
-            $sheet = $spreadsheet->getActiveSheet();
-            $sheet->setTitle('Özet');
-
-            $sheet->setCellValue('A1', 'Rapor: ' . $report->name);
-            $sheet->setCellValue('A2', 'Tarih: ' . $report->report_date->format('d.m.Y'));
-            $sheet->setCellValue('A3', 'Kargo: ' . $report->cargo_company);
-            $sheet->setCellValue('A5', 'Toplam Sipariş: ' . $report->total_orders);
-            $sheet->setCellValue('A6', 'Eşleşen: ' . $report->matched_orders);
-            $sheet->setCellValue('A7', 'Hatalı: ' . $report->error_count);
-            $sheet->setCellValue('A8', 'Desi Farkı: ' . number_format($report->total_desi_diff, 2));
-            $sheet->setCellValue('A9', 'Tutar Farkı: ' . number_format($report->total_tutar_diff, 2) . ' TL');
-
-            // İstatistikler (DB Aggregates)
-            $normalSiparisCount = $report->items()
-                ->where('is_iade', false)
-                ->where('is_parca_gonderi', false)
-                ->count();
-            
-            $iadeQuery = $report->items()->where('is_iade', true);
-            $iadeCount = $iadeQuery->count();
-            $iadeTutar = $iadeQuery->sum('gercek_tutar');
-
-            $parcaQuery = $report->items()->where('is_parca_gonderi', true);
-            $parcaCount = $parcaQuery->count();
-            $parcaTutar = $parcaQuery->sum('gercek_tutar');
-
-            $hataliCount = $report->items()->where('has_error', true)->count();
-
-            $sheet->setCellValue('A11', 'İstatistikler');
-            $sheet->setCellValue('A12', 'Normal Sipariş: ' . $normalSiparisCount);
-            $sheet->setCellValue('A13', 'İade/Değişim: ' . $iadeCount . ' (' . number_format($iadeTutar, 2) . ' TL)');
-            $sheet->setCellValue('A14', 'Parça Gönderisi: ' . $parcaCount . ' (' . number_format($parcaTutar, 2) . ' TL)');
-            $sheet->setCellValue('A15', 'Hatalı Kayıt: ' . $hataliCount);
-
-            // 2. Siparişler Sayfası
-            $siparisSheet = $spreadsheet->createSheet();
-            $siparisSheet->setTitle('Siparişler');
-            $this->fillItemSheet($siparisSheet, $report->items()
-                ->where('is_iade', false)
-                ->where('is_parca_gonderi', false)
-                ->orderBy('id'));
-
-            // 3. İadeler Sayfası
-            $iadeSheet = $spreadsheet->createSheet();
-            $iadeSheet->setTitle('İadeler');
-            $this->fillItemSheet($iadeSheet, $report->items()
-                ->where('is_iade', true)
-                ->orderBy('id'));
-
-            // 4. Parça Gönderileri Sayfası
-            $parcaSheet = $spreadsheet->createSheet();
-            $parcaSheet->setTitle('Parça Gönderileri');
-            $this->fillItemSheet($parcaSheet, $report->items()
-                ->where('is_parca_gonderi', true)
-                ->orderBy('id'));
-
-            // Kaydet
             $fileName = 'rapor_' . $report->id . '_' . $report->report_date->format('Y-m-d') . '.xlsx';
             $tempPath = storage_path('app/temp/' . $fileName);
 
-            if (!is_dir(dirname($tempPath))) {
-                mkdir(dirname($tempPath), 0755, true);
-            }
+            $sheets = [
+                [
+                    'name' => 'Özet',
+                    'data' => $this->buildSummaryRows($report),
+                ],
+                [
+                    'name' => 'Siparişler',
+                    'data' => $this->buildItemRows($report->items->where('is_iade', false)->where('is_parca_gonderi', false)),
+                ],
+                [
+                    'name' => 'İadeler',
+                    'data' => $this->buildItemRows($report->items->where('is_iade', true)),
+                ],
+                [
+                    'name' => 'Parça Gönderileri',
+                    'data' => $this->buildItemRows($report->items->where('is_parca_gonderi', true)),
+                ],
+            ];
 
-            $writer = new Xlsx($spreadsheet);
-            $writer->save($tempPath);
+            app(ExcelService::class)->exportToXlsx($sheets, $tempPath);
 
             return response()->download($tempPath, $fileName)->deleteFileAfterSend();
 
@@ -298,53 +435,125 @@ class ReportList extends Component
         }
     }
 
+    public function downloadFilteredReportItems()
+    {
+        if (!$this->viewingReportId) {
+            return null;
+        }
+
+        try {
+            $report = CargoReport::find($this->viewingReportId);
+
+            if (!$report) {
+                $this->showMessage('Rapor bulunamadı.', 'error');
+                return null;
+            }
+
+            $fileName = 'rapor_filtreli_' . $report->id . '_' . now()->format('Y-m-d_His') . '.xlsx';
+            $tempPath = storage_path('app/temp/' . $fileName);
+
+            $items = $this->buildViewingItemsQuery()
+                ->orderBy('has_error', 'desc')
+                ->orderByRaw('ABS(tutar_fark) desc')
+                ->orderByRaw('ABS(desi_fark) desc')
+                ->get();
+
+            $sheets = [
+                [
+                    'name' => 'Filtreli Detay',
+                    'data' => $this->buildFilteredItemRows($items),
+                ],
+            ];
+
+            app(ExcelService::class)->exportToXlsx($sheets, $tempPath);
+
+            return response()->download($tempPath, $fileName)->deleteFileAfterSend();
+        } catch (\Exception $e) {
+            Log::error('ReportList: Filtreli export hatası', ['error' => $e->getMessage()]);
+            $this->showMessage('Filtreli export hatası: ' . $e->getMessage(), 'error');
+            return null;
+        }
+    }
+
     /**
      * Excel sayfasına item'ları chunk halinde yaz
      */
-    protected function fillItemSheet($sheet, $query)
+    protected function buildSummaryRows(CargoReport $report): array
     {
-        $headers = ['Tarih', 'Müşteri', 'Stok Kodu', 'Takip Kodu', 'Ürün', 'Adet', 'Bek.Desi', 'Ger.Desi', 'Fark', 'Bek.Tutar', 'Ger.Tutar', 'Fark', 'Durum'];
-        $col = 'A';
-        foreach ($headers as $h) {
-            $sheet->setCellValue($col . '1', $h);
-            $sheet->getStyle($col . '1')->getFont()->setBold(true);
-            $col++;
-        }
+        $normalSiparisCount = $report->items->where('is_iade', false)->where('is_parca_gonderi', false)->count();
+        $iadeCount = $report->items->where('is_iade', true)->count();
+        $iadeTutar = $report->items->where('is_iade', true)->sum('gercek_tutar');
+        $parcaCount = $report->items->where('is_parca_gonderi', true)->count();
+        $parcaTutar = $report->items->where('is_parca_gonderi', true)->sum('gercek_tutar');
+        $referenceIssueCount = $report->items->where('error_type', 'referans_eksik')->count();
 
-        $row = 2;
-        
-        // Chunking with 1000 items
-        $query->chunk(1000, function ($items) use ($sheet, &$row) {
-            foreach ($items as $item) {
-                $sheet->setCellValue('A' . $row, $item->tarih?->format('d.m.Y'));
-                $sheet->setCellValue('B' . $row, $item->musteri_adi);
-                $sheet->setCellValue('C' . $row, $item->stok_kodu);
-                $sheet->setCellValue('D' . $row, $item->takip_kodu);
-                $sheet->setCellValue('E' . $row, $item->urun_adi);
-                $sheet->setCellValue('F' . $row, $item->adet);
-                $sheet->setCellValue('G' . $row, $item->beklenen_desi);
-                $sheet->setCellValue('H' . $row, $item->gercek_desi);
-                $sheet->setCellValue('I' . $row, $item->desi_fark);
-                $sheet->setCellValue('J' . $row, $item->beklenen_tutar);
-                $sheet->setCellValue('K' . $row, $item->gercek_tutar);
-                $sheet->setCellValue('L' . $row, $item->tutar_fark);
-                $sheet->setCellValue('M' . $row, $item->has_error ? 'HATA' : 'OK');
+        return [
+            ['Alan' => 'Rapor', 'Değer' => $report->name],
+            ['Alan' => 'Tarih', 'Değer' => $report->report_date->format('d.m.Y')],
+            ['Alan' => 'Kargo', 'Değer' => $report->cargo_company],
+            ['Alan' => 'Toplam Sipariş', 'Değer' => $report->total_orders],
+            ['Alan' => 'Eşleşen', 'Değer' => $report->matched_orders],
+            ['Alan' => 'Hatalı', 'Değer' => $report->error_count],
+            ['Alan' => 'Referans Uyarısı', 'Değer' => $referenceIssueCount],
+            ['Alan' => 'Desi Farkı', 'Değer' => number_format($report->total_desi_diff, 2, '.', '')],
+            ['Alan' => 'Tutar Farkı', 'Değer' => number_format($report->total_tutar_diff, 2, '.', '')],
+            ['Alan' => 'Normal Sipariş', 'Değer' => $normalSiparisCount],
+            ['Alan' => 'İade/Değişim', 'Değer' => $iadeCount . ' (' . number_format($iadeTutar, 2, ',', '.') . ' TL)'],
+            ['Alan' => 'Parça Gönderisi', 'Değer' => $parcaCount . ' (' . number_format($parcaTutar, 2, ',', '.') . ' TL)'],
+        ];
+    }
 
-                // Hatalı satırları renklendir
-                if ($item->has_error) {
-                    $sheet->getStyle('A' . $row . ':M' . $row)->getFill()
-                        ->setFillType(Fill::FILL_SOLID)
-                        ->getStartColor()->setRGB('FECACA');
-                }
+    protected function buildItemRows($items): array
+    {
+        return collect($items)
+            ->values()
+            ->map(function ($item) {
+                return [
+                    'Tarih' => $item->tarih?->format('d.m.Y') ?? '',
+                    'Müşteri' => $item->musteri_adi,
+                    'Stok Kodu' => $item->stok_kodu,
+                    'Takip Kodu' => $item->takip_kodu,
+                    'Ürün' => $item->urun_adi,
+                    'Adet' => (int) $item->adet,
+                    'Bek.Desi' => (float) $item->beklenen_desi,
+                    'Ger.Desi' => (float) $item->gercek_desi,
+                    'Desi Fark' => (float) $item->desi_fark,
+                    'Bek.Tutar' => (float) $item->beklenen_tutar,
+                    'Ger.Tutar' => (float) $item->gercek_tutar,
+                    'Tutar Fark' => (float) $item->tutar_fark,
+                    'Pazaryeri' => $item->pazaryeri,
+                    'Mağaza' => $item->magaza,
+                    'Durum' => $item->has_error ? 'HATA' : 'OK',
+                ];
+            })
+            ->all();
+    }
 
-                $row++;
-            }
-        });
-
-        // Kolon genişliklerini ayarla (Sadece ilk chunk verilerine göre değil genel ayarlarız ama autosize tüm sheet'e bakar)
-        foreach (range('A', 'M') as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
-        }
+    protected function buildFilteredItemRows($items): array
+    {
+        return collect($items)
+            ->values()
+            ->map(function ($item) {
+                return [
+                    'Tarih' => $item->tarih?->format('d.m.Y') ?? '',
+                    'Müşteri' => $item->musteri_adi,
+                    'Stok Kodu' => $item->stok_kodu,
+                    'Takip Kodu' => $item->takip_kodu,
+                    'Ürün' => $item->urun_adi,
+                    'Adet' => (int) $item->adet,
+                    'Bek.Desi' => (float) $item->beklenen_desi,
+                    'Ger.Desi' => (float) $item->gercek_desi,
+                    'Desi Fark' => (float) $item->desi_fark,
+                    'Bek.Tutar' => (float) $item->beklenen_tutar,
+                    'Ger.Tutar' => (float) $item->gercek_tutar,
+                    'Tutar Fark' => (float) $item->tutar_fark,
+                    'Pazaryeri' => $item->pazaryeri,
+                    'Mağaza' => $item->magaza,
+                    'Talep Var' => ($item->compensation_exists ?? false) ? 'Evet' : 'Hayır',
+                    'Durum' => $item->has_error ? 'HATA' : 'OK',
+                ];
+            })
+            ->all();
     }
 
     /**
@@ -389,5 +598,32 @@ class ReportList extends Component
     public function render()
     {
         return view('livewire.cargo.report-list');
+    }
+
+    protected function normalizeVisibleColumns(array $columns): array
+    {
+        $allowed = array_keys(static::$allColumnDefs);
+        $normalized = array_values(array_intersect($allowed, $columns));
+
+        return $normalized !== [] ? $normalized : ['date', 'name', 'company', 'orders', 'errors', 'desi_diff', 'amount_diff', 'actions'];
+    }
+
+    protected function applyItemScopeFilters(Builder $query): void
+    {
+        if ($this->filterMarketplace !== '') {
+            $query->whereHas('items', fn (Builder $itemQuery) => $itemQuery->where('pazaryeri', $this->filterMarketplace));
+        }
+
+        if ($this->filterStore !== '') {
+            $query->whereHas('items', fn (Builder $itemQuery) => $itemQuery->where('magaza', $this->filterStore));
+        }
+
+        if ($this->filterRecordType === 'siparis') {
+            $query->whereHas('items', fn (Builder $itemQuery) => $itemQuery->where('is_iade', false)->where('is_parca_gonderi', false));
+        } elseif ($this->filterRecordType === 'iade') {
+            $query->whereHas('items', fn (Builder $itemQuery) => $itemQuery->where('is_iade', true));
+        } elseif ($this->filterRecordType === 'parca') {
+            $query->whereHas('items', fn (Builder $itemQuery) => $itemQuery->where('is_parca_gonderi', true));
+        }
     }
 }

@@ -11,6 +11,7 @@ use App\Models\MpProduct;
 use App\Models\ProductCost;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -27,6 +28,7 @@ use Carbon\Carbon;
 class MarketplaceImportService
 {
     protected ExcelService $excelService;
+    protected int $userId;
 
     // ─── Sütun Alias Mapping ─────────────────────────────────────
 
@@ -68,7 +70,8 @@ class MarketplaceImportService
 
     protected array $transactionColumnAliases = [
         'transaction_date'  => ['İşlem Tarihi', 'Islem Tarihi', 'Transaction Date', 'Tarih'],
-        'document_number'   => ['Belge No', 'Dekont No', 'Fatura No', 'Document Number', 'Belge Numarası', 'Kalem NO', 'Kalem No', 'Kalem Numarası'],
+        'document_number'   => ['Belge No', 'Dekont No', 'Fatura No', 'Document Number', 'Belge Numarası'],
+        'source_line_number' => ['Kalem NO', 'Kalem No', 'Kalem Numarası'],
         'order_number'      => ['Sipariş No', 'Siparis No', 'Order No'],
         'transaction_type'  => ['İşlem Tipi', 'Fiş Türü', 'Islem Tipi', 'Transaction Type', 'İşlem Türü'],
         'description'       => ['Açıklama', 'Aciklama', 'Description'],
@@ -92,7 +95,7 @@ class MarketplaceImportService
         'net_amount'        => ['Tutar', 'KDV Hariç Tutar', 'Net Tutar', 'Net Amount'],
         'vat_amount'        => ['KDV Tutarı', 'KDV', 'VAT Amount'],
         'total_amount'      => ['KDV Dahil Tutar', 'Toplam Tutar', 'Total Amount'],
-        'description'       => ['Açıklama', 'Description'],
+        'description'       => ['Açıklama', 'Description', 'Kategori'],
     ];
 
     protected array $settlementColumnAliases = [
@@ -112,12 +115,36 @@ class MarketplaceImportService
         'product_name'      => ['Ürün Adı / Açıklama', 'Ürün Adı', 'Product Name'],
     ];
 
-    public function __construct()
+    public function __construct(?int $userId = null)
     {
+        $this->userId = (int) ($userId ?? Auth::id() ?? 0);
         $this->excelService = new ExcelService();
     }
 
     protected array $_resolvedPeriods = [];
+
+    protected function resolveUserId(?MpPeriod $period = null): int
+    {
+        if ($this->userId > 0) {
+            return $this->userId;
+        }
+
+        return (int) ($period?->user_id ?? Auth::id() ?? 0);
+    }
+
+    protected function getUserPeriodIds(MpPeriod $period): Collection
+    {
+        $userId = $this->resolveUserId($period);
+
+        if ($userId > 0) {
+            $periodIds = MpPeriod::where('user_id', $userId)->pluck('id');
+            if ($periodIds->isNotEmpty()) {
+                return $periodIds;
+            }
+        }
+
+        return collect([$period->id]);
+    }
 
     protected function resolvePeriodId(?string $dateString, MpPeriod $fallbackPeriod): int
     {
@@ -141,13 +168,14 @@ class MarketplaceImportService
 
         $period = MpPeriod::firstOrCreate(
             [
-                'user_id' => $fallbackPeriod->user_id,
-                'year'    => $year,
-                'month'   => $month,
+                'user_id'     => $fallbackPeriod->user_id,
+                'seller_id'   => $fallbackPeriod->seller_id,
+                'year'        => $year,
+                'month'       => $month,
+                'marketplace' => $fallbackPeriod->marketplace ?? 'Trendyol',
             ],
             [
-                'marketplace' => $fallbackPeriod->marketplace ?? 'Trendyol',
-                'status'      => 'draft',
+                'status' => 'draft',
             ]
         );
 
@@ -165,6 +193,7 @@ class MarketplaceImportService
      */
     public function importOrders(UploadedFile $file, MpPeriod $period): array
     {
+        $this->userId = $this->resolveUserId($period);
         $stats = ['imported' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => []];
 
         try {
@@ -344,6 +373,7 @@ class MarketplaceImportService
                         // önceden barkodu NULL olan tek bir "birleşik" kayıt varsa → eski kaydı sil
                         if ($barcode) {
                             $oldMergedRecord = MpOrder::where('order_number', $orderNumber)
+                                ->where('period_id', $targetPeriodId)
                                 ->whereNull('barcode')
                                 ->first();
                             
@@ -414,7 +444,11 @@ class MarketplaceImportService
                             array_merge($data, ['barcode' => $barcode])
                         );
 
-                        $stats['imported']++;
+                        if ($existingOrder) {
+                            $stats['updated']++;
+                        } else {
+                            $stats['imported']++;
+                        }
                     } catch (\Exception $e) {
                         $stats['errors'][] = "Satır " . ($index + 2) . ": " . $e->getMessage();
                         Log::warning('MpImport order row error', ['row' => $index, 'error' => $e->getMessage()]);
@@ -442,16 +476,26 @@ class MarketplaceImportService
      */
     public function importTransactions(UploadedFile $file, MpPeriod $period): array
     {
+        $this->userId = $this->resolveUserId($period);
         $stats = ['imported' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => []];
 
         try {
             $rows = $this->readExcel($file);
             $mapped = $this->mapColumns($rows, $this->transactionColumnAliases);
+            $userPeriodIds = $this->getUserPeriodIds($period);
 
             // Mevcut kayıtları hafızaya al (N+1 sorgu hatasını önlemek için)
-            $existingMap = MpTransaction::where('period_id', $period->id)
+            $existingMap = MpTransaction::whereIn('period_id', $userPeriodIds)
                 ->get()
-                ->groupBy(fn($item) => "{$item->document_number}_{$item->order_number}_{$item->transaction_type}");
+                ->keyBy(fn($item) => $this->buildTransactionUniqueKey([
+                    'source_line_number' => $item->source_line_number,
+                    'document_number'    => $item->document_number,
+                    'order_number'       => $item->order_number,
+                    'transaction_type'   => $item->transaction_type,
+                    'transaction_date'   => $item->transaction_date?->format('Y-m-d'),
+                    'debt'               => $item->debt,
+                    'credit'             => $item->credit,
+                ]));
 
             DB::beginTransaction();
 
@@ -470,6 +514,7 @@ class MarketplaceImportService
                             'period_id'        => $targetPeriodId,
                             'transaction_date' => $date,
                             'document_number'  => mb_substr(trim($row['document_number'] ?? ''), 0, 150),
+                            'source_line_number' => mb_substr(trim($row['source_line_number'] ?? ''), 0, 150),
                             'order_number'     => mb_substr(trim($row['order_number'] ?? ''), 0, 100),
                             'transaction_type' => mb_substr(trim($row['transaction_type'] ?? ''), 0, 100),
                             'description'      => mb_substr($row['description'] ?? '', 0, 250),
@@ -479,21 +524,25 @@ class MarketplaceImportService
                         ];
 
                         // Local lookup
-                        $key = "{$data['document_number']}_{$data['order_number']}_{$data['transaction_type']}";
-                        $existing = $existingMap->get($key)?->first();
+                        $key = $this->buildTransactionUniqueKey($data);
+                        $existing = $existingMap->get($key);
 
                         if ($existing) {
                             $existing->update($data);
                             $stats['updated']++;
                         } else {
-                            MpTransaction::create($data);
+                            $existing = MpTransaction::create($data);
                             $stats['imported']++;
                         }
+
+                        $existingMap->put($key, $existing);
 
                         // Mükerrer sipariş verisi güncelleme - Barkod eksikse Cari'den tamamla ve kârlılık (COGS) yeniden hesapla
                         if (!empty($row['barcode']) && !empty($data['order_number'])) {
                             $barcode = mb_substr(trim($row['barcode']), 0, 100);
-                            $order = MpOrder::where('order_number', $data['order_number'])->first();
+                            $order = MpOrder::where('order_number', $data['order_number'])
+                                ->whereIn('period_id', $userPeriodIds)
+                                ->first();
                             if ($order && empty($order->barcode)) {
                                 $order->barcode = $barcode;
                                 
@@ -514,7 +563,9 @@ class MarketplaceImportService
 
                                 // Ürün adını ve stok kodunu da mp_products'tan doldur
                                 if (empty($order->product_name) || empty($order->stock_code)) {
-                                    $matchedProduct = MpProduct::where('barcode', $barcode)->first();
+                                    $matchedProduct = MpProduct::where('user_id', $this->resolveUserId($period))
+                                        ->where('barcode', $barcode)
+                                        ->first();
                                     if ($matchedProduct) {
                                         if (empty($order->product_name) && $matchedProduct->product_name) {
                                             $order->product_name = $matchedProduct->product_name;
@@ -548,33 +599,37 @@ class MarketplaceImportService
      */
     public function importWithholdingTax(UploadedFile $file, MpPeriod $period): array
     {
+        $this->userId = $this->resolveUserId($period);
         $stats = ['matched' => 0, 'unmatched' => 0, 'errors' => []];
 
         try {
             $rows = $this->readExcel($file);
             $mapped = $this->mapColumns($rows, $this->stopajColumnAliases);
+            $totalsByOrderNumber = [];
 
             foreach ($mapped as $index => $row) {
                 try {
                     $orderNumber = trim($row['order_number'] ?? '');
                     $stopaj = abs($this->parseNumber($row['withholding_tax'] ?? 0));
 
-                    if (empty($orderNumber) || $stopaj <= 0) continue;
-
-                    // ÖNEMLİ: period_id kısıtlamasını kaldırıyoruz. Çünkü Ocak ayında satılan 
-                    // siparişin stopajı Şubat ayında kesilip Şubat raporuna yansıyabilir.
-                    $updated = MpOrder::where('order_number', $orderNumber)
-                        ->update(['withholding_tax' => $stopaj]);
-
-                    if ($updated > 0) {
-                        $stats['matched']++;
-                    } else {
-                        $stats['unmatched']++;
+                    if (empty($orderNumber) || $stopaj <= 0) {
+                        continue;
                     }
+
+                    $totalsByOrderNumber[$orderNumber] = ($totalsByOrderNumber[$orderNumber] ?? 0) + $stopaj;
                 } catch (\Exception $e) {
                     $stats['errors'][] = "Satır " . ($index + 2) . ": " . $e->getMessage();
                 }
             }
+
+            $distributionStats = $this->distributeOrderLevelAmount(
+                $totalsByOrderNumber,
+                $period,
+                'withholding_tax'
+            );
+
+            $stats['matched'] = $distributionStats['matched'];
+            $stats['unmatched'] = $distributionStats['unmatched'];
         } catch (\Exception $e) {
             throw $e;
         }
@@ -587,6 +642,7 @@ class MarketplaceImportService
      */
     public function importInvoices(UploadedFile $file, MpPeriod $period): array
     {
+        $this->userId = $this->resolveUserId($period);
         $stats = ['imported' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => []];
 
         try {
@@ -605,21 +661,42 @@ class MarketplaceImportService
 
                     $invoiceType = mb_substr($row['invoice_type'] ?? 'Diğer', 0, 100);
 
-                    $netAmount = abs($this->parseNumber($row['net_amount'] ?? 0));
-                    $vatAmount = abs($this->parseNumber($row['vat_amount'] ?? 0));
-                    $totalAmount = abs($this->parseNumber($row['total_amount'] ?? 0));
+                    $netAmount = $this->parseNumber($row['net_amount'] ?? null);
+                    $vatAmount = $this->parseNumber($row['vat_amount'] ?? null);
+                    $totalAmount = $this->parseNumber($row['total_amount'] ?? null);
 
-                    // Eğer faturada "iade" kelimesi geçiyorsa bu bir gider iadesidir (satıcıya artı yazar)
-                    if (str_contains(mb_strtolower($invoiceType), 'iade') || str_contains(mb_strtolower($invoiceType), 'return')) {
-                        $netAmount = -$netAmount;
-                        $vatAmount = -$vatAmount;
-                        $totalAmount = -$totalAmount;
+                    $hasVatBreakdown = $vatAmount !== null || $totalAmount !== null;
+                    $isRefundInvoice = str_contains(mb_strtolower($invoiceType), 'iade')
+                        || str_contains(mb_strtolower($invoiceType), 'return');
+
+                    if (!$hasVatBreakdown) {
+                        $netAmount = $netAmount ?? 0.0;
+                        if ($isRefundInvoice && $netAmount > 0) {
+                            $netAmount *= -1;
+                        }
+                        $vatAmount = 0.0;
+                        $vatRate = 0.0;
+                        $totalAmount = $netAmount;
+                    } else {
+                        $netAmount = $netAmount ?? 0.0;
+                        $vatAmount = $vatAmount ?? 0.0;
+
+                        if ($isRefundInvoice && $netAmount >= 0 && $vatAmount >= 0 && ($totalAmount === null || $totalAmount >= 0)) {
+                            $netAmount *= -1;
+                            $vatAmount *= -1;
+                            if ($totalAmount !== null) {
+                                $totalAmount *= -1;
+                            }
+                        }
+
+                        if ($totalAmount === null) {
+                            $totalAmount = $netAmount + $vatAmount;
+                        }
+
+                        $vatRate = (abs($netAmount) > 0 && abs($vatAmount) > 0)
+                            ? round((abs($vatAmount) / abs($netAmount)) * 100, 0)
+                            : 0.0;
                     }
-
-                    // KDV oranını hesapla
-                    $vatRate = (abs($netAmount) > 0 && abs($vatAmount) > 0)
-                        ? round((abs($vatAmount) / abs($netAmount)) * 100, 0)
-                        : 20;
 
                     $parsedInvoiceDate = $this->parseDate($row['invoice_date'] ?? null);
                     $targetPeriodId = $this->resolvePeriodId($parsedInvoiceDate, $period);
@@ -632,7 +709,7 @@ class MarketplaceImportService
                         'net_amount'     => $netAmount,
                         'vat_amount'     => $vatAmount,
                         'vat_rate'       => $vatRate,
-                        'total_amount'   => $totalAmount ?: ($netAmount + $vatAmount),
+                        'total_amount'   => $totalAmount,
                         'description'    => mb_substr($row['description'] ?? '', 0, 250),
                     ];
 
@@ -666,6 +743,7 @@ class MarketplaceImportService
      */
     public function importSettlements(UploadedFile $file, MpPeriod $period): array
     {
+        $this->userId = $this->resolveUserId($period);
         $stats = ['imported' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => []];
 
         try {
@@ -675,18 +753,24 @@ class MarketplaceImportService
             DB::beginTransaction();
 
             // Self-Healing: Önceki hatalı import'tan kalan order_number'sız yetim kayıtları temizle
-            $orphanedCount = MpSettlement::whereNull('order_number')->orWhere('order_number', '')->count();
+            $authUserId = $this->resolveUserId($period);
+            $userPeriodIds = $this->getUserPeriodIds($period);
+
+            $orphanedCount = MpSettlement::where('user_id', $authUserId)
+                ->where(function ($query) {
+                    $query->whereNull('order_number')->orWhere('order_number', '');
+                })
+                ->count();
             if ($orphanedCount > 0) {
-                MpSettlement::whereNull('order_number')->orWhere('order_number', '')->delete();
+                MpSettlement::where('user_id', $authUserId)
+                    ->where(function ($query) {
+                        $query->whereNull('order_number')->orWhere('order_number', '');
+                    })
+                    ->delete();
                 Log::info("Settlement Import: {$orphanedCount} orphaned settlement records (NULL order_number) cleaned up.");
             }
 
-            // Kullanıcının ID'si (chunk dışında bir kez alalım)
-            $authUserId = \Illuminate\Support\Facades\Auth::id() ?? 1;
-            $userPeriodIds = MpPeriod::where('user_id', $authUserId)->pluck('id');
-            if ($userPeriodIds->isEmpty()) {
-                $userPeriodIds = collect([$period->id]);
-            }
+            $settlementStopajTotals = [];
 
             foreach ($mapped->chunk(1000) as $chunk) {
                 // N+1 sorgu hatasını ve mükerrer kayıt ezilmesini önlemek için mevcut kayıtları önbelleğe al
@@ -854,9 +938,8 @@ class MarketplaceImportService
                             }
 
                             $stopaj = $this->parseNumber($row['stopaj'] ?? 0);
-                            // Trendyol stopajı eksi yazar, biz pozitif (veya AuditEngine'e uygun) tutalım
-                            if ($stopaj != 0 && $order->withholding_tax == 0) {
-                                $updates['withholding_tax'] = abs($stopaj);
+                            if ($stopaj != 0) {
+                                $settlementStopajTotals[$orderNumber] = ($settlementStopajTotals[$orderNumber] ?? 0) + abs($stopaj);
                             }
 
                             if (!empty($settlementBarcode) && (empty($order->stock_code) || empty($order->product_name))) {
@@ -886,6 +969,14 @@ class MarketplaceImportService
                         Log::error('Settlement Import Error: ', ['error' => $e->getMessage(), 'row' => $row]);
                     }
                 }
+            }
+
+            if (!empty($settlementStopajTotals)) {
+                $this->distributeOrderLevelAmount(
+                    $settlementStopajTotals,
+                    $period,
+                    'withholding_tax'
+                );
             }
 
             DB::commit();
@@ -1015,6 +1106,97 @@ class MarketplaceImportService
         });
     }
 
+    protected function buildTransactionUniqueKey(array $data): string
+    {
+        $sourceLineNumber = trim((string) ($data['source_line_number'] ?? ''));
+        if ($sourceLineNumber !== '') {
+            return "line:{$sourceLineNumber}";
+        }
+
+        $documentNumber = trim((string) ($data['document_number'] ?? ''));
+        $orderNumber = trim((string) ($data['order_number'] ?? ''));
+        $type = mb_strtolower(trim((string) ($data['transaction_type'] ?? '')));
+        $date = trim((string) ($data['transaction_date'] ?? ''));
+        $normalizedDate = $date;
+        if ($date !== '') {
+            try {
+                $normalizedDate = Carbon::parse($date)->format('Y-m-d');
+            } catch (\Exception $e) {
+                $normalizedDate = $date;
+            }
+        }
+        $debt = number_format((float) ($data['debt'] ?? 0), 2, '.', '');
+        $credit = number_format((float) ($data['credit'] ?? 0), 2, '.', '');
+
+        return implode('|', [$documentNumber, $orderNumber, $type, $normalizedDate, $debt, $credit]);
+    }
+
+    protected function distributeOrderLevelAmount(array $totalsByOrderNumber, MpPeriod $period, string $column): array
+    {
+        $stats = ['matched' => 0, 'unmatched' => 0];
+
+        if (empty($totalsByOrderNumber)) {
+            return $stats;
+        }
+
+        $orderNumbers = array_keys($totalsByOrderNumber);
+        $ordersByNumber = MpOrder::whereIn('period_id', $this->getUserPeriodIds($period))
+            ->whereIn('order_number', $orderNumbers)
+            ->orderBy('id')
+            ->get()
+            ->groupBy('order_number');
+
+        foreach ($totalsByOrderNumber as $orderNumber => $totalAmount) {
+            $orders = $ordersByNumber->get($orderNumber);
+            if (!$orders || $orders->isEmpty()) {
+                $stats['unmatched']++;
+                continue;
+            }
+
+            $distributedAmounts = $this->allocateAmountAcrossOrders($orders, (float) $totalAmount);
+
+            foreach ($orders->values() as $index => $order) {
+                $order->{$column} = $distributedAmounts[$index] ?? 0;
+                $order->save();
+            }
+
+            $stats['matched']++;
+        }
+
+        return $stats;
+    }
+
+    protected function allocateAmountAcrossOrders(Collection $orders, float $totalAmount): array
+    {
+        $weights = $orders->map(fn($order) => max((float) $order->gross_amount, 0.0))->all();
+
+        if (array_sum($weights) <= 0) {
+            $weights = $orders->map(fn($order) => max((int) $order->quantity, 1))->all();
+        }
+
+        if (array_sum($weights) <= 0) {
+            $weights = array_fill(0, $orders->count(), 1);
+        }
+
+        $distributed = [];
+        $allocated = 0.0;
+        $weightSum = array_sum($weights);
+        $lastIndex = count($weights) - 1;
+
+        foreach ($weights as $index => $weight) {
+            if ($index === $lastIndex) {
+                $distributed[$index] = round($totalAmount - $allocated, 2);
+                continue;
+            }
+
+            $amount = round($totalAmount * ($weight / $weightSum), 2);
+            $distributed[$index] = $amount;
+            $allocated += $amount;
+        }
+
+        return $distributed;
+    }
+
     /**
      * Türkçe formatındaki sayıyı parse et
      * "1.049,90" → 1049.90
@@ -1140,8 +1322,7 @@ class MarketplaceImportService
         }
 
         if (!empty($barcode)) {
-            $userId = \Illuminate\Support\Facades\Auth::id() ?? 1;
-            $product = \App\Models\MpProduct::where('user_id', $userId)
+            $product = \App\Models\MpProduct::where('user_id', $this->userId)
                 ->where('barcode', $barcode)
                 ->first();
                 
@@ -1165,11 +1346,9 @@ class MarketplaceImportService
             return $name;
         }
 
-        $userId = \Illuminate\Support\Facades\Auth::id() ?? 1;
-
         // Barkod üzerinden ara
         if (!empty($barcode)) {
-            $product = \App\Models\MpProduct::where('user_id', $userId)
+            $product = \App\Models\MpProduct::where('user_id', $this->userId)
                 ->where('barcode', $barcode)
                 ->first();
                 
@@ -1180,7 +1359,7 @@ class MarketplaceImportService
 
         // Stok kodu üzerinden ara
         if (!empty($stockCode)) {
-            $product = \App\Models\MpProduct::where('user_id', $userId)
+            $product = \App\Models\MpProduct::where('user_id', $this->userId)
                 ->where('stock_code', $stockCode)
                 ->first();
                 
@@ -1199,18 +1378,17 @@ class MarketplaceImportService
     protected function lookupProductCost(?string $stockCode, ?string $barcode): array
     {
         $cost = null;
-        $userId = \Illuminate\Support\Facades\Auth::id() ?? 1;
 
         // 1. Barcode ile eşleştirme
         if ($barcode) {
-            $cost = \App\Models\MpProduct::where('user_id', $userId)
+            $cost = \App\Models\MpProduct::where('user_id', $this->userId)
                         ->where('barcode', $barcode)
                         ->first();
         }
 
         // 2. Barcode bulunamadıysa stock_code ile dene
         if (!$cost && $stockCode) {
-            $cost = \App\Models\MpProduct::where('user_id', $userId)
+            $cost = \App\Models\MpProduct::where('user_id', $this->userId)
                         ->where('stock_code', $stockCode)
                         ->first();
         }

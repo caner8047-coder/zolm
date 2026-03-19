@@ -63,8 +63,14 @@
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Profil Türü *</label>
-                <div class="grid grid-cols-2 gap-4">
-                    <div wire:click="$set('type', 'production')" class="relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
+                @if($lockType)
+                <div class="p-4 border border-indigo-300 bg-indigo-50 rounded-lg">
+                    <div class="font-medium text-indigo-900">Özel Motor</div>
+                    <div class="text-sm text-indigo-700 mt-1">Bu sihirbaz yalnızca Özel Motor profili üretir.</div>
+                </div>
+                @else
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div wire:click="selectType('production')" class="relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
                         {{ $type === 'production' ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400' }}">
                         <div class="flex items-center">
                             <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
@@ -77,16 +83,9 @@
                                 <div class="text-sm text-gray-500">Üretim raporları için</div>
                             </div>
                         </div>
-                        @if($type === 'production')
-                            <div class="absolute top-2 right-2 w-5 h-5 bg-gray-900 rounded-full flex items-center justify-center">
-                                <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                                </svg>
-                            </div>
-                        @endif
                     </div>
 
-                    <div wire:click="$set('type', 'operation')" class="relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
+                    <div wire:click="selectType('operation')" class="relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
                         {{ $type === 'operation' ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400' }}">
                         <div class="flex items-center">
                             <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mr-3">
@@ -99,15 +98,24 @@
                                 <div class="text-sm text-gray-500">Operasyon raporları için</div>
                             </div>
                         </div>
-                        @if($type === 'operation')
-                            <div class="absolute top-2 right-2 w-5 h-5 bg-gray-900 rounded-full flex items-center justify-center">
-                                <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </div>
+
+                    <div wire:click="selectType('custom')" class="relative flex items-center p-4 border rounded-lg cursor-pointer transition-colors
+                        {{ $type === 'custom' ? 'border-indigo-700 bg-indigo-50' : 'border-gray-300 hover:border-indigo-400' }}">
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center mr-3">
+                                <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                                 </svg>
                             </div>
-                        @endif
+                            <div>
+                                <div class="font-medium text-gray-900">Özel Motor</div>
+                                <div class="text-sm text-gray-500">Kişisel dönüşüm profili</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
+                @endif
             </div>
 
             <div>
@@ -526,7 +534,7 @@
         </button>
 
         <div class="flex space-x-3">
-            <a href="{{ route('profiles') }}" class="px-6 py-3 text-gray-600 hover:text-gray-900">
+            <a href="{{ route($returnRoute) }}" class="px-6 py-3 text-gray-600 hover:text-gray-900">
                 İptal
             </a>
 

@@ -56,6 +56,11 @@ class Profile extends Model
         return $this->type === 'operation';
     }
 
+    public function isCustom(): bool
+    {
+        return $this->type === 'custom';
+    }
+
     // === AI Durum Kontrolleri ===
 
     public function isAiGenerated(): bool
@@ -116,6 +121,11 @@ class Profile extends Model
     public function scopeOperation($query)
     {
         return $query->where('type', 'operation');
+    }
+
+    public function scopeCustom($query)
+    {
+        return $query->where('type', 'custom');
     }
 
     public function scopeDefault($query)

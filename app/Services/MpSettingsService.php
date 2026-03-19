@@ -52,6 +52,24 @@ class MpSettingsService
     }
 
     /**
+     * Bool olarak oku
+     */
+    public function getBool(string $key, bool $default = false): bool
+    {
+        return (bool) $this->get($key, $default);
+    }
+
+    /**
+     * Array olarak oku
+     */
+    public function getArray(string $key, array $default = []): array
+    {
+        $value = $this->get($key, $default);
+
+        return is_array($value) ? $value : $default;
+    }
+
+    /**
      * Tüm ayarları döndür (merge with defaults)
      */
     public function all(): array
@@ -225,6 +243,16 @@ class MpSettingsService
         return (string) $this->get('general.marketplace', 'Trendyol');
     }
 
+    public function getDisabledAuditRules(): array
+    {
+        return $this->getArray('audit_rules.disabled', []);
+    }
+
+    public function shouldLogInfoRules(): bool
+    {
+        return $this->getBool('audit_behavior.log_info_rules', false);
+    }
+
     // ─── Audit Tolerans Kısa Yolları ────────────────────────────
 
     public function getAuditTolerance(string $key): float
@@ -296,6 +324,31 @@ class MpSettingsService
                 'operational_penalty_critical_threshold' => 500.00,
                 'multiple_cart_factor'                  => 1.50,
                 'multiple_cart_desi_tolerance'          => 10.00,
+                'missing_payment_critical_threshold'    => 10.00,
+                'price_drop_percentage'                 => 15.00,
+                'price_drop_min_orders'                 => 3,
+                'commission_rate_change_threshold'      => 1.00,
+                'commission_rate_change_min_orders'     => 3,
+                'service_fee_increase_threshold'        => 0.50,
+                'service_fee_increase_min_orders'       => 20,
+                'high_return_rate_threshold'            => 15.00,
+                'high_return_rate_min_quantity'         => 5,
+                'high_cancellation_rate_threshold'      => 10.00,
+                'high_cancellation_rate_min_orders'     => 5,
+                'cargo_over_cost_ratio'                 => 0.50,
+                'extreme_margin_positive_threshold'     => 100.00,
+                'extreme_margin_negative_threshold'     => -100.00,
+                'negative_hakedis_threshold'            => 0.00,
+                'campaign_loss_min_total_loss'          => 0.00,
+                'campaign_loss_min_order_count'         => 1,
+            ],
+            'audit_rules' => [
+                'disabled' => [],
+            ],
+            'audit_behavior' => [
+                'log_info_rules'                         => false,
+                'transaction_check_commission_enabled'   => true,
+                'transaction_check_cargo_enabled'        => true,
             ],
             'reconciliation' => [
                 'commission_match_tolerance' => 15.00,
@@ -319,6 +372,12 @@ class MpSettingsService
                 'tax_office' => '',
                 'phone'      => '',
                 'email'      => '',
+                'address'    => '',
+                'iban'       => '',
+                'bank'       => '',
+                'branch'     => '',
+                'manager'    => '',
+                'mersis'     => '',
             ],
             'profitability' => [
                 'target_margin'          => 15.00,

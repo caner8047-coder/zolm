@@ -50,7 +50,17 @@ class TariffOptimizer extends Component
     // AI Price Suggestions
     public array $suggestedPrices = []; // [itemId => ['price' => 100, 'reason' => '...']]
 
-
+    public function mount()
+    {
+        if (request()->has('report')) {
+            $reportId = (int) request()->query('report');
+            if ($reportId > 0) {
+                $this->viewReport($reportId);
+                // Also set activeTab to history for a better UI flow conceptually, 
+                // but viewReport forces it to 'analyze' to show results. We will leave viewReport's default behavior.
+            }
+        }
+    }
 
     /**
      * MpProduct'ta maliyeti tanımlı ürün sayısı
@@ -77,7 +87,10 @@ class TariffOptimizer extends Component
     public function activeReport(): ?OptimizationReport
     {
         if (!$this->activeReportId) return null;
-        return OptimizationReport::with('items')->find($this->activeReportId);
+        return OptimizationReport::with('items')
+            ->where('user_id', auth()->id())
+            ->where('campaign_type', 'tariff')
+            ->find($this->activeReportId);
     }
 
     /**
@@ -87,12 +100,13 @@ class TariffOptimizer extends Component
     public function reports()
     {
         return OptimizationReport::where('user_id', auth()->id())
+            ->where('campaign_type', 'tariff')
             ->orderByDesc('created_at')
             ->get();
     }
 
     #[Computed]
-    public function currentConversation()
+    public function chatConversation()
     {
         if (!$this->chatConversationId) return null;
         return AIConversation::find($this->chatConversationId);
@@ -259,7 +273,9 @@ class TariffOptimizer extends Component
 
     public function deleteReport(int $reportId)
     {
-        $report = OptimizationReport::where('user_id', auth()->id())->find($reportId);
+        $report = OptimizationReport::where('user_id', auth()->id())
+            ->where('campaign_type', 'product_commission')
+            ->find($reportId);
         if ($report) {
             $report->delete();
             $this->message = 'Rapor silindi.';

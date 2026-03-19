@@ -34,6 +34,16 @@ class FlashProducts extends Component
     public string $chatMessage = '';
     public bool $isChatting = false;
 
+    public function mount()
+    {
+        if (request()->has('report')) {
+            $reportId = (int) request()->query('report');
+            if ($reportId > 0) {
+                $this->viewReport($reportId);
+            }
+        }
+    }
+
     #[Computed]
     public function productCount(): int
     {
@@ -199,7 +209,9 @@ class FlashProducts extends Component
 
     public function deleteReport(int $reportId)
     {
-        $report = OptimizationReport::where('user_id', auth()->id())->find($reportId);
+        $report = OptimizationReport::where('user_id', auth()->id())
+            ->ofType('flash')
+            ->find($reportId);
         if ($report) {
             $report->items()->delete();
             $report->delete();

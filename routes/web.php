@@ -8,6 +8,7 @@ use App\Livewire\ProductionMotor;
 use App\Livewire\OperationMotor;
 use App\Livewire\ProfileManager;
 use App\Livewire\ProfileWizard;
+use App\Livewire\ProductionRevenue;
 use App\Livewire\ReportHistory;
 use Illuminate\Support\Facades\Route;
 
@@ -41,6 +42,11 @@ Route::middleware('auth')->group(function () {
         ->name('operation')
         ->middleware('can:accessOperation');
 
+    // Production Revenue
+    Route::get('/factory/production-revenue', ProductionRevenue::class)
+        ->name('factory.production-revenue')
+        ->middleware('can:accessProduction');
+
     // Custom Motor
     Route::get('/custom-motors', CustomMotor::class)
         ->name('custom-motors')
@@ -60,6 +66,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/cargo-reports', \App\Livewire\CargoReports::class)->name('cargo-reports');
     Route::get('/supply-reports', \App\Livewire\SupplyReports::class)->name('supply-reports');
     // Trendyol Kampanya Modülleri
+    Route::get('/campaigns', \App\Livewire\CampaignReports::class)->name('campaigns.index');
     Route::prefix('campaigns')->group(function () {
         Route::get('/product-commission', \App\Livewire\TariffOptimizer::class)->name('campaigns.product-commission');
         Route::get('/plus-commission', \App\Livewire\PlusCommission::class)->name('campaigns.plus-commission');

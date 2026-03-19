@@ -23,7 +23,11 @@ class ProductionMotor extends Component
 
     public function mount()
     {
-        $this->selectedProfileId = Profile::where('type', 'production')
+        $userId = auth()->id();
+
+        $this->selectedProfileId = Profile::query()
+            ->where('user_id', $userId)
+            ->where('type', 'production')
             ->where('is_default', true)
             ->first()?->id;
     }
@@ -38,8 +42,18 @@ class ProductionMotor extends Component
         $this->message = '';
         $this->generatedFiles = [];
 
-        $profile = Profile::find($this->selectedProfileId) 
-            ?? Profile::where('type', 'production')->where('is_default', true)->first();
+        $userId = auth()->id();
+
+        $profile = Profile::query()
+            ->where('user_id', $userId)
+            ->where('type', 'production')
+            ->whereKey($this->selectedProfileId)
+            ->first()
+            ?? Profile::query()
+                ->where('user_id', $userId)
+                ->where('type', 'production')
+                ->where('is_default', true)
+                ->first();
 
         if (!$profile) {
             $this->message = 'Üretim profili bulunamadı!';
@@ -107,7 +121,9 @@ class ProductionMotor extends Component
 
     public function getProfilesProperty()
     {
-        return Profile::where('type', 'production')
+        return Profile::query()
+            ->where('user_id', auth()->id())
+            ->where('type', 'production')
             ->where(function ($q) {
                 $q->where('status', 'ready')->orWhereNull('status');
             })
@@ -118,7 +134,10 @@ class ProductionMotor extends Component
 
     public function getSelectedProfileProperty()
     {
-        return Profile::find($this->selectedProfileId);
+        return Profile::query()
+            ->where('user_id', auth()->id())
+            ->whereKey($this->selectedProfileId)
+            ->first();
     }
 
     public function render()

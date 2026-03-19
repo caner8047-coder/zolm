@@ -25,10 +25,10 @@ class PlusCommissionService
         'model_code'         => ['Model Kodu', 'MODEL KODU'],
         'category'           => ['Kategori', 'KATEGORİ'],
         'brand'              => ['Marka', 'MARKA'],
-        'current_tsf'        => ['Güncel TSF', 'GÜNCEL TSF', 'Trendyol Satış Fiyatı', 'TRENDYOL SATIŞ FİYATI', 'Komisyona Esas Fiyat'],
-        'current_commission' => ['Güncel Komisyon', 'GÜNCEL KOMİSYON', 'Mevcut Komisyon Oranı', 'MEVCUT KOMİSYON ORANI', 'Mevcut Komisyon'],
-        'plus_price_limit'   => ['Plus Fiyat Üst Limiti', 'PLUS FİYAT ÜST LİMİTİ', 'Plus Fiyat Limit', 'PLUS FİYAT LİMİT'],
-        'plus_commission'    => ['Plus Komisyon Teklifi', 'PLUS KOMİSYON TEKLİFİ', 'Plus Komisyon Oranı', 'PLUS KOMİSYON ORANI'],
+        'current_tsf'        => ['Güncel TSF', 'GÜNCEL TSF', 'Trendyol Satış Fiyatı', 'TRENDYOL SATIŞ FİYATI', 'Komisyona Esas Fiyat', 'Mevcut Fiyat', 'MEVCUT FİYAT'],
+        'current_commission' => ['Güncel Komisyon', 'GÜNCEL KOMİSYON', 'Mevcut Komisyon Oranı', 'MEVCUT KOMİSYON ORANI', 'Mevcut Komisyon', 'MEVCUT KOMİSYON', 'Komisyon'],
+        'plus_price_limit'   => ['Plus Fiyat Üst Limiti', 'PLUS FİYAT ÜST LİMİTİ', 'Plus Fiyat Limit', 'PLUS FİYAT LİMİT', 'Plus Fiyat', 'Güncellenecek Fiyat'],
+        'plus_commission'    => ['Plus Komisyon Teklifi', 'PLUS KOMİSYON TEKLİFİ', 'Plus Komisyon Oranı', 'PLUS KOMİSYON ORANI', 'Plus Komisyon'],
         'customer_price'     => ['Müşterinin Gördüğü Fiyat', 'MÜŞTERİNİN GÖRDÜĞÜ FİYAT'],
     ];
 

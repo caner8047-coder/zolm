@@ -5,9 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class MpOrder extends Model
 {
+    protected ?array $operationalSnapshotCache = null;
+    protected ?array $rawSnapshotCache = null;
+    protected bool $resolvedProductCacheLoaded = false;
+    protected ?MpProduct $resolvedProductCache = null;
+
     protected $fillable = [
         'period_id', 'order_number', 'barcode', 'stock_code',
         'product_name', 'quantity',
@@ -58,6 +64,16 @@ class MpOrder extends Model
         return $this->belongsTo(MpPeriod::class, 'period_id');
     }
 
+    public function operationalOrder(): BelongsTo
+    {
+        return $this->belongsTo(MpOperationalOrder::class, 'order_number', 'order_number');
+    }
+
+    public function operationalItems(): HasMany
+    {
+        return $this->hasMany(MpOperationalOrderItem::class, 'order_number', 'order_number');
+    }
+
     public function auditLogs(): HasMany
     {
         return $this->hasMany(MpAuditLog::class, 'order_id');
@@ -68,8 +84,18 @@ class MpOrder extends Model
      */
     public function transactions()
     {
-        return MpTransaction::where('order_number', $this->order_number)
-            ->where('period_id', $this->period_id);
+        $query = MpTransaction::where(function ($transactionQuery) {
+            $transactionQuery
+                ->where('order_number', $this->order_number)
+                ->orWhere('description', 'like', '%' . $this->order_number . '%');
+        });
+        $userId = $this->resolveOwnerUserId();
+
+        if ($userId) {
+            return $query->whereHas('period', fn($periodQuery) => $periodQuery->where('user_id', $userId));
+        }
+
+        return $query->where('period_id', $this->period_id);
     }
 
     /**
@@ -77,8 +103,10 @@ class MpOrder extends Model
      */
     public function product()
     {
-        // mp_orders tablosunda user_id alanı olmadığı için burada user filtresi uygulanamaz.
-        return $this->belongsTo(MpProduct::class, 'barcode', 'barcode');
+        $relation = $this->belongsTo(MpProduct::class, 'barcode', 'barcode');
+        $userId = $this->resolveOwnerUserId();
+
+        return $userId ? $relation->where('user_id', $userId) : $relation;
     }
 
     /**
@@ -86,7 +114,15 @@ class MpOrder extends Model
      */
     public function settlement()
     {
-        return $this->hasOne(MpSettlement::class, 'order_id');
+        return $this->hasOne(MpSettlement::class, 'order_id')->latestOfMany('id');
+    }
+
+    /**
+     * Siparişe ait tüm ödeme detay satırları
+     */
+    public function settlements(): HasMany
+    {
+        return $this->hasMany(MpSettlement::class, 'order_id');
     }
 
     // ─── Scopes ─────────────────────────────────────────────────
@@ -163,7 +199,8 @@ class MpOrder extends Model
      */
     public function getVatBalanceAttribute(): float
     {
-        $svc = new \App\Services\MpSettingsService();
+        $userId = $this->resolveOwnerUserId();
+        $svc = new \App\Services\MpSettingsService($userId);
 
         if (in_array($this->status, ['İptal Edildi', 'İade Edildi'])) {
             // İptal/İade durumunda satış gerçekleşmediği için e-Arşiv fatura iptal edilir.
@@ -172,11 +209,8 @@ class MpOrder extends Model
         } else {
             $defaultVatRate = $svc->getDefaultProductVatRate();
             $vatRate = $defaultVatRate;
-            if ($this->barcode) {
-                $matchedProduct = \App\Models\MpProduct::where('barcode', $this->barcode)->first();
-                if ($matchedProduct && $matchedProduct->vat_rate !== null) {
-                    $vatRate = (float) $matchedProduct->vat_rate / 100;
-                }
+            if ($this->resolved_product_vat_rate !== null && (float) $this->resolved_product_vat_rate > 0) {
+                $vatRate = (float) $this->resolved_product_vat_rate / 100;
             }
             $salesVat = (float) $this->gross_amount * $vatRate / (1 + $vatRate);
         }
@@ -205,12 +239,12 @@ class MpOrder extends Model
         }
 
         $hakedis  = (float) $this->net_hakedis;
-        $cogs     = (float) ($this->cogs_at_time ?? 0);
-        $packing  = (float) ($this->packaging_cost_at_time ?? 0);
-        $ownCargo = (float) ($this->own_cargo_cost_at_time ?? 0);
+        $cogs     = (float) $this->resolved_cogs_at_time;
+        $packing  = (float) $this->resolved_packaging_cost_at_time;
         
         // KDV hesaplama açık mı kontrol et
-        $svc = new \App\Services\MpSettingsService();
+        $svc = new \App\Services\MpSettingsService($this->resolveOwnerUserId());
+        $ownCargo = $svc->usesOwnCargo() ? (float) $this->resolved_own_cargo_cost_at_time : 0.0;
         $vatDeduction = 0;
         if ($svc->isKdvEnabled()) {
             $vatDeduction = $this->vat_balance; // KDV bakiyesi borç mu alacak mı?
@@ -240,7 +274,7 @@ class MpOrder extends Model
         $sunkCost = (float) $this->cargo_amount;
 
         // Dönüş kargo — Cari Ekstre'den aranır
-        $returnCargo = MpTransaction::where('order_number', $this->order_number)
+        $returnCargo = $this->transactions()
             ->where('transaction_type', 'like', '%İade Kargo%')
             ->sum('debt');
 
@@ -260,6 +294,178 @@ class MpOrder extends Model
             default         => 'blue',
         };
     }
+
+    public function getResolvedBarcodeAttribute(): ?string
+    {
+        if (filled($this->barcode)) {
+            return $this->barcode;
+        }
+
+        $rawBarcode = $this->resolveRawSnapshot()['barcode'] ?? null;
+        if (filled($rawBarcode)) {
+            return $rawBarcode;
+        }
+
+        $snapshotBarcode = $this->resolveOperationalSnapshot()['barcode'] ?? null;
+        if (filled($snapshotBarcode)) {
+            return $snapshotBarcode;
+        }
+
+        return $this->resolveMatchedProduct()?->barcode;
+    }
+
+    public function getResolvedStockCodeAttribute(): ?string
+    {
+        if (filled($this->stock_code)) {
+            return $this->stock_code;
+        }
+
+        $rawStockCode = $this->resolveRawSnapshot()['stock_code'] ?? null;
+        if (filled($rawStockCode)) {
+            return $rawStockCode;
+        }
+
+        $snapshotStockCode = $this->resolveOperationalSnapshot()['stock_code'] ?? null;
+        if (filled($snapshotStockCode)) {
+            return $snapshotStockCode;
+        }
+
+        return $this->resolveMatchedProduct()?->stock_code;
+    }
+
+    public function getResolvedProductNameAttribute(): ?string
+    {
+        if (filled($this->product_name)) {
+            return $this->product_name;
+        }
+
+        $rawProductName = $this->resolveRawSnapshot()['product_name'] ?? null;
+        if (filled($rawProductName)) {
+            return $rawProductName;
+        }
+
+        $snapshotProductName = $this->resolveOperationalSnapshot()['product_name'] ?? null;
+        if (filled($snapshotProductName)) {
+            return $snapshotProductName;
+        }
+
+        return $this->resolveMatchedProduct()?->product_name;
+    }
+
+    public function getResolvedQuantityAttribute(): int
+    {
+        if ((int) $this->quantity > 0) {
+            return (int) $this->quantity;
+        }
+
+        $rawQuantity = (int) ($this->resolveRawSnapshot()['quantity'] ?? 0);
+        if ($rawQuantity > 0) {
+            return $rawQuantity;
+        }
+
+        return max(1, (int) ($this->resolveOperationalSnapshot()['quantity'] ?? 1));
+    }
+
+    public function getResolvedDeliveryDateAttribute()
+    {
+        return $this->delivery_date
+            ?? ($this->resolveRawSnapshot()['delivery_date'] ?? null)
+            ?? ($this->resolveOperationalSnapshot()['delivery_date'] ?? null);
+    }
+
+    public function getResolvedProductVatRateAttribute(): ?float
+    {
+        if ($this->product_vat_rate !== null && (float) $this->product_vat_rate > 0) {
+            return (float) $this->product_vat_rate;
+        }
+
+        return $this->resolveMatchedProduct()?->vat_rate;
+    }
+
+    public function getResolvedOperationalCommissionRateAttribute(): ?float
+    {
+        $rate = $this->resolveOperationalSnapshot()['item']?->commission_rate ?? null;
+
+        return ($rate !== null && (float) $rate > 0) ? (float) $rate : null;
+    }
+
+    public function getResolvedSettlementCommissionRateAttribute(): ?float
+    {
+        $rates = $this->resolveSettlementCollection()
+            ->map(fn(MpSettlement $settlement) => (float) ($settlement->commission_rate ?? 0))
+            ->filter(fn(float $rate) => $rate > 0)
+            ->values();
+
+        if ($rates->isEmpty()) {
+            return null;
+        }
+
+        return round((float) $rates->avg(), 2);
+    }
+
+    public function getResolvedCogsAtTimeAttribute(): float
+    {
+        if ((float) ($this->cogs_at_time ?? 0) > 0) {
+            return (float) $this->cogs_at_time;
+        }
+
+        $product = $this->resolveMatchedProduct();
+        if (!$product) {
+            return 0.0;
+        }
+
+        return round((float) ($product->cogs ?? 0) * $this->resolved_quantity, 2);
+    }
+
+    public function getResolvedPackagingCostAtTimeAttribute(): float
+    {
+        if ((float) ($this->packaging_cost_at_time ?? 0) > 0) {
+            return (float) $this->packaging_cost_at_time;
+        }
+
+        $product = $this->resolveMatchedProduct();
+        if (!$product) {
+            return 0.0;
+        }
+
+        return round((float) ($product->packaging_cost ?? 0) * $this->resolved_quantity, 2);
+    }
+
+    public function getResolvedOwnCargoCostAtTimeAttribute(): float
+    {
+        if ((float) ($this->own_cargo_cost_at_time ?? 0) > 0) {
+            return (float) $this->own_cargo_cost_at_time;
+        }
+
+        $product = $this->resolveMatchedProduct();
+        if (!$product) {
+            return 0.0;
+        }
+
+        return round((float) ($product->cargo_cost ?? 0) * $this->resolved_quantity, 2);
+    }
+
+    public function getCogsMissingReasonAttribute(): ?string
+    {
+        if ((float) $this->resolved_cogs_at_time > 0) {
+            return null;
+        }
+
+        if (!filled($this->resolved_barcode) && !filled($this->resolved_stock_code) && !filled($this->resolved_product_name)) {
+            return 'Sipariste barkod, stok kodu veya urun adi yok. Bu nedenle urun kutuphanesi ile eslesme kurulamiyor.';
+        }
+
+        $matchedProduct = $this->resolveMatchedProduct();
+        if (!$matchedProduct) {
+            return 'Sipariste urun bilgisi var ancak Urunler tablosunda eslesen kayit bulunamadi.';
+        }
+
+        if ((float) ($matchedProduct->cogs ?? 0) <= 0) {
+            return 'Eslesen urun bulundu fakat urun kartindaki COGS bos ya da sifir.';
+        }
+
+        return 'COGS eslestirmesi kurulamadi.';
+    }
     
     /**
      * Trendyol Vade Kurallarına Göre Gerçek Ödeme (Tahsilat) Tarihini Hesaplar
@@ -273,13 +479,25 @@ class MpOrder extends Model
      */
     public function getExpectedPaymentDateAttribute()
     {
-        // 1. Gerçek ödeme zaten yatmışsa, onu döndür
-        if ($this->settlement && $this->settlement->settlement_date) {
-            return $this->settlement->settlement_date;
+        $settlements = $this->resolveSettlementCollection();
+        $positiveSettlements = $settlements->filter(fn($settlement) => (float) $settlement->seller_hakedis > 0);
+
+        $latestSettlementDate = ($positiveSettlements->isNotEmpty() ? $positiveSettlements : $settlements)
+            ->filter(fn($settlement) => $settlement->settlement_date !== null)
+            ->sortByDesc(fn($settlement) => $settlement->settlement_date?->getTimestamp() ?? 0)
+            ->first();
+
+        if ($latestSettlementDate) {
+            return $latestSettlementDate->settlement_date;
         }
 
         // 2. Vade Tarihi'ni önce Settlement'tan al, yoksa sipariş payment_date'ine bak
-        $vadeTarihi = $this->settlement?->due_date ?? ($this->payment_date ? \Carbon\Carbon::parse($this->payment_date) : null);
+        $settlementForDueDate = ($positiveSettlements->isNotEmpty() ? $positiveSettlements : $settlements)
+            ->filter(fn($settlement) => $settlement->due_date !== null)
+            ->sortByDesc(fn($settlement) => $settlement->due_date?->getTimestamp() ?? 0)
+            ->first();
+
+        $vadeTarihi = $settlementForDueDate?->due_date ?? ($this->payment_date ? \Carbon\Carbon::parse($this->payment_date) : null);
 
         if (!$vadeTarihi) {
             return null; // Vade tarihi belli değil, hesaplanamaz
@@ -306,8 +524,17 @@ class MpOrder extends Model
      */
     public function getIsPaidAttribute(): bool
     {
-        // 1. Durum: Settlement tablosunda varsa, Trendyol bu siparişi kapatmış/ödemiştir.
-        if ($this->settlement && $this->settlement->settlement_date) {
+        $settlements = $this->resolveSettlementCollection();
+        $today = \Carbon\Carbon::today();
+
+        $positiveSettlements = $settlements->filter(fn($settlement) => (float) $settlement->seller_hakedis > 0);
+
+        if ($positiveSettlements->contains(function ($settlement) use ($today) {
+            $effectiveDate = $settlement->settlement_date ?? $settlement->due_date;
+
+            return $effectiveDate !== null
+                && $effectiveDate->copy()->startOfDay()->lte($today);
+        })) {
             return true;
         }
 
@@ -319,5 +546,280 @@ class MpOrder extends Model
         }
 
         return false;
+    }
+
+    protected function resolveOwnerUserId(): ?int
+    {
+        if ($this->relationLoaded('period')) {
+            return $this->period?->user_id;
+        }
+
+        return $this->period()->value('user_id');
+    }
+
+    protected function resolveSettlementCollection()
+    {
+        $userId = $this->resolveOwnerUserId();
+        $baseQuery = MpSettlement::query()
+            ->where('order_number', $this->order_number)
+            ->orderByRaw('transaction_date is null, transaction_date asc')
+            ->orderBy('id');
+
+        $settlements = collect();
+
+        if ($this->relationLoaded('settlements') && $this->settlements->isNotEmpty()) {
+            $settlements = $settlements->merge($this->settlements);
+        }
+
+        if ($this->exists) {
+            $settlements = $settlements->merge(
+                (clone $baseQuery)->where('order_id', $this->id)->get()
+            );
+        }
+
+        $settlements = $settlements->merge(
+            (clone $baseQuery)->where('period_id', $this->period_id)->get()
+        );
+
+        if ($userId) {
+            $crossPeriod = (clone $baseQuery)
+                ->where('user_id', $userId)
+                ->get();
+
+            if ($crossPeriod->isNotEmpty()) {
+                if ($this->exists) {
+                    $crossPeriod
+                        ->whereNull('order_id')
+                        ->each(fn(MpSettlement $settlement) => $settlement->update(['order_id' => $this->id]));
+                }
+                $settlements = $settlements->merge($crossPeriod);
+            }
+        }
+
+        return $settlements
+            ->unique('id')
+            ->sortBy([
+                fn(MpSettlement $settlement) => $settlement->transaction_date?->getTimestamp() ?? PHP_INT_MAX,
+                fn(MpSettlement $settlement) => $settlement->id,
+            ])
+            ->values();
+    }
+
+    protected function resolveOperationalSnapshot(): array
+    {
+        if ($this->operationalSnapshotCache !== null) {
+            return $this->operationalSnapshotCache;
+        }
+
+        $operationalOrder = $this->relationLoaded('operationalOrder')
+            ? $this->operationalOrder
+            : $this->operationalOrder()->with('items')->first();
+
+        $items = $operationalOrder?->relationLoaded('items')
+            ? $operationalOrder->items
+            : collect();
+
+        if ($items->isEmpty()) {
+            $items = $this->relationLoaded('operationalItems')
+                ? $this->operationalItems
+                : $this->operationalItems()->get();
+        }
+
+        $matchedItem = $this->findMatchingOperationalItem($items);
+
+        return $this->operationalSnapshotCache = [
+            'order'         => $operationalOrder,
+            'items'         => $items,
+            'item'          => $matchedItem,
+            'barcode'       => $matchedItem?->barcode,
+            'stock_code'    => $matchedItem?->stock_code,
+            'product_name'  => $matchedItem?->product_name,
+            'quantity'      => $matchedItem?->quantity,
+            'delivery_date' => $operationalOrder?->delivery_date,
+        ];
+    }
+
+    protected function resolveRawSnapshot(): array
+    {
+        if ($this->rawSnapshotCache !== null) {
+            return $this->rawSnapshotCache;
+        }
+
+        $raw = is_array($this->raw_data) ? $this->raw_data : [];
+
+        return $this->rawSnapshotCache = [
+            'barcode' => $this->extractRawString($raw, [
+                'barcode', 'Barcode', 'Barkod', 'Ürün Barkodu', 'Satıcı Barkodu',
+            ]),
+            'stock_code' => $this->extractRawString($raw, [
+                'stock_code', 'stockCode', 'Stok Kodu', 'Stock Code', 'Model Kodu', 'Satıcı Ürün Kodu',
+            ]),
+            'product_name' => $this->extractRawString($raw, [
+                'product_name', 'productName', 'Ürün Adı', 'Ürün', 'Ürün Adı / Açıklama', 'Product Name',
+            ]),
+            'quantity' => $this->extractRawInteger($raw, [
+                'quantity', 'Adet', 'Miktar', 'Ürün Adedi',
+            ]),
+            'delivery_date' => $this->extractRawDate($raw, [
+                'delivery_date', 'Teslim Tarihi', 'Delivery Date', 'Teslimat Tarihi',
+            ]),
+        ];
+    }
+
+    protected function findMatchingOperationalItem(Collection $items): ?MpOperationalOrderItem
+    {
+        if ($items->isEmpty()) {
+            return null;
+        }
+
+        if (filled($this->barcode)) {
+            $barcodeMatch = $items->firstWhere('barcode', $this->barcode);
+            if ($barcodeMatch) {
+                return $barcodeMatch;
+            }
+        }
+
+        if (filled($this->stock_code)) {
+            $stockCodeMatch = $items->firstWhere('stock_code', $this->stock_code);
+            if ($stockCodeMatch) {
+                return $stockCodeMatch;
+            }
+        }
+
+        if (filled($this->product_name)) {
+            $normalizedName = $this->normalizeOperationalText($this->product_name);
+            $nameMatch = $items->first(function (MpOperationalOrderItem $item) use ($normalizedName) {
+                return $this->normalizeOperationalText((string) $item->product_name) === $normalizedName;
+            });
+
+            if ($nameMatch) {
+                return $nameMatch;
+            }
+        }
+
+        if ($items->count() === 1) {
+            return $items->first();
+        }
+
+        $quantityMatches = $items->filter(fn(MpOperationalOrderItem $item) => (int) $item->quantity === (int) $this->quantity);
+        if ($quantityMatches->count() === 1) {
+            return $quantityMatches->first();
+        }
+
+        return null;
+    }
+
+    protected function normalizeOperationalText(?string $value): string
+    {
+        return mb_strtolower(trim((string) $value));
+    }
+
+    protected function resolveMatchedProduct(): ?MpProduct
+    {
+        if ($this->resolvedProductCacheLoaded) {
+            return $this->resolvedProductCache;
+        }
+
+        $this->resolvedProductCacheLoaded = true;
+
+        $userId = $this->resolveOwnerUserId();
+        if (!$userId) {
+            return $this->resolvedProductCache = null;
+        }
+
+        $raw = $this->resolveRawSnapshot();
+        $snapshot = $this->resolveOperationalSnapshot();
+        $query = MpProduct::query()->where('user_id', $userId);
+        $barcode = filled($this->barcode)
+            ? $this->barcode
+            : ($raw['barcode'] ?? ($snapshot['barcode'] ?? null));
+        $stockCode = filled($this->stock_code)
+            ? $this->stock_code
+            : ($raw['stock_code'] ?? ($snapshot['stock_code'] ?? null));
+        $productName = filled($this->product_name)
+            ? $this->product_name
+            : ($raw['product_name'] ?? ($snapshot['product_name'] ?? null));
+
+        if (filled($barcode)) {
+            $product = (clone $query)->where('barcode', $barcode)->first();
+            if ($product) {
+                return $this->resolvedProductCache = $product;
+            }
+        }
+
+        if (filled($stockCode)) {
+            $product = (clone $query)->where('stock_code', $stockCode)->first();
+            if ($product) {
+                return $this->resolvedProductCache = $product;
+            }
+        }
+
+        if (filled($productName)) {
+            $matches = (clone $query)
+                ->where('product_name', $productName)
+                ->limit(2)
+                ->get();
+
+            if ($matches->count() === 1) {
+                return $this->resolvedProductCache = $matches->first();
+            }
+        }
+
+        return $this->resolvedProductCache = null;
+    }
+
+    protected function extractRawString(array $raw, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            $value = trim((string) ($raw[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    protected function extractRawInteger(array $raw, array $keys): ?int
+    {
+        foreach ($keys as $key) {
+            $value = $raw[$key] ?? null;
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            if (is_numeric($value)) {
+                return (int) $value;
+            }
+
+            $normalized = preg_replace('/[^0-9-]/', '', (string) $value);
+            if ($normalized !== '') {
+                return (int) $normalized;
+            }
+        }
+
+        return null;
+    }
+
+    protected function extractRawDate(array $raw, array $keys)
+    {
+        foreach ($keys as $key) {
+            $value = $raw[$key] ?? null;
+            if ($value === null || $value === '' || $value === '-') {
+                continue;
+            }
+
+            try {
+                if (is_numeric($value)) {
+                    return \Carbon\Carbon::instance(\PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value));
+                }
+
+                return \Carbon\Carbon::parse($value);
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return null;
     }
 }

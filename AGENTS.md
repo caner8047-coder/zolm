@@ -91,6 +91,61 @@ Yeni denetim kuralı eklerken:
 - Badge'ler: `px-2 py-0.5 text-xs font-mono rounded`
 - KPI kartları: `rounded-xl border p-4 text-center`
 
+### 7.1. ZOLM Kurumsal Açık Panel Sistemi (ZORUNLU)
+Yeni modül tasarımlarında varsayılan görsel dil budur.
+
+- Referans sayfa: `resources/views/livewire/production-revenue.blade.php`
+- Detay doküman: `docs/zolm-kurumsal-acik-panel-sistemi.md`
+- İstek şablonları: `docs/zolm-ui-prompt-sablonu.md`, `docs/zolm-yeni-modul-istek-sablonu.md`
+- Ortak component'ler: `resources/views/components/zolm/`
+
+Bu tasarım sisteminin ana karakteri:
+- Açık zeminli, kurumsal, sade, premium ama gösterişsiz
+- Sayfa zemini açık, ana kartlar beyaz, iç kartlar açık gri
+- Border: `border-slate-200`
+- Ana metin: `text-slate-900`
+- Yardımcı metin: `text-slate-500`
+- Primary button: `bg-slate-900 text-white`
+- Ana section kartı: `rounded-[28px] border border-slate-200 bg-white shadow-sm`
+- İç metrik kartı: `rounded-3xl border border-slate-200 bg-slate-50`
+
+Kaçınılacaklar:
+- Koyu hero alanları
+- Gradient ağırlıklı dashboard dili
+- Glassmorphism
+- Neon renkler
+- Her modülde farklı tema
+- Bir modülde açık, diğerinde koyu tasarım dili
+
+Zorunlu yerleşim mantığı:
+- Üstte beyaz ana kontrol/özet kartı
+- Altında sol ana içerik + sağ yardımcı panel
+- Aynı spacing sistemi: `space-y-6`, `p-4 lg:p-6`, `gap-3 lg:gap-4`, `gap-6 lg:gap-8`
+- Aynı tipografi hiyerarşisi: `text-xl lg:text-2xl` başlık, `text-sm text-slate-500` açıklama
+- Aynı buton ve badge dili
+
+Bu proje içinde son onaylanan mikro tasarım tercihleri:
+- Filtre/arama alanı ile tablo aynı ana section kartı içinde olmalı; ayrı kart gibi kopuk durmamalı
+- Tablo araçları (`Kolonlar`, kolon sayısı vb.) filtre bloğunun sağ üstünde konumlanmalı
+- Tablo kapsayıcıları için varsayılan radius: `rounded-lg`
+- İç panel arka planları sert gri olmamalı; `bg-slate-50/60` veya beyaza yakın açık tonlar tercih edilmeli
+- Section başlıkları ile içerik arasında gereksiz büyük boşluk bırakılmamalı; sıkı ama nefes alan spacing kullanılmalı
+- Sağ yardımcı paneldeki özet/risk kartları desktop'ta mümkünse tek satırda hizalanmalı; gerekirse kartlar küçültülmeli
+- Kompakt bilgi kartlarında taşma olmamalı; kısa açıklama, sıkı padding ve `min-w-0` yaklaşımı kullanılmalı
+- Aktif filtre bilgisi kullanıcıya aynı blok içinde görünmeli; arama çalışıyor mu hissi görsel olarak net olmalı
+
+Kullanıcı şu ifadeyi kullanırsa:
+- `Bu modülü ZOLM Kurumsal Açık Panel Sistemi ile yap`
+
+Şu anlam çıkar:
+1. Üretim Ciro modülünün açık kurumsal tasarım ailesini devam ettir
+2. Mobil Responsive kurallarını eksiksiz uygula
+3. Yeni tablo varsa Standart Tablo Şablonunu uygula
+4. Yeni Excel export varsa Excel Export kurallarını uygula
+5. Türkçe UI metinlerinde doğru karakter kullan
+
+Tasarım özgürlüğü istenmiyorsa yeni tema üretme. Mevcut ZOLM ailesinin devamı olacak şekilde uygula.
+
 ### 8. Import Servisi Pattern
 Yeni veri tipi import'u eklerken:
 - `MarketplaceImportService` içine kolon alias map'i ekle

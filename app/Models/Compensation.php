@@ -35,6 +35,7 @@ class Compensation extends Model
 
     protected $fillable = [
         'user_id',
+        'responsible_user_id',
         'cargo_report_item_id',
         'tarih',
         'musteri_adi',
@@ -46,11 +47,20 @@ class Compensation extends Model
         'aciklama',
         'talep_tutari',
         'onaylanan_tutar',
+        'collected_amount',
         'durum',
+        'priority',
         'kargo_referans_no',
+        'carrier_case_no',
         'attachments',
         'talep_tarihi',
         'sonuc_tarihi',
+        'payment_date',
+        'first_action_at',
+        'last_action_at',
+        'next_action_at',
+        'internal_note',
+        'resolution_note',
         'dilekce_icerigi',
     ];
 
@@ -58,8 +68,13 @@ class Compensation extends Model
         'tarih' => 'date',
         'talep_tarihi' => 'date',
         'sonuc_tarihi' => 'date',
+        'payment_date' => 'date',
+        'first_action_at' => 'datetime',
+        'last_action_at' => 'datetime',
+        'next_action_at' => 'date',
         'talep_tutari' => 'decimal:2',
         'onaylanan_tutar' => 'decimal:2',
+        'collected_amount' => 'decimal:2',
         'attachments' => 'array',
     ];
 
@@ -84,11 +99,20 @@ class Compensation extends Model
         'beklemede' => ['label' => 'Beklemede', 'color' => 'gray', 'icon' => '⏳'],
         'talep_edildi' => ['label' => 'Talep Edildi', 'color' => 'blue', 'icon' => '📤'],
         'inceleniyor' => ['label' => 'İnceleniyor', 'color' => 'yellow', 'icon' => '🔍'],
+        'ek_belge_isteniyor' => ['label' => 'Ek Belge', 'color' => 'orange', 'icon' => '📎'],
         'onaylandi' => ['label' => 'Onaylandı', 'color' => 'green', 'icon' => '✓'],
         'kismi_onay' => ['label' => 'Kısmi Onay', 'color' => 'orange', 'icon' => '½'],
         'reddedildi' => ['label' => 'Reddedildi', 'color' => 'red', 'icon' => '✗'],
+        'odeme_bekleniyor' => ['label' => 'Ödeme Bekleniyor', 'color' => 'blue', 'icon' => '💳'],
         'odendi' => ['label' => 'Ödendi', 'color' => 'green', 'icon' => '💵'],
         'kapandi' => ['label' => 'Kapandı', 'color' => 'gray', 'icon' => '🔒'],
+    ];
+
+    public const PRIORITIES = [
+        'low' => ['label' => 'Düşük', 'color' => 'gray'],
+        'normal' => ['label' => 'Normal', 'color' => 'blue'],
+        'high' => ['label' => 'Yüksek', 'color' => 'orange'],
+        'critical' => ['label' => 'Kritik', 'color' => 'red'],
     ];
 
     /**
@@ -97,6 +121,11 @@ class Compensation extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function responsibleUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsible_user_id');
     }
 
     /**
@@ -112,7 +141,7 @@ class Compensation extends Model
      */
     public function scopePending($query)
     {
-        return $query->whereIn('durum', ['beklemede', 'talep_edildi', 'inceleniyor']);
+        return $query->whereIn('durum', ['beklemede', 'talep_edildi', 'inceleniyor', 'ek_belge_isteniyor', 'odeme_bekleniyor']);
     }
 
     /**
@@ -120,7 +149,7 @@ class Compensation extends Model
      */
     public function scopeCompleted($query)
     {
-        return $query->whereIn('durum', ['onaylandi', 'kismi_onay', 'odendi', 'kapandi']);
+        return $query->whereIn('durum', ['onaylandi', 'kismi_onay', 'reddedildi', 'odendi', 'kapandi']);
     }
 
     /**
@@ -172,7 +201,7 @@ class Compensation extends Model
      */
     public function isActive(): bool
     {
-        return in_array($this->durum, ['beklemede', 'talep_edildi', 'inceleniyor']);
+        return in_array($this->durum, ['beklemede', 'talep_edildi', 'inceleniyor', 'ek_belge_isteniyor', 'odeme_bekleniyor'], true);
     }
 
     /**
@@ -180,7 +209,7 @@ class Compensation extends Model
      */
     public function isResolved(): bool
     {
-        return in_array($this->durum, ['onaylandi', 'kismi_onay', 'reddedildi', 'odendi', 'kapandi']);
+        return in_array($this->durum, ['onaylandi', 'kismi_onay', 'reddedildi', 'odeme_bekleniyor', 'odendi', 'kapandi'], true);
     }
 
     /**
@@ -188,7 +217,7 @@ class Compensation extends Model
      */
     public function isSuccessful(): bool
     {
-        return in_array($this->durum, ['onaylandi', 'kismi_onay', 'odendi']);
+        return in_array($this->durum, ['onaylandi', 'kismi_onay', 'odeme_bekleniyor', 'odendi'], true);
     }
 
     /**
@@ -208,6 +237,23 @@ class Compensation extends Model
             return 0;
         }
         return round(($this->onaylanan_tutar / $this->talep_tutari) * 100, 2);
+    }
+
+    public function getPriorityInfoAttribute(): array
+    {
+        return self::PRIORITIES[$this->priority] ?? self::PRIORITIES['normal'];
+    }
+
+    public function getOpenRiskAttribute(): float
+    {
+        return max(0, (float) $this->talep_tutari - (float) $this->collected_amount);
+    }
+
+    public function getAgingDaysAttribute(): int
+    {
+        $anchor = $this->talep_tarihi ?? $this->created_at;
+
+        return $anchor ? (int) $anchor->diffInDays(now()) : 0;
     }
 
     /**

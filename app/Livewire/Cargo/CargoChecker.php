@@ -4,8 +4,13 @@ namespace App\Livewire\Cargo;
 
 use App\Models\CargoReport;
 use App\Models\CargoReportItem;
+use App\Models\MpOperationalOrder;
+use App\Models\MpOperationalOrderItem;
+use App\Models\MpProduct;
 use App\Models\Product;
 use App\Services\CargoComparisonEngine;
+use App\Services\ExcelService;
+use App\Services\MpSettingsService;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -13,8 +18,9 @@ use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 /**
  * Kargo Karşılaştırma Bileşeni
@@ -30,9 +36,49 @@ class CargoChecker extends Component
     use WithFileUploads;
     use WithPagination;
 
+    public array $visibleColumns = [
+        'date',
+        'customer',
+        'tracking',
+        'product',
+        'quantity',
+        'actual_desi',
+        'actual_amount',
+        'status',
+        'actions',
+    ];
+    public static array $sortableColumns = [
+        'date' => 'tarih',
+        'customer' => 'musteri_adi',
+        'tracking' => 'takip_kodu',
+        'product' => 'urun_adi',
+        'quantity' => 'adet',
+        'pieces' => 'gercek_parca',
+        'expected_desi' => 'beklenen_desi',
+        'actual_desi' => 'gercek_desi',
+        'expected_amount' => 'beklenen_tutar',
+        'actual_amount' => 'gercek_tutar',
+        'status' => 'error_type',
+    ];
+    public static array $allColumnDefs = [
+        'date' => 'Tarih',
+        'customer' => 'Müşteri',
+        'tracking' => 'Takip',
+        'product' => 'Ürün',
+        'quantity' => 'Adet',
+        'pieces' => 'Parça',
+        'expected_desi' => 'Beklenen Desi',
+        'actual_desi' => 'Gerçek Desi',
+        'expected_amount' => 'Beklenen Tutar',
+        'actual_amount' => 'Gerçek Tutar',
+        'status' => 'Durum',
+        'actions' => 'İşlem',
+    ];
+
     // Dosya yükleme
     public $cargoFile;
     public $orderFile;
+    public bool $useLegacyExcelReference = false;
 
     // Kargo firması seçimi
     public string $cargoCompany = 'Sürat Kargo';
@@ -55,6 +101,7 @@ class CargoChecker extends Component
         'parca_tutar' => 0,
         'total_desi_diff' => 0,
         'total_tutar_diff' => 0,
+        'reference_issue_count' => 0,
     ];
 
     // Filtreler
@@ -62,6 +109,8 @@ class CargoChecker extends Component
     public string $filterMatched = 'all';
     public string $filterType = 'siparis';  // siparis, iade, parca, all
     public string $searchCustomer = '';
+    public string $sortField = '';
+    public string $sortDirection = 'desc';
 
     // Mesajlar
     public string $message = '';
@@ -76,6 +125,58 @@ class CargoChecker extends Component
     public float $editDesi = 0;
     public int $editParca = 1;
     public float $editTutar = 0;
+
+    public function mount(): void
+    {
+        $settings = app(MpSettingsService::class);
+        $savedColumns = $settings->getArray('cargo_reports.cargo_checker.visible_columns', []);
+        $compactDefaultsApplied = $settings->getBool('cargo_reports.cargo_checker.compact_defaults_applied', false);
+        $allColumns = array_keys(static::$allColumnDefs);
+
+        if ($savedColumns === []) {
+            $savedColumns = $this->visibleColumns;
+            $settings->setMany([
+                'cargo_reports.cargo_checker.visible_columns' => $savedColumns,
+                'cargo_reports.cargo_checker.compact_defaults_applied' => true,
+            ]);
+        } elseif (
+            !$compactDefaultsApplied
+            && count($savedColumns) === count($allColumns)
+            && count(array_intersect($savedColumns, $allColumns)) === count($allColumns)
+        ) {
+            $savedColumns = $this->visibleColumns;
+            $settings->setMany([
+                'cargo_reports.cargo_checker.visible_columns' => $savedColumns,
+                'cargo_reports.cargo_checker.compact_defaults_applied' => true,
+            ]);
+        }
+
+        $this->visibleColumns = $this->normalizeVisibleColumns($savedColumns);
+    }
+
+    public function updatedFilterErrorType(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterMatched(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterType(): void
+    {
+        if (in_array($this->filterType, ['iade', 'parca'], true) && $this->filterMatched !== 'all') {
+            $this->filterMatched = 'all';
+        }
+
+        $this->resetPage();
+    }
+
+    public function updatedSearchCustomer(): void
+    {
+        $this->resetPage();
+    }
 
     /**
      * Kargo firması seçenekleri
@@ -116,7 +217,7 @@ class CargoChecker extends Component
         }
 
         // Eşleşme filtresi
-        if ($this->filterMatched !== 'all') {
+        if ($this->filterMatched !== 'all' && !in_array($this->filterType, ['iade', 'parca'], true)) {
             $query->where('is_matched', $this->filterMatched === 'matched');
         }
 
@@ -135,11 +236,74 @@ class CargoChecker extends Component
         }
         // 'all' = tüm kayıtları göster
 
-        return $query->orderBy('is_iade', 'asc')  // Önce siparişler
-            ->orderBy('is_parca_gonderi', 'asc')  // Sonra normal siparişler
-            ->orderBy('has_error', 'desc')
-            ->orderBy('tutar_fark', 'desc')
-            ->paginate(50);
+        if ($this->sortField !== '') {
+            if ($this->sortField === 'error_type') {
+                $direction = $this->sortDirection === 'asc' ? 'asc' : 'desc';
+
+                $query->orderByRaw("
+                    CASE error_type
+                        WHEN 'none' THEN 0
+                        WHEN 'referans_eksik' THEN 1
+                        WHEN 'desi_eksik' THEN 2
+                        WHEN 'desi_fazla' THEN 3
+                        WHEN 'tutar_eksik' THEN 4
+                        WHEN 'tutar_fazla' THEN 5
+                        WHEN 'parca_eksik' THEN 6
+                        WHEN 'parca_fazla' THEN 7
+                        WHEN 'eslesmedi' THEN 8
+                        ELSE 99
+                    END {$direction}
+                ")->orderBy('tutar_fark', 'desc');
+            } else {
+                $query->orderBy($this->sortField, $this->sortDirection)
+                    ->orderBy('has_error', 'desc')
+                    ->orderBy('tutar_fark', 'desc');
+            }
+        } else {
+            $query->orderBy('is_iade', 'asc')
+                ->orderBy('is_parca_gonderi', 'asc')
+                ->orderBy('has_error', 'desc')
+                ->orderBy('tutar_fark', 'desc');
+        }
+
+        return $query->paginate(50);
+    }
+
+    public function sortTable(string $columnKey): void
+    {
+        $field = static::$sortableColumns[$columnKey] ?? null;
+        if (!$field) {
+            return;
+        }
+
+        if ($this->sortField === $field) {
+            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            $this->sortField = $field;
+            $this->sortDirection = in_array($columnKey, ['customer', 'tracking', 'product'], true) ? 'asc' : 'desc';
+        }
+
+        $this->resetPage();
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        if (!array_key_exists($column, static::$allColumnDefs)) {
+            return;
+        }
+
+        if (in_array($column, $this->visibleColumns, true)) {
+            if (count($this->visibleColumns) === 1) {
+                return;
+            }
+
+            $this->visibleColumns = array_values(array_diff($this->visibleColumns, [$column]));
+        } else {
+            $this->visibleColumns[] = $column;
+            $this->visibleColumns = $this->normalizeVisibleColumns($this->visibleColumns);
+        }
+
+        app(MpSettingsService::class)->set('cargo_reports.cargo_checker.visible_columns', $this->visibleColumns);
     }
 
     /**
@@ -152,6 +316,7 @@ class CargoChecker extends Component
             'all' => 'Tümü',
             'errors' => 'Sadece Hatalar',
             'none' => 'Hata Yok',
+            'referans_eksik' => 'Referans Eksik',
             'desi_fazla' => 'Desi Fazla',
             'desi_eksik' => 'Desi Eksik',
             'tutar_fazla' => 'Tutar Fazla',
@@ -162,7 +327,7 @@ class CargoChecker extends Component
     }
 
     /**
-     * Ürün sayısı kontrolü
+     * Legacy ürün sayısı kontrolü
      */
     #[Computed]
     public function productCount()
@@ -171,22 +336,67 @@ class CargoChecker extends Component
     }
 
     /**
+     * Pazaryeri veri kaynağı hazır mı?
+     */
+    #[Computed]
+    public function marketplaceStats(): array
+    {
+        $userId = auth()->id() ?? 1;
+
+        $productQuery = MpProduct::query()->where('user_id', $userId);
+        $orderQuery = MpOperationalOrder::query();
+        $itemQuery = MpOperationalOrderItem::query();
+
+        return [
+            'products_total' => (clone $productQuery)->count(),
+            'products_ready' => (clone $productQuery)
+                ->whereNotNull('stock_code')
+                ->where('stock_code', '!=', '')
+                ->where('pieces', '>', 0)
+                ->where('desi', '>', 0)
+                ->where('cargo_cost', '>', 0)
+                ->count(),
+            'orders_total' => (clone $orderQuery)->count(),
+            'orders_with_tracking' => (clone $orderQuery)->whereNotNull('tracking_number')->where('tracking_number', '!=', '')->count(),
+            'order_items_total' => (clone $itemQuery)->count(),
+        ];
+    }
+
+    /**
      * Karşılaştırma çalıştır
      */
     public function runComparison()
     {
-        $this->validate([
+        $rules = [
             'cargoFile' => 'required|file|mimes:xlsx,xls|max:20480',
-            'orderFile' => 'required|file|mimes:xlsx,xls|max:20480',
-        ], [
-            'cargoFile.required' => 'Kargo raporu dosyası gerekli.',
-            'orderFile.required' => 'Sipariş detayları dosyası gerekli.',
-        ]);
+        ];
 
-        // Ürün listesi kontrolü
-        if ($this->productCount < 1) {
-            $this->showMessage('Önce ürün listesini yüklemelisiniz. "Ürün ve Desi Bilgileri" sekmesinden ürün ekleyin.', 'warning');
-            return;
+        $messages = [
+            'cargoFile.required' => 'Kargo raporu dosyası gerekli.',
+        ];
+
+        if ($this->useLegacyExcelReference) {
+            $rules['orderFile'] = 'required|file|mimes:xlsx,xls|max:20480';
+            $messages['orderFile.required'] = 'Sipariş detayları dosyası gerekli.';
+        }
+
+        $this->validate($rules, $messages);
+
+        if ($this->useLegacyExcelReference) {
+            if ($this->productCount < 1) {
+                $this->showMessage('Legacy Excel modunda önce ürün listesini yüklemelisiniz. "Ürün ve Desi Bilgileri" sekmesinden ürün ekleyin.', 'warning');
+                return;
+            }
+        } else {
+            $stats = $this->marketplaceStats;
+            if (($stats['products_ready'] ?? 0) < 1) {
+                $this->showMessage('Pazaryeri Ürünlerim modülünde desi, parça ve kargo fiyatı dolu en az 1 ürün bulunmalı.', 'warning');
+                return;
+            }
+            if (($stats['orders_total'] ?? 0) < 1 || ($stats['order_items_total'] ?? 0) < 1) {
+                $this->showMessage('Pazaryeri Siparişlerim modülünde içe aktarılmış sipariş verisi bulunamadı. Önce operasyonel sipariş Excelini yükleyin.', 'warning');
+                return;
+            }
         }
 
         $this->isProcessing = true;
@@ -197,7 +407,7 @@ class CargoChecker extends Component
 
             $result = $engine->compare(
                 $this->cargoFile,
-                $this->orderFile,
+                $this->useLegacyExcelReference ? $this->orderFile : null,
                 $this->reportName ?: 'Kargo Raporu - ' . now()->format('d.m.Y H:i'),
                 $this->cargoCompany
             );
@@ -245,6 +455,10 @@ class CargoChecker extends Component
             ->where('is_parca_gonderi', true)
             ->sum('gercek_tutar');
 
+        $referenceIssueCount = CargoReportItem::where('cargo_report_id', $report->id)
+            ->where('error_type', 'referans_eksik')
+            ->count();
+
         $this->stats = [
             'total_orders' => $report->total_orders,
             'matched_orders' => $report->matched_orders,
@@ -254,6 +468,7 @@ class CargoChecker extends Component
             'iade_tutar' => $iadeTutar,
             'parca_count' => $parcaCount,
             'parca_tutar' => $parcaTutar,
+            'reference_issue_count' => $referenceIssueCount,
             'total_desi_diff' => $report->total_desi_diff,
             'total_tutar_diff' => $report->total_tutar_diff,
             'total_expected_desi' => $report->total_expected_desi,
@@ -314,23 +529,20 @@ class CargoChecker extends Component
     protected function createSummarySheet(Spreadsheet $spreadsheet, CargoReport $report)
     {
         $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Özet');
+        $sheet->setTitle($this->sanitizeSheetName('Özet'));
 
-        // Başlık
-        $sheet->setCellValue('A1', 'KARGO KONTROL RAPORU');
+        $this->writeCell($sheet, 'A1', 'KARGO KONTROL RAPORU');
         $sheet->mergeCells('A1:D1');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
 
-        // Rapor bilgileri
-        $sheet->setCellValue('A3', 'Rapor Adı:');
-        $sheet->setCellValue('B3', $report->name);
-        $sheet->setCellValue('A4', 'Kargo Firması:');
-        $sheet->setCellValue('B4', $report->cargo_company);
-        $sheet->setCellValue('A5', 'Tarih:');
-        $sheet->setCellValue('B5', $report->report_date->format('d.m.Y'));
+        $this->writeCell($sheet, 'A3', 'Rapor Adı:');
+        $this->writeCell($sheet, 'B3', $report->name);
+        $this->writeCell($sheet, 'A4', 'Kargo Firması:');
+        $this->writeCell($sheet, 'B4', $report->cargo_company);
+        $this->writeCell($sheet, 'A5', 'Tarih:');
+        $this->writeCell($sheet, 'B5', $report->report_date->format('d.m.Y'));
 
-        // İstatistikler
-        $sheet->setCellValue('A7', 'İSTATİSTİKLER');
+        $this->writeCell($sheet, 'A7', 'İSTATİSTİKLER');
         $sheet->getStyle('A7')->getFont()->setBold(true);
 
         $stats = [
@@ -338,6 +550,7 @@ class CargoChecker extends Component
             ['Eşleşen', $report->matched_orders],
             ['Eşleşmeyen', $report->unmatched_orders],
             ['Hatalı', $report->error_count],
+            ['Referans Uyarısı', $report->items()->where('error_type', 'referans_eksik')->count()],
             ['Hata Oranı', number_format($report->error_percentage, 1) . '%'],
             ['', ''],
             ['DESİ KARŞILAŞTIRMASI', ''],
@@ -353,8 +566,8 @@ class CargoChecker extends Component
 
         $row = 8;
         foreach ($stats as $stat) {
-            $sheet->setCellValue('A' . $row, $stat[0]);
-            $sheet->setCellValue('B' . $row, $stat[1]);
+            $this->writeCell($sheet, 'A' . $row, $stat[0]);
+            $this->writeCell($sheet, 'B' . $row, $stat[1]);
             if (str_contains($stat[0] ?? '', 'KARŞILAŞTIRMASI')) {
                 $sheet->getStyle('A' . $row)->getFont()->setBold(true);
             }
@@ -372,9 +585,8 @@ class CargoChecker extends Component
     protected function createDetailSheet(Spreadsheet $spreadsheet, CargoReport $report)
     {
         $sheet = $spreadsheet->createSheet();
-        $sheet->setTitle('Tüm Kayıtlar');
+        $sheet->setTitle($this->sanitizeSheetName('Tüm Kayıtlar'));
 
-        // Headers
         $headers = [
             'Tarih', 'Müşteri', 'Takip Kodu', 'Ürün', 'Adet',
             'Bek. Parça', 'Ger. Parça', 'P. Fark',
@@ -385,40 +597,37 @@ class CargoChecker extends Component
 
         $col = 'A';
         foreach ($headers as $header) {
-            $sheet->setCellValue($col . '1', $header);
+            $this->writeCell($sheet, $col . '1', $header);
             $col++;
         }
 
-        // Header style
         $sheet->getStyle('A1:P1')->getFont()->setBold(true);
         $sheet->getStyle('A1:P1')->getFill()
             ->setFillType(Fill::FILL_SOLID)
             ->getStartColor()->setRGB('1F2937');
         $sheet->getStyle('A1:P1')->getFont()->getColor()->setRGB('FFFFFF');
 
-        // Data
         $row = 2;
         foreach ($report->items as $item) {
-            $sheet->setCellValue('A' . $row, $item->tarih?->format('d.m.Y'));
-            $sheet->setCellValue('B' . $row, $item->musteri_adi);
-            $sheet->setCellValue('C' . $row, $item->takip_kodu);
-            $sheet->setCellValue('D' . $row, $item->urun_adi);
-            $sheet->setCellValue('E' . $row, $item->adet);
-            $sheet->setCellValue('F' . $row, $item->beklenen_parca);
-            $sheet->setCellValue('G' . $row, $item->gercek_parca);
-            $sheet->setCellValue('H' . $row, $item->parca_fark);
-            $sheet->setCellValue('I' . $row, $item->beklenen_desi);
-            $sheet->setCellValue('J' . $row, $item->gercek_desi);
-            $sheet->setCellValue('K' . $row, $item->desi_fark);
-            $sheet->setCellValue('L' . $row, $item->beklenen_tutar);
-            $sheet->setCellValue('M' . $row, $item->gercek_tutar);
-            $sheet->setCellValue('N' . $row, $item->tutar_fark);
-            $sheet->setCellValue('O' . $row, CargoReportItem::ERROR_TYPES[$item->error_type]['label'] ?? $item->error_type);
-            $sheet->setCellValue('P' . $row, $item->has_error ? 'HATA' : 'OK');
+            $this->writeCell($sheet, 'A' . $row, $item->tarih?->format('d.m.Y'));
+            $this->writeCell($sheet, 'B' . $row, $item->musteri_adi);
+            $this->writeCell($sheet, 'C' . $row, $item->takip_kodu);
+            $this->writeCell($sheet, 'D' . $row, $item->urun_adi);
+            $this->writeCell($sheet, 'E' . $row, $item->adet, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'F' . $row, $item->beklenen_parca, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'G' . $row, $item->gercek_parca, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'H' . $row, $item->parca_fark, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'I' . $row, $item->beklenen_desi, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'J' . $row, $item->gercek_desi, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'K' . $row, $item->desi_fark, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'L' . $row, $item->beklenen_tutar, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'M' . $row, $item->gercek_tutar, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'N' . $row, $item->tutar_fark, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'O' . $row, CargoReportItem::ERROR_TYPES[$item->error_type]['label'] ?? $item->error_type);
+            $this->writeCell($sheet, 'P' . $row, $item->has_error ? 'HATA' : 'OK');
 
-            // Hatalı satırları renklendir
             if ($item->has_error) {
-                $color = $item->isAgainstUs() ? 'FECACA' : 'FEF3C7'; // Kırmızı veya sarı
+                $color = $item->isAgainstUs() ? 'FECACA' : 'FEF3C7';
                 $sheet->getStyle('A' . $row . ':P' . $row)->getFill()
                     ->setFillType(Fill::FILL_SOLID)
                     ->getStartColor()->setRGB($color);
@@ -442,9 +651,8 @@ class CargoChecker extends Component
         if ($errorItems->isEmpty()) return;
 
         $sheet = $spreadsheet->createSheet();
-        $sheet->setTitle('Hatalar');
+        $sheet->setTitle($this->sanitizeSheetName('Hatalar'));
 
-        // Headers
         $headers = [
             'Tarih', 'Müşteri', 'Takip Kodu', 'Ürün',
             'Beklenen Desi', 'Gerçek Desi', 'Desi Fark',
@@ -454,34 +662,31 @@ class CargoChecker extends Component
 
         $col = 'A';
         foreach ($headers as $header) {
-            $sheet->setCellValue($col . '1', $header);
+            $this->writeCell($sheet, $col . '1', $header);
             $col++;
         }
 
-        // Header style
         $sheet->getStyle('A1:L1')->getFont()->setBold(true);
         $sheet->getStyle('A1:L1')->getFill()
             ->setFillType(Fill::FILL_SOLID)
             ->getStartColor()->setRGB('DC2626');
         $sheet->getStyle('A1:L1')->getFont()->getColor()->setRGB('FFFFFF');
 
-        // Data
         $row = 2;
         foreach ($errorItems as $item) {
-            $sheet->setCellValue('A' . $row, $item->tarih?->format('d.m.Y'));
-            $sheet->setCellValue('B' . $row, $item->musteri_adi);
-            $sheet->setCellValue('C' . $row, $item->takip_kodu);
-            $sheet->setCellValue('D' . $row, $item->urun_adi);
-            $sheet->setCellValue('E' . $row, $item->beklenen_desi);
-            $sheet->setCellValue('F' . $row, $item->gercek_desi);
-            $sheet->setCellValue('G' . $row, $item->desi_fark);
-            $sheet->setCellValue('H' . $row, $item->beklenen_tutar);
-            $sheet->setCellValue('I' . $row, $item->gercek_tutar);
-            $sheet->setCellValue('J' . $row, $item->tutar_fark);
-            $sheet->setCellValue('K' . $row, CargoReportItem::ERROR_TYPES[$item->error_type]['label'] ?? $item->error_type);
-            $sheet->setCellValue('L' . $row, $item->tracking_url ?? '');
+            $this->writeCell($sheet, 'A' . $row, $item->tarih?->format('d.m.Y'));
+            $this->writeCell($sheet, 'B' . $row, $item->musteri_adi);
+            $this->writeCell($sheet, 'C' . $row, $item->takip_kodu);
+            $this->writeCell($sheet, 'D' . $row, $item->urun_adi);
+            $this->writeCell($sheet, 'E' . $row, $item->beklenen_desi, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'F' . $row, $item->gercek_desi, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'G' . $row, $item->desi_fark, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'H' . $row, $item->beklenen_tutar, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'I' . $row, $item->gercek_tutar, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'J' . $row, $item->tutar_fark, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, 'K' . $row, CargoReportItem::ERROR_TYPES[$item->error_type]['label'] ?? $item->error_type);
+            $this->writeCell($sheet, 'L' . $row, $item->tracking_url ?? '');
 
-            // Aleyhimize olan satırları kırmızı yap
             if ($item->isAgainstUs()) {
                 $sheet->getStyle('A' . $row . ':L' . $row)->getFill()
                     ->setFillType(Fill::FILL_SOLID)
@@ -497,16 +702,48 @@ class CargoChecker extends Component
         }
     }
 
+    protected function writeCell(Worksheet $sheet, string $cell, $value, string $type = DataType::TYPE_STRING): void
+    {
+        $excel = app(ExcelService::class);
+
+        if ($type === DataType::TYPE_NUMERIC) {
+            $sheet->setCellValueExplicit($cell, (float) ($value ?? 0), DataType::TYPE_NUMERIC);
+            return;
+        }
+
+        $sheet->setCellValueExplicit(
+            $cell,
+            (string) $excel->cleanString($value ?? ''),
+            DataType::TYPE_STRING
+        );
+    }
+
+    protected function sanitizeSheetName(string $name): string
+    {
+        $excel = app(ExcelService::class);
+        $name = (string) $excel->cleanString($name);
+        $name = str_replace([':', '\\', '/', '?', '*', '[', ']'], '', $name);
+
+        if (mb_strlen($name) > 31) {
+            $name = mb_substr($name, 0, 31);
+        }
+
+        return $name !== '' ? $name : 'Sheet';
+    }
+
     /**
      * Yeni karşılaştırma başlat (formu temizle)
      */
     public function resetForm()
     {
         $this->reset([
-            'cargoFile', 'orderFile', 'reportName',
+            'cargoFile', 'orderFile', 'reportName', 'useLegacyExcelReference',
             'hasResults', 'currentReportId', 'message',
-            'filterErrorType', 'filterMatched', 'filterType', 'searchCustomer'
+            'filterErrorType', 'filterMatched', 'filterType', 'searchCustomer',
+            'sortField', 'sortDirection'
         ]);
+
+        $this->resetPage();
 
         $this->stats = [
             'total_orders' => 0,
@@ -519,6 +756,7 @@ class CargoChecker extends Component
             'parca_tutar' => 0,
             'total_desi_diff' => 0,
             'total_tutar_diff' => 0,
+            'reference_issue_count' => 0,
         ];
     }
 
@@ -559,8 +797,26 @@ class CargoChecker extends Component
         }
 
         try {
-            $product = Product::where('stok_kodu', $this->editStokKodu)->first();
+            $userId = auth()->id() ?? 1;
 
+            $mpProduct = MpProduct::query()
+                ->where('user_id', $userId)
+                ->where('stock_code', $this->editStokKodu)
+                ->first();
+
+            if ($mpProduct) {
+                $mpProduct->update([
+                    'desi' => $this->editDesi,
+                    'pieces' => $this->editParca,
+                    'cargo_cost' => $this->editTutar,
+                ]);
+
+                $this->showMessage("✅ {$this->editStokKodu} pazaryeri ürün kartında güncellendi.", 'success');
+                $this->closeProductEditModal();
+                return;
+            }
+
+            $product = Product::where('stok_kodu', $this->editStokKodu)->first();
             if (!$product) {
                 $this->showMessage("Ürün bulunamadı: {$this->editStokKodu}", 'error');
                 return;
@@ -596,5 +852,13 @@ class CargoChecker extends Component
     public function render()
     {
         return view('livewire.cargo.cargo-checker');
+    }
+
+    protected function normalizeVisibleColumns(array $columns): array
+    {
+        $allowed = array_keys(static::$allColumnDefs);
+        $normalized = array_values(array_unique(array_values(array_intersect($allowed, $columns))));
+
+        return $normalized !== [] ? $normalized : $this->visibleColumns;
     }
 }

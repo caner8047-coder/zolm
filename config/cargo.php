@@ -92,14 +92,21 @@ return [
     | Kargo firması Excel'indeki kolon adları
     */
     'cargo_columns' => [
+        'web_siparis_kodu' => ['WebSiparisKodu', 'Web Sipariş Kodu', 'Sipariş No', 'Order No'],
         'takip_no' => ['TakipNo', 'Takip No', 'Takip Numarası', 'Kargo Takip No'],
-        'alici' => ['Alici', 'Alıcı', 'Müşteri', 'Müşteri Adı'],
+        'alici' => ['Alici', 'AliciUnvan', 'Alıcı', 'Alıcı Unvan', 'Müşteri', 'Müşteri Adı'],
         'gonderen' => ['GonderenUnvan', 'Gönderen', 'Gönderen Adı', 'Gönderen Unvan', 'Sender'],
+        'borclu_unvan' => ['BorcluUnvan', 'Borçlu Unvan', 'Borçlu'],
         'adet' => ['Adet', 'Parça', 'Koli', 'Parça Sayısı'],
         'desi' => ['ToplamDesi', 'Toplam Desi', 'Desi', 'Hacim'],
         'tutar' => ['Tutar', 'Toplam Tutar', 'Kargo Ücreti', 'Ücret'],
         'cikis_il' => ['CikisIl', 'Çıkış İl', 'Çıkış İli', 'Gönderen İl'],
         'teslim_tarihi' => ['TeslimTarihi', 'Teslim Tarihi', 'Teslimat Tarihi'],
+        'fatura_tarihi' => ['FaturaTarihi', 'Fatura Tarihi'],
+        'tesellum_fatura_no' => ['TesellumdenFaturaNo', 'Tesellümden Fatura No', 'Tesellum Fatura No'],
+        'barkod' => ['Barkod', 'Kargo Barkodu'],
+        'alici_il' => ['AliciIlAdi', 'Alıcı İl', 'Alıcı İli'],
+        'alici_ilce' => ['AliciIlceAdi', 'Alıcı İlçe', 'Alıcı İlçesi'],
         'durum' => ['TeslimatDurum', 'Teslimat Durum', 'Durum', 'Kargo Durumu'],
     ],
 

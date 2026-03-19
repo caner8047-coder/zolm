@@ -18,7 +18,7 @@ class OrderDetailsService
     {
         try {
             // İlgili tüm tabloları Eager Load ile çekiyoruz (N+1 problemi olmaması için)
-            $order = MpOrder::with(['period', 'auditLogs', 'settlement'])
+            $order = MpOrder::with(['period', 'auditLogs', 'settlement', 'settlements', 'operationalOrder.items'])
                 ->find($orderId);
 
             if (!$order) {
@@ -32,31 +32,33 @@ class OrderDetailsService
             // Aynı sipariş numarasına sahip tüm ürünleri al (çoklu ürünlü sepet desteği)
             $siblingOrders = MpOrder::where('order_number', $order->order_number)
                 ->where('id', '!=', $order->id)
-                ->get(['id', 'barcode', 'stock_code', 'product_name', 'quantity', 'gross_amount']);
+                ->with(['period', 'operationalOrder.items'])
+                ->get(['id', 'period_id', 'order_number', 'barcode', 'stock_code', 'product_name', 'quantity', 'gross_amount']);
 
             $basicInfo = [
                 'order_number'    => $order->order_number,
-                'barcode'         => $order->barcode,
-                'stock_code'      => $order->stock_code,
-                'quantity'        => $order->quantity,
-                'product_name'    => $order->product_name,
+                'barcode'         => $order->resolved_barcode,
+                'stock_code'      => $order->resolved_stock_code,
+                'quantity'        => $order->resolved_quantity,
+                'product_name'    => $order->resolved_product_name,
                 'status'          => $order->status,
                 'status_color'    => $order->status_color,
                 'order_date'      => $order->order_date?->format('d.m.Y H:i'),
-                'delivery_date'   => $order->delivery_date?->format('d.m.Y'),
+                'delivery_date'   => $order->resolved_delivery_date?->format('d.m.Y'),
                 'is_flagged'      => $order->is_flagged,
                 'sibling_items'   => $siblingOrders->map(fn($s) => [
                     'id'           => $s->id,
-                    'barcode'      => $s->barcode,
-                    'stock_code'   => $s->stock_code,
-                    'product_name' => $s->product_name,
-                    'quantity'     => $s->quantity,
+                    'barcode'      => $s->resolved_barcode,
+                    'stock_code'   => $s->resolved_stock_code,
+                    'product_name' => $s->resolved_product_name,
+                    'quantity'     => $s->resolved_quantity,
                     'gross_amount' => (float) $s->gross_amount,
                 ])->toArray(),
             ];
 
             $siblingOrders = MpOrder::where('order_number', $order->order_number)
                 ->where('id', '!=', $order->id)
+                ->with(['period', 'operationalOrder.items'])
                 ->get();
             $allOrders = collect([$order])->merge($siblingOrders);
 
@@ -68,24 +70,24 @@ class OrderDetailsService
             $aggCargoAmount      = $allOrders->sum(fn($o) => abs((float)$o->cargo_amount));
             $aggServiceFee       = $allOrders->sum(fn($o) => abs((float)$o->service_fee));
             $aggExpectedNet      = $allOrders->sum('net_hakedis');
-            $aggCogs             = $allOrders->sum('cogs_at_time');
-            $aggPackaging        = $allOrders->sum('packaging_cost_at_time');
-            $aggOwnCargo         = $allOrders->sum('own_cargo_cost_at_time');
+            $aggCogs             = $allOrders->sum(fn($o) => (float) $o->resolved_cogs_at_time);
+            $aggPackaging        = $allOrders->sum(fn($o) => (float) $o->resolved_packaging_cost_at_time);
+            $settingsService     = new MpSettingsService($order->period?->user_id);
+            $aggOwnCargo         = $settingsService->usesOwnCargo()
+                ? $allOrders->sum(fn($o) => (float) $o->resolved_own_cargo_cost_at_time)
+                : 0.0;
             $aggVatBalance       = $allOrders->sum('vat_balance');
 
             // ─── Stopaj Konsolidasyonu ───
             $stopajRate = \App\Models\MpFinancialRule::getRuleFloat('stopaj_rate') ?: 0.01;
             $defaultVatRate = \App\Models\MpFinancialRule::getRuleFloat('default_product_vat_rate') ?: 0.20;
-            
+
             $actualStopajSum = $allOrders->sum(function($o) use ($stopajRate, $defaultVatRate) {
                 $actualStopaj = abs((float) $o->withholding_tax);
                 if ($actualStopaj <= 0 && !in_array($o->status, ['İptal Edildi'])) {
                     $productVatRate = $defaultVatRate;
-                    if ($o->barcode) {
-                        $matchedProduct = \App\Models\MpProduct::where('barcode', $o->barcode)->first();
-                        if ($matchedProduct && $matchedProduct->vat_rate !== null) {
-                            $productVatRate = (float) $matchedProduct->vat_rate / 100;
-                        }
+                    if ($o->resolved_product_vat_rate !== null) {
+                        $productVatRate = (float) $o->resolved_product_vat_rate / 100;
                     }
                     $gross = (float) $o->gross_amount;
                     $discounts = abs((float) $o->discount_amount) + abs((float) $o->campaign_discount);
@@ -122,14 +124,18 @@ class OrderDetailsService
                 'is_reconciled'    => false,
                 'expected_date'    => $order->expected_payment_date?->format('d.m.Y'),
                 'is_paid'          => $order->is_paid,
+                'missing_reason'   => 'Bu sipariş için yuklenen Odeme Detay dosyalarinda eslesen kayit bulunamadi. Vade ve banka tahsilat tarihi yalnizca Odeme Detay Excel satirindan uretilir.',
             ];
 
             $settlement = $order->settlement;
-            
-            // Fallback: FK ilişkisi yoksa, order_number ile arama yap
-            $allSettlements = \App\Models\MpSettlement::where('period_id', $order->period_id)
+            $ownerUserId = $order->period?->user_id;
+
+            // Fallback: FK ilişkisi yoksa once ayni donemde, sonra ayni kullanicinin tum donemlerinde order_number ile ara
+            $allSettlements = \App\Models\MpSettlement::query()
                 ->where('order_number', $order->order_number)
-                ->orderBy('id', 'asc') // Kronolojik işlenmiş sıraya göre
+                ->when($ownerUserId, fn($query) => $query->where('user_id', $ownerUserId))
+                ->orderByRaw('transaction_date is null, transaction_date asc')
+                ->orderBy('id', 'asc')
                 ->get();
 
             $settlement = null;
@@ -140,7 +146,7 @@ class OrderDetailsService
                 // FK güncellemesi
                 if (!$settlement->order_id) {
                     $allSettlements->each(function($s) use($order) { 
-                        if (!$s->order_id && (int) $s->period_id === (int) $order->period_id) {
+                        if (!$s->order_id) {
                             $s->update(['order_id' => $order->id]);
                         }
                     });
@@ -207,6 +213,7 @@ class OrderDetailsService
                     'is_reconciled'      => $isReconciled,
                     'settlement_details' => $settlementDetails,
                     'has_partial_refund' => $hasPartialRefund,
+                    'missing_reason'     => null,
                 ]);
             }
 
@@ -261,7 +268,7 @@ class OrderDetailsService
             })->toArray();
 
             // 6. ÖZET SONUÇ (Gerçek Net Kazanç / Kayıp)
-            $svc = new \App\Services\MpSettingsService();
+            $svc = new \App\Services\MpSettingsService($order->period?->user_id);
             $kdvEnabled = $svc->isKdvEnabled();
             $ownCargoAmount = 0.0;
 

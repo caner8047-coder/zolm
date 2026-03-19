@@ -1,674 +1,1241 @@
-<div class="space-y-6 overflow-x-hidden">
-    {{-- ViewMode Başlık (all_errors veya all_compensations) --}}
-    @if($viewMode !== 'dashboard')
-        <div class="flex flex-col sm:flex-row items-center gap-4 mb-4 flex-1">
-            <div class="flex items-center gap-4 w-full sm:w-auto">
-                <button wire:click="backToDashboard" class="text-gray-500 hover:text-gray-700">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-                    </svg>
-                </button>
-                <h2 class="text-xl font-bold text-gray-900 whitespace-nowrap">
-                    @if($viewMode === 'all_errors')
-                        Tüm Desi Hataları
-                    @else
-                        Tüm Tazmin Talepleri
-                    @endif
-                </h2>
-            </div>
-            <div class="flex-1 w-full max-w-md sm:ml-4">
-                <div class="relative">
-                    <input type="text" wire:model.live.debounce.300ms="search" 
-                        class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-base sm:text-sm min-h-[44px]" 
-                        placeholder="Müşteri, takip kodu veya ürün ara...">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                    </div>
-                </div>
-            </div>
-        </div>
+@php
+    $stats = $this->stats;
+    $recentErrors = $this->recentErrors;
+    $recentCompensations = $this->recentCompensations;
+    $cargoCompanies = $this->cargoCompanies;
+    $marketplaces = $this->marketplaces;
+    $stores = $this->stores;
+    $assignableUsers = $this->assignableUsers;
+    $errorColumnDefs = \App\Livewire\Cargo\CompensationDashboard::$errorColumnDefs;
+    $errorSortableColumns = \App\Livewire\Cargo\CompensationDashboard::$errorSortableColumns;
+    $compensationColumnDefs = \App\Livewire\Cargo\CompensationDashboard::$compensationColumnDefs;
+    $compensationSortableColumns = \App\Livewire\Cargo\CompensationDashboard::$compensationSortableColumns;
 
-        {{-- Tüm Hatalar Listesi --}}
-        @if($viewMode === 'all_errors')
-            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                {{-- Desktop: Tablo Görünümü --}}
-                <div class="hidden lg:block overflow-x-auto">
-                    <table class="w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50 text-gray-500">
-                        <tr>
-                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap">Tarih</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider">Müşteri</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider">Ürün</th>
-                                <th class="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-20">Yanlış</th>
-                                <th class="px-2 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-20">Doğru</th>
-                                <th class="px-2 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap w-24">Fark</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-32">İşlem</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            @forelse($this->allErrors as $error)
-                                <tr class="hover:bg-gray-50">
-                                    <td class="px-3 py-3 text-xs text-gray-500 whitespace-nowrap font-medium">{{ $error->tarih?->format('d.m.Y') }}</td>
-                                    <td class="px-3 py-3">
-                                        <span class="text-xs font-bold text-gray-800 line-clamp-1" title="{{ $error->musteri_adi }}">{{ $error->musteri_adi }}</span>
-                                    </td>
-                                    <td class="px-3 py-3">
-                                        <span class="text-xs text-gray-600 line-clamp-1" title="{{ $error->urun_adi }}">{{ $error->urun_adi }}</span>
-                                    </td>
-                                    <td class="px-2 py-3 text-center text-xs text-red-600 font-bold whitespace-nowrap">{{ number_format($error->gercek_desi, 0) }}</td>
-                                    <td class="px-2 py-3 text-center text-xs text-green-600 font-bold whitespace-nowrap">{{ number_format($error->beklenen_desi, 0) }}</td>
-                                    <td class="px-2 py-3 text-right text-xs font-bold {{ $error->tutar_fark > 0 ? 'text-red-600' : 'text-green-600' }} whitespace-nowrap font-mono">
-                                        {{ $error->tutar_fark > 0 ? '+' : '' }}{{ number_format($error->tutar_fark, 0) }} ₺
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <button wire:click="openCreateModal({{ $error->id }})" 
-                                            class="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors">
-                                            Tazmin Oluştur
-                                        </button>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="7" class="px-4 py-8 text-center text-gray-400">Hata bulunamadı</td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
+    $messageClasses = match ($messageType) {
+        'success' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
+        'error' => 'border-rose-200 bg-rose-50 text-rose-800',
+        'warning' => 'border-amber-200 bg-amber-50 text-amber-800',
+        default => 'border-sky-200 bg-sky-50 text-sky-800',
+    };
 
-                {{-- Mobile: Kart Görünümü --}}
-                <div class="lg:hidden divide-y divide-gray-200">
-                    @forelse($this->allErrors as $error)
-                        <div class="p-4 hover:bg-gray-50">
-                            {{-- Üst: Tarih ve Fark --}}
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-xs font-medium text-gray-500">{{ $error->tarih?->format('d.m.Y') }}</span>
-                                <span class="text-sm font-bold font-mono {{ $error->tutar_fark > 0 ? 'text-red-600' : 'text-green-600' }}">
-                                    {{ $error->tutar_fark > 0 ? '+' : '' }}{{ number_format($error->tutar_fark, 0) }} ₺
-                                </span>
-                            </div>
+    $formatCount = fn ($value) => number_format((float) $value, 0, ',', '.');
+    $formatMoney = function ($value) {
+        $val = (float) $value;
+        return '₺' . (floor($val) == $val ? number_format($val, 0, ',', '.') : number_format($val, 2, ',', '.'));
+    };
+    $formatSignedMoney = function ($value) {
+        $val = (float) $value;
+        $formatted = (floor(abs($val)) == abs($val) ? number_format(abs($val), 0, ',', '.') : number_format(abs($val), 2, ',', '.'));
+        return (($val > 0) ? '+₺' : (($val < 0) ? '-₺' : '₺')) . $formatted;
+    };
+    $attachmentUrl = fn ($path) => \Illuminate\Support\Facades\Storage::disk('public')->url($path);
 
-                            {{-- Müşteri ve Ürün --}}
-                            <p class="text-sm font-bold text-gray-800 line-clamp-1 mb-1">{{ $error->musteri_adi }}</p>
-                            <p class="text-xs text-gray-600 line-clamp-2 mb-3">{{ $error->urun_adi }}</p>
+    $toneFromColor = fn ($color) => match ($color) {
+        'green' => 'success',
+        'yellow', 'orange' => 'warning',
+        'red' => 'danger',
+        'blue', 'purple' => 'info',
+        default => 'default',
+    };
 
-                            {{-- Desi Bilgileri --}}
-                            <div class="grid grid-cols-2 gap-3 text-center bg-gray-50 rounded-lg p-2 mb-3">
-                                <div>
-                                    <p class="text-[10px] text-gray-400">Yanlış Desi</p>
-                                    <p class="text-sm font-bold text-red-600">{{ number_format($error->gercek_desi, 0) }}</p>
-                                </div>
-                                <div>
-                                    <p class="text-[10px] text-gray-400">Doğru Desi</p>
-                                    <p class="text-sm font-bold text-green-600">{{ number_format($error->beklenen_desi, 0) }}</p>
-                                </div>
-                            </div>
+    $errorSortIcon = function (string $columnKey) use ($errorSortableColumns, $errorSortField, $errorSortDirection) {
+        $dbColumn = $errorSortableColumns[$columnKey] ?? null;
+        if (!$dbColumn) {
+            return '';
+        }
 
-                            {{-- Aksiyon --}}
-                            <button wire:click="openCreateModal({{ $error->id }})" 
-                                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm font-medium">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                                </svg>
-                                Tazmin Oluştur
-                            </button>
-                        </div>
-                    @empty
-                        <div class="p-8 text-center text-gray-400">Hata bulunamadı</div>
-                    @endforelse
-                </div>
+        return $errorSortField === $dbColumn
+            ? ($errorSortDirection === 'asc' ? '▲' : '▼')
+            : '⇅';
+    };
+    $compensationSortIcon = function (string $columnKey) use ($compensationSortableColumns, $compensationSortField, $compensationSortDirection) {
+        $dbColumn = $compensationSortableColumns[$columnKey] ?? null;
+        if (!$dbColumn) {
+            return '';
+        }
 
-                <div class="px-4 py-3 bg-gray-50 border-t">
-                    {{ $this->allErrors->links() }}
-                </div>
-            </div>
-        @endif
+        return $compensationSortField === $dbColumn
+            ? ($compensationSortDirection === 'asc' ? '▲' : '▼')
+            : '⇅';
+    };
+    $statusOptions = \App\Models\Compensation::DURUMLAR;
+    $reasonOptions = \App\Models\Compensation::SEBEPLER;
+    $priorityOptions = \App\Models\Compensation::PRIORITIES;
+    $recordTypeLabels = [
+        'all' => 'Tümü',
+        'siparis' => 'Sipariş',
+        'iade' => 'İade / değişim',
+        'parca' => 'Parça gönderisi',
+    ];
+    $activeFilters = array_values(array_filter([
+        $filterCargoCompany !== '' ? 'Firma: ' . $filterCargoCompany : null,
+        $filterMarketplace !== '' ? 'Pazaryeri: ' . $filterMarketplace : null,
+        $filterStore !== '' ? 'Mağaza: ' . $filterStore : null,
+        ($filterRecordType ?? 'all') !== 'all' ? 'Kayıt: ' . ($recordTypeLabels[$filterRecordType] ?? $filterRecordType) : null,
+        $filterStatus !== '' ? 'Durum: ' . ($statusOptions[$filterStatus]['label'] ?? $filterStatus) : null,
+        $filterReason !== '' ? 'Sebep: ' . ($reasonOptions[$filterReason]['label'] ?? $filterReason) : null,
+        $filterPriority !== '' ? 'Öncelik: ' . ($priorityOptions[$filterPriority]['label'] ?? $filterPriority) : null,
+    ]));
+    $listActiveFilters = array_values(array_filter([
+        $filterCargoCompany !== '' ? 'Firma: ' . $filterCargoCompany : null,
+        ($filterRecordType ?? 'all') !== 'all' ? 'Kayıt: ' . ($recordTypeLabels[$filterRecordType] ?? $filterRecordType) : null,
+        $filterMarketplace !== '' ? 'Pazaryeri: ' . $filterMarketplace : null,
+        $filterStore !== '' ? 'Mağaza: ' . $filterStore : null,
+        $viewMode === 'all_compensations' && $filterStatus !== '' ? 'Durum: ' . ($statusOptions[$filterStatus]['label'] ?? $filterStatus) : null,
+        $viewMode === 'all_compensations' && $filterReason !== '' ? 'Sebep: ' . ($reasonOptions[$filterReason]['label'] ?? $filterReason) : null,
+        $viewMode === 'all_compensations' && $filterPriority !== '' ? 'Öncelik: ' . ($priorityOptions[$filterPriority]['label'] ?? $filterPriority) : null,
+    ]));
+    $showDashboardAdvancedFilters = ($filterRecordType ?? 'all') !== 'all'
+        || $filterMarketplace !== ''
+        || $filterStore !== ''
+        || $filterReason !== ''
+        || $filterPriority !== '';
+    $showListAdvancedFilters = ($filterRecordType ?? 'all') !== 'all'
+        || $filterMarketplace !== ''
+        || $filterStore !== ''
+        || ($viewMode === 'all_compensations' && ($filterReason !== '' || $filterPriority !== ''));
+@endphp
 
+<div class="w-full space-y-6 overflow-hidden">
+    @once
+        <style>
+            .col-resize-handle { position: absolute; right: 0; top: 0; bottom: 0; width: 4px; cursor: col-resize; background: transparent; z-index: 10; transition: background 0.15s; }
+            .col-resize-handle:hover, .col-resize-handle.active { background: #6366f1; }
+            .sortable-th { cursor: pointer; user-select: none; position: relative; }
+            .sortable-th:hover { background: #f8fafc; }
+            #compensationErrorsTable .text-xs,
+            #compensationClaimsTable .text-xs { font-size: 10px !important; }
+            #compensationErrorsTable .text-sm,
+            #compensationClaimsTable .text-sm { font-size: 12px !important; }
+            #compensationErrorsTable .text-\[10px\],
+            #compensationClaimsTable .text-\[10px\] { font-size: 8px !important; }
+            #compensationErrorsTable,
+            #compensationClaimsTable { table-layout: fixed; width: 100%; }
+            #compensationErrorsTable th,
+            #compensationErrorsTable td,
+            #compensationClaimsTable th,
+            #compensationClaimsTable td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        </style>
+        <script>
+            document.addEventListener('alpine:init', () => {
+                Alpine.data('columnResize', () => ({
+                    resizing: false,
+                    startX: 0,
+                    startWidth: 0,
+                    currentTh: null,
+                    handle: null,
+                    startResize(e, th) {
+                        this.resizing = true;
+                        this.startX = e.pageX;
+                        this.currentTh = th;
+                        this.startWidth = th.offsetWidth;
+                        this.handle = e.target;
+                        this.handle.classList.add('active');
 
-        {{-- Tüm Tazminler Listesi --}}
-        @if($viewMode === 'all_compensations')
-            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                {{-- Desktop: Tablo Görünümü --}}
-                <div class="hidden lg:block overflow-x-auto">
-                    <table class="w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50 text-gray-500">
-                            <tr>
-                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap">Tarih</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider">Müşteri</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider whitespace-nowrap">Sebep</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap w-24">Talep</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold uppercase tracking-wider whitespace-nowrap w-24">Onaylanan</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-28">Durum</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap">Belgeler</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap w-20">İşlem</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            @forelse($this->allCompensations as $comp)
-                                @php $sebepInfo = $comp->sebep_info; $durumInfo = $comp->durum_info; @endphp
-                                <tr class="hover:bg-gray-50">
-                                    <td class="px-3 py-3 text-xs text-gray-900 font-medium whitespace-nowrap">{{ $comp->tarih->format('d.m.Y') }}</td>
-                                    <td class="px-3 py-3">
-                                        <span class="text-xs font-bold text-gray-800 line-clamp-1" title="{{ $comp->musteri_adi }}">{{ $comp->musteri_adi }}</span>
-                                    </td>
-                                    <td class="px-3 py-3 whitespace-nowrap">
-                                        <span class="text-xs text-gray-500">{{ $sebepInfo['icon'] }} {{ $sebepInfo['label'] }}</span>
-                                    </td>
-                                    <td class="px-3 py-3 text-right text-xs font-medium text-gray-900 whitespace-nowrap font-mono">{{ number_format($comp->talep_tutari, 0) }} ₺</td>
-                                    <td class="px-3 py-3 text-right text-xs font-bold text-green-600 whitespace-nowrap font-mono">{{ number_format($comp->onaylanan_tutar, 0) }} ₺</td>
-                                    <td class="px-3 py-3 text-center whitespace-nowrap">
-                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide
-                                            {{ $durumInfo['color'] === 'green' ? 'bg-green-100 text-green-800' : 
-                                               ($durumInfo['color'] === 'yellow' ? 'bg-yellow-100 text-yellow-800' : 
-                                               ($durumInfo['color'] === 'red' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')) }}">
-                                            {{ $durumInfo['icon'] }} {{ $durumInfo['label'] }}
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-3 text-center whitespace-nowrap">
-                                        <div class="flex justify-center gap-1">
-                                            <a href="{{ route('compensation.petition', $comp->id) }}" class="text-[10px] bg-white hover:bg-gray-50 text-gray-700 px-1.5 py-1 rounded border border-gray-300 transition-colors" title="Dilekçe İndir">
-                                                📄 Dilekçe
-                                            </a>
-                                            <a href="{{ route('compensation.form', $comp->id) }}" class="text-[10px] bg-white hover:bg-gray-50 text-gray-700 px-1.5 py-1 rounded border border-gray-300 transition-colors" title="Form İndir">
-                                                📝 Form
-                                            </a>
-                                            <a href="{{ route('compensation.download-all', $comp->id) }}" class="text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 px-1.5 py-1 rounded border border-blue-200 transition-colors" title="Tümünü İndir (ZIP)">
-                                                📦 ZIP
-                                            </a>
-                                            @if(!empty($comp->attachments))
-                                            <button wire:click="viewAttachments({{ $comp->id }})" class="inline-flex items-center gap-1 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-1.5 py-1 rounded border border-indigo-200 transition-colors" title="Ekleri / Kanıtları Görüntüle">
-                                                📸 Ekler
-                                            </button>
-                                            @endif
-                                            <button wire:click="openPetitionModal({{ $comp->id }})" class="inline-flex items-center gap-1 text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-700 px-1.5 py-1 rounded border border-purple-200 transition-colors" title="Dilekçe İçeriği Düzenle">
-                                                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16.0001 4.00003L17.0858 7.31422L20.4001 8.40003L17.0858 9.48584L16.0001 12.8L14.9142 9.48584L11.6001 8.40003L14.9142 7.31422L16.0001 4.00003Z" fill="currentColor"/><path d="M8.00006 4.00003L9.08581 7.31422L12.4001 8.40003L9.08581 9.48584L8.00006 12.8L6.91425 9.48584L3.60006 8.40003L6.91425 7.31422L8.00006 4.00003Z" fill="currentColor" fill-opacity="0.5"/><path d="M12.0001 14L13.0858 17.3142L16.4001 18.4L13.0858 19.4858L12.0001 22.8L10.9142 19.4858L7.60006 18.4L10.9142 17.3142L12.0001 14Z" fill="currentColor"/></svg>
-                                                AI
-                                            </button>
-                                        </div>
-                                    </td>
-                                    <td class="px-3 py-3 text-center whitespace-nowrap">
-                                        <button wire:click="openStatusModal({{ $comp->id }})" class="text-gray-400 hover:text-blue-600 transition-colors">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                                        </button>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="8" class="px-4 py-8 text-center text-gray-400">Tazmin talebi bulunamadı</td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                        const onMouseMove = (ev) => {
+                            if (!this.resizing) return;
+                            const newWidth = Math.max(40, this.startWidth + (ev.pageX - this.startX));
+                            this.currentTh.style.width = newWidth + 'px';
+                            this.currentTh.style.minWidth = newWidth + 'px';
+                        };
 
-                {{-- Mobile: Kart Görünümü --}}
-                <div class="lg:hidden divide-y divide-gray-200">
-                    @forelse($this->allCompensations as $comp)
-                        @php $sebepInfo = $comp->sebep_info; $durumInfo = $comp->durum_info; @endphp
-                        <div class="p-4 hover:bg-gray-50">
-                            {{-- Üst: Tarih ve Durum --}}
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-xs font-medium text-gray-500">{{ $comp->tarih->format('d.m.Y') }}</span>
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold
-                                    {{ $durumInfo['color'] === 'green' ? 'bg-green-100 text-green-800' : 
-                                       ($durumInfo['color'] === 'yellow' ? 'bg-yellow-100 text-yellow-800' : 
-                                       ($durumInfo['color'] === 'red' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')) }}">
-                                    {{ $durumInfo['icon'] }} {{ $durumInfo['label'] }}
-                                </span>
-                            </div>
+                        const onMouseUp = () => {
+                            this.resizing = false;
+                            if (this.handle) this.handle.classList.remove('active');
+                            document.removeEventListener('mousemove', onMouseMove);
+                            document.removeEventListener('mouseup', onMouseUp);
+                        };
 
-                            {{-- Müşteri ve Sebep --}}
-                            <p class="text-sm font-bold text-gray-800 line-clamp-1 mb-1">{{ $comp->musteri_adi }}</p>
-                            <p class="text-xs text-gray-500 mb-3">{{ $sebepInfo['icon'] }} {{ $sebepInfo['label'] }}</p>
+                        document.addEventListener('mousemove', onMouseMove);
+                        document.addEventListener('mouseup', onMouseUp);
+                    }
+                }));
+            });
+        </script>
+    @endonce
 
-                            {{-- Tutar Bilgileri --}}
-                            <div class="grid grid-cols-2 gap-3 text-center bg-gray-50 rounded-lg p-2 mb-3">
-                                <div>
-                                    <p class="text-[10px] text-gray-400">Talep Edilen</p>
-                                    <p class="text-sm font-bold text-gray-900">{{ number_format($comp->talep_tutari, 0) }} ₺</p>
-                                </div>
-                                <div>
-                                    <p class="text-[10px] text-gray-400">Onaylanan</p>
-                                    <p class="text-sm font-bold text-green-600">{{ number_format($comp->onaylanan_tutar, 0) }} ₺</p>
-                                </div>
-                            </div>
-
-                            {{-- Belgeler --}}
-                            <div class="flex flex-wrap gap-2 mb-3">
-                                <a href="{{ route('compensation.petition', $comp->id) }}" class="text-xs bg-white text-gray-700 px-2 py-1.5 rounded border border-gray-300">
-                                    📄 Dilekçe
-                                </a>
-                                <a href="{{ route('compensation.form', $comp->id) }}" class="text-xs bg-white text-gray-700 px-2 py-1.5 rounded border border-gray-300">
-                                    📝 Form
-                                </a>
-                                <a href="{{ route('compensation.download-all', $comp->id) }}" class="text-xs bg-blue-50 text-blue-700 px-2 py-1.5 rounded border border-blue-200">
-                                    📦 ZIP
-                                </a>
-                                @if(!empty($comp->attachments))
-                                <button wire:click="viewAttachments({{ $comp->id }})" class="text-xs bg-indigo-50 text-indigo-700 px-2 py-1.5 rounded border border-indigo-200">
-                                    📸 Ekler
-                                </button>
-                                @endif
-                                <button wire:click="openPetitionModal({{ $comp->id }})" class="text-xs bg-purple-50 text-purple-700 px-2 py-1.5 rounded border border-purple-200">
-                                    ✨ AI
-                                </button>
-                            </div>
-
-                            {{-- Düzenle Butonu --}}
-                            <button wire:click="openStatusModal({{ $comp->id }})" 
-                                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                                Durum Güncelle
-                            </button>
-                        </div>
-                    @empty
-                        <div class="p-8 text-center text-gray-400">Tazmin talebi bulunamadı</div>
-                    @endforelse
-                </div>
-
-                <div class="px-4 py-3 bg-gray-50 border-t">
-                    {{ $this->allCompensations->links() }}
-                </div>
-            </div>
-        @endif
-    @else
-    {{-- Dashboard View --}}
-    {{-- Mesaj --}}
     @if($message)
-        <div class="rounded-lg p-4 {{ 
-            $messageType === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 
-            ($messageType === 'error' ? 'bg-red-50 text-red-800 border border-red-200' : 
-            'bg-blue-50 text-blue-800 border border-blue-200') 
-        }}">
-            {{ $message }}
-        </div>
-    @endif
-
-    {{-- Özet İstatistikler --}}
-    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 lg:gap-4">
-        <div class="bg-white rounded-xl p-3 lg:p-4 border border-gray-200 shadow-sm">
-            <div class="text-gray-500 text-xs">Toplam Tazmin</div>
-            <div class="text-lg lg:text-2xl font-bold text-gray-900">{{ $this->stats['total'] }}</div>
-        </div>
-        <div class="bg-white rounded-xl p-3 lg:p-4 border border-gray-200 shadow-sm">
-            <div class="text-gray-500 text-xs">Bekleyen</div>
-            <div class="text-lg lg:text-2xl font-bold text-yellow-600">{{ $this->stats['pending'] }}</div>
-        </div>
-        <div class="bg-white rounded-xl p-3 lg:p-4 border border-gray-200 shadow-sm">
-            <div class="text-gray-500 text-xs">Tamamlanan</div>
-            <div class="text-lg lg:text-2xl font-bold text-green-600">{{ $this->stats['completed'] }}</div>
-        </div>
-        <div class="bg-white rounded-xl p-3 lg:p-4 border border-gray-200 shadow-sm">
-            <div class="text-gray-500 text-xs">Talep Edilen</div>
-            <div class="text-lg lg:text-2xl font-bold text-blue-600">{{ number_format($this->stats['total_claimed'], 0) }} ₺</div>
-        </div>
-        <div class="bg-white rounded-xl p-3 lg:p-4 border border-gray-200 shadow-sm">
-            <div class="text-gray-500 text-xs">Onaylanan</div>
-            <div class="text-lg lg:text-2xl font-bold text-green-600">{{ number_format($this->stats['total_approved'], 0) }} ₺</div>
-        </div>
-        <div class="bg-white rounded-xl p-3 lg:p-4 border border-gray-200 shadow-sm">
-            <div class="text-gray-500 text-xs">Başarı Oranı</div>
-            <div class="text-lg lg:text-2xl font-bold text-purple-600">%{{ $this->stats['success_rate'] }}</div>
-        </div>
-    </div>
-
-    {{-- Grafik Paneli --}}
-    @if($this->statsBreakdown['total'] > 0)
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6 mb-4 lg:mb-6">
-        {{-- Durumlara Göre Dağılım --}}
-        <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-            <h3 class="font-bold text-gray-800 mb-5 flex items-center gap-2">
-                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                Durumlara Göre Dağılım
-            </h3>
-            <div class="space-y-5">
-                @php $st = $this->statsBreakdown['statuses']; $tot = $this->statsBreakdown['total'] ?: 1; @endphp
-                
-                {{-- Beklemede --}}
-                <div>
-                    <div class="flex justify-between text-xs mb-1.5">
-                        <span class="font-semibold text-gray-700">Beklemede</span>
-                        <span class="text-gray-500 font-medium">{{ $st['beklemede'] }} Talep <span class="text-gray-400">(%{{ round(($st['beklemede']/$tot)*100) }})</span></span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2.5">
-                        <div class="bg-yellow-400 h-2.5 rounded-full" style="width: {{ ($st['beklemede']/$tot)*100 }}%"></div>
-                    </div>
-                </div>
-
-                {{-- Onaylandı --}}
-                <div>
-                    <div class="flex justify-between text-xs mb-1.5">
-                        <span class="font-semibold text-gray-700">Onaylandı</span>
-                        <span class="text-gray-500 font-medium">{{ $st['onaylandi'] }} Talep <span class="text-gray-400">(%{{ round(($st['onaylandi']/$tot)*100) }})</span></span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2.5">
-                        <div class="bg-green-500 h-2.5 rounded-full" style="width: {{ ($st['onaylandi']/$tot)*100 }}%"></div>
-                    </div>
-                </div>
-
-                {{-- Kısmen Onaylandı --}}
-                <div>
-                    <div class="flex justify-between text-xs mb-1.5">
-                        <span class="font-semibold text-gray-700">Kısmen Onaylandı</span>
-                        <span class="text-gray-500 font-medium">{{ $st['kismen_onaylandi'] }} Talep <span class="text-gray-400">(%{{ round(($st['kismen_onaylandi']/$tot)*100) }})</span></span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2.5">
-                        <div class="bg-blue-400 h-2.5 rounded-full" style="width: {{ ($st['kismen_onaylandi']/$tot)*100 }}%"></div>
-                    </div>
-                </div>
-
-                {{-- Reddedildi --}}
-                <div>
-                    <div class="flex justify-between text-xs mb-1.5">
-                        <span class="font-semibold text-gray-700">Reddedildi</span>
-                        <span class="text-gray-500 font-medium">{{ $st['reddedildi'] }} Talep <span class="text-gray-400">(%{{ round(($st['reddedildi']/$tot)*100) }})</span></span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2.5">
-                        <div class="bg-red-500 h-2.5 rounded-full" style="width: {{ ($st['reddedildi']/$tot)*100 }}%"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {{-- Sebeplere Göre Dağılım --}}
-        <div class="bg-white rounded-xl p-5 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-            <h3 class="font-bold text-gray-800 mb-5 flex items-center gap-2">
-                <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
-                Tazmin Sebepleri Dağılımı
-            </h3>
-            <div class="space-y-5">
-                @php $rs = $this->statsBreakdown['reasons']; @endphp
-                
-                {{-- Kayıp Ürün --}}
-                <div>
-                    <div class="flex justify-between text-xs mb-1.5">
-                        <span class="font-semibold text-gray-700">Kayıp Ürün / İade Kayıp</span>
-                        <span class="text-gray-500 font-medium">{{ $rs['kayip_urun'] }} Talep <span class="text-gray-400">(%{{ round(($rs['kayip_urun']/$tot)*100) }})</span></span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2.5">
-                        <div class="bg-indigo-500 h-2.5 rounded-full" style="width: {{ ($rs['kayip_urun']/$tot)*100 }}%"></div>
-                    </div>
-                </div>
-
-                {{-- Hasarlı Ürün --}}
-                <div>
-                    <div class="flex justify-between text-xs mb-1.5">
-                        <span class="font-semibold text-gray-700">Hasarlı Ürün</span>
-                        <span class="text-gray-500 font-medium">{{ $rs['hasarli_urun'] }} Talep <span class="text-gray-400">(%{{ round(($rs['hasarli_urun']/$tot)*100) }})</span></span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2.5">
-                        <div class="bg-orange-400 h-2.5 rounded-full" style="width: {{ ($rs['hasarli_urun']/$tot)*100 }}%"></div>
-                    </div>
-                </div>
-
-                {{-- Hatalı Ölçüm --}}
-                <div>
-                    <div class="flex justify-between text-xs mb-1.5">
-                        <span class="font-semibold text-gray-700">Hatalı Desi / Tutar Fazla</span>
-                        <span class="text-gray-500 font-medium">{{ $rs['desi_fazla'] + $rs['tutar_fazla'] }} Talep <span class="text-gray-400">(%{{ round((($rs['desi_fazla']+$rs['tutar_fazla'])/$tot)*100) }})</span></span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2.5">
-                        <div class="bg-red-400 h-2.5 rounded-full" style="width: {{ (($rs['desi_fazla']+$rs['tutar_fazla'])/$tot)*100 }}%"></div>
-                    </div>
-                </div>
-
-                {{-- Diğer --}}
-                <div>
-                    <div class="flex justify-between text-xs mb-1.5">
-                        <span class="font-semibold text-gray-700">Diğer Nedenler</span>
-                        <span class="text-gray-500 font-medium">{{ $rs['diger'] }} Talep <span class="text-gray-400">(%{{ round(($rs['diger']/$tot)*100) }})</span></span>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2.5">
-                        <div class="bg-gray-400 h-2.5 rounded-full" style="width: {{ ($rs['diger']/$tot)*100 }}%"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    @endif
-
-    {{-- Alt Paneller --}}
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-        {{-- Son Tespit Edilen Desi Hataları --}}
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div class="px-6 py-4 bg-gradient-to-r from-red-50 to-red-100 border-b border-red-200">
-                <h3 class="font-medium text-red-900 flex items-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                    </svg>
-                    En Son Tespit Edilen Desi Hataları
-                </h3>
-            </div>
-            
-            <div class="divide-y divide-gray-100">
-                @forelse($this->recentErrors as $error)
-                    <div class="px-6 py-3 hover:bg-gray-50 flex items-center justify-between">
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2">
-                                <span class="text-sm text-gray-500">{{ $error->tarih?->format('d.m.Y') }}</span>
-                                <span class="font-medium text-gray-900 truncate">{{ $error->musteri_adi }}</span>
-                            </div>
-                            <div class="text-sm text-gray-500 truncate">{{ $error->urun_adi }}</div>
-                        </div>
-                        <div class="flex items-center gap-4 flex-shrink-0">
-                            <div class="text-center">
-                                <div class="text-xs text-gray-400">Yanlış</div>
-                                <div class="text-red-600 font-bold">{{ number_format($error->gercek_desi, 0) }}</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="text-xs text-gray-400">Doğru</div>
-                                <div class="text-green-600 font-bold">{{ number_format($error->beklenen_desi, 0) }}</div>
-                            </div>
-                            <button 
-                                wire:click="openCreateModal({{ $error->id }})"
-                                class="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"
-                                title="Tazmin Oluştur"
-                            >
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                @empty
-                    <div class="px-6 py-8 text-center text-gray-400">
-                        Henüz tespit edilen hata yok
-                    </div>
-                @endforelse
-            </div>
-
-            @if($this->recentErrors->count() > 0)
-                <div class="px-6 py-3 bg-gray-50 border-t">
-                    <button wire:click="showAllErrors" class="text-sm text-blue-600 hover:text-blue-800">Tümünü Gör →</button>
-                </div>
-            @endif
-        </div>
-
-        {{-- Son Oluşturulan Tazminler --}}
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div class="px-6 py-4 bg-gradient-to-r from-green-50 to-green-100 border-b border-green-200 flex justify-between items-center">
-                <h3 class="font-medium text-green-900 flex items-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    En Son Oluşturulan Tazminler
-                </h3>
-                <button 
-                    wire:click="openCreateModal"
-                    class="text-sm text-green-700 hover:text-green-900 flex items-center gap-1"
-                >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                    </svg>
-                    Yeni
+        <div class="rounded-2xl border p-4 text-sm shadow-sm {{ $messageClasses }}">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 lg:gap-4">
+                <p>{{ $message }}</p>
+                <button type="button" wire:click="$set('message', '')" class="w-full sm:w-auto rounded-lg border border-current/20 bg-white/70 px-4 py-3 sm:py-2 text-sm font-medium transition hover:bg-white">
+                    Kapat
                 </button>
             </div>
-            
-            <div class="divide-y divide-gray-100">
-                @forelse($this->recentCompensations as $comp)
-                    @php $sebepInfo = $comp->sebep_info; $durumInfo = $comp->durum_info; @endphp
-                    <div class="px-6 py-3 hover:bg-gray-50">
-                        <div class="flex items-center justify-between mb-1">
-                            <div class="flex items-center gap-2">
-                                <span class="text-sm text-gray-500">{{ $comp->tarih->format('d.m.Y') }}</span>
-                                <span class="font-medium text-gray-900">{{ $comp->musteri_adi }}</span>
-                            </div>
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
-                                {{ $durumInfo['color'] === 'green' ? 'bg-green-100 text-green-800' : 
-                                   ($durumInfo['color'] === 'yellow' ? 'bg-yellow-100 text-yellow-800' : 
-                                   ($durumInfo['color'] === 'red' ? 'bg-red-100 text-red-800' : 
-                                   ($durumInfo['color'] === 'blue' ? 'bg-blue-100 text-blue-800' : 
-                                   'bg-gray-100 text-gray-800'))) }}">
-                                {{ $durumInfo['icon'] }} {{ $durumInfo['label'] }}
-                            </span>
+        </div>
+    @endif
+
+    @if($viewMode === 'dashboard')
+        <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 lg:gap-6">
+            <div class="max-w-3xl">
+                <h2 class="text-xl lg:text-2xl font-bold text-gray-900">Kargo tazmin merkezi</h2>
+                <p class="mt-1 text-sm lg:text-base text-gray-700">
+                    Açık dosyaları, talep tutarını ve tahsilat sonucunu tek ekranda izleyin.
+                </p>
+            </div>
+
+            <div class="flex w-full xl:w-auto flex-col sm:flex-row gap-3">
+                <x-zolm.primary-button color="indigo" compact wire:click="openCreateModal">Yeni Talep</x-zolm.primary-button>
+                <button wire:click="showAllErrors" class="min-h-[44px] w-full sm:w-auto rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                    Tüm Hatalar
+                </button>
+                <button wire:click="showAllCompensations" class="min-h-[44px] w-full sm:w-auto rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                    Tüm Talepler
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+            <x-zolm.stat-card variant="orders" label="Açık dosya" :value="$formatCount($stats['pending'])" tone="warning" description="Yanıt bekleyen veya işlemde olan talepler">
+                <x-slot:icon>
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </x-slot:icon>
+            </x-zolm.stat-card>
+            <x-zolm.stat-card variant="orders" label="Sonuçlanan" :value="$formatCount($stats['completed'])" tone="success" description="Onaylanan, ödenen veya kapanan dosyalar">
+                <x-slot:icon>
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                </x-slot:icon>
+            </x-zolm.stat-card>
+            <x-zolm.stat-card variant="orders" label="Onaylanan" :value="$formatMoney($stats['total_approved'])" tone="success" description="Geri kazanılan toplam tutar">
+                <x-slot:icon>
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                    </svg>
+                </x-slot:icon>
+            </x-zolm.stat-card>
+            <x-zolm.stat-card variant="orders" label="Tahsil edilen" :value="$formatMoney($stats['collected'])" tone="info" description="Fiilen hesabınıza geçen tutar">
+                <x-slot:icon>
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a5 5 0 00-10 0v2m-2 0h14l-1 10H6L5 9z" />
+                    </svg>
+                </x-slot:icon>
+            </x-zolm.stat-card>
+        </div>
+
+        <x-zolm.section-card variant="orders" padding="p-4 lg:p-5">
+            <div class="space-y-4">
+                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 lg:gap-4">
+                    <div>
+                        <h3 class="text-base lg:text-lg font-semibold text-gray-900">Tazmin filtreleri</h3>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Dosyaları firma, durum, sebep ve kayıt tipine göre daraltın.
+                        </p>
+                    </div>
+                    <p class="text-sm text-gray-500">
+                        {{ count($activeFilters) > 0 ? implode(' · ', $activeFilters) : 'Son 30 günün tüm talepleri ve hataları gösteriliyor.' }}
+                        · {{ $filterStartDate ? \Carbon\Carbon::parse($filterStartDate)->format('d.m.Y') : '-' }} - {{ $filterEndDate ? \Carbon\Carbon::parse($filterEndDate)->format('d.m.Y') : '-' }}
+                    </p>
+                </div>
+
+                <div x-data="{ showAdvanced: @js($showDashboardAdvancedFilters) }" class="space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Başlangıç</label>
+                            <input type="date" wire:model.live="filterStartDate" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                         </div>
-                        <div class="flex items-center justify-between">
-                            <div class="text-sm text-gray-500 flex items-center gap-2">
-                                <span>{{ $sebepInfo['icon'] }} {{ $sebepInfo['label'] }}</span>
-                                @if($comp->tracking_url)
-                                    <a href="{{ $comp->tracking_url }}" target="_blank" 
-                                       class="text-blue-600 hover:underline text-xs">
-                                        {{ $comp->takip_kodu }}
-                                    </a>
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Bitiş</label>
+                            <input type="date" wire:model.live="filterEndDate" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Kargo firması</label>
+                            <select wire:model.live="filterCargoCompany" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <option value="">Tümü</option>
+                                @foreach($cargoCompanies as $company)
+                                    <option value="{{ $company }}">{{ $company }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Durum</label>
+                            <select wire:model.live="filterStatus" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <option value="">Tümü</option>
+                                @foreach($statusOptions as $statusKey => $statusInfo)
+                                    <option value="{{ $statusKey }}">{{ $statusInfo['label'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+
+                    <button type="button" @click="showAdvanced = !showAdvanced" class="min-h-[44px] w-full sm:w-auto rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                        <span x-text="showAdvanced ? 'Gelişmiş filtreleri gizle' : 'Gelişmiş filtreler'"></span>
+                    </button>
+
+                    <div x-show="showAdvanced" x-cloak x-transition.opacity.duration.150ms class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
+                            <div>
+                                <label class="block text-xs sm:text-sm font-medium text-gray-500">Kayıt tipi</label>
+                                <select wire:model.live="filterRecordType" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <option value="all">Tümü</option>
+                                    <option value="siparis">Sipariş</option>
+                                    <option value="iade">İade / değişim</option>
+                                    <option value="parca">Parça gönderisi</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs sm:text-sm font-medium text-gray-500">Pazaryeri</label>
+                                <select wire:model.live="filterMarketplace" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <option value="">Tümü</option>
+                                    @foreach($marketplaces as $marketplace)
+                                        <option value="{{ $marketplace }}">{{ $marketplace }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs sm:text-sm font-medium text-gray-500">Mağaza</label>
+                                <select wire:model.live="filterStore" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <option value="">Tümü</option>
+                                    @foreach($stores as $store)
+                                        <option value="{{ $store }}">{{ $store }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs sm:text-sm font-medium text-gray-500">Sebep</label>
+                                <select wire:model.live="filterReason" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <option value="">Tümü</option>
+                                    @foreach($reasonOptions as $reasonKey => $reasonInfo)
+                                        <option value="{{ $reasonKey }}">{{ $reasonInfo['label'] }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs sm:text-sm font-medium text-gray-500">Öncelik</label>
+                                <select wire:model.live="filterPriority" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <option value="">Tümü</option>
+                                    @foreach($priorityOptions as $priorityKey => $priorityInfo)
+                                        <option value="{{ $priorityKey }}">{{ $priorityInfo['label'] }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </x-zolm.section-card>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
+            <x-zolm.section-card variant="orders" eyebrow="Son Hatalar" title="İncelenecek aksiyon kayıtları" description="Talep, düzeltme veya manuel inceleme gerektiren son kayıtlar." padding="p-4 lg:p-6">
+                <div class="space-y-3">
+                    @forelse($recentErrors as $error)
+                        @php
+                            $isClaimable = in_array($error->error_type, \App\Models\CargoReportItem::CLAIMABLE_ERROR_TYPES, true);
+                        @endphp
+                        <div class="rounded-3xl border border-slate-200 bg-white p-4">
+                            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 lg:gap-4">
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                        <span>{{ $error->tarih?->format('d.m.Y') }}</span>
+                                        <x-zolm.status-badge :tone="$error->tutar_fark > 0 ? 'danger' : 'success'">
+                                            Fark {{ $formatSignedMoney($error->tutar_fark) }}
+                                        </x-zolm.status-badge>
+                                    </div>
+                                    <p class="mt-2 truncate text-sm font-semibold text-slate-900">{{ $error->musteri_adi }}</p>
+                                    <p class="mt-1 truncate text-sm text-slate-500">{{ $error->urun_adi ?: 'Ürün bilgisi yok' }}</p>
+
+                                    <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 lg:gap-3">
+                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                            <p class="text-slate-500">Yanlış desi</p>
+                                            <p class="mt-1 font-semibold text-rose-600">{{ number_format((float) $error->gercek_desi, 0, ',', '.') }}</p>
+                                        </div>
+                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                            <p class="text-slate-500">Doğru desi</p>
+                                            <p class="mt-1 font-semibold text-emerald-600">{{ number_format((float) $error->beklenen_desi, 0, ',', '.') }}</p>
+                                        </div>
+                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                            <p class="text-slate-500">Talep potansiyeli</p>
+                                            <p class="mt-1 font-semibold {{ $error->tutar_fark > 0 ? 'text-rose-600' : 'text-emerald-600' }}">{{ $formatSignedMoney($error->tutar_fark) }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @if($isClaimable)
+                                    <button wire:click="openCreateModal({{ $error->id }})" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                        Talep Aç
+                                    </button>
+                                @else
+                                    <button type="button" disabled class="w-full sm:w-auto rounded-lg border border-slate-200 bg-slate-100 px-4 py-3 sm:py-2 text-sm font-medium text-slate-400">
+                                        Düzeltme Gerekli
+                                    </button>
                                 @endif
                             </div>
-                            <div class="flex items-center gap-3">
-                                <span class="text-sm font-medium text-gray-900">{{ number_format($comp->talep_tutari, 0) }} ₺</span>
-                                <button 
-                                    wire:click="openStatusModal({{ $comp->id }})"
-                                    class="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded"
-                                    title="Durum Güncelle"
-                                >
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                                    </svg>
+                        </div>
+                    @empty
+                        <div class="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+                            Seçili filtrelerde talebe veya aksiyona uygun hata kaydı bulunmuyor.
+                        </div>
+                    @endforelse
+                </div>
+
+                @if($recentErrors->isNotEmpty())
+                    <div class="mt-4">
+                        <button wire:click="showAllErrors" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                            Tüm hata kayıtlarını aç
+                        </button>
+                    </div>
+                @endif
+            </x-zolm.section-card>
+
+            <x-zolm.section-card variant="orders" eyebrow="Son Talepler" title="Açılan tazmin dosyaları" description="En son oluşturulan talepler ve işlem durumları." padding="p-4 lg:p-6">
+                <div class="space-y-3">
+                    @forelse($recentCompensations as $comp)
+                        @php
+                            $sebepInfo = $comp->sebep_info;
+                            $durumInfo = $comp->durum_info;
+                        @endphp
+                        <div class="rounded-3xl border border-slate-200 bg-white p-4">
+                            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 lg:gap-4">
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                        <span>{{ $comp->tarih->format('d.m.Y') }}</span>
+                                        <x-zolm.status-badge :tone="$toneFromColor($durumInfo['color'])">{{ $durumInfo['label'] }}</x-zolm.status-badge>
+                                        <x-zolm.status-badge :tone="$toneFromColor($sebepInfo['color'])">{{ $sebepInfo['label'] }}</x-zolm.status-badge>
+                                    </div>
+                                    <p class="mt-2 truncate text-sm font-semibold text-slate-900">{{ $comp->musteri_adi }}</p>
+                                    <p class="mt-1 text-sm text-slate-500">{{ $comp->cargo_company ?: 'Kargo firması yok' }}{{ $comp->takip_kodu ? ' · ' . $comp->takip_kodu : '' }}</p>
+
+                                    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 lg:gap-3">
+                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                            <p class="text-slate-500">Talep edilen</p>
+                                            <p class="mt-1 font-semibold text-slate-900">{{ $formatMoney($comp->talep_tutari) }}</p>
+                                        </div>
+                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                            <p class="text-slate-500">Onaylanan</p>
+                                            <p class="mt-1 font-semibold text-emerald-600">{{ $formatMoney($comp->onaylanan_tutar) }}</p>
+                                        </div>
+                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                            <p class="text-slate-500">Sorumlu</p>
+                                            <p class="mt-1 font-semibold text-slate-900">{{ $comp->responsibleUser?->name ?? 'Atanmadı' }}</p>
+                                        </div>
+                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                            <p class="text-slate-500">Sonraki aksiyon</p>
+                                            <p class="mt-1 font-semibold text-slate-900">{{ $comp->next_action_at?->format('d.m.Y') ?? 'Planlanmadı' }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="flex w-full sm:w-auto flex-col gap-2">
+                                    <button wire:click="openStatusModal({{ $comp->id }})" class="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                        Durum Güncelle
+                                    </button>
+                                    <button wire:click="openPetitionModal({{ $comp->id }})" class="w-full rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 sm:py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-100">
+                                        Dilekçe Düzenle
+                                    </button>
+                                    @if(!empty($comp->attachments))
+                                        <button wire:click="viewAttachments({{ $comp->id }})" class="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 sm:py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100">
+                                            Ekleri Gör
+                                        </button>
+                                    @endif
+                                    <button wire:click="editCompensation({{ $comp->id }})" class="w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 sm:py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-100">
+                                        Talebi Düzenle
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+                            Henüz açılmış tazmin talebi yok.
+                        </div>
+                    @endforelse
+                </div>
+
+                @if($recentCompensations->isNotEmpty())
+                    <div class="mt-4">
+                        <button wire:click="showAllCompensations" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                            Tüm talepleri aç
+                        </button>
+                    </div>
+                @endif
+            </x-zolm.section-card>
+        </div>
+    @else
+        <x-zolm.section-card variant="orders" padding="p-4 lg:p-6">
+            <div class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 lg:gap-6">
+                <div class="max-w-3xl">
+                    <div class="flex items-center gap-3">
+                        <button wire:click="backToDashboard" class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                            </svg>
+                        </button>
+                        <div>
+                            <x-zolm.eyebrow variant="classic">Liste Görünümü</x-zolm.eyebrow>
+                            <h2 class="mt-3 text-xl lg:text-2xl font-bold text-slate-900">
+                                {{ $viewMode === 'all_errors' ? 'Tüm aksiyon kayıtları' : 'Tüm tazmin talepleri' }}
+                            </h2>
+                            <p class="mt-2 text-sm lg:text-base text-slate-500">
+                                {{ $viewMode === 'all_errors' ? 'Tespit edilen fark, eksik ve operasyon kayıtlarını arayın; uygun olanları talebe dönüştürün.' : 'Açılan talepleri, belgeleri ve sonuç tutarlarını aynı listede yönetin.' }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="w-full xl:max-w-md">
+                    <label class="text-xs sm:text-sm font-medium text-slate-700">Arama</label>
+                    <div class="relative mt-1">
+                        <input
+                            type="text"
+                            wire:model.live.debounce.300ms="search"
+                            placeholder="Müşteri, takip kodu veya ürün ara..."
+                            class="w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </x-zolm.section-card>
+
+        <x-zolm.section-card
+            variant="orders"
+            eyebrow="Liste Filtreleri"
+            title="Detay segmentasyonu"
+            description="Arama, durum ve kanal filtrelerini listede birlikte kullanın."
+            headerPadding="px-4 pt-4 pb-2 lg:px-6 lg:pt-6 lg:pb-2"
+            bodyPadding="px-4 pb-4 lg:px-6 lg:pb-6"
+        >
+            <div x-data="{ showAdvanced: @js($showListAdvancedFilters) }" class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
+                    <div>
+                        <label class="text-xs sm:text-sm font-medium text-slate-700">Başlangıç</label>
+                        <input type="date" wire:model.live="filterStartDate" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="text-xs sm:text-sm font-medium text-slate-700">Bitiş</label>
+                        <input type="date" wire:model.live="filterEndDate" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="text-xs sm:text-sm font-medium text-slate-700">Kargo firması</label>
+                        <select wire:model.live="filterCargoCompany" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <option value="">Tümü</option>
+                            @foreach($cargoCompanies as $company)
+                                <option value="{{ $company }}">{{ $company }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @if($viewMode === 'all_compensations')
+                        <div>
+                            <label class="text-xs sm:text-sm font-medium text-slate-700">Durum</label>
+                            <select wire:model.live="filterStatus" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <option value="">Tümü</option>
+                                @foreach(\App\Models\Compensation::DURUMLAR as $statusKey => $statusInfo)
+                                    <option value="{{ $statusKey }}">{{ $statusInfo['label'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @endif
+                </div>
+
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <button type="button" @click="showAdvanced = !showAdvanced" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                        <span x-text="showAdvanced ? 'Gelişmiş filtreleri gizle' : 'Gelişmiş filtreler'"></span>
+                    </button>
+                    <p class="text-sm text-slate-500">
+                        {{ count($listActiveFilters) > 0 ? implode(' · ', $listActiveFilters) : 'Temel liste filtreleri açık.' }}
+                    </p>
+                </div>
+
+                <div x-show="showAdvanced" x-cloak x-transition.opacity.duration.150ms class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
+                        <div>
+                            <label class="text-xs sm:text-sm font-medium text-slate-700">Kayıt tipi</label>
+                            <select wire:model.live="filterRecordType" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <option value="all">Tümü</option>
+                                <option value="siparis">Sipariş</option>
+                                <option value="iade">İade / değişim</option>
+                                <option value="parca">Parça gönderisi</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs sm:text-sm font-medium text-slate-700">Pazaryeri</label>
+                            <select wire:model.live="filterMarketplace" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <option value="">Tümü</option>
+                                @foreach($marketplaces as $marketplace)
+                                    <option value="{{ $marketplace }}">{{ $marketplace }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs sm:text-sm font-medium text-slate-700">Mağaza</label>
+                            <select wire:model.live="filterStore" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <option value="">Tümü</option>
+                                @foreach($stores as $store)
+                                    <option value="{{ $store }}">{{ $store }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        @if($viewMode === 'all_compensations')
+                            <div>
+                                <label class="text-xs sm:text-sm font-medium text-slate-700">Sebep</label>
+                                <select wire:model.live="filterReason" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <option value="">Tümü</option>
+                                    @foreach(\App\Models\Compensation::SEBEPLER as $reasonKey => $reasonInfo)
+                                        <option value="{{ $reasonKey }}">{{ $reasonInfo['label'] }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs sm:text-sm font-medium text-slate-700">Öncelik</label>
+                                <select wire:model.live="filterPriority" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <option value="">Tümü</option>
+                                    @foreach(\App\Models\Compensation::PRIORITIES as $priorityKey => $priorityInfo)
+                                        <option value="{{ $priorityKey }}">{{ $priorityInfo['label'] }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </x-zolm.section-card>
+
+        @if($viewMode === 'all_errors')
+            <x-zolm.section-card
+                variant="orders"
+                eyebrow="Hata Listesi"
+                title="Fark tespit edilen kayıtlar"
+                description="Müşteri, ürün ve fark tutarına göre tüm kayıtlar."
+                headerPadding="px-4 pt-4 pb-2 lg:px-6 lg:pt-6 lg:pb-2"
+                bodyPadding="px-4 pb-4 lg:px-6 lg:pb-6"
+            >
+                @php
+                    $errorColumnMeta = [
+                        'date' => ['width' => '88px', 'align' => 'text-left'],
+                        'customer' => ['width' => '168px', 'align' => 'text-left'],
+                        'product' => ['width' => '208px', 'align' => 'text-left'],
+                        'wrong_desi' => ['width' => '80px', 'align' => 'text-center'],
+                        'correct_desi' => ['width' => '80px', 'align' => 'text-center'],
+                        'difference' => ['width' => '96px', 'align' => 'text-right'],
+                        'actions' => ['width' => '88px', 'align' => 'text-right'],
+                    ];
+                @endphp
+
+                <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 lg:gap-4">
+                    <div class="text-xs text-slate-500">{{ count($errorVisibleColumns) }} / {{ count($errorColumnDefs) }} kolon gösteriliyor</div>
+                    <div x-data="{ open: false }" class="relative">
+                        <button @click="open = !open" type="button" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                            Kolonlar
+                        </button>
+                        <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                            <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Hata Kolonları</p>
+                            <div class="mt-3 space-y-1.5">
+                                @foreach($errorColumnDefs as $colKey => $colLabel)
+                                    <label class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                        <input type="checkbox" wire:click="toggleErrorColumn('{{ $colKey }}')" {{ in_array($colKey, $errorVisibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                        <span>{{ $colLabel }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                    <div class="hidden md:block overflow-x-auto">
+                        <table class="w-full" x-data="columnResize()" id="compensationErrorsTable">
+                            <thead class="bg-slate-50 text-slate-500">
+                                <tr>
+                                    @foreach($errorColumnDefs as $colKey => $colLabel)
+                                        @if(in_array($colKey, $errorVisibleColumns, true))
+                                            @php
+                                                $meta = $errorColumnMeta[$colKey];
+                                                $align = $meta['align'];
+                                                $isSortable = isset($errorSortableColumns[$colKey]);
+                                            @endphp
+                                            <th class="px-2 py-2 {{ $align }} text-xs font-medium uppercase tracking-[0.14em] {{ $isSortable ? 'sortable-th' : '' }}" style="position: relative; width: {{ $meta['width'] }}; min-width: 40px;" @if($isSortable) wire:click="sortErrors('{{ $colKey }}')" @endif>
+                                                <div class="flex items-center gap-1 {{ $align === 'text-right' ? 'justify-end' : ($align === 'text-center' ? 'justify-center' : '') }}">
+                                                    <span>{{ $colLabel }}</span>
+                                                    @if($isSortable)
+                                                        <span class="text-[10px] {{ ($errorSortableColumns[$colKey] ?? null) === $errorSortField ? 'text-slate-700' : 'text-slate-300' }}">{{ $errorSortIcon($colKey) }}</span>
+                                                    @endif
+                                                </div>
+                                                <div class="col-resize-handle" @mousedown.stop.prevent="startResize($event, $el.parentElement)"></div>
+                                            </th>
+                                        @endif
+                                    @endforeach
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200">
+                                @forelse($this->allErrors as $error)
+                                    @php $isClaimable = in_array($error->error_type, \App\Models\CargoReportItem::CLAIMABLE_ERROR_TYPES, true); @endphp
+                                    <tr class="bg-white hover:bg-slate-50 transition">
+                                        @foreach($errorColumnDefs as $colKey => $colLabel)
+                                            @if(in_array($colKey, $errorVisibleColumns, true))
+                                                @switch($colKey)
+                                                    @case('date')
+                                                        <td class="px-2 py-2 text-sm text-slate-900">{{ $error->tarih?->format('d.m.Y') }}</td>
+                                                        @break
+                                                    @case('customer')
+                                                        <td class="px-2 py-2 align-top">
+                                                            <p class="truncate text-sm font-semibold text-slate-900" title="{{ $error->musteri_adi }}">{{ $error->musteri_adi }}</p>
+                                                            <p class="mt-1 truncate text-xs text-slate-500">{{ $error->takip_kodu ?: 'Takip kodu yok' }}</p>
+                                                        </td>
+                                                        @break
+                                                    @case('product')
+                                                        <td class="px-2 py-2 text-sm text-slate-500">
+                                                            <p class="truncate" title="{{ $error->urun_adi }}">{{ $error->urun_adi ?: 'Ürün bilgisi yok' }}</p>
+                                                        </td>
+                                                        @break
+                                                    @case('wrong_desi')
+                                                        <td class="px-1 py-2 text-center text-sm font-semibold text-rose-600">{{ number_format((float) $error->gercek_desi, 0, ',', '.') }}</td>
+                                                        @break
+                                                    @case('correct_desi')
+                                                        <td class="px-1 py-2 text-center text-sm font-semibold text-emerald-600">{{ number_format((float) $error->beklenen_desi, 0, ',', '.') }}</td>
+                                                        @break
+                                                    @case('difference')
+                                                        <td class="px-1 py-2 text-right text-sm font-semibold {{ $error->tutar_fark > 0 ? 'text-rose-600' : 'text-emerald-600' }}">{{ $formatSignedMoney($error->tutar_fark) }}</td>
+                                                        @break
+                                                    @case('actions')
+                                                        <td class="px-2 py-2 text-right">
+                                                            @if($isClaimable)
+                                                                <button wire:click="openCreateModal({{ $error->id }})" class="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                                                                    Talep Aç
+                                                                </button>
+                                                            @else
+                                                                <span class="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-400">
+                                                                    Manuel İnceleme
+                                                                </span>
+                                                            @endif
+                                                        </td>
+                                                        @break
+                                                @endswitch
+                                            @endif
+                                        @endforeach
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="{{ max(count($errorVisibleColumns), 1) }}" class="px-6 py-12 text-center text-sm text-slate-500">Aramanıza uygun hata kaydı bulunamadı.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="md:hidden space-y-3 p-4">
+                        @forelse($this->allErrors as $error)
+                            @php $isClaimable = in_array($error->error_type, \App\Models\CargoReportItem::CLAIMABLE_ERROR_TYPES, true); @endphp
+                            <div class="rounded-xl border border-slate-200 p-4">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="flex items-center gap-2 text-xs text-slate-500">
+                                            @if(in_array('date', $errorVisibleColumns, true))
+                                                <span>{{ $error->tarih?->format('d.m.Y') }}</span>
+                                            @endif
+                                            @if(in_array('difference', $errorVisibleColumns, true))
+                                                <x-zolm.status-badge :tone="$error->tutar_fark > 0 ? 'danger' : 'success'">{{ $formatSignedMoney($error->tutar_fark) }}</x-zolm.status-badge>
+                                            @endif
+                                        </div>
+                                        @if(in_array('customer', $errorVisibleColumns, true))
+                                            <p class="mt-2 truncate text-sm font-semibold text-slate-900">{{ $error->musteri_adi }}</p>
+                                        @endif
+                                        @if(in_array('product', $errorVisibleColumns, true))
+                                            <p class="mt-1 truncate text-sm text-slate-500">{{ $error->urun_adi ?: 'Ürün bilgisi yok' }}</p>
+                                        @endif
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    @if(in_array('wrong_desi', $errorVisibleColumns, true))
+                                        <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                                            <span class="text-slate-500">Yanlış desi</span>
+                                            <span class="font-semibold text-rose-600">{{ number_format((float) $error->gercek_desi, 0, ',', '.') }}</span>
+                                        </div>
+                                    @endif
+                                    @if(in_array('correct_desi', $errorVisibleColumns, true))
+                                        <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                                            <span class="text-slate-500">Doğru desi</span>
+                                            <span class="font-semibold text-emerald-600">{{ number_format((float) $error->beklenen_desi, 0, ',', '.') }}</span>
+                                        </div>
+                                    @endif
+                                </div>
+
+                                @if(in_array('actions', $errorVisibleColumns, true))
+                                    <div class="mt-4">
+                                        @if($isClaimable)
+                                            <button wire:click="openCreateModal({{ $error->id }})" class="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                                Tazmin Talebi Oluştur
+                                            </button>
+                                        @else
+                                            <button type="button" disabled class="w-full rounded-lg border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-medium text-slate-400">
+                                                Referans / Operasyon İncele
+                                            </button>
+                                        @endif
+                                    </div>
+                                @endif
+                            </div>
+                        @empty
+                            <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">Aramanıza uygun hata kaydı bulunamadı.</div>
+                        @endforelse
+                    </div>
+
+                    @if($this->allErrors->hasPages())
+                        <div class="border-t border-slate-200 px-4 py-3">
+                            {{ $this->allErrors->links() }}
+                        </div>
+                    @endif
+                </div>
+            </x-zolm.section-card>
+        @endif
+
+        @if($viewMode === 'all_compensations')
+            <x-zolm.section-card
+                variant="orders"
+                eyebrow="Talep Listesi"
+                title="Kayıtlı tazmin talepleri"
+                description="Durum, belge ve sonuç tutarlarıyla tüm dosyalar."
+                headerPadding="px-4 pt-4 pb-2 lg:px-6 lg:pt-6 lg:pb-2"
+                bodyPadding="px-4 pb-4 lg:px-6 lg:pb-6"
+            >
+                @php
+                    $compensationColumnMeta = [
+                        'date' => ['width' => '88px', 'align' => 'text-left'],
+                        'customer' => ['width' => '168px', 'align' => 'text-left'],
+                        'reason' => ['width' => '100px', 'align' => 'text-left'],
+                        'claimed' => ['width' => '92px', 'align' => 'text-right'],
+                        'approved' => ['width' => '92px', 'align' => 'text-right'],
+                        'status' => ['width' => '94px', 'align' => 'text-center'],
+                        'documents' => ['width' => '152px', 'align' => 'text-left'],
+                        'actions' => ['width' => '118px', 'align' => 'text-right'],
+                    ];
+                @endphp
+
+                <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 lg:gap-4">
+                    <div class="text-xs text-slate-500">{{ count($compensationVisibleColumns) }} / {{ count($compensationColumnDefs) }} kolon gösteriliyor</div>
+                    <div x-data="{ open: false }" class="relative">
+                        <button @click="open = !open" type="button" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                            Kolonlar
+                        </button>
+                        <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                            <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Talep Kolonları</p>
+                            <div class="mt-3 space-y-1.5">
+                                @foreach($compensationColumnDefs as $colKey => $colLabel)
+                                    <label class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                        <input type="checkbox" wire:click="toggleCompensationColumn('{{ $colKey }}')" {{ in_array($colKey, $compensationVisibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                        <span>{{ $colLabel }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rounded-lg border border-slate-200 bg-white">
+                    <div class="hidden md:block overflow-x-visible">
+                        <table class="w-full" x-data="columnResize()" id="compensationClaimsTable">
+                            <thead class="bg-slate-50 text-slate-500">
+                                <tr>
+                                    @foreach($compensationColumnDefs as $colKey => $colLabel)
+                                        @if(in_array($colKey, $compensationVisibleColumns, true))
+                                            @php
+                                                $meta = $compensationColumnMeta[$colKey];
+                                                $align = $meta['align'];
+                                                $isSortable = isset($compensationSortableColumns[$colKey]);
+                                            @endphp
+                                            <th class="px-2 py-2 {{ $align }} text-xs font-medium uppercase tracking-[0.14em] {{ $isSortable ? 'sortable-th' : '' }}" style="position: relative; width: {{ $meta['width'] }}; min-width: 40px;" @if($isSortable) wire:click="sortCompensations('{{ $colKey }}')" @endif>
+                                                <div class="flex items-center gap-1 {{ $align === 'text-right' ? 'justify-end' : ($align === 'text-center' ? 'justify-center' : '') }}">
+                                                    <span>{{ $colLabel }}</span>
+                                                    @if($isSortable)
+                                                        <span class="text-[10px] {{ ($compensationSortableColumns[$colKey] ?? null) === $compensationSortField ? 'text-slate-700' : 'text-slate-300' }}">{{ $compensationSortIcon($colKey) }}</span>
+                                                    @endif
+                                                </div>
+                                                <div class="col-resize-handle" @mousedown.stop.prevent="startResize($event, $el.parentElement)"></div>
+                                            </th>
+                                        @endif
+                                    @endforeach
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200">
+                                @forelse($this->allCompensations as $comp)
+                                    @php
+                                        $sebepInfo = $comp->sebep_info;
+                                        $durumInfo = $comp->durum_info;
+                                    @endphp
+                                    <tr wire:key="comp-row-{{ $comp->id }}" class="bg-white hover:bg-slate-50 transition border-b border-slate-100">
+                                        @foreach($compensationColumnDefs as $colKey => $colLabel)
+                                            @if(in_array($colKey, $compensationVisibleColumns, true))
+                                                @switch($colKey)
+                                                    @case('date')
+                                                        <td class="px-2 py-2 text-sm text-slate-900">{{ $comp->tarih->format('d.m.Y') }}</td>
+                                                        @break
+                                                    @case('customer')
+                                                        <td class="px-2 py-2 align-top">
+                                                            <p class="truncate text-sm font-semibold text-slate-900" title="{{ $comp->musteri_adi }}">{{ $comp->musteri_adi }}</p>
+                                                            <p class="mt-1 truncate text-xs text-slate-500">{{ $comp->cargo_company ?: 'Kargo firması yok' }}{{ $comp->takip_kodu ? ' · ' . $comp->takip_kodu : '' }}</p>
+                                                            <p class="mt-1 truncate text-xs text-slate-400">Sorumlu: {{ $comp->responsibleUser?->name ?? 'Atanmadı' }} · {{ $comp->next_action_at?->format('d.m.Y') ?? 'Aksiyon yok' }}</p>
+                                                        </td>
+                                                        @break
+                                                    @case('reason')
+                                                        <td class="px-2 py-2">
+                                                            <x-zolm.status-badge :tone="$toneFromColor($sebepInfo['color'])">{{ $sebepInfo['label'] }}</x-zolm.status-badge>
+                                                        </td>
+                                                        @break
+                                                    @case('claimed')
+                                                        <td class="px-1 py-2 text-right text-sm text-slate-900">{{ $formatMoney($comp->talep_tutari) }}</td>
+                                                        @break
+                                                    @case('approved')
+                                                        <td class="px-1 py-2 text-right text-sm font-semibold text-emerald-600">{{ $formatMoney($comp->onaylanan_tutar) }}</td>
+                                                        @break
+                                                    @case('status')
+                                                        <td class="px-2 py-2 text-center">
+                                                            <x-zolm.status-badge :tone="$toneFromColor($durumInfo['color'])">{{ $durumInfo['label'] }}</x-zolm.status-badge>
+                                                        </td>
+                                                        @break
+                                                    @case('documents')
+                                                        <td class="px-2 py-2">
+                                                            <div class="flex flex-wrap gap-2">
+                                                                <a href="{{ route('compensation.petition', $comp->id) }}" class="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                                                                    Dilekçe
+                                                                </a>
+                                                                <a href="{{ route('compensation.form', $comp->id) }}" class="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                                                                    Form
+                                                                </a>
+                                                                <a href="{{ route('compensation.download-all', $comp->id) }}" class="inline-flex h-8 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 px-2.5 text-xs font-medium text-sky-700 transition hover:bg-sky-100">
+                                                                    ZIP
+                                                                </a>
+                                                                @if(!empty($comp->attachments))
+                                                                    <button wire:click="viewAttachments({{ $comp->id }})" class="inline-flex h-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100">
+                                                                        Ekler
+                                                                    </button>
+                                                                @endif
+                                                        </td>
+                                                        @break
+                                                    @case('actions')
+                                                        <td class="px-2 py-2 text-right">
+                                                            <div
+                                                                x-data="{
+                                                                    open: false,
+                                                                    top: 0,
+                                                                    left: 0,
+                                                                    toggle(e) {
+                                                                        var r = e.currentTarget.getBoundingClientRect();
+                                                                        this.top = r.bottom + 4;
+                                                                        this.left = r.right - 192;
+                                                                        this.open = !this.open;
+                                                                    }
+                                                                }"
+                                                                @click.outside="open = false"
+                                                                class="inline-flex justify-end"
+                                                            >
+                                                                <button
+                                                                    @click="toggle($event)"
+                                                                    type="button"
+                                                                    class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                                >
+                                                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/></svg>
+                                                                </button>
+
+                                                                <div
+                                                                    x-show="open"
+                                                                    style="display:none;"
+                                                                    :style="'position:fixed;top:'+top+'px;left:'+left+'px;z-index:9999;width:192px;'"
+                                                                    class="rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl"
+                                                                >
+                                                                    <button wire:click="openStatusModal({{ $comp->id }})" @click="open=false" class="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition text-left">
+                                                                        <svg class="h-4 w-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                                                        Durum Güncelle
+                                                                    </button>
+                                                                    <button wire:click="openPetitionModal({{ $comp->id }})" @click="open=false" class="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition text-left">
+                                                                        <svg class="h-4 w-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                                                        Dilekçe Düzenle
+                                                                    </button>
+                                                                    <button wire:click="editCompensation({{ $comp->id }})" @click="open=false" class="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-amber-700 hover:bg-amber-50 transition text-left">
+                                                                        <svg class="h-4 w-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                                                        Talebi Düzenle
+                                                                    </button>
+                                                                    <div class="my-1 border-t border-slate-100"></div>
+                                                                    <button wire:click="deleteCompensation({{ $comp->id }})" wire:confirm="Bu tazmin talebini silmek istediğinize emin misiniz? Bu işlem geri alınamaz." @click="open=false" class="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-rose-700 hover:bg-rose-50 transition text-left">
+                                                                        <svg class="h-4 w-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                                                        Sil
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        @break
+                                                @endswitch
+                                            @endif
+                                        @endforeach
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="{{ max(count($compensationVisibleColumns), 1) }}" class="px-6 py-12 text-center text-sm text-slate-500">Aramanıza uygun tazmin talebi bulunamadı.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="md:hidden space-y-3 p-4">
+                        @forelse($this->allCompensations as $comp)
+                            @php
+                                $sebepInfo = $comp->sebep_info;
+                                $durumInfo = $comp->durum_info;
+                            @endphp
+                            <div wire:key="comp-card-{{ $comp->id }}" class="rounded-xl border border-slate-200 p-4">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                            @if(in_array('date', $compensationVisibleColumns, true))
+                                                <span>{{ $comp->tarih->format('d.m.Y') }}</span>
+                                            @endif
+                                            @if(in_array('status', $compensationVisibleColumns, true))
+                                                <x-zolm.status-badge :tone="$toneFromColor($durumInfo['color'])">{{ $durumInfo['label'] }}</x-zolm.status-badge>
+                                            @endif
+                                        </div>
+                                        @if(in_array('customer', $compensationVisibleColumns, true))
+                                            <p class="mt-2 truncate text-sm font-semibold text-slate-900">{{ $comp->musteri_adi }}</p>
+                                        @endif
+                                        @if(in_array('reason', $compensationVisibleColumns, true))
+                                            <p class="mt-1 text-sm text-slate-500">{{ $sebepInfo['label'] }}</p>
+                                        @endif
+                                        <p class="mt-1 text-xs text-slate-400">Sorumlu: {{ $comp->responsibleUser?->name ?? 'Atanmadı' }} · {{ $comp->next_action_at?->format('d.m.Y') ?? 'Aksiyon yok' }}</p>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    @if(in_array('claimed', $compensationVisibleColumns, true))
+                                        <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                                            <span class="text-slate-500">Talep edilen</span>
+                                            <span class="font-semibold text-slate-900">{{ $formatMoney($comp->talep_tutari) }}</span>
+                                        </div>
+                                    @endif
+                                    @if(in_array('approved', $compensationVisibleColumns, true))
+                                        <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                                            <span class="text-slate-500">Onaylanan</span>
+                                            <span class="font-semibold text-emerald-600">{{ $formatMoney($comp->onaylanan_tutar) }}</span>
+                                        </div>
+                                    @endif
+                                </div>
+
+                                @if(in_array('actions', $compensationVisibleColumns, true))
+                                    <div class="mt-4 border-t border-slate-100 pt-3">
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <button wire:click="openStatusModal({{ $comp->id }})" class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+                                                <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                Durum
+                                            </button>
+                                            <button wire:click="openPetitionModal({{ $comp->id }})" class="flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm font-medium text-sky-700 shadow-sm transition hover:bg-sky-100">
+                                                <svg class="h-4 w-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                                Dilekçe
+                                            </button>
+                                            <button wire:click="editCompensation({{ $comp->id }})" class="flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-700 shadow-sm transition hover:bg-amber-100">
+                                                <svg class="h-4 w-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                                Düzenle
+                                            </button>
+                                            <button wire:click="deleteCompensation({{ $comp->id }})" wire:confirm="Bu tazmin talebini silmek istediğinize emin misiniz? Bu işlem geri alınamaz." class="flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-700 shadow-sm transition hover:bg-rose-100">
+                                                <svg class="h-4 w-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                Sil
+                                            </button>
+                                        </div>
+                                    </div>
+                                @endif
+
+                                @if(in_array('documents', $compensationVisibleColumns, true))
+                                    <div class="mt-3 flex flex-col sm:flex-row gap-2">
+                                        <a href="{{ route('compensation.petition', $comp->id) }}" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 transition hover:bg-slate-50">Dilekçe İndir</a>
+                                        <a href="{{ route('compensation.form', $comp->id) }}" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 transition hover:bg-slate-50">Form İndir</a>
+                                        <a href="{{ route('compensation.download-all', $comp->id) }}" class="w-full sm:w-auto rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-center text-sm font-medium text-sky-700 transition hover:bg-sky-100">ZIP İndir</a>
+                                        @if(!empty($comp->attachments))
+                                            <button wire:click="viewAttachments({{ $comp->id }})" class="w-full sm:w-auto rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100">Ekler</button>
+                                        @endif
+                                    </div>
+                                @endif
+                            </div>
+                        @empty
+                            <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">Aramanıza uygun tazmin talebi bulunamadı.</div>
+                        @endforelse
+                    </div>
+
+                    @if($this->allCompensations->hasPages())
+                        <div class="border-t border-slate-200 px-4 py-3">
+                            {{ $this->allCompensations->links() }}
+                        </div>
+                    @endif
+                </div>
+            </x-zolm.section-card>
+        @endif
+    @endif
+
+    @if($showCreateModal)
+        @php
+            $newReasonInfo = \App\Models\Compensation::SEBEPLER[$newCompensation['sebep'] ?? 'diger'] ?? \App\Models\Compensation::SEBEPLER['diger'];
+        @endphp
+        <div class="fixed inset-0 z-50 overflow-y-auto" aria-modal="true">
+            <div class="flex min-h-screen items-end justify-center p-0 sm:items-center sm:p-4">
+                <button type="button" class="fixed inset-0 bg-slate-900/40" wire:click="$set('showCreateModal', false)"></button>
+
+                <div class="relative flex w-full max-h-[100dvh] min-h-0 flex-col overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-xl sm:max-h-[90vh] sm:max-w-3xl sm:rounded-[28px]">
+                    <form wire:submit="createCompensation" class="flex min-h-0 flex-1 flex-col">
+                        <div class="shrink-0 border-b border-slate-200 px-4 py-4 lg:px-6">
+                            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                                <div>
+                                    <x-zolm.eyebrow variant="classic">{{ $editingCompensationId ? 'Talebi Düzenle' : 'Yeni Talep' }}</x-zolm.eyebrow>
+                                    <h3 class="mt-3 text-xl font-bold text-slate-900">{{ $editingCompensationId ? 'Tazmin talebini güncelle' : 'Tazmin talebi oluştur' }}</h3>
+                                    <p class="mt-2 text-sm text-slate-500">Müşteri, sebep, tutar ve kanıt görsellerini tek formdan kaydedin.</p>
+                                </div>
+                                <button type="button" wire:click="$set('showCreateModal', false)" class="self-end sm:self-start rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:text-slate-700">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18L18 6M6 6l12 12" /></svg>
                                 </button>
                             </div>
                         </div>
-                    </div>
-                @empty
-                    <div class="px-6 py-8 text-center text-gray-400">
-                        Henüz tazmin talebi yok
-                    </div>
-                @endforelse
-            </div>
 
-            @if($this->recentCompensations->count() > 0)
-                <div class="px-6 py-3 bg-gray-50 border-t">
-                    <button wire:click="showAllCompensations" class="text-sm text-blue-600 hover:text-blue-800">Tümünü Gör →</button>
-                </div>
-            @endif
-        </div>
-    </div>
-    @endif
-
-    {{-- Yeni Tazmin Modalı --}}
-    @if($showCreateModal)
-        <div class="fixed inset-0 z-50 overflow-y-auto" aria-modal="true">
-            <div class="flex items-center justify-center min-h-screen px-4">
-                <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" wire:click="$set('showCreateModal', false)"></div>
-                
-                <div class="relative bg-white rounded-lg max-w-lg w-full shadow-xl sm:my-8">
-                    <form wire:submit="createCompensation" class="flex flex-col max-h-[85vh]">
-                        {{-- Header --}}
-                        <div class="flex-none px-5 py-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
-                            <h3 class="text-lg font-bold text-gray-900">Yeni Tazmin Talebi</h3>
-                        </div>
-
-                        {{-- Scrollable Content --}}
-                        <div class="flex-1 overflow-y-auto px-5 py-4">
+                        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 lg:px-6">
                             <div class="space-y-4">
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-xs font-semibold text-gray-700 mb-1">TARİH</label>
-                                        <input type="date" wire:model="newCompensation.tarih"
-                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4">
+                                    <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                        <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kargo</p>
+                                        <p class="mt-2 text-lg font-semibold text-slate-900">{{ $newCompensation['cargo_company'] ?: 'Belirtilmedi' }}</p>
                                     </div>
-                                    <div>
-                                        <label class="block text-xs font-semibold text-gray-700 mb-1">KARGO FİRMASI</label>
-                                        <select wire:model="newCompensation.cargo_company"
-                                                class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
-                                            <option value="Sürat Kargo">Sürat Kargo</option>
-                                            <option value="MNG Kargo">MNG Kargo</option>
-                                            <option value="Yurtiçi Kargo">Yurtiçi Kargo</option>
-                                            <option value="Aras Kargo">Aras Kargo</option>
-                                            <option value="PTT Kargo">PTT Kargo</option>
-                                        </select>
+                                    <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                        <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Sebep</p>
+                                        <p class="mt-2 text-lg font-semibold text-slate-900">{{ $newReasonInfo['label'] }}</p>
                                     </div>
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Talep Tutarı</p>
+                                    <p class="mt-2 text-lg font-semibold text-slate-900">{{ $formatMoney($newCompensation['talep_tutari'] ?? 0) }}</p>
                                 </div>
+                            </div>
 
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-700 mb-1">MÜŞTERİ ADI</label>
-                                    <input type="text" wire:model="newCompensation.musteri_adi"
-                                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                                           placeholder="Müşteri adını giriniz">
-                                </div>
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Talep Bilgileri</p>
+                                    <p class="mt-2 text-sm text-slate-500">Talebin tarih, müşteri ve finansal bilgilerini tek blokta tamamlayın.</p>
 
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-xs font-semibold text-gray-700 mb-1">TAKİP KODU</label>
-                                        <input type="text" wire:model="newCompensation.takip_kodu"
-                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                                               placeholder="Opsiyonel">
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs font-semibold text-gray-700 mb-1">TALEP TUTARI (₺)</label>
-                                        <input type="number" wire:model="newCompensation.talep_tutari" step="0.01"
-                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-700 mb-1">SEBEP</label>
-                                    <select wire:model="newCompensation.sebep"
-                                            class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
-                                        @foreach(\App\Models\Compensation::SEBEPLER as $key => $info)
-                                            <option value="{{ $key }}">{{ $info['icon'] }} {{ $info['label'] }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-700 mb-1">ÜRÜN ADI</label>
-                                    <input type="text" wire:model="newCompensation.urun_adi"
-                                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                                           placeholder="Opsiyonel - Ürün adını giriniz">
-                                </div>
-
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-700 mb-1">AÇIKLAMA</label>
-                                    <textarea wire:model="newCompensation.aciklama" rows="2"
-                                              class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                                              placeholder="Detaylı açıklama (opsiyonel)"></textarea>
-                                </div>
-
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-700 mb-1">KANIT GÖRSELLERİ (MAX 5)</label>
-                                    <div class="mt-1 flex justify-center px-4 py-4 border-2 border-gray-300 border-dashed rounded-md hover:border-blue-400 transition-colors bg-gray-50">
-                                        <div class="space-y-1 text-center">
-                                            <svg class="mx-auto h-8 w-8 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                            </svg>
-                                            <div class="flex text-xs text-gray-600 justify-center">
-                                                <label for="file-upload" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus:underline px-1">
-                                                    <span>Dosya Seç</span>
-                                                    <input id="file-upload" wire:model="attachments" name="file-upload" type="file" class="sr-only" multiple accept="image/*">
-                                                </label>
-                                            </div>
-                                            <p class="text-[10px] text-gray-500">PNG, JPG, GIF (Max 5MB)</p>
+                                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">Tarih</label>
+                                            <input type="date" wire:model="newCompensation.tarih" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            @error('newCompensation.tarih') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
+                                        </div>
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">Kargo firması</label>
+                                            <select wire:model="newCompensation.cargo_company" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                                <option value="Sürat Kargo">Sürat Kargo</option>
+                                                <option value="MNG Kargo">MNG Kargo</option>
+                                                <option value="Yurtiçi Kargo">Yurtiçi Kargo</option>
+                                                <option value="Aras Kargo">Aras Kargo</option>
+                                                <option value="PTT Kargo">PTT Kargo</option>
+                                            </select>
                                         </div>
                                     </div>
+
+                                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">Müşteri adı</label>
+                                            <input type="text" wire:model="newCompensation.musteri_adi" placeholder="Müşteri adını girin" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            @error('newCompensation.musteri_adi') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
+                                        </div>
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">Talep tutarı (₺)</label>
+                                            <input type="number" step="0.01" wire:model="newCompensation.talep_tutari" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            @error('newCompensation.talep_tutari') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">Öncelik</label>
+                                            <select wire:model="newCompensation.priority" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                                @foreach(\App\Models\Compensation::PRIORITIES as $priorityKey => $priorityInfo)
+                                                    <option value="{{ $priorityKey }}">{{ $priorityInfo['label'] }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">Sorumlu</label>
+                                            <select wire:model="newCompensation.responsible_user_id" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                                <option value="">Seçilmedi</option>
+                                                @foreach($assignableUsers as $user)
+                                                    <option value="{{ $user->id }}">{{ $user->name }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">Sonraki aksiyon</label>
+                                            <input type="date" wire:model="newCompensation.next_action_at" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Sevkiyat ve Açıklama</p>
+                                    <p class="mt-2 text-sm text-slate-500">Takip, sebep ve ürün bilgisini mümkün olduğunca doldurun; bu bilgi dilekçe ve raporlarda kullanılır.</p>
+
+                                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">Takip kodu</label>
+                                            <input type="text" wire:model="newCompensation.takip_kodu" placeholder="Opsiyonel" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">Sebep</label>
+                                            <select wire:model="newCompensation.sebep" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                                @foreach(\App\Models\Compensation::SEBEPLER as $key => $info)
+                                                    <option value="{{ $key }}">{{ $info['label'] }}</option>
+                                                @endforeach
+                                            </select>
+                                            @error('newCompensation.sebep') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-4">
+                                        <label class="text-xs sm:text-sm font-medium text-slate-700">Ürün adı</label>
+                                        <input type="text" wire:model="newCompensation.urun_adi" placeholder="Opsiyonel ürün bilgisi" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    </div>
+
+                                    <div class="mt-4">
+                                        <label class="text-xs sm:text-sm font-medium text-slate-700">Açıklama</label>
+                                        <textarea wire:model="newCompensation.aciklama" rows="4" placeholder="Talebin kısa açıklamasını girin" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                                    </div>
+
+                                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">Kargo vaka / referans no</label>
+                                            <input type="text" wire:model="newCompensation.carrier_case_no" placeholder="Opsiyonel taşıyıcı referansı" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                        </div>
+                                        <div>
+                                            <label class="text-xs sm:text-sm font-medium text-slate-700">İç not</label>
+                                            <input type="text" wire:model="newCompensation.internal_note" placeholder="Operasyon / finans notu" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                                        <div>
+                                            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kanıt Görselleri</p>
+                                            <p class="mt-2 text-sm text-slate-500">PNG, JPG veya GIF formatında en fazla 5 MB boyutunda dosyalar yükleyin.</p>
+                                        </div>
+                                        @if($attachments)
+                                            <x-zolm.status-badge tone="info">{{ count($attachments) }} dosya seçildi</x-zolm.status-badge>
+                                        @endif
+                                    </div>
+
+                                    <label class="mt-4 block cursor-pointer rounded-3xl border border-dashed border-slate-300 bg-white px-4 py-5 transition hover:border-slate-400">
+                                        <input wire:model="attachments" type="file" class="hidden" multiple accept="image/*">
+                                        <div class="flex flex-col sm:flex-row sm:items-center gap-3 lg:gap-4">
+                                            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white">
+                                                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-6l-4-4m0 0L8 10m4-4v12" />
+                                                </svg>
+                                            </div>
+                                            <div class="min-w-0 flex-1">
+                                                <p class="text-sm font-medium text-slate-900">Görselleri seçin</p>
+                                                <p class="mt-1 text-xs sm:text-sm text-slate-500">Kanıt görselleri tek seferde toplu yüklenebilir.</p>
+                                            </div>
+                                        </div>
+                                    </label>
+
+                                    @error('attachments.*') <p class="mt-3 text-sm text-rose-600">{{ $message }}</p> @enderror
+
                                     @if($attachments)
-                                        <div class="mt-2 grid grid-cols-4 sm:grid-cols-5 gap-2">
+                                        <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 lg:gap-4">
                                             @foreach($attachments as $file)
-                                                <div class="relative group">
-                                                    <img src="{{ $file->temporaryUrl() }}" class="h-12 w-full object-cover rounded border border-gray-200">
-                                                </div>
+                                                <img src="{{ $file->temporaryUrl() }}" alt="Önizleme" class="h-24 w-full rounded-2xl border border-slate-200 object-cover">
                                             @endforeach
                                         </div>
                                     @endif
@@ -676,16 +1243,16 @@
                             </div>
                         </div>
 
-                        {{-- Footer --}}
-                        <div class="flex-none px-5 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 rounded-b-lg">
-                            <button type="button" wire:click="$set('showCreateModal', false)"
-                                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                İptal
-                            </button>
-                            <button type="submit"
-                                    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm">
-                                Oluştur
-                            </button>
+                        <div class="shrink-0 border-t border-slate-200 bg-white px-4 py-4 lg:px-6">
+                            <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+                                <button type="button" wire:click="$set('showCreateModal', false)" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                    İptal
+                                </button>
+                                <x-zolm.primary-button color="indigo" type="submit" compact wire:loading.attr="disabled" wire:target="createCompensation,attachments">
+                                    <span wire:loading.remove wire:target="createCompensation">{{ $editingCompensationId ? 'Değişiklikleri Kaydet' : 'Talebi Oluştur' }}</span>
+                                    <span wire:loading wire:target="createCompensation">Kaydediliyor...</span>
+                                </x-zolm.primary-button>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -693,60 +1260,74 @@
         </div>
     @endif
 
-    {{-- Petition Edit Modal --}}
     @if($showPetitionModal)
-        <div class="fixed inset-0 z-10 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            <div class="flex items-center justify-center min-h-screen px-4">
-                <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" wire:click="$set('showPetitionModal', false)"></div>
-                
-                <div class="relative bg-white rounded-lg max-w-2xl w-full shadow-xl sm:my-8">
-                    <div class="flex-none px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-lg flex justify-between items-center">
-                        <h3 class="text-lg font-bold text-gray-900">Dilekçe İçeriği Düzenle</h3>
-                        <button wire:click="$set('showPetitionModal', false)" class="text-gray-400 hover:text-gray-500">
-                            <span class="sr-only">Kapat</span>
-                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
+        @php
+            $petitionComp = $updatingCompensationId ? \App\Models\Compensation::find($updatingCompensationId) : null;
+            $petitionStatusInfo = $petitionComp?->durum_info;
+            $petitionReasonInfo = $petitionComp?->sebep_info;
+        @endphp
+        <div class="fixed inset-0 z-50 overflow-y-auto" aria-modal="true">
+            <div class="flex min-h-screen items-end justify-center p-0 sm:items-center sm:p-4">
+                <button type="button" class="fixed inset-0 bg-slate-900/40" wire:click="$set('showPetitionModal', false)"></button>
+
+                <div class="relative flex w-full max-h-[100dvh] min-h-0 flex-col overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-xl sm:max-h-[90vh] sm:max-w-4xl sm:rounded-[28px]">
+                    <div class="shrink-0 border-b border-slate-200 px-4 py-4 lg:px-6">
+                        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                            <div>
+                                <x-zolm.eyebrow variant="classic">Dilekçe Metni</x-zolm.eyebrow>
+                                <h3 class="mt-3 text-xl font-bold text-slate-900">Dilekçe içeriğini düzenle</h3>
+                                <p class="mt-2 text-sm text-slate-500">Gövde metni bu alandan güncellenir. Standart resmi başlık ve imza alanları PDF oluşturulurken eklenir.</p>
+                            </div>
+                            <button type="button" wire:click="$set('showPetitionModal', false)" class="self-end sm:self-start rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:text-slate-700">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="p-6 space-y-4">
-                        <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
-                            <div class="flex">
-                                <div class="flex-shrink-0">
-                                    <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg>
+                    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 lg:px-6">
+                        @if($petitionComp)
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4">
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Müşteri</p>
+                                    <p class="mt-2 text-lg font-semibold text-slate-900">{{ $petitionComp->musteri_adi }}</p>
                                 </div>
-                                <div class="ml-3">
-                                    <p class="text-sm text-blue-700">
-                                        Bu alanda dilekçenin <strong>gövde metnini</strong> düzenleyebilirsiniz. Başlık, imza ve diğer standart alanlar PDF oluşturulurken otomatik eklenir.
-                                    </p>
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Durum</p>
+                                    <div class="mt-2">
+                                        <x-zolm.status-badge :tone="$toneFromColor($petitionStatusInfo['color'] ?? 'gray')">{{ $petitionStatusInfo['label'] ?? 'Beklemede' }}</x-zolm.status-badge>
+                                    </div>
+                                    <p class="mt-2 text-sm text-slate-500">{{ $petitionReasonInfo['label'] ?? 'Genel Talep' }}</p>
+                                </div>
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Talep / Onay</p>
+                                    <p class="mt-2 text-lg font-semibold text-slate-900">{{ $formatMoney($petitionComp->talep_tutari) }}</p>
+                                    <p class="mt-2 text-sm text-slate-500">Onaylanan: {{ $formatMoney($petitionComp->onaylanan_tutar) }}</p>
                                 </div>
                             </div>
+                        @endif
+
+                        <div class="rounded-3xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800 {{ $petitionComp ? 'mt-4' : '' }}">
+                            AI ile taslak oluşturabilir, ardından metni manuel olarak revize edebilirsiniz.
                         </div>
 
-                        <div>
-                            <textarea wire:model="editingPetitionText" rows="12" 
-                                class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md p-3 font-mono"
-                                placeholder="Dilekçe metni buraya gelecek..."></textarea>
+                        <div class="mt-4">
+                            <label class="text-xs sm:text-sm font-medium text-slate-700">Dilekçe metni</label>
+                            <textarea wire:model="editingPetitionText" rows="16" placeholder="Dilekçe metni..." class="mt-1 w-full rounded-3xl border border-slate-200 bg-white px-4 py-4 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
                         </div>
                     </div>
 
-                    <div class="flex-none px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-between rounded-b-lg">
-                        <div class="flex gap-2">
-                             <button type="button" wire:click="generateAiPetition({{ $updatingCompensationId }})" wire:loading.attr="disabled"
-                                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 transition-colors">
-                                <svg wire:loading.remove wire:target="generateAiPetition" class="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                <svg wire:loading wire:target="generateAiPetition" class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                AI ile Oluştur
+                    <div class="shrink-0 border-t border-slate-200 bg-white px-4 py-4 lg:px-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <button type="button" wire:click="generateAiPetition({{ $updatingCompensationId }})" wire:loading.attr="disabled" class="w-full sm:w-auto rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 sm:py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-100 disabled:opacity-60">
+                                <span wire:loading.remove wire:target="generateAiPetition">AI ile Taslak Oluştur</span>
+                                <span wire:loading wire:target="generateAiPetition">Hazırlanıyor...</span>
                             </button>
-                        </div>
-                        <div class="flex gap-3">
-                            <button type="button" wire:click="$set('showPetitionModal', false)"
-                                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                İptal
-                            </button>
-                            <button type="button" wire:click="savePetitionText"
-                                    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm">
-                                Kaydet
-                            </button>
+                            <div class="flex w-full sm:w-auto flex-col-reverse sm:flex-row gap-3">
+                                <button type="button" wire:click="$set('showPetitionModal', false)" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                    İptal
+                                </button>
+                                <x-zolm.primary-button color="indigo" compact wire:click="savePetitionText">Kaydet</x-zolm.primary-button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -754,43 +1335,126 @@
         </div>
     @endif
 
-    {{-- Durum Güncelleme Modalı --}}
     @if($showStatusModal)
+        @php
+            $statusComp = $updatingCompensationId ? \App\Models\Compensation::find($updatingCompensationId) : null;
+            $statusInfo = $statusComp?->durum_info;
+        @endphp
         <div class="fixed inset-0 z-50 overflow-y-auto" aria-modal="true">
-            <div class="flex items-center justify-center min-h-screen px-4">
-                <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" wire:click="$set('showStatusModal', false)"></div>
-                
-                <div class="relative bg-white rounded-lg max-w-md w-full shadow-xl">
-                    <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">Durum Güncelle</h3>
+            <div class="flex min-h-screen items-end justify-center p-0 sm:items-center sm:p-4">
+                <button type="button" class="fixed inset-0 bg-slate-900/40" wire:click="$set('showStatusModal', false)"></button>
+
+                <div class="relative flex w-full max-h-[100dvh] min-h-0 flex-col overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-xl sm:max-h-[90vh] sm:max-w-xl sm:rounded-[28px]">
+                    <div class="shrink-0 border-b border-slate-200 px-4 py-4 lg:px-6">
+                        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                            <div>
+                                <x-zolm.eyebrow variant="classic">Durum Güncelle</x-zolm.eyebrow>
+                                <h3 class="mt-3 text-xl font-bold text-slate-900">Talep sonucunu kaydet</h3>
+                                <p class="mt-2 text-sm text-slate-500">Son durum ve onaylanan tutar aynı anda güncellenir.</p>
+                            </div>
+                            <button type="button" wire:click="$set('showStatusModal', false)" class="self-end sm:self-start rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:text-slate-700">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="p-6 space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Durum</label>
-                            <select wire:model="newStatus"
-                                    class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[44px]">
-                                @foreach(\App\Models\Compensation::DURUMLAR as $key => $info)
-                                    <option value="{{ $key }}">{{ $info['icon'] }} {{ $info['label'] }}</option>
-                                @endforeach
-                            </select>
-                        </div>
+                    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 lg:px-6">
+                        <div class="space-y-4">
+                        @if($statusComp)
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4">
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Mevcut Durum</p>
+                                    <div class="mt-2">
+                                        <x-zolm.status-badge :tone="$toneFromColor($statusInfo['color'] ?? 'gray')">{{ $statusInfo['label'] ?? 'Beklemede' }}</x-zolm.status-badge>
+                                    </div>
+                                </div>
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Talep Edilen</p>
+                                    <p class="mt-2 text-lg font-semibold text-slate-900">{{ $formatMoney($statusComp->talep_tutari) }}</p>
+                                </div>
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kalan Fark</p>
+                                    <p class="mt-2 text-lg font-semibold text-slate-900">{{ $formatMoney(($statusComp->talep_tutari ?? 0) - $onaylananTutar) }}</p>
+                                </div>
+                            </div>
+                        @endif
 
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Onaylanan Tutar (₺)</label>
-                            <input type="number" wire:model="onaylananTutar" step="0.01"
-                                   class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 min-h-[44px]">
-                        </div>
+                        <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
+                                <div>
+                                    <label class="text-xs sm:text-sm font-medium text-slate-700">Durum</label>
+                                    <select wire:model="newStatus" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                        @foreach(\App\Models\Compensation::DURUMLAR as $key => $info)
+                                            <option value="{{ $key }}">{{ $info['label'] }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs sm:text-sm font-medium text-slate-700">Onaylanan tutar (₺)</label>
+                                    <input type="number" step="0.01" wire:model="onaylananTutar" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                </div>
+                            </div>
 
-                        <div class="flex justify-end gap-3 pt-4">
-                            <button wire:click="$set('showStatusModal', false)"
-                                    class="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                            <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
+                                <div>
+                                    <label class="text-xs sm:text-sm font-medium text-slate-700">Tahsil edilen tutar (₺)</label>
+                                    <input type="number" step="0.01" wire:model="collectedAmount" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                </div>
+                                <div>
+                                    <label class="text-xs sm:text-sm font-medium text-slate-700">Ödeme tarihi</label>
+                                    <input type="date" wire:model="paymentDate" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                </div>
+                                <div>
+                                    <label class="text-xs sm:text-sm font-medium text-slate-700">Sonraki aksiyon</label>
+                                    <input type="date" wire:model="nextActionAt" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                </div>
+                                <div>
+                                    <label class="text-xs sm:text-sm font-medium text-slate-700">Sorumlu</label>
+                                    <select wire:model="responsibleUserId" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                        <option value="">Seçilmedi</option>
+                                        @foreach($assignableUsers as $user)
+                                            <option value="{{ $user->id }}">{{ $user->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs sm:text-sm font-medium text-slate-700">Öncelik</label>
+                                    <select wire:model="priority" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                        @foreach(\App\Models\Compensation::PRIORITIES as $priorityKey => $priorityInfo)
+                                            <option value="{{ $priorityKey }}">{{ $priorityInfo['label'] }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs sm:text-sm font-medium text-slate-700">Taşıyıcı vaka no</label>
+                                    <input type="text" wire:model="carrierCaseNo" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                </div>
+                            </div>
+
+                            <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
+                                <div>
+                                    <label class="text-xs sm:text-sm font-medium text-slate-700">İç not</label>
+                                    <textarea wire:model="internalNote" rows="4" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                                </div>
+                                <div>
+                                    <label class="text-xs sm:text-sm font-medium text-slate-700">Sonuç notu</label>
+                                    <textarea wire:model="resolutionNote" rows="4" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+                                Sonuç tarihi sonuçlanan statülerde, ödeme tarihi ise ödeme bekleniyor / ödendi akışlarında kullanılır.
+                            </div>
+                        </div>
+                        </div>
+                    </div>
+
+                    <div class="shrink-0 border-t border-slate-200 bg-white px-4 py-4 lg:px-6">
+                        <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+                            <button type="button" wire:click="$set('showStatusModal', false)" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                                 İptal
                             </button>
-                            <button wire:click="updateStatus"
-                                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                                Güncelle
-                            </button>
+                            <x-zolm.primary-button color="indigo" compact wire:click="updateStatus">Güncelle</x-zolm.primary-button>
                         </div>
                     </div>
                 </div>
@@ -798,36 +1462,39 @@
         </div>
     @endif
 
-    {{-- Ekleri/Görselleri Görüntüleme Modalı --}}
     @if($showAttachmentsModal)
         <div class="fixed inset-0 z-[60] overflow-y-auto" aria-modal="true">
-            <div class="flex items-center justify-center min-h-screen px-4">
-                <div class="fixed inset-0 bg-gray-900 bg-opacity-90 transition-opacity" wire:click="$set('showAttachmentsModal', false)"></div>
-                
-                <div class="relative bg-white rounded-lg max-w-4xl w-full shadow-2xl flex flex-col max-h-[90vh]">
-                    <div class="flex-none px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-lg flex justify-between items-center">
-                        <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            Kanıt Görselleri ({{ count($viewingAttachments) }})
-                        </h3>
-                        <button wire:click="$set('showAttachmentsModal', false)" class="text-gray-400 hover:text-gray-500 bg-white hover:bg-gray-100 rounded-full p-1 transition-colors">
-                            <span class="sr-only">Kapat</span>
-                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
+            <div class="flex min-h-screen items-end justify-center p-0 sm:items-center sm:p-4">
+                <button type="button" class="fixed inset-0 bg-slate-900/60" wire:click="$set('showAttachmentsModal', false)"></button>
+
+                <div class="relative flex w-full max-h-[100dvh] min-h-0 flex-col overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-xl sm:max-h-[90vh] sm:max-w-5xl sm:rounded-[28px]">
+                    <div class="shrink-0 border-b border-slate-200 px-4 py-4 lg:px-6">
+                        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                            <div>
+                                <x-zolm.eyebrow variant="classic">Kanıt Görselleri</x-zolm.eyebrow>
+                                <h3 class="mt-3 text-xl font-bold text-slate-900">Yüklenen ekler</h3>
+                                <p class="mt-2 text-sm text-slate-500">Talebe bağlı tüm kanıt görsellerini tek ekranda görüntüleyin.</p>
+                            </div>
+                            <div class="flex items-center gap-2 self-end sm:self-start">
+                                <x-zolm.status-badge tone="info">{{ count($viewingAttachments) }} görsel</x-zolm.status-badge>
+                                <button type="button" wire:click="$set('showAttachmentsModal', false)" class="rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:text-slate-700">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="flex-1 overflow-y-auto p-6 bg-gray-100">
-                        <div class="space-y-6">
+                    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 lg:px-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
                             @foreach($viewingAttachments as $index => $path)
-                                <div class="bg-white p-2 rounded-lg shadow-sm border border-gray-200">
-                                    <div class="flex justify-between items-center mb-2 px-2">
-                                        <span class="text-sm font-semibold text-gray-600">Görsel {{ $index + 1 }}</span>
-                                        <a href="{{ Storage::disk('public')->url($path) }}" target="_blank" class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium bg-blue-50 px-2 py-1 rounded">
-                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                        <p class="text-sm font-semibold text-slate-900">Görsel {{ $index + 1 }}</p>
+                                        <a href="{{ $attachmentUrl($path) }}" target="_blank" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-center text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                                             Yeni Sekmede Aç
                                         </a>
                                     </div>
-                                    <img src="{{ Storage::disk('public')->url($path) }}" alt="Kanıt {{ $index + 1 }}" class="w-full h-auto rounded border border-gray-100 object-contain max-h-[60vh]">
+                                    <img src="{{ $attachmentUrl($path) }}" alt="Kanıt {{ $index + 1 }}" class="mt-4 w-full rounded-3xl border border-slate-200 bg-white object-contain max-h-[60vh]">
                                 </div>
                             @endforeach
                         </div>
@@ -836,4 +1503,7 @@
             </div>
         </div>
     @endif
+
+    {{-- Dropdown menüleri için teleport hedefi (Livewire root içinde ama overflow dışında kalmalı) --}}
+    <div id="cargo-compensation-dropdown-teleport"></div>
 </div>

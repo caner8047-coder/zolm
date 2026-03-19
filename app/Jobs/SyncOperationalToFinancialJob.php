@@ -25,9 +25,16 @@ class SyncOperationalToFinancialJob implements ShouldQueue
 
         // Find squashed financial orders that lack barcode/product info
         // We will match them by order_number
-        $squashedOrders = MpOrder::whereNull('barcode')
-            ->orWhere('barcode', '')
-            ->orWhereNull('product_name')
+        $squashedOrders = MpOrder::where(function ($query) {
+                $query->whereNull('barcode')
+                    ->orWhere('barcode', '')
+                    ->orWhereNull('stock_code')
+                    ->orWhere('stock_code', '')
+                    ->orWhereNull('product_name')
+                    ->orWhere('product_name', '')
+                    ->orWhereNull('delivery_date')
+                    ->orWhere('cogs_at_time', '<=', 0);
+            })
             ->get();
 
         Log::info("Found " . $squashedOrders->count() . " squashed/empty-barcode orders to sync.");
@@ -46,10 +53,10 @@ class SyncOperationalToFinancialJob implements ShouldQueue
 
                 if ($itemCount === 1) {
                     // 1-to-1 match. Just update the row.
-                    $this->updateSingleFinancialRow($finOrder, $items->first());
+                    $this->updateSingleFinancialRow($finOrder, $items->first(), $masterOp);
                 } else {
                     // Multi-Item split (The Blind Spot fix)
-                    $this->splitAndDistributeFinancialRow($finOrder, $items);
+                    $this->splitAndDistributeFinancialRow($finOrder, $items, $masterOp);
                 }
 
                 DB::commit();
@@ -62,23 +69,22 @@ class SyncOperationalToFinancialJob implements ShouldQueue
         Log::info("SyncOperationalToFinancialJob completed.");
     }
 
-    protected function updateSingleFinancialRow(MpOrder $finOrder, $item): void
+    protected function updateSingleFinancialRow(MpOrder $finOrder, $item, MpOperationalOrder $masterOp): void
     {
         $finOrder->barcode = $item->barcode;
         $finOrder->stock_code = $item->stock_code;
         $finOrder->product_name = $item->product_name;
         $finOrder->quantity = $item->quantity;
         
-        // Operasyonel tablodan (master) tarihleri al
-        if ($finOrder->operationalOrder) {
-            $finOrder->delivery_date = $finOrder->operationalOrder->delivery_date;
+        if ($masterOp->delivery_date) {
+            $finOrder->delivery_date = $masterOp->delivery_date;
         }
 
         // Cogs calculation
-        $this->applyCogsAndSave($finOrder, $item->barcode, $item->quantity);
+        $this->applyCogsAndSave($finOrder, $item->barcode, $item->quantity, $item->stock_code);
     }
 
-    protected function splitAndDistributeFinancialRow(MpOrder $originalFinOrder, $items): void
+    protected function splitAndDistributeFinancialRow(MpOrder $originalFinOrder, $items, ?MpOperationalOrder $masterOp = null): void
     {
         // Toplam satış tutarı oranlaması (Ratio)
         $totalSalePrice = $items->sum('sale_price');
@@ -174,6 +180,9 @@ class SyncOperationalToFinancialJob implements ShouldQueue
             $targetOrder->stock_code = $item->stock_code;
             $targetOrder->product_name = $item->product_name;
             $targetOrder->quantity = $item->quantity;
+            if ($masterOp?->delivery_date) {
+                $targetOrder->delivery_date = $masterOp->delivery_date;
+            }
 
             // Apply distributed values
             $targetOrder->gross_amount = $itemGross;
@@ -187,14 +196,33 @@ class SyncOperationalToFinancialJob implements ShouldQueue
             $targetOrder->withholding_tax = $itemWithholding;
             $targetOrder->net_hakedis = $itemNetHakedis;
 
-            $this->applyCogsAndSave($targetOrder, $item->barcode, $item->quantity);
+            $this->applyCogsAndSave($targetOrder, $item->barcode, $item->quantity, $item->stock_code);
         }
     }
 
-    protected function applyCogsAndSave(MpOrder $order, $barcode, $quantity): void
+    protected function applyCogsAndSave(MpOrder $order, $barcode, $quantity, $stockCode = null): void
     {
         // Ürün kütüphanesinden eşleştir:
-        $product = MpProduct::where('barcode', $barcode)->first();
+        $userId = $order->relationLoaded('period')
+            ? $order->period?->user_id
+            : $order->period()->value('user_id');
+
+        $baseQuery = MpProduct::query()
+            ->when($userId, fn($query) => $query->where('user_id', $userId));
+
+        $product = null;
+        if ($barcode) {
+            $product = (clone $baseQuery)
+                ->where('barcode', $barcode)
+                ->first();
+        }
+
+        if (!$product && $stockCode) {
+            $product = (clone $baseQuery)
+                ->where('stock_code', $stockCode)
+                ->first();
+        }
+
         if ($product) {
             $order->product_vat_rate = $product->vat_rate;
             $order->cogs_at_time = $product->cogs * $quantity;

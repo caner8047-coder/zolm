@@ -20,7 +20,7 @@ class ProfileManager extends Component
 
     protected $rules = [
         'name' => 'required|string|max:255',
-        'type' => 'required|in:production,operation',
+        'type' => 'required|in:production,operation,custom',
         'isDefault' => 'boolean',
     ];
 

@@ -415,33 +415,70 @@
 
     {{-- GEÇMİŞ RAPORLAR --}}
     @if($activeTab === 'history')
-    <div class="space-y-3">
-        @forelse($this->reports as $rpt)
-        <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-             wire:click="viewReport({{ $rpt->id }})">
-            <div>
-                <p class="font-medium text-gray-900">{{ $rpt->name }}</p>
-                <p class="text-xs text-gray-500 mt-1">{{ $rpt->created_at->format('d.m.Y H:i') }} · {{ $rpt->original_filename }}</p>
-                <div class="flex flex-wrap gap-2 mt-2">
-                    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{{ $rpt->total_products }} ürün</span>
-                    <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">{{ $rpt->opportunity_count }} kârlı</span>
-                    <span class="text-xs {{ $rpt->total_extra_profit >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700' }} px-2 py-0.5 rounded">
-                        {{ $rpt->total_extra_profit >= 0 ? '+' : '' }}{{ number_format($rpt->total_extra_profit, 0) }} ₺
-                    </span>
+    @if($this->reports->isEmpty())
+        <div class="text-center py-12">
+            <svg class="w-16 h-16 text-gray-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            <h3 class="mt-4 text-lg font-medium text-gray-900">Henüz rapor yok</h3>
+            <p class="mt-2 text-sm text-gray-500">İlk analizi çalıştırarak buraya rapor ekleyin.</p>
+            <button wire:click="switchTab('analyze')" class="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm min-h-[44px]">
+                Yeni Analiz Başlat
+            </button>
+        </div>
+    @else
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
+            @foreach($this->reports as $rpt)
+                <div class="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition p-4 lg:p-5">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1 min-w-0">
+                            <h4 class="font-medium text-gray-900 truncate">{{ $rpt->name }}</h4>
+                            <p class="text-xs text-gray-400 mt-0.5">{{ $rpt->created_at->format('d.m.Y H:i') }}</p>
+                        </div>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium {{ 
+                            $rpt->status === 'applied' ? 'bg-blue-100 text-blue-800' : 
+                            ($rpt->status === 'exported' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800') 
+                        }}">
+                            {{ $rpt->status === 'applied' ? 'Uygulandı' : ($rpt->status === 'exported' ? 'İndirildi' : 'Tamamlandı') }}
+                        </span>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-2 text-center bg-gray-50 rounded-lg p-3 mb-3">
+                        <div>
+                            <div class="text-xs text-gray-400">Ürün</div>
+                            <div class="text-lg font-bold text-gray-900">{{ $rpt->total_products }}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-purple-500">Fırsat</div>
+                            <div class="text-lg font-bold text-purple-600">{{ $rpt->opportunity_count }}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-green-500">Ek Kâr</div>
+                            <div class="text-sm font-bold text-green-600">+{{ number_format($rpt->total_extra_profit, 0) }} ₺</div>
+                        </div>
+                    </div>
+
+                    @if($rpt->original_filename)
+                        <p class="text-[10px] text-gray-400 truncate mb-3">📄 {{ $rpt->original_filename }}</p>
+                    @endif
+
+                    <div class="flex gap-2">
+                        <button wire:click="viewReport({{ $rpt->id }})"
+                            class="flex-1 px-3 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 min-h-[44px]">
+                            Görüntüle
+                        </button>
+                        <button wire:click="deleteReport({{ $rpt->id }})"
+                            wire:confirm="Bu raporu silmek istediğinize emin misiniz?"
+                            class="px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 min-h-[44px]">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
-            </div>
-            <div class="flex gap-2">
-                <button wire:click.stop="viewReport({{ $rpt->id }})" class="px-3 py-2 text-sm bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 min-h-[44px]">Görüntüle</button>
-                <button wire:click.stop="deleteReport({{ $rpt->id }})" class="px-3 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 min-h-[44px]"
-                    onclick="return confirm('Silmek istediğinize emin misiniz?')">Sil</button>
-            </div>
+            @endforeach
         </div>
-        @empty
-        <div class="bg-white rounded-xl border border-gray-200 p-12 text-center">
-            <p class="text-gray-500">Henüz flaş ürün raporu yok.</p>
-            <button wire:click="switchTab('analyze')" class="mt-3 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm">İlk Analizi Yap</button>
-        </div>
-        @endforelse
-    </div>
+    @endif
     @endif
 </div>

@@ -161,6 +161,9 @@ class DynamicTransformEngine
                 $newData = match ($type) {
                     'filter' => $this->applyFilter($data, $transform),
                     'map_column' => $this->applyMapColumn($data, $transform),
+                    'merge_columns' => $this->applyMergeColumns($data, $transform),
+                    'split_column' => $this->applySplitColumn($data, $transform),
+                    'conditional_value' => $this->applyConditionalValue($data, $transform),
                     'sort' => $this->applySort($data, $transform),
                     'normalize_product' => $this->applyNormalizeProduct($data, $transform),
                     'add_column' => $this->applyAddColumn($data, $transform),
@@ -293,6 +296,101 @@ class DynamicTransformEngine
 
             return $item;
         });
+    }
+
+    protected function applyMergeColumns(Collection $data, array $config): Collection
+    {
+        $sources = $config['sources'] ?? [];
+        $target = $config['target'] ?? '';
+        $separator = (string)($config['separator'] ?? ' ');
+
+        if (!is_array($sources) || empty($sources) || $target === '') {
+            return $data;
+        }
+
+        return $data->map(function ($item) use ($sources, $target, $separator) {
+            $parts = [];
+            foreach ($sources as $source) {
+                $val = trim((string)($item[$source] ?? ''));
+                if ($val !== '') {
+                    $parts[] = $val;
+                }
+            }
+
+            $item[$target] = implode($separator, $parts);
+            return $item;
+        });
+    }
+
+    protected function applySplitColumn(Collection $data, array $config): Collection
+    {
+        $source = $config['source'] ?? '';
+        $targets = $config['targets'] ?? [];
+        $separator = (string)($config['separator'] ?? ' ');
+        $limit = (int)($config['limit'] ?? 0);
+
+        if ($source === '' || !is_array($targets) || empty($targets)) {
+            return $data;
+        }
+
+        return $data->map(function ($item) use ($source, $targets, $separator, $limit) {
+            $raw = (string)($item[$source] ?? '');
+            if ($raw === '') {
+                foreach ($targets as $target) {
+                    $item[$target] = $item[$target] ?? '';
+                }
+                return $item;
+            }
+
+            $parts = $limit > 0 ? explode($separator, $raw, $limit) : explode($separator, $raw);
+            foreach ($targets as $index => $target) {
+                $item[$target] = trim((string)($parts[$index] ?? ''));
+            }
+
+            return $item;
+        });
+    }
+
+    protected function applyConditionalValue(Collection $data, array $config): Collection
+    {
+        $target = $config['target'] ?? '';
+        $when = $config['when'] ?? [];
+        $thenValue = $config['then'] ?? null;
+        $elseValue = $config['else'] ?? null;
+
+        if ($target === '' || !is_array($when)) {
+            return $data;
+        }
+
+        $column = $when['column'] ?? '';
+        $operator = strtolower((string)($when['operator'] ?? 'eq'));
+        $expected = $when['value'] ?? null;
+
+        if ($column === '') {
+            return $data;
+        }
+
+        return $data->map(function ($item) use ($column, $operator, $expected, $target, $thenValue, $elseValue) {
+            $actual = $item[$column] ?? null;
+            $matched = $this->matchCondition($actual, $operator, $expected);
+            $item[$target] = $matched ? $thenValue : $elseValue;
+            return $item;
+        });
+    }
+
+    protected function matchCondition(mixed $actual, string $operator, mixed $expected): bool
+    {
+        return match ($operator) {
+            'eq', '=' => (string)$actual === (string)$expected,
+            'ne', '!=', '<>' => (string)$actual !== (string)$expected,
+            'gt', '>' => (float)$actual > (float)$expected,
+            'gte', '>=' => (float)$actual >= (float)$expected,
+            'lt', '<' => (float)$actual < (float)$expected,
+            'lte', '<=' => (float)$actual <= (float)$expected,
+            'contains' => str_contains(mb_strtolower((string)$actual, 'UTF-8'), mb_strtolower((string)$expected, 'UTF-8')),
+            'in' => is_array($expected) ? in_array((string)$actual, array_map('strval', $expected), true) : false,
+            default => false,
+        };
     }
 
     protected function applySort(Collection $data, array $config): Collection
@@ -663,6 +761,7 @@ class DynamicTransformEngine
     {
         $groupBy = $config['group_by'] ?? null;
         $displayColumn = $config['display_column'] ?? null;
+        $sortBy = $config['sort_by'] ?? null;
         $renameColumns = $config['rename_columns'] ?? [];
         $aggregates = $config['aggregate'] ?? $config['aggregations'] ?? [];
         $columns = $config['columns'] ?? [];
@@ -687,20 +786,26 @@ class DynamicTransformEngine
         $grouped = $data->groupBy($groupingKey);
 
         $result = [];
+        $aggregateColumns = array_values(array_filter(array_map(
+            fn($agg) => $agg['column'] ?? null,
+            is_array($aggregates) ? $aggregates : []
+        )));
 
         foreach ($grouped as $groupValue => $items) {
             $outputLabelCol = $displayColumn ?: $groupBy;
             $row = [];
+            $firstItemInGroup = $items->first();
+            $displayValue = (string) $groupValue;
 
             if ($useSkeletonKey) {
                 // En uzun/temiz ismi seç
-                $bestName = $items->first()['Ürün'];
+                $bestName = (string)($items->first()['Ürün'] ?? $groupValue);
                 foreach ($items as $item) {
-                    if (mb_strlen($item['Ürün']) > mb_strlen($bestName)) {
+                    if (isset($item['Ürün']) && mb_strlen((string)$item['Ürün']) > mb_strlen($bestName)) {
                         $bestName = $item['Ürün'];
                     }
                 }
-                $row[$outputLabelCol] = $bestName;
+                $displayValue = $bestName;
             } elseif ($displayColumn) {
                 $best = (string)$groupValue;
                 $bestLen = mb_strlen($best, 'UTF-8');
@@ -713,9 +818,61 @@ class DynamicTransformEngine
                         $bestLen = $len;
                     }
                 }
-                $row[$outputLabelCol] = $best;
+                $displayValue = $best;
             } else {
-                $row[$outputLabelCol] = $groupValue;
+                $displayValue = (string)$groupValue;
+            }
+
+            // Profilde columns tanımlıysa, summary satırını o kolonlara göre kur.
+            if (is_array($columns) && !empty($columns)) {
+                foreach ($columns as $column) {
+                    if (!is_string($column) || $column === '') {
+                        continue;
+                    }
+
+                    // Etiket kolonu (ör. Ürün) her zaman normalize edilmiş gösterim değeri olsun.
+                    if ($column === $outputLabelCol || (!empty($displayColumn) && $column === $displayColumn)) {
+                        $row[$column] = $displayValue;
+                        continue;
+                    }
+
+                    // Aggregation ile hesaplanacak kolonlar aşağıda set edilecek.
+                    if (in_array($column, $aggregateColumns, true)) {
+                        continue;
+                    }
+
+                    // Group by kolonu istenirse grup değeri ver.
+                    if ($column === $groupBy && !$useSkeletonKey) {
+                        $row[$column] = $groupValue;
+                        continue;
+                    }
+
+                    // Grup içinden ilk dolu değeri al.
+                    $picked = null;
+                    foreach ($items as $item) {
+                        if (!array_key_exists($column, $item)) {
+                            continue;
+                        }
+                        $value = $item[$column];
+                        if ($value === null) {
+                            continue;
+                        }
+                        if (is_string($value) && trim($value) === '') {
+                            continue;
+                        }
+                        $picked = $value;
+                        break;
+                    }
+
+                    if ($picked === null && is_array($firstItemInGroup) && array_key_exists($column, $firstItemInGroup)) {
+                        $picked = $firstItemInGroup[$column];
+                    }
+
+                    $row[$column] = $picked ?? '';
+                }
+            } else {
+                // Legacy davranış
+                $row[$outputLabelCol] = $displayValue;
             }
 
             if (!empty($aggregates)) {
@@ -743,7 +900,10 @@ class DynamicTransformEngine
             $result[] = $row;
         }
 
-        $sortKey = $displayColumn ?: $groupBy;
+        $sortKey = $sortBy ?: ($displayColumn ?: $groupBy);
+        if (!empty($result) && !array_key_exists($sortKey, $result[0])) {
+            $sortKey = array_key_first($result[0]);
+        }
 
         // --- TÜRKÇE A-Z SIRALAMA ---
         if (class_exists('Collator')) {

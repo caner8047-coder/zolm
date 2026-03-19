@@ -49,8 +49,11 @@
                         @endif
                     </div>
                     <div class="flex items-center space-x-2 mt-1">
-                        <span class="px-2 py-0.5 text-xs rounded {{ $profile->type === 'production' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700' }}">
-                            {{ $profile->type === 'production' ? 'Üretim' : 'Operasyon' }}
+                        <span class="px-2 py-0.5 text-xs rounded
+                            {{ $profile->type === 'production' ? 'bg-blue-100 text-blue-700' : '' }}
+                            {{ $profile->type === 'operation' ? 'bg-green-100 text-green-700' : '' }}
+                            {{ $profile->type === 'custom' ? 'bg-indigo-100 text-indigo-700' : '' }}">
+                            {{ $profile->type === 'production' ? 'Üretim' : ($profile->type === 'operation' ? 'Operasyon' : 'Özel') }}
                         </span>
                         @if($profile->status === 'analyzing')
                         <span class="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded animate-pulse">
@@ -156,6 +159,7 @@
                     <select wire:model="type" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                         <option value="production">Üretim</option>
                         <option value="operation">Operasyon</option>
+                        <option value="custom">Özel Motor</option>
                     </select>
                 </div>
 

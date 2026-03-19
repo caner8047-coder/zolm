@@ -131,6 +131,13 @@ class User extends Authenticatable
         return in_array($role, ['admin', 'manager', 'crm_sorumlusu', 'uretim_sorumlusu', 'operasyon_sorumlusu']);
     }
 
+    public function canAccessCustomMotor(): bool
+    {
+        return $this->canAccessProduction()
+            || $this->canAccessOperation()
+            || $this->canAccessReports();
+    }
+
     // === HELPERS ===
 
     public function getRoleLabelAttribute(): string

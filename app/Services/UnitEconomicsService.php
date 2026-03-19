@@ -26,31 +26,44 @@ class UnitEconomicsService
      * @var array Product VAT rates cache by barcode
      */
     protected array $vatRatesCache = [];
+    protected array $periodUserCache = [];
 
     /**
      * Belirli bir sipariş için birim iktisadı hesapla
      */
     public function calculateForOrder(MpOrder $order): array
     {
+        $userId = $this->resolveUserIdForOrder($order);
+        $resolvedBarcode    = $order->resolved_barcode;
+        $resolvedStockCode  = $order->resolved_stock_code;
+        $resolvedProductName = $order->resolved_product_name;
+        $resolvedQuantity   = $order->resolved_quantity;
         $grossAmount      = (float) $order->gross_amount;
         $hakedis          = (float) $order->net_hakedis;
         $commissionAmount = (float) $order->commission_amount;
         $cargoAmount      = (float) $order->cargo_amount;
-        $cogs             = (float) ($order->cogs_at_time ?? 0);
-        $packaging        = (float) ($order->packaging_cost_at_time ?? 0);
-        $ownCargo         = (float) ($order->own_cargo_cost_at_time ?? 0);
-        $svc              = new \App\Services\MpSettingsService();
+        $cogs             = (float) $order->resolved_cogs_at_time;
+        $packaging        = (float) $order->resolved_packaging_cost_at_time;
+        $svc              = new \App\Services\MpSettingsService($userId);
+        $ownCargo         = $svc->usesOwnCargo() ? (float) $order->resolved_own_cargo_cost_at_time : 0.0;
         $defaultVatRate   = $svc->getDefaultProductVatRate();
         
         // Ürün bazlı KDV oranı: MpProduct tablosunda tanımlıysa onu kullan, yoksa sistem ayarını kullan
         $productVatRate = $defaultVatRate; // Sistem ayarındaki oran (0.10 = %10)
-        if ($order->barcode) {
-            if (!array_key_exists($order->barcode, $this->vatRatesCache)) {
-                $matchedProduct = \App\Models\MpProduct::where('barcode', $order->barcode)->first(['barcode', 'vat_rate']);
-                $this->vatRatesCache[$order->barcode] = $matchedProduct ? $matchedProduct->vat_rate : null;
+        if ($order->resolved_product_vat_rate !== null && (float) $order->resolved_product_vat_rate > 0) {
+            $productVatRate = (float) $order->resolved_product_vat_rate / 100;
+        } elseif ($resolvedBarcode) {
+            $cacheKey = $this->productCacheKey($userId, $resolvedBarcode);
+
+            if (!array_key_exists($cacheKey, $this->vatRatesCache)) {
+                $matchedProduct = \App\Models\MpProduct::query()
+                    ->when($userId, fn($query) => $query->where('user_id', $userId))
+                    ->where('barcode', $resolvedBarcode)
+                    ->first(['barcode', 'vat_rate']);
+                $this->vatRatesCache[$cacheKey] = $matchedProduct ? $matchedProduct->vat_rate : null;
             }
             
-            $dbVatRate = $this->vatRatesCache[$order->barcode];
+            $dbVatRate = $this->vatRatesCache[$cacheKey];
             if ($dbVatRate !== null) {
                 $productVatRate = (float) $dbVatRate / 100; // DB'de 10 olarak saklanır → 0.10
             }
@@ -78,7 +91,6 @@ class UnitEconomicsService
         }
 
         // ─── Gerçek Net Kâr ─────────────────────────────────────
-        $realNetProfit = round($hakedis - $cogs - $packaging - $ownCargo + min(0, $netVat), 2);
         // Eğer KDV negatifse (avantaj), kâra eklenir. Pozitifse (yük), kârdan düşülmez
         // çünkü zaten satış fiyatı içinde tahsil edilmiş — devlete ödenmesi gereken tutar.
         // Gerçek formül: Kâr = Hakediş - COGS - Ambalaj - Kargo - max(0, netVat) [vergi yükü]
@@ -101,10 +113,16 @@ class UnitEconomicsService
 
         return [
             'order_number'     => $order->order_number,
-            'barcode'          => $order->barcode,
-            'stock_code'       => $order->stock_code,
-            'product_name'     => $order->product_name,
-            'quantity'         => $order->quantity,
+            'group_key'        => $this->resolveSkuGroupKey(
+                $resolvedBarcode,
+                $resolvedStockCode,
+                $resolvedProductName,
+                $order->order_number
+            ),
+            'barcode'          => $resolvedBarcode,
+            'stock_code'       => $resolvedStockCode,
+            'product_name'     => $resolvedProductName,
+            'quantity'         => $resolvedQuantity,
             'status'           => $order->status,
             'gross_amount'     => $grossAmount,
             'hakedis'          => $hakedis,
@@ -120,6 +138,7 @@ class UnitEconomicsService
             'real_net_profit'  => $realNetProfitWithVat,
             'is_bleeding'      => $realNetProfitWithVat < 0,
             'has_cogs'         => $cogs > 0,
+            'cogs_missing_reason' => $order->cogs_missing_reason,
             'margin_percent'   => $grossAmount > 0
                 ? round(($realNetProfitWithVat / $grossAmount) * 100, 1)
                 : 0,
@@ -144,16 +163,19 @@ class UnitEconomicsService
             ->toArray();
             
         if (!empty($uniqueBarcodes)) {
-            $products = \App\Models\MpProduct::whereIn('barcode', $uniqueBarcodes)
+            $products = \App\Models\MpProduct::query()
+                ->when($period->user_id, fn($query) => $query->where('user_id', $period->user_id))
+                ->whereIn('barcode', $uniqueBarcodes)
                 ->get(['barcode', 'vat_rate']);
             
             foreach ($products as $product) {
-                $this->vatRatesCache[$product->barcode] = $product->vat_rate;
+                $this->vatRatesCache[$this->productCacheKey($period->user_id, $product->barcode)] = $product->vat_rate;
             }
         }
 
         MpOrder::where('period_id', $period->id)
             ->where('status', 'Teslim Edildi')
+            ->with(['period', 'operationalOrder.items'])
             ->orderByDesc('order_date')
             ->chunk(1000, function ($orders) use (&$results) {
                 foreach ($orders as $order) {
@@ -173,8 +195,8 @@ class UnitEconomicsService
         $allOrders = $this->calculateForPeriod($period);
 
         return $allOrders
-            ->groupBy('barcode')
-            ->map(function (Collection $items, string $barcode) {
+            ->groupBy('group_key')
+            ->map(function (Collection $items) {
                 $first = $items->first();
                 $totalQty       = $items->sum('quantity');
                 $totalGross     = $items->sum('gross_amount');
@@ -184,11 +206,16 @@ class UnitEconomicsService
                 $totalNetProfit = $items->sum('real_net_profit');
                 $bleedingCount  = $items->where('is_bleeding', true)->count();
                 $hasCogs        = $items->where('has_cogs', true)->isNotEmpty();
+                $cogsMissingReason = $items
+                    ->where('has_cogs', false)
+                    ->pluck('cogs_missing_reason')
+                    ->filter()
+                    ->first();
 
                 return [
-                    'barcode'          => $barcode,
-                    'stock_code'       => $first['stock_code'] ?? '-',
-                    'product_name'     => $first['product_name'] ?? '-',
+                    'barcode'          => $first['barcode'] ?: '-',
+                    'stock_code'       => $first['stock_code'] ?: '-',
+                    'product_name'     => $first['product_name'] ?: ('Sipariş #' . ($first['order_number'] ?? '-')),
                     'order_count'      => $items->count(),
                     'total_quantity'   => $totalQty,
                     'total_gross'      => round($totalGross, 2),
@@ -202,6 +229,7 @@ class UnitEconomicsService
                     'bleeding_count'   => $bleedingCount,
                     'is_bleeding'      => $totalNetProfit < 0,
                     'has_cogs'         => $hasCogs,
+                    'cogs_missing_reason' => $cogsMissingReason,
                 ];
             })
             ->sortBy('total_net_profit') // En zararlı ürün en üstte
@@ -215,7 +243,7 @@ class UnitEconomicsService
     {
         $orders = MpOrder::where('period_id', $period->id)
             ->where('status', 'Teslim Edildi')
-            ->whereNotNull('cogs_at_time')
+            ->with(['period', 'operationalOrder.items'])
             ->get();
 
         $count = 0;
@@ -226,5 +254,44 @@ class UnitEconomicsService
         }
 
         return $count;
+    }
+
+    protected function resolveUserIdForOrder(MpOrder $order): ?int
+    {
+        if ($order->relationLoaded('period')) {
+            return $order->period?->user_id;
+        }
+
+        if (array_key_exists($order->period_id, $this->periodUserCache)) {
+            return $this->periodUserCache[$order->period_id];
+        }
+
+        return $this->periodUserCache[$order->period_id] = \App\Models\MpPeriod::whereKey($order->period_id)->value('user_id');
+    }
+
+    protected function productCacheKey(?int $userId, string $barcode): string
+    {
+        return ($userId ?? 0) . '|' . $barcode;
+    }
+
+    protected function resolveSkuGroupKey(
+        ?string $barcode,
+        ?string $stockCode,
+        ?string $productName,
+        string $orderNumber
+    ): string {
+        if (filled($barcode)) {
+            return 'barcode:' . $barcode;
+        }
+
+        if (filled($stockCode)) {
+            return 'stock:' . $stockCode;
+        }
+
+        if (filled($productName)) {
+            return 'name:' . mb_strtolower(trim($productName));
+        }
+
+        return 'order:' . $orderNumber;
     }
 }

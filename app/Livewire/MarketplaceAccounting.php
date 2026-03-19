@@ -100,6 +100,26 @@ class MarketplaceAccounting extends Component
     public float $settingsOperationalPenaltyCriticalThreshold = 500.00;
     public float $settingsMultipleCartFactor = 1.50;
     public float $settingsMultipleCartDesiTolerance = 10.00;
+    public float $settingsMissingPaymentCriticalThreshold = 10.00;
+    public float $settingsPriceDropPercentage = 15.00;
+    public int $settingsPriceDropMinOrders = 3;
+    public float $settingsCommissionRateChangeThreshold = 1.00;
+    public int $settingsCommissionRateChangeMinOrders = 3;
+    public float $settingsServiceFeeIncreaseThreshold = 0.50;
+    public int $settingsServiceFeeIncreaseMinOrders = 20;
+    public float $settingsHighReturnRateThreshold = 15.00;
+    public int $settingsHighReturnRateMinQuantity = 5;
+    public float $settingsHighCancellationRateThreshold = 10.00;
+    public int $settingsHighCancellationRateMinOrders = 5;
+    public float $settingsCargoOverCostRatio = 0.50;
+    public float $settingsExtremeMarginPositiveThreshold = 100.00;
+    public float $settingsExtremeMarginNegativeThreshold = -100.00;
+    public float $settingsNegativeHakedisThreshold = 0.00;
+    public float $settingsCampaignLossMinTotalLoss = 0.00;
+    public int $settingsCampaignLossMinOrderCount = 1;
+    public bool $settingsLogInfoRules = false;
+    public bool $settingsTransactionCheckCommissionEnabled = true;
+    public bool $settingsTransactionCheckCargoEnabled = true;
 
     // Bölüm 6: Mutabakat & Fatura
     public float $settingsCommissionMatchTolerance = 15.00;
@@ -237,6 +257,46 @@ class MarketplaceAccounting extends Component
         }
 
         $this->loadSettings();
+
+        if (!array_key_exists($this->activeTab, $this->tabs)) {
+            $this->activeTab = 'dashboard';
+        }
+    }
+
+    public function getTabsProperty(): array
+    {
+        return [
+            'dashboard' => [
+                'label' => 'Dashboard',
+            ],
+            'upload' => [
+                'label' => 'Veri Yükleme',
+            ],
+            'search' => [
+                'label' => 'Sipariş Ara',
+            ],
+            'audit' => [
+                'label' => 'Denetim',
+            ],
+            'profit' => [
+                'label' => 'Kârlılık',
+            ],
+            'orders' => [
+                'label' => 'Siparişler',
+            ],
+            'settings' => [
+                'label' => 'Ayarlar',
+            ],
+        ];
+    }
+
+    public function setTab(string $tab): void
+    {
+        if (!array_key_exists($tab, $this->tabs)) {
+            return;
+        }
+
+        $this->activeTab = $tab;
     }
 
     public function loadSettings()
@@ -274,6 +334,34 @@ class MarketplaceAccounting extends Component
         $this->settingsOperationalPenaltyCriticalThreshold    = (float) ($t['operational_penalty_critical_threshold'] ?? 500.00);
         $this->settingsMultipleCartFactor                     = (float) ($t['multiple_cart_factor'] ?? 1.50);
         $this->settingsMultipleCartDesiTolerance              = (float) ($t['multiple_cart_desi_tolerance'] ?? 10.00);
+        $this->settingsMissingPaymentCriticalThreshold        = (float) ($t['missing_payment_critical_threshold'] ?? 10.00);
+        $this->settingsPriceDropPercentage                    = (float) ($t['price_drop_percentage'] ?? 15.00);
+        $this->settingsPriceDropMinOrders                     = (int) ($t['price_drop_min_orders'] ?? 3);
+        $this->settingsCommissionRateChangeThreshold          = (float) ($t['commission_rate_change_threshold'] ?? 1.00);
+        $this->settingsCommissionRateChangeMinOrders          = (int) ($t['commission_rate_change_min_orders'] ?? 3);
+        $this->settingsServiceFeeIncreaseThreshold            = (float) ($t['service_fee_increase_threshold'] ?? 0.50);
+        $this->settingsServiceFeeIncreaseMinOrders            = (int) ($t['service_fee_increase_min_orders'] ?? 20);
+        $this->settingsHighReturnRateThreshold                = (float) ($t['high_return_rate_threshold'] ?? 15.00);
+        $this->settingsHighReturnRateMinQuantity              = (int) ($t['high_return_rate_min_quantity'] ?? 5);
+        $this->settingsHighCancellationRateThreshold          = (float) ($t['high_cancellation_rate_threshold'] ?? 10.00);
+        $this->settingsHighCancellationRateMinOrders          = (int) ($t['high_cancellation_rate_min_orders'] ?? 5);
+        $this->settingsCargoOverCostRatio                     = (float) ($t['cargo_over_cost_ratio'] ?? 0.50);
+        $this->settingsExtremeMarginPositiveThreshold         = (float) ($t['extreme_margin_positive_threshold'] ?? 100.00);
+        $this->settingsExtremeMarginNegativeThreshold         = (float) ($t['extreme_margin_negative_threshold'] ?? -100.00);
+        $this->settingsNegativeHakedisThreshold               = (float) ($t['negative_hakedis_threshold'] ?? 0.00);
+        $this->settingsCampaignLossMinTotalLoss               = (float) ($t['campaign_loss_min_total_loss'] ?? 0.00);
+        $this->settingsCampaignLossMinOrderCount              = (int) ($t['campaign_loss_min_order_count'] ?? 1);
+
+        $auditBehavior = $all['audit_behavior'] ?? [];
+        $this->settingsLogInfoRules                = (bool) ($auditBehavior['log_info_rules'] ?? false);
+        $this->settingsTransactionCheckCommissionEnabled = (bool) ($auditBehavior['transaction_check_commission_enabled'] ?? true);
+        $this->settingsTransactionCheckCargoEnabled      = (bool) ($auditBehavior['transaction_check_cargo_enabled'] ?? true);
+
+        $auditRules = $all['audit_rules'] ?? [];
+        $this->disabledAuditRules = array_values(array_unique(array_filter(
+            (array) ($auditRules['disabled'] ?? []),
+            fn ($rule) => in_array($rule, AuditEngine::RULES, true)
+        )));
 
         // Bölüm 6: Mutabakat
         $r = $all['reconciliation'] ?? [];
@@ -383,6 +471,31 @@ class MarketplaceAccounting extends Component
                 'operational_penalty_critical_threshold'  => (float) $this->settingsOperationalPenaltyCriticalThreshold,
                 'multiple_cart_factor'                    => (float) $this->settingsMultipleCartFactor,
                 'multiple_cart_desi_tolerance'            => (float) $this->settingsMultipleCartDesiTolerance,
+                'missing_payment_critical_threshold'      => (float) $this->settingsMissingPaymentCriticalThreshold,
+                'price_drop_percentage'                   => (float) $this->settingsPriceDropPercentage,
+                'price_drop_min_orders'                   => (int) $this->settingsPriceDropMinOrders,
+                'commission_rate_change_threshold'        => (float) $this->settingsCommissionRateChangeThreshold,
+                'commission_rate_change_min_orders'       => (int) $this->settingsCommissionRateChangeMinOrders,
+                'service_fee_increase_threshold'          => (float) $this->settingsServiceFeeIncreaseThreshold,
+                'service_fee_increase_min_orders'         => (int) $this->settingsServiceFeeIncreaseMinOrders,
+                'high_return_rate_threshold'              => (float) $this->settingsHighReturnRateThreshold,
+                'high_return_rate_min_quantity'           => (int) $this->settingsHighReturnRateMinQuantity,
+                'high_cancellation_rate_threshold'        => (float) $this->settingsHighCancellationRateThreshold,
+                'high_cancellation_rate_min_orders'       => (int) $this->settingsHighCancellationRateMinOrders,
+                'cargo_over_cost_ratio'                   => (float) $this->settingsCargoOverCostRatio,
+                'extreme_margin_positive_threshold'       => (float) $this->settingsExtremeMarginPositiveThreshold,
+                'extreme_margin_negative_threshold'       => (float) $this->settingsExtremeMarginNegativeThreshold,
+                'negative_hakedis_threshold'              => (float) $this->settingsNegativeHakedisThreshold,
+                'campaign_loss_min_total_loss'            => (float) $this->settingsCampaignLossMinTotalLoss,
+                'campaign_loss_min_order_count'           => (int) $this->settingsCampaignLossMinOrderCount,
+            ],
+            'audit_rules' => [
+                'disabled' => array_values(array_unique($this->disabledAuditRules)),
+            ],
+            'audit_behavior' => [
+                'log_info_rules'                       => (bool) $this->settingsLogInfoRules,
+                'transaction_check_commission_enabled' => (bool) $this->settingsTransactionCheckCommissionEnabled,
+                'transaction_check_cargo_enabled'      => (bool) $this->settingsTransactionCheckCargoEnabled,
             ],
             'reconciliation' => [
                 'commission_match_tolerance' => (float) $this->settingsCommissionMatchTolerance,
@@ -403,11 +516,20 @@ class MarketplaceAccounting extends Component
                 'tax_office' => $this->settingsCompanyTaxOffice,
                 'phone'      => $this->settingsCompanyPhone,
                 'email'      => $this->settingsCompanyEmail,
+                'address'    => $this->settingsCompanyAddress,
+                'iban'       => $this->settingsCompanyIban,
+                'bank'       => $this->settingsCompanyBank,
+                'branch'     => $this->settingsCompanyBranch,
+                'manager'    => $this->settingsCompanyManager,
+                'mersis'     => $this->settingsCompanyMersis,
             ],
             'profitability' => [
                 'target_margin'          => (float) $this->settingsTargetProfitMargin,
                 'min_margin'             => (float) $this->settingsMinProfitMargin,
                 'default_packaging_cost' => (float) $this->settingsDefaultPackagingCost,
+            ],
+            'ui' => [
+                'visible_columns' => $this->visibleColumns,
             ],
         ]);
 
@@ -520,6 +642,30 @@ class MarketplaceAccounting extends Component
     public function toggleSettingsSection(string $section)
     {
         $this->settingsActiveSection = ($this->settingsActiveSection === $section) ? '' : $section;
+    }
+
+    #[Computed]
+    public function effectiveDisabledAuditRules(): array
+    {
+        $disabledRules = $this->disabledAuditRules;
+
+        if (!$this->settingsLogInfoRules) {
+            $disabledRules = array_merge(
+                $disabledRules,
+                collect(AuditEngine::RULE_META)
+                    ->filter(fn (array $meta) => ($meta['severity'] ?? null) === 'info')
+                    ->keys()
+                    ->all()
+            );
+        }
+
+        return array_values(array_unique($disabledRules));
+    }
+
+    #[Computed]
+    public function activeAuditRuleCount(): int
+    {
+        return count(AuditEngine::RULES) - count($this->effectiveDisabledAuditRules());
     }
 
     public function toggleColumn(string $column)
@@ -908,7 +1054,7 @@ class MarketplaceAccounting extends Component
             // Senkron çalıştır — Queue worker olmadan da çalışır
             \App\Jobs\ProcessMarketplaceImport::dispatchSync(
                 $this->selectedPeriodId,
-                auth()->id() ?? 1,
+                (int) ($period->user_id ?? auth()->id() ?? 0),
                 $type,
                 $tempPath,
                 $originalName
@@ -937,7 +1083,7 @@ class MarketplaceAccounting extends Component
 
         try {
             $this->lastAuditResult = $engine->runAllRules($period, $this->disabledAuditRules);
-            $activeCount = count(\App\Services\AuditEngine::RULES) - count($this->disabledAuditRules);
+            $activeCount = $this->activeAuditRuleCount();
             $this->importStatus = "🔍 Denetim tamamlandı! "
                 . $activeCount . " kural çalıştırıldı. "
                 . ($this->lastAuditResult['total_errors'] ?? 0) . " kritik, "
@@ -954,6 +1100,30 @@ class MarketplaceAccounting extends Component
         } else {
             $this->disabledAuditRules[] = $rule;
         }
+
+        $this->disabledAuditRules = array_values(array_unique($this->disabledAuditRules));
+
+        (new MpSettingsService())->set('audit_rules.disabled', $this->disabledAuditRules);
+    }
+
+    public function updatedSettingsLogInfoRules(bool $value): void
+    {
+        (new MpSettingsService())->set('audit_behavior.log_info_rules', (bool) $value);
+    }
+
+    public function updatedSettingsTransactionCheckCommissionEnabled(bool $value): void
+    {
+        (new MpSettingsService())->set('audit_behavior.transaction_check_commission_enabled', (bool) $value);
+    }
+
+    public function updatedSettingsTransactionCheckCargoEnabled(bool $value): void
+    {
+        (new MpSettingsService())->set('audit_behavior.transaction_check_cargo_enabled', (bool) $value);
+    }
+
+    public function updatedSettingsUsesOwnCargo(bool $value): void
+    {
+        (new MpSettingsService())->set('cargo.uses_own_cargo', (bool) $value);
     }
 
     // ─── Search (5N1K) ──────────────────────────────────────────
@@ -966,7 +1136,7 @@ class MarketplaceAccounting extends Component
         }
 
         // Search in selected period OR selected year if period is "All Year" (0)
-        $orders = MpOrder::with('period')
+        $orders = MpOrder::with(['period', 'operationalOrder.items'])
             ->when($this->selectedPeriodId, function ($q) {
                 $q->where('period_id', $this->selectedPeriodId);
             })
@@ -984,8 +1154,8 @@ class MarketplaceAccounting extends Component
             return [
                 'id'               => $order->id,
                 'order_number'     => $order->order_number,
-                'product_name'     => $order->product_name,
-                'barcode'          => $order->barcode,
+                'product_name'     => $order->resolved_product_name,
+                'barcode'          => $order->resolved_barcode,
                 'status'           => $order->status,
                 'status_color'     => $order->status_color,
                 'gross_amount'     => $order->gross_amount,
@@ -1147,7 +1317,13 @@ class MarketplaceAccounting extends Component
             return;
         }
 
-        $userId = Auth::id() ?? 1;
+        $period = MpPeriod::findOrFail($this->selectedPeriodId);
+        $userId = Auth::id() ?? $period->user_id;
+
+        if (!$userId) {
+            session()->flash('import_error', 'Bu dönem için kullanıcı bulunamadı.');
+            return;
+        }
 
         // Tüm ürünleri bir kerede çek (N+1 önleme)
         $products = \App\Models\MpProduct::where('user_id', $userId)->get();
@@ -1155,19 +1331,33 @@ class MarketplaceAccounting extends Component
         // Barkod → ürün ve stok kodu → ürün haritaları oluştur
         $byBarcode   = $products->keyBy('barcode');
         $byStockCode = $products->filter(fn($p) => $p->stock_code)->keyBy('stock_code');
+        $byProductName = $products
+            ->filter(fn($p) => filled($p->product_name))
+            ->groupBy(fn($p) => mb_strtolower(trim((string) $p->product_name)))
+            ->map(fn($items) => $items->count() === 1 ? $items->first() : null)
+            ->filter();
 
         // Dönemdeki tüm siparişleri al
-        $orders = MpOrder::where('period_id', $this->selectedPeriodId)->get();
+        $orders = MpOrder::where('period_id', $this->selectedPeriodId)
+            ->with(['period', 'operationalOrder.items'])
+            ->get();
 
         $updated = 0;
         $skipped = 0;
         $notFound = 0;
 
         foreach ($orders as $order) {
+            $resolvedBarcode = $order->resolved_barcode;
+            $resolvedStockCode = $order->resolved_stock_code;
+            $resolvedProductName = $order->resolved_product_name;
+
             // Önce barcode ile eşleştir, sonra stock_code ile dene
-            $product = $byBarcode->get($order->barcode);
-            if (!$product && $order->stock_code) {
-                $product = $byStockCode->get($order->stock_code);
+            $product = $resolvedBarcode ? $byBarcode->get($resolvedBarcode) : null;
+            if (!$product && $resolvedStockCode) {
+                $product = $byStockCode->get($resolvedStockCode);
+            }
+            if (!$product && $resolvedProductName) {
+                $product = $byProductName->get(mb_strtolower(trim($resolvedProductName)));
             }
 
             if (!$product) {
@@ -1182,7 +1372,7 @@ class MarketplaceAccounting extends Component
             }
 
             // Güncelle — birim maliyet × sipariş adedi
-            $qty = max(1, (int) $order->quantity);
+            $qty = max(1, (int) $order->resolved_quantity);
             
             $updateData = [
                 'cogs_at_time'              => round((float)$product->cogs * $qty, 2),
@@ -1191,12 +1381,27 @@ class MarketplaceAccounting extends Component
                 'product_vat_rate'          => $product->vat_rate ?? 10,
             ];
 
+            if (empty($order->barcode) && !empty($resolvedBarcode)) {
+                $updateData['barcode'] = $resolvedBarcode;
+            } elseif (empty($order->barcode) && !empty($product->barcode)) {
+                $updateData['barcode'] = $product->barcode;
+            }
+
             // Ürün adı veya stok kodu boşsa sync işleminde onu da doldur
-            if (empty($order->product_name) && !empty($product->product_name)) {
+            if (empty($order->product_name) && !empty($resolvedProductName)) {
+                $updateData['product_name'] = $resolvedProductName;
+            } elseif (empty($order->product_name) && !empty($product->product_name)) {
                 $updateData['product_name'] = $product->product_name;
             }
-            if (empty($order->stock_code) && !empty($product->stock_code)) {
+
+            if (empty($order->stock_code) && !empty($resolvedStockCode)) {
+                $updateData['stock_code'] = $resolvedStockCode;
+            } elseif (empty($order->stock_code) && !empty($product->stock_code)) {
                 $updateData['stock_code'] = $product->stock_code;
+            }
+
+            if (empty($order->delivery_date) && $order->resolved_delivery_date) {
+                $updateData['delivery_date'] = $order->resolved_delivery_date;
             }
 
             $order->update($updateData);
@@ -1402,12 +1607,25 @@ class MarketplaceAccounting extends Component
         }
 
         if (!empty($periodIds)) {
+            $allUserPeriodIds = MpPeriod::where('user_id', Auth::id())->pluck('id')->toArray();
+
             $ordersQuery = MpOrder::whereIn('period_id', $periodIds)
                 ->when($this->orderStatusFilter !== 'all', fn($q) =>
                     $q->where('status', $this->orderStatusFilter)
                 )
                 ->when($this->advancedOrderFilter === 'lost_payments', fn($q) =>
-                    $q->delivered()->doesntHave('settlement')
+                    $q->delivered()->whereNotExists(function ($query) use ($allUserPeriodIds) {
+                        $query->select(DB::raw(1))
+                            ->from('mp_settlements')
+                            ->whereColumn('mp_settlements.order_number', 'mp_orders.order_number')
+                            ->where(function ($scopeQuery) use ($allUserPeriodIds) {
+                                $scopeQuery->where('mp_settlements.user_id', Auth::id());
+                                if (!empty($allUserPeriodIds)) {
+                                    $scopeQuery->orWhereIn('mp_settlements.period_id', $allUserPeriodIds);
+                                }
+                            })
+                            ->where('mp_settlements.seller_hakedis', '>', 0);
+                    })
                 )
                 ->when($this->advancedOrderFilter === 'underpaid', fn($q) =>
                     $q->whereHas('auditLogs', fn($sq) => $sq->where('rule_code', 'EKSIK_ODEME'))
@@ -1427,7 +1645,7 @@ class MarketplaceAccounting extends Component
                 ->when($this->advancedOrderFilter === 'cancelled', fn($q) =>
                     $q->cancelled()
                 )
-            ->with(['period', 'settlement'])
+            ->with(['period', 'settlements', 'operationalOrder.items'])
             ->orderBy($this->orderSortBy, $this->orderSortDir);
 
         $orders = $ordersQuery->paginate($this->perPage);

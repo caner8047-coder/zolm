@@ -24,8 +24,8 @@ class FlashProductsService
         'model_code'         => ['Model Kodu', 'MODEL KODU'],
         'category'           => ['Kategori', 'KATEGORİ'],
         'brand'              => ['Marka', 'MARKA'],
-        'current_price'      => ['Mevcut Fiyat', 'MEVCUT FİYAT', 'Trendyol Satış Fiyatı', 'TRENDYOL SATIŞ FİYATI'],
-        'current_commission' => ['Mevcut Komisyon', 'MEVCUT KOMİSYON', 'Mevcut Komisyon Oranı'],
+        'current_price'      => ['Mevcut Fiyat', 'MEVCUT FİYAT', 'Trendyol Satış Fiyatı', 'TRENDYOL SATIŞ FİYATI', 'Güncel TSF', 'GÜNCEL TSF'],
+        'current_commission' => ['Mevcut Komisyon', 'MEVCUT KOMİSYON', 'Mevcut Komisyon Oranı', 'Güncel Komisyon', 'GÜNCEL KOMİSYON'],
         'flash_24h_price'    => ['24 Saat Fiyat', '24 SAAT FİYAT', '24 Saat Flaş Fiyat', '24H FLAŞ FİYAT'],
         'flash_3h_price'     => ['3 Saat Fiyat', '3 SAAT FİYAT', '3 Saat Flaş Fiyat', '3H FLAŞ FİYAT'],
         'flash_commission'   => ['Flaş Komisyon Oranı', 'FLAŞ KOMİSYON ORANI', 'Flaş Komisyon'],
@@ -67,10 +67,6 @@ class FlashProductsService
                 'total_optimized_profit' => 0,
                 'total_extra_profit' => 0,
                 'unmatched_count' => 0,
-                'ai_analysis' => json_encode([
-                    'campaign_start' => $campaignStart,
-                    'campaign_end' => $campaignEnd,
-                ]),
             ]);
 
             $totalProducts = 0;

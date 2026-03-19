@@ -4,6 +4,9 @@ namespace App\Livewire\Cargo;
 
 use App\Models\CargoReport;
 use App\Models\CargoReportItem;
+use App\Models\Product;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -23,11 +26,79 @@ class CargoDashboard extends Component
     public string $period = '30days'; // today, 7days, 30days, thisMonth, custom
     public ?string $customStartDate = null;
     public ?string $customEndDate = null;
+    public string $filterCargoCompany = '';
+    public string $filterMarketplace = '';
+    public string $filterStore = '';
+    public string $filterRecordType = 'all';
 
     public function mount()
     {
         $this->customStartDate = now()->subDays(30)->format('Y-m-d');
         $this->customEndDate = now()->format('Y-m-d');
+    }
+
+    #[Computed]
+    public function cargoCompanies()
+    {
+        return CargoReport::query()
+            ->whereNotNull('cargo_company')
+            ->distinct()
+            ->orderBy('cargo_company')
+            ->pluck('cargo_company');
+    }
+
+    #[Computed]
+    public function marketplaces()
+    {
+        return CargoReportItem::query()
+            ->whereNotNull('pazaryeri')
+            ->where('pazaryeri', '!=', '')
+            ->distinct()
+            ->orderBy('pazaryeri')
+            ->pluck('pazaryeri');
+    }
+
+    #[Computed]
+    public function stores()
+    {
+        return CargoReportItem::query()
+            ->whereNotNull('magaza')
+            ->where('magaza', '!=', '')
+            ->distinct()
+            ->orderBy('magaza')
+            ->pluck('magaza');
+    }
+
+    protected function filteredItemsQuery(): Builder
+    {
+        [$startDate, $endDate] = $this->getDateRange();
+
+        $query = CargoReportItem::query()
+            ->whereHas('report', function (Builder $reportQuery) use ($startDate, $endDate) {
+                $reportQuery->whereBetween('report_date', [$startDate, $endDate]);
+
+                if ($this->filterCargoCompany !== '') {
+                    $reportQuery->where('cargo_company', $this->filterCargoCompany);
+                }
+            });
+
+        if ($this->filterMarketplace !== '') {
+            $query->where('pazaryeri', $this->filterMarketplace);
+        }
+
+        if ($this->filterStore !== '') {
+            $query->where('magaza', $this->filterStore);
+        }
+
+        if ($this->filterRecordType === 'siparis') {
+            $query->where('is_iade', false)->where('is_parca_gonderi', false);
+        } elseif ($this->filterRecordType === 'iade') {
+            $query->where('is_iade', true);
+        } elseif ($this->filterRecordType === 'parca') {
+            $query->where('is_parca_gonderi', true);
+        }
+
+        return $query;
     }
 
     /**
@@ -41,8 +112,8 @@ class CargoDashboard extends Component
             '30days' => [now()->subDays(30)->startOfDay(), now()->endOfDay()],
             'thisMonth' => [now()->startOfMonth(), now()->endOfMonth()],
             'custom' => [
-                $this->customStartDate ? now()->parse($this->customStartDate)->startOfDay() : now()->subDays(30)->startOfDay(),
-                $this->customEndDate ? now()->parse($this->customEndDate)->endOfDay() : now()->endOfDay(),
+                $this->customStartDate ? Carbon::parse($this->customStartDate)->startOfDay() : now()->subDays(30)->startOfDay(),
+                $this->customEndDate ? Carbon::parse($this->customEndDate)->endOfDay() : now()->endOfDay(),
             ],
             default => [now()->subDays(30)->startOfDay(), now()->endOfDay()],
         };
@@ -54,26 +125,19 @@ class CargoDashboard extends Component
     #[Computed]
     public function summaryStats(): array
     {
-        [$startDate, $endDate] = $this->getDateRange();
+        $items = $this->filteredItemsQuery();
+        $normalOrders = (clone $items)->where('is_iade', false)->where('is_parca_gonderi', false);
 
-        $reports = CargoReport::whereBetween('report_date', [$startDate, $endDate]);
-
-        // Toplam raporlar
-        $totalReports = $reports->count();
-        $totalOrders = $reports->sum('total_orders');
-        $matchedOrders = $reports->sum('matched_orders');
-        $errorCount = $reports->sum('error_count');
-        $totalDesiDiff = $reports->sum('total_desi_diff');
-        $totalTutarDiff = $reports->sum('total_tutar_diff');
-
-        // İade ve Parça istatistikleri (items tablosundan)
-        $items = CargoReportItem::whereHas('report', function ($q) use ($startDate, $endDate) {
-            $q->whereBetween('report_date', [$startDate, $endDate]);
-        });
+        $totalReports = (clone $items)->distinct('cargo_report_id')->count('cargo_report_id');
+        $totalOrders = (clone $normalOrders)->count();
+        $matchedOrders = (clone $normalOrders)->where('is_matched', true)->count();
+        $errorCount = (clone $items)->where('has_error', true)->count();
+        $totalDesiDiff = (clone $items)->sum('desi_fark');
+        $totalTutarDiff = (clone $items)->sum('tutar_fark');
 
         $iadeCount = (clone $items)->where('is_iade', true)->count();
         $iadeTutar = (clone $items)->where('is_iade', true)->sum('gercek_tutar');
-        
+
         $parcaCount = (clone $items)->where('is_parca_gonderi', true)->count();
         $parcaTutar = (clone $items)->where('is_parca_gonderi', true)->sum('gercek_tutar');
 
@@ -97,11 +161,7 @@ class CargoDashboard extends Component
     #[Computed]
     public function costAnalysis(): array
     {
-        [$startDate, $endDate] = $this->getDateRange();
-
-        $items = CargoReportItem::whereHas('report', function ($q) use ($startDate, $endDate) {
-            $q->whereBetween('report_date', [$startDate, $endDate]);
-        })->where('has_error', true);
+        $items = $this->filteredItemsQuery()->where('has_error', true);
 
         // Bize karşı (fazla ödeme) - tutar_fark > 0
         $againstUs = (clone $items)->where('tutar_fark', '>', 0);
@@ -128,14 +188,13 @@ class CargoDashboard extends Component
     #[Computed]
     public function dailyTrendData(): array
     {
-        [$startDate, $endDate] = $this->getDateRange();
-
-        $data = CargoReport::whereBetween('report_date', [$startDate, $endDate])
+        $data = $this->filteredItemsQuery()
+            ->join('cargo_reports', 'cargo_report_items.cargo_report_id', '=', 'cargo_reports.id')
             ->select(
-                DB::raw('DATE(report_date) as date'),
-                DB::raw('SUM(total_orders) as orders'),
-                DB::raw('SUM(error_count) as errors'),
-                DB::raw('SUM(total_tutar_diff) as tutar_diff')
+                DB::raw('DATE(cargo_reports.report_date) as date'),
+                DB::raw('SUM(CASE WHEN cargo_report_items.is_iade = 0 AND cargo_report_items.is_parca_gonderi = 0 THEN 1 ELSE 0 END) as orders'),
+                DB::raw('SUM(CASE WHEN cargo_report_items.has_error = 1 THEN 1 ELSE 0 END) as errors'),
+                DB::raw('SUM(cargo_report_items.tutar_fark) as tutar_diff')
             )
             ->groupBy('date')
             ->orderBy('date')
@@ -155,12 +214,8 @@ class CargoDashboard extends Component
     #[Computed]
     public function costTrendData(): array
     {
-        [$startDate, $endDate] = $this->getDateRange();
-
         // İade trendi
-        $iadeData = CargoReportItem::whereHas('report', function ($q) use ($startDate, $endDate) {
-                $q->whereBetween('report_date', [$startDate, $endDate]);
-            })
+        $iadeData = $this->filteredItemsQuery()
             ->where('is_iade', true)
             ->join('cargo_reports', 'cargo_report_items.cargo_report_id', '=', 'cargo_reports.id')
             ->select(
@@ -173,9 +228,7 @@ class CargoDashboard extends Component
             ->toArray();
 
         // Parça trendi
-        $parcaData = CargoReportItem::whereHas('report', function ($q) use ($startDate, $endDate) {
-                $q->whereBetween('report_date', [$startDate, $endDate]);
-            })
+        $parcaData = $this->filteredItemsQuery()
             ->where('is_parca_gonderi', true)
             ->join('cargo_reports', 'cargo_report_items.cargo_report_id', '=', 'cargo_reports.id')
             ->select(
@@ -204,12 +257,7 @@ class CargoDashboard extends Component
     #[Computed]
     public function errorTypeDistribution(): array
     {
-        [$startDate, $endDate] = $this->getDateRange();
-
-        $query = CargoReportItem::whereHas('report', function ($q) use ($startDate, $endDate) {
-                $q->whereBetween('report_date', [$startDate, $endDate]);
-            })
-            ->where('has_error', true);
+        $query = $this->filteredItemsQuery()->where('has_error', true);
 
         // Hata tipleri ve tutarlar
         $data = (clone $query)
@@ -225,7 +273,9 @@ class CargoDashboard extends Component
             ->toArray();
 
         $labels = [
+            'referans_eksik' => ['name' => 'Referans Eksik', 'icon' => '🧩', 'color' => '#D97706'],
             'parca_eksik' => ['name' => 'Parça Eksik', 'icon' => '📦', 'color' => '#DC2626'],
+            'parca_fazla' => ['name' => 'Parça Fazla', 'icon' => '🧱', 'color' => '#F59E0B'],
             'desi_fazla' => ['name' => 'Desi Fazla', 'icon' => '📏', 'color' => '#EA580C'],
             'desi_eksik' => ['name' => 'Desi Eksik', 'icon' => '📉', 'color' => '#14B8A6'],
             'tutar_fazla' => ['name' => 'Tutar Fazla', 'icon' => '💰', 'color' => '#D97706'],
@@ -285,11 +335,7 @@ class CargoDashboard extends Component
     #[Computed]
     public function topErrorProducts(): array
     {
-        [$startDate, $endDate] = $this->getDateRange();
-
-        return CargoReportItem::whereHas('report', function ($q) use ($startDate, $endDate) {
-                $q->whereBetween('report_date', [$startDate, $endDate]);
-            })
+        return $this->filteredItemsQuery()
             ->where('has_error', true)
             ->whereNotNull('stok_kodu')
             ->select(
@@ -306,6 +352,79 @@ class CargoDashboard extends Component
             ->toArray();
     }
 
+    #[Computed]
+    public function channelInsights(): array
+    {
+        $marketplaces = $this->filteredItemsQuery()
+            ->whereNotNull('pazaryeri')
+            ->where('pazaryeri', '!=', '')
+            ->select(
+                'pazaryeri',
+                DB::raw('COUNT(*) as total'),
+                DB::raw('SUM(CASE WHEN has_error = 1 THEN 1 ELSE 0 END) as errors'),
+                DB::raw('SUM(ABS(tutar_fark)) as tutar_impact')
+            )
+            ->groupBy('pazaryeri')
+            ->orderByDesc('tutar_impact')
+            ->limit(5)
+            ->get()
+            ->map(fn ($row) => [
+                'label' => $row->pazaryeri,
+                'total' => (int) $row->total,
+                'errors' => (int) $row->errors,
+                'tutar_impact' => (float) $row->tutar_impact,
+            ])
+            ->toArray();
+
+        $stores = $this->filteredItemsQuery()
+            ->whereNotNull('magaza')
+            ->where('magaza', '!=', '')
+            ->select(
+                'magaza',
+                DB::raw('COUNT(*) as total'),
+                DB::raw('SUM(CASE WHEN has_error = 1 THEN 1 ELSE 0 END) as errors'),
+                DB::raw('SUM(ABS(tutar_fark)) as tutar_impact')
+            )
+            ->groupBy('magaza')
+            ->orderByDesc('tutar_impact')
+            ->limit(5)
+            ->get()
+            ->map(fn ($row) => [
+                'label' => $row->magaza,
+                'total' => (int) $row->total,
+                'errors' => (int) $row->errors,
+                'tutar_impact' => (float) $row->tutar_impact,
+            ])
+            ->toArray();
+
+        $categories = $this->filteredItemsQuery()
+            ->whereNotNull('stok_kodu')
+            ->where('stok_kodu', '!=', '')
+            ->select(
+                DB::raw("SUBSTRING(stok_kodu, 2, 3) as category_code"),
+                DB::raw('COUNT(*) as total'),
+                DB::raw('SUM(CASE WHEN has_error = 1 THEN 1 ELSE 0 END) as errors'),
+                DB::raw('SUM(ABS(tutar_fark)) as tutar_impact')
+            )
+            ->groupBy('category_code')
+            ->orderByDesc('tutar_impact')
+            ->limit(5)
+            ->get()
+            ->map(fn ($row) => [
+                'label' => Product::getCategoryName($row->category_code),
+                'total' => (int) $row->total,
+                'errors' => (int) $row->errors,
+                'tutar_impact' => (float) $row->tutar_impact,
+            ])
+            ->toArray();
+
+        return [
+            'marketplaces' => $marketplaces,
+            'stores' => $stores,
+            'categories' => $categories,
+        ];
+    }
+
     /**
      * Dönem değiştiğinde
      */
@@ -313,6 +432,36 @@ class CargoDashboard extends Component
     {
         // Computed property'ler otomatik yenilenir
         // Grafikleri yenilemek için event dispatch et
+        $this->dispatch('chartsUpdated');
+    }
+
+    public function updatedCustomStartDate()
+    {
+        $this->dispatch('chartsUpdated');
+    }
+
+    public function updatedCustomEndDate()
+    {
+        $this->dispatch('chartsUpdated');
+    }
+
+    public function updatedFilterCargoCompany()
+    {
+        $this->dispatch('chartsUpdated');
+    }
+
+    public function updatedFilterMarketplace()
+    {
+        $this->dispatch('chartsUpdated');
+    }
+
+    public function updatedFilterStore()
+    {
+        $this->dispatch('chartsUpdated');
+    }
+
+    public function updatedFilterRecordType()
+    {
         $this->dispatch('chartsUpdated');
     }
 

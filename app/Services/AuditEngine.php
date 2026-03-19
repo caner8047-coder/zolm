@@ -9,7 +9,7 @@ use App\Models\MpAuditLog;
 use App\Models\MpSettlement;
 use App\Services\MpSettingsService;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 use Carbon\Carbon;
 
 /**
@@ -22,6 +22,7 @@ use Carbon\Carbon;
 class AuditEngine
 {
     protected MpSettingsService $settings;
+    protected array $userPeriodIdsCache = [];
 
     /**
      * Tüm denetim kuralları — yeni kural eklendiğinde buraya da eklenmeli.
@@ -112,7 +113,7 @@ class AuditEngine
             'code'     => 'COKLU_SEPET',
             'title'    => 'Çoklu Sepet Tespiti',
             'tooltip'  => 'Aynı siparişteki çoklu ürün kartlarını tespit eder. Desi/kargo paylaştırmasının doğruluğunu kontrol eder.',
-            'severity' => 'warning',
+            'severity' => 'info',
             'category' => 'Sipariş',
             'icon'     => '🛒',
         ],
@@ -256,6 +257,45 @@ class AuditEngine
         ],
     ];
 
+    /**
+     * Yardımcı / türetilmiş audit log kodları.
+     * Bunlar bağımsız toggle edilen kurallar değil, ana kuralların ürettiği alt bulgulardır.
+     */
+    public const AUXILIARY_LOG_META = [
+        'KISMI_IADE' => [
+            'code'     => 'KISMI_IADE',
+            'title'    => 'Kısmi İade Bilgilendirmesi',
+            'tooltip'  => 'Ödeme detayında kısmi iade etkisi görüldü. Bu durum gerçek finansal kaçak anlamına gelmeyebilir.',
+            'severity' => 'info',
+            'category' => 'Ödeme',
+            'icon'     => '↩️',
+        ],
+        'HAKEDIS_ILLUZYON' => [
+            'code'     => 'HAKEDIS_ILLUZYON',
+            'title'    => 'Hakediş Raporlama Sapması',
+            'tooltip'  => 'Sipariş Excel’inde indirim/kampanya kaynaklı görsel sapma tespit edildi. Finansal kayıp olmayabilir.',
+            'severity' => 'info',
+            'category' => 'Ödeme',
+            'icon'     => '🪄',
+        ],
+        'KAYIP_TAZMINATI' => [
+            'code'     => 'KAYIP_TAZMINATI',
+            'title'    => 'Kayıp Tazminatı Alacağı',
+            'tooltip'  => 'Cari hesapta satıcı lehine tazminat/alacak kaydı bulundu.',
+            'severity' => 'info',
+            'category' => 'Ceza',
+            'icon'     => '🧾',
+        ],
+        'KOMISYON_IADE_OZET' => [
+            'code'     => 'KOMISYON_IADE_OZET',
+            'title'    => 'Komisyon İadesi Özet Uyarısı',
+            'tooltip'  => 'Dönem genelinde komisyon iadesi eksik görünen siparişlerin toplu özeti.',
+            'severity' => 'warning',
+            'category' => 'Komisyon',
+            'icon'     => '📌',
+        ],
+    ];
+
     public static function getRuleCount(): int
     {
         return count(self::RULES);
@@ -271,13 +311,24 @@ class AuditEngine
                 return $meta;
             }
         }
-        return null;
+
+        return self::AUXILIARY_LOG_META[$ruleCode] ?? null;
     }
 
     public function __construct(?MpSettingsService $settings = null)
     {
         $this->settings = $settings ?? new MpSettingsService();
     }
+
+    protected function createAuditLog(array $payload): ?MpAuditLog
+    {
+        if (($payload['severity'] ?? 'warning') === 'info' && !$this->settings->shouldLogInfoRules()) {
+            return null;
+        }
+
+        return MpAuditLog::create($payload);
+    }
+
     /**
      * Tüm denetim kurallarını çalıştır
      */
@@ -294,9 +345,22 @@ class AuditEngine
         // Önceki audit loglarını temizle (her çalıştırmada taze sonuç)
         MpAuditLog::where('period_id', $period->id)->delete();
 
-        $rules = self::RULES;
+        $disabledRules = array_values(array_unique(array_merge(
+            $this->settings->getDisabledAuditRules(),
+            $disabledRules
+        )));
 
-        foreach ($rules as $rule) {
+        if (!$this->settings->shouldLogInfoRules()) {
+            $disabledRules = array_values(array_unique(array_merge(
+                $disabledRules,
+                collect(self::RULE_META)
+                    ->filter(fn (array $meta) => ($meta['severity'] ?? null) === 'info')
+                    ->keys()
+                    ->all()
+            )));
+        }
+
+        foreach (self::RULES as $rule) {
             // Kullanıcı tarafından devre dışı bırakılan kuralları atla
             if (in_array($rule, $disabledRules)) {
                 $results['rules_skipped'][] = $rule;
@@ -338,6 +402,7 @@ class AuditEngine
         $count = 0;
         $stopajRate = $this->settings->getStopajRate();
         $tolerance = $this->settings->getFloat('audit_tolerances.stopaj_tolerance', 0.05);
+        $defaultVatRate = $this->settings->getDefaultProductVatRate() * 100;
 
         $orders = MpOrder::where('period_id', $period->id)
             ->where('gross_amount', '>', 0)
@@ -348,21 +413,27 @@ class AuditEngine
             // Stopaj KDV'siz (Matrah) üzerinden hesaplanır.
             // Zemin: %1, %10 veya %20 KDV olabilir.
 
-            $hasDiscount = $order->discount_amount > 0 || $order->campaign_discount > 0;
-            $matrahMultiplier = 1 / (1 + ($order->product_vat_rate / 100));
-            $expectedBase = ($order->gross_amount - $order->discount_amount - $order->campaign_discount) * $matrahMultiplier;
-            
+            $vatRate = (float) ($order->resolved_product_vat_rate ?? $defaultVatRate);
+            $matrahMultiplier = 1 / (1 + ($vatRate / 100));
+            $expectedBase = max(0, (float) $order->gross_amount - (float) $order->discount_amount - (float) $order->campaign_discount) * $matrahMultiplier;
             $expectedStopaj = $expectedBase * $stopajRate;
-            $diff = abs($expectedStopaj - $order->withholding_tax);
-            
+            $actualStopaj = abs((float) $order->withholding_tax);
+            $diff = abs($expectedStopaj - $actualStopaj);
+
             if ($diff > $tolerance) {
-                MpAuditLog::create([
-                    'period_id'   => $period->id,
-                    'order_id'    => $order->id,
-                    'rule_code'   => 'EKSİK_STOPAJ_KESINTISI',
-                    'severity'    => 'warning',
-                    'message'     => 'E-Ticaret stopaj matrahı uyumsuz! Beklenen: ' . round($expectedStopaj,2) . ' TL, Kesilen: ' . $order->withholding_tax . ' TL',
-                    'difference'  => round($diff, 2),
+                $this->createAuditLog([
+                    'period_id'      => $period->id,
+                    'order_id'       => $order->id,
+                    'rule_code'      => 'STOPAJ',
+                    'severity'       => 'warning',
+                    'title'          => "Stopaj Doğrulaması — Sipariş #{$order->order_number}",
+                    'description'    => 'E-Ticaret stopaj kesintisi beklenen matrah ile uyuşmuyor. '
+                        . 'Beklenen: ' . number_format($expectedStopaj, 2, ',', '.') . ' TL, '
+                        . 'Kesilen: ' . number_format($actualStopaj, 2, ',', '.') . ' TL. '
+                        . 'Fark: ' . number_format($diff, 2, ',', '.') . ' TL.',
+                    'expected_value' => round($expectedStopaj, 2),
+                    'actual_value'   => round($actualStopaj, 2),
+                    'difference'     => round($diff, 2),
                 ]);
                 $count++;
             }
@@ -375,38 +446,34 @@ class AuditEngine
     {
         $count = 0;
         $tolerance = $this->settings->getFloat('audit_tolerances.commission_mismatch_tolerance', 1.5);
-        
+
         $orders = MpOrder::where('period_id', $period->id)
             ->where('gross_amount', '>', 0)
             ->whereNotIn('status', ['İptal Edildi'])
+            ->with(['period', 'operationalOrder.items'])
             ->get();
-            
-        foreach ($orders as $order) {
-            // Excelden o satırda hesaplanan raw (ham) komisyon oranını getirelim
-            $rate = $order->commission_rate; // import esnasında (commission_amount / gross_amount * 100) ile bulunur.
-            
-            if ($rate <= 0) continue; // Rate yoksa veya komisyonsuzsa atla
 
-            // Eğer sistem komisyonda özel bir rate map indirseydi onunla asıl commission_amount kıyaslanırdı.
-            // Fakat bizim sistemde "Teorik komisyon oranı" elimizde olmadığı için excelden gelen commission_amount
-            // ile cari listeden gelen (kısmi) komisyon tutarını veya order daki komisyon_rate*brut asimetrisini test edelim.
-            
-            $expectedCommission = ($order->gross_amount * ($rate / 100));
+        foreach ($orders as $order) {
+            $reference = $this->resolveCommissionReference($order);
+            if ($reference === null) {
+                continue;
+            }
+
+            $expectedCommission = (float) $order->gross_amount * ($reference['rate'] / 100);
             $actualCommission = abs((float) $order->commission_amount);
             $diff = abs($actualCommission - $expectedCommission);
-            
+
             if ($diff > $tolerance) {
-                // Gerçekte ne kadar yüzde kesildiğini hesapla (bilgi amaçlı)
                 $actualRatio = $order->gross_amount > 0 ? ($actualCommission / $order->gross_amount) * 100 : 0;
 
-                MpAuditLog::create([
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'order_id'       => $order->id,
                     'rule_code'      => 'KOMISYON_TUTARSIZLIGI',
                     'severity'       => 'warning',
                     'title'          => "Komisyon Tutarsızlığı — Sipariş #{$order->order_number}",
                     'description'    => "Kesilen sipariş komisyonu ({$actualCommission} TL, %" . round($actualRatio, 2) . ") "
-                                     . "ile beklenen komisyon matrahı (" . round($expectedCommission, 2) . " TL, %{$rate}) uyuşmuyor. "
+                                     . "ile {$reference['source']} referans oranına göre beklenen komisyon (" . round($expectedCommission, 2) . " TL, %{$reference['rate']}) uyuşmuyor. "
                                      . "Fark: " . round($diff, 2) . " TL.",
                     'expected_value' => round($expectedCommission, 2),
                     'actual_value'   => round($actualCommission, 2),
@@ -445,7 +512,7 @@ class AuditEngine
 
             $baremTolerance = $this->settings->getFloat('audit_tolerances.barem_excess_tolerance', 1.0);
             if ($diff > $baremTolerance) {
-                MpAuditLog::create([
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'order_id'       => $order->id,
                     'rule_code'      => 'BAREM_ASIMI',
@@ -484,13 +551,14 @@ class AuditEngine
 
         foreach ($returnedOrders as $order) {
             // Cari Ekstre'de bu sipariş için komisyon iadesi (Alacak) arayalım
-            $commissionRefund = MpTransaction::where('period_id', $period->id)
-                ->where('order_number', $order->order_number)
-                ->where(function ($q) {
-                    $q->where('transaction_type', 'like', '%Komisyon%')
-                      ->orWhere('transaction_type', 'like', '%komisyon%');
+            $commissionRefund = $this->resolveOrderTransactions($period, $order->order_number)
+                ->filter(function (MpTransaction $transaction) {
+                    return ((float) $transaction->credit) > 0
+                        && (
+                            str_contains(mb_strtolower($transaction->transaction_type ?? ''), 'komisyon')
+                            || str_contains(mb_strtolower($transaction->description ?? ''), 'komisyon')
+                        );
                 })
-                ->where('credit', '>', 0)
                 ->sum('credit');
 
             // Komisyon iadesi alınmamış veya eksik
@@ -499,7 +567,7 @@ class AuditEngine
 
             $refundTolerance = $this->settings->getFloat('audit_tolerances.commission_refund_tolerance', 0.50);
             if ($diff > $refundTolerance) {
-                MpAuditLog::create([
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'order_id'       => $order->id,
                     'rule_code'      => 'KOMISYON_IADE',
@@ -540,18 +608,19 @@ class AuditEngine
             $sunkCost = (float) $order->cargo_amount;
 
             // Dönüş kargo faturası kontrolü
-            $returnCargoFee = MpTransaction::where('period_id', $period->id)
-                ->where('order_number', $order->order_number)
-                ->where(function ($q) {
-                    $q->where('transaction_type', 'like', '%İade Kargo%')
-                      ->orWhere('transaction_type', 'like', '%iade kargo%');
+            $returnCargoFee = $this->resolveOrderTransactions($period, $order->order_number)
+                ->filter(function (MpTransaction $transaction) {
+                    $haystack = mb_strtolower(($transaction->transaction_type ?? '') . ' ' . ($transaction->description ?? ''));
+
+                    return (float) $transaction->debt > 0
+                        && str_contains($haystack, 'iade kargo');
                 })
                 ->sum('debt');
 
             $totalLoss = $sunkCost + $returnCargoFee;
 
             if ($totalLoss > 0) {
-                MpAuditLog::create([
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'order_id'       => $order->id,
                     'rule_code'      => 'YANIK_MALIYET',
@@ -604,7 +673,7 @@ class AuditEngine
             // gross_amount, commission_amount vs. TÜM ADETLERİN TOPLAMI olarak gelir
             // AMA net_hakedis bazen ADET BAŞI ya da KISMI (iade sonrası) tutar olarak gelir.
             // Bu durum yapısal bir Trendyol format farkıdır, gerçek tutarsızlık değildir.
-            $qty = (int) $order->quantity;
+            $qty = (int) $order->resolved_quantity;
             if ($qty > 1 && $reported > 0 && $reported < $calculated) {
                 // Çoklu adetli siparişlerde calculated her zaman toplam, 
                 // reported ise adet başına veya kısmi olabilir → bu farkı yoksay
@@ -614,9 +683,7 @@ class AuditEngine
             $hakedisTolerance = $this->settings->getFloat('audit_tolerances.hakedis_tolerance', 1.0);
             if ($diff > $hakedisTolerance) {
                 // ── ADIM 1: Settlement verisiyle doğrulama (Tüm kayıtlar toplanır) ──
-                $allSettlements = MpSettlement::where('period_id', $period->id)
-                    ->where('order_number', $order->order_number)
-                    ->get();
+                $allSettlements = $this->resolveOrderSettlements($period, $order->order_number, $order->id);
                 $netSettlement  = (float) $allSettlements->sum('seller_hakedis');
                 
                 $refundSettlements = $allSettlements->filter(function($s) {
@@ -631,7 +698,7 @@ class AuditEngine
                         // Kısmi iade varsa net settlement doğal olarak calculated'dan düşük olacak.
                         // Bu normal bir durum — alarm üretme.
                         $refundTotal = abs((float) $refundSettlements->sum('seller_hakedis'));
-                        MpAuditLog::create([
+                        $log = $this->createAuditLog([
                             'period_id'      => $period->id,
                             'order_id'       => $order->id,
                             'rule_code'      => 'KISMI_IADE',
@@ -646,7 +713,9 @@ class AuditEngine
                             'actual_value'   => $netSettlement,
                             'difference'     => $refundTotal,
                         ]);
-                        $count++;
+                        if ($log) {
+                            $count++;
+                        }
                         continue; // is_flagged yapma
                     }
 
@@ -657,7 +726,7 @@ class AuditEngine
                     }
                     
                     // C) Quantity kontrol: Ödeme Excel per-unit satır yazıyor olabilir
-                    $qty = (int) $order->quantity;
+                    $qty = (int) $order->resolved_quantity;
                     if ($qty > 1 && $netSettlement > 0) {
                         $positiveRows = $allSettlements->filter(fn($s) => (float) $s->seller_hakedis > 0)->count();
                         if ($positiveRows < $qty) {
@@ -677,7 +746,7 @@ class AuditEngine
                 if ($totalDiscount  > 0 && abs($diff - $totalDiscount)  <= $hakedisTolerance) $isDiscountIllusion = true;
 
                 if ($isDiscountIllusion) {
-                    MpAuditLog::create([
+                    $log = $this->createAuditLog([
                         'period_id'      => $period->id,
                         'order_id'       => $order->id,
                         'rule_code'      => 'HAKEDIS_ILLUZYON',
@@ -690,10 +759,12 @@ class AuditEngine
                         'actual_value'   => $reported,
                         'difference'     => $diff,
                     ]);
-                    $count++;
+                    if ($log) {
+                        $count++;
+                    }
                 } else {
                     // ── ADIM 3: Gerçek tutarsızlık ──
-                    MpAuditLog::create([
+                    $this->createAuditLog([
                         'period_id'      => $period->id,
                         'order_id'       => $order->id,
                         'rule_code'      => 'HAKEDIS_FARK',
@@ -741,7 +812,7 @@ class AuditEngine
             
             if ($amount <= 0) continue;
 
-            MpAuditLog::create([
+            $log = $this->createAuditLog([
                 'period_id'      => $period->id,
                 'order_id'       => null,
                 'rule_code'      => $isCompensation ? 'KAYIP_TAZMINATI' : 'OPERASYONEL_CEZA',
@@ -755,7 +826,9 @@ class AuditEngine
                 'actual_value'   => $amount,
                 'difference'     => $amount,
             ]);
-            $count++;
+            if ($log) {
+                $count++;
+            }
         }
 
         return $count;
@@ -793,7 +866,7 @@ class AuditEngine
                 $desiTolerance = $this->settings->getFloat('audit_tolerances.multiple_cart_desi_tolerance', 10);
 
                 if ($desiPrice > 0 && abs($actual - $desiPrice) < $desiTolerance) {
-                    MpAuditLog::create([
+                    $log = $this->createAuditLog([
                         'period_id'      => $period->id,
                         'order_id'       => $order->id,
                         'rule_code'      => 'COKLU_SEPET',
@@ -808,7 +881,9 @@ class AuditEngine
                         'actual_value'   => $actual,
                         'difference'     => $actual - $expectedBarem,
                     ]);
-                    $count++;
+                    if ($log) {
+                        $count++;
+                    }
                 }
             }
         }
@@ -831,7 +906,7 @@ class AuditEngine
             ->get();
 
         foreach ($returnedOrders as $order) {
-            MpAuditLog::create([
+            $log = $this->createAuditLog([
                 'period_id'      => $period->id,
                 'order_id'       => $order->id,
                 'rule_code'      => 'EARSIV_UYARI',
@@ -844,7 +919,9 @@ class AuditEngine
                 'actual_value'   => $order->gross_amount,
                 'difference'     => 0,
             ]);
-            $count++;
+            if ($log) {
+                $count++;
+            }
         }
 
         return $count;
@@ -925,7 +1002,7 @@ class AuditEngine
             }
 
             if ($isHeavy) {
-                MpAuditLog::create([
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'order_id'       => null,
                     'rule_code'      => 'AGIR_KARGO_CEZA',
@@ -983,20 +1060,20 @@ class AuditEngine
 
         foreach ($returnedOrders as $order) {
             // Bu sipariş için Cari Ekstre'de komisyon Alacak (geri ödeme) arayalım
-            $refundCredit = MpTransaction::where('period_id', $period->id)
-                ->where(function ($q) use ($order) {
-                    // Sipariş numarasıyla eşle
-                    $q->where('order_number', $order->order_number)
-                      // Veya açıklamada sipariş numarası geçiyorsa
-                      ->orWhere('description', 'like', "%{$order->order_number}%");
+            $refundCredit = $this->resolveOrderTransactions($period, $order->order_number)
+                ->filter(function (MpTransaction $transaction) use ($order) {
+                    $type = mb_strtolower($transaction->transaction_type ?? '');
+                    $description = mb_strtolower($transaction->description ?? '');
+
+                    if ((float) $transaction->credit <= 0) {
+                        return false;
+                    }
+
+                    return str_contains($type, 'komisyon')
+                        || str_contains($type, 'iade')
+                        || str_contains($description, 'komisyon iade')
+                        || str_contains($description, mb_strtolower($order->order_number));
                 })
-                ->where(function ($q) {
-                    $q->where('transaction_type', 'like', '%Komisyon%')
-                      ->orWhere('transaction_type', 'like', '%komisyon%')
-                      ->orWhere('transaction_type', 'like', '%İade%')
-                      ->orWhere('description', 'like', '%komisyon iade%');
-                })
-                ->where('credit', '>', 0)
                 ->sum('credit');
 
             $missing = (float) $order->commission_amount - $refundCredit;
@@ -1015,7 +1092,7 @@ class AuditEngine
         // Her eşleşmeyen sipariş için bireysel log
         foreach ($unmatchedOrders as $item) {
             $order = $item['order'];
-            MpAuditLog::create([
+            $this->createAuditLog([
                 'period_id'      => $period->id,
                 'order_id'       => $order->id,
                 'rule_code'      => 'KOMISYON_IADE_TAKIP',
@@ -1038,7 +1115,7 @@ class AuditEngine
         // Toplam bazda özet log (eğer eksik varsa)
         if (count($unmatchedOrders) > 0) {
             $totalMissing = collect($unmatchedOrders)->sum('missing');
-            MpAuditLog::create([
+            $this->createAuditLog([
                 'period_id'      => $period->id,
                 'order_id'       => null,
                 'rule_code'      => 'KOMISYON_IADE_OZET',
@@ -1080,9 +1157,7 @@ class AuditEngine
             $totalExpectedNet = (float) $orderRows->sum('net_hakedis'); // Konsolide beklenti
             
             // Tüm settlement kayıtlarını order_number ile al
-            $allSettlements = MpSettlement::where('period_id', $period->id)
-                ->where('order_number', $orderNumber)
-                ->get();
+            $allSettlements = $this->resolveOrderSettlements($period, $orderNumber, $firstOrder?->id);
             if ($allSettlements->isEmpty()) continue; // Settlement yoksa bu kural kapsamında değil
 
             // Kuponları (eksi bakiye ama satıcıdan kesilmeyen / veya satıcıya artı yansımayan platform indirimleri vs) 
@@ -1095,9 +1170,7 @@ class AuditEngine
             // Kısmi iade varsa → net tutar doğal olarak düşük, bu "eksik ödeme" değil
             if ($hasRefund) {
                 // Mutabakat: kısmi iade olan siparişlerde net tutarı kabul et
-                MpSettlement::where('period_id', $period->id)
-                    ->where('order_number', $orderNumber)
-                    ->update(['is_reconciled' => true]);
+                $this->updateSettlementReconciliation($allSettlements, true);
                 continue;
             }
 
@@ -1113,16 +1186,14 @@ class AuditEngine
             //
             // Kontrol: Settlement'taki pozitif satır sayısı, siparişteki toplam adet sayısından az ise
             // ve yatan tutar makul bir oran ise (%15-%95 arası), bu bir kısmi ödeme yükleme durumudur.
-            $totalQuantity = $orderRows->sum('quantity');
+            $totalQuantity = $orderRows->sum(fn(MpOrder $row) => $row->resolved_quantity);
             $positiveSettlementRows = $allSettlements->filter(fn($s) => (float) $s->seller_hakedis > 0)->count();
             
             if ($totalQuantity > 1 && $totalDeposited > 0 && $totalDeposited < $expected) {
                 // Pozitif settlement satır sayısı, toplam adetten az ise 
                 // → henüz tüm adetlerin ödeme kaydı yüklenmemiş demektir
                 if ($positiveSettlementRows < $totalQuantity) {
-                    MpSettlement::where('period_id', $period->id)
-                        ->where('order_number', $orderNumber)
-                        ->update(['is_reconciled' => true]);
+                    $this->updateSettlementReconciliation($allSettlements, true);
                     continue;
                 }
             }
@@ -1140,17 +1211,15 @@ class AuditEngine
                 // Eğer bankaya yatan hesaplananla uyumluysa → Trendyol beyanı yanıltıcı, gerçek kayıp yok
                 // Ya da yatırılan tutar beklenen tutardan DAHA fazlaysa (kupon iadesi, fazla yatırma vs) alarm verme
                 if ($totalDeposited >= $calculated * 0.90 || $totalDeposited >= $expected) {
-                    MpSettlement::where('period_id', $period->id)
-                        ->where('order_number', $orderNumber)
-                        ->update(['is_reconciled' => true]);
+                    $this->updateSettlementReconciliation($allSettlements, true);
                     continue;
                 }
 
-                MpAuditLog::create([
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'order_id'       => $firstOrder->id,
                     'rule_code'      => 'EKSIK_ODEME',
-                    'severity'       => $diff > 10 ? 'critical' : 'warning',
+                'severity'       => $diff > $this->settings->getFloat('audit_tolerances.missing_payment_critical_threshold', 10) ? 'critical' : 'warning',
                     'title'          => "💵 Eksik Ödeme Tespit Edildi — Sipariş #{$orderNumber}",
                     'description'    => "Sipariş Kayıtları'nda Trendyol'un vadettiği net hakediş: " 
                                      . number_format($expected, 2, ',', '.') . " TL iken, "
@@ -1164,16 +1233,12 @@ class AuditEngine
 
                 // Tüm satırları flagle
                 $orderRows->each(fn($o) => $o->update(['is_flagged' => true]));
-                MpSettlement::where('period_id', $period->id)
-                    ->where('order_number', $orderNumber)
-                    ->update(['is_reconciled' => false, 'notes' => 'Eksik ödeme']);
+                $this->updateSettlementReconciliation($allSettlements, false, 'Eksik ödeme');
                 
                 $count++;
             } else {
                 // Mutabakat sağlandı
-                MpSettlement::where('period_id', $period->id)
-                    ->where('order_number', $orderNumber)
-                    ->update(['is_reconciled' => true]);
+                $this->updateSettlementReconciliation($allSettlements, true);
             }
         }
 
@@ -1194,38 +1259,45 @@ class AuditEngine
         $orders = MpOrder::where('period_id', $period->id)
             ->where('status', 'Teslim Edildi')
             ->whereNotNull('delivery_date')
-            ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('mp_settlements')
-                    ->whereColumn('mp_settlements.order_number', 'mp_orders.order_number')
-                    ->whereColumn('mp_settlements.period_id', 'mp_orders.period_id');
-            })
             ->get();
 
-        foreach ($orders as $order) {
+        foreach ($orders->groupBy('order_number') as $orderNumber => $orderRows) {
+            /** @var MpOrder $order */
+            $order = $orderRows->sortBy(fn(MpOrder $row) => $row->delivery_date?->getTimestamp() ?? PHP_INT_MAX)->first();
+            $settlements = $this->resolveOrderSettlements($period, $orderNumber, $order?->id);
+            $hasPositiveSettlement = $settlements->contains(fn(MpSettlement $settlement) => (float) $settlement->seller_hakedis > 0);
+
+            if ($hasPositiveSettlement || !$order) {
+                continue;
+            }
+
             // Trendyol genelde teslimattan sonra 21-28 gün vade uygular.
             // Eğer sipariş teslim edileli 35 GÜN geçmişse ve hala "Ödeme Detay" yüklemesinde yoksa Kirmizi alarm.
-            $daysSinceDelivery = $order->delivery_date->diffInDays($now);
+            $daysSinceDelivery = (int) $order->delivery_date
+                ->copy()
+                ->startOfDay()
+                ->diffInDays($now->copy()->startOfDay());
             $delayedDays = $this->settings->getDelayedPaymentDays();
             
             if ($daysSinceDelivery > $delayedDays) {
-                MpAuditLog::create([
+                $expectedNet = (float) $orderRows->sum('net_hakedis');
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'order_id'       => $order->id,
                     'rule_code'      => 'KAYIP_ODEME',
                     'severity'       => 'critical',
-                    'title'          => "🚨 Kayıp Ödeme — Sipariş #{$order->order_number}",
+                    'title'          => "🚨 Kayıp Ödeme — Sipariş #{$orderNumber}",
                     'description'    => "Sipariş teslim edileli {$daysSinceDelivery} gün geçmiş ("
                                      . $order->delivery_date->format('d.m.Y') . "). "
                                      . "Ancak yüklediğiniz Ödeme Detay (Hakediş) dosyalarının hiçbirinde "
                                      . "bu siparişe ait banka transfer kaydı bulunmuyor! "
-                                     . "Beklenen tutar: " . number_format($order->net_hakedis, 2, ',', '.') . " TL içeride kalmış olabilir.",
-                    'expected_value' => $order->net_hakedis,
+                                     . "Beklenen tutar: " . number_format($expectedNet, 2, ',', '.') . " TL içeride kalmış olabilir.",
+                    'expected_value' => $expectedNet,
                     'actual_value'   => 0,
-                    'difference'     => (float) $order->net_hakedis,
+                    'difference'     => $expectedNet,
                 ]);
 
-                $order->update(['is_flagged' => true]);
+                $orderRows->each(fn(MpOrder $row) => $row->update(['is_flagged' => true]));
                 $count++;
             }
         }
@@ -1240,8 +1312,83 @@ class AuditEngine
     protected function checkTransactionDiscrepancy(MpPeriod $period): int
     {
         $count = 0;
-        // Cari ve Ödeme tabloları arasında order_id ile yapılan kapsamlı kesinti kontrolleri eklenebilir. 
-        // Temel taslak, ilerde genişletilebilir.
+        $vatDivisor = $this->settings->getInvoiceVatDivisor();
+        $commissionTolerance = $this->settings->getCommissionMatchTolerance();
+        $cargoTolerance = $this->settings->getCargoMatchTolerance();
+
+        if ($vatDivisor <= 0) {
+            $vatDivisor = 1.20;
+        }
+
+        $transactionCommission = MpTransaction::where('period_id', $period->id)
+            ->where(function ($query) {
+                $query->where('transaction_type', 'like', '%Komisyon%')
+                    ->orWhere('description', 'like', '%Komisyon%');
+            })
+            ->sum('debt');
+
+        $transactionCargo = MpTransaction::where('period_id', $period->id)
+            ->where(function ($query) {
+                $query->where('transaction_type', 'like', '%Kargo%')
+                    ->orWhere('description', 'like', '%Kargo%');
+            })
+            ->sum('debt');
+
+        $orderCommission = (float) (MpOrder::where('period_id', $period->id)
+            ->selectRaw('SUM(ABS(commission_amount)) as total')
+            ->value('total') ?? 0) / $vatDivisor;
+
+        $orderCargo = (float) (MpOrder::where('period_id', $period->id)
+            ->selectRaw('SUM(ABS(cargo_amount)) as total')
+            ->value('total') ?? 0) / $vatDivisor;
+
+        $checks = [];
+
+        if ($this->settings->getBool('audit_behavior.transaction_check_commission_enabled', true)) {
+            $checks[] = [
+                'title' => 'Komisyon',
+                'expected' => abs($orderCommission),
+                'actual' => abs((float) $transactionCommission),
+                'tolerance' => $commissionTolerance,
+            ];
+        }
+
+        if ($this->settings->getBool('audit_behavior.transaction_check_cargo_enabled', true)) {
+            $checks[] = [
+                'title' => 'Kargo',
+                'expected' => abs($orderCargo),
+                'actual' => abs((float) $transactionCargo),
+                'tolerance' => $cargoTolerance,
+            ];
+        }
+
+        foreach ($checks as $check) {
+            if ($check['expected'] <= 0 && $check['actual'] <= 0) {
+                continue;
+            }
+
+            $diff = abs($check['expected'] - $check['actual']);
+            if ($diff <= $check['tolerance']) {
+                continue;
+            }
+
+            $this->createAuditLog([
+                'period_id'      => $period->id,
+                'order_id'       => null,
+                'rule_code'      => 'CARI_UYUMSUZLUK',
+                'severity'       => 'warning',
+                'title'          => "{$check['title']} Cari-Hakediş Uyumsuzluğu",
+                'description'    => "{$check['title']} kesintilerinin cari hesap ekstresi toplamı ile siparişlerden türetilen netleştirilmiş tutarı uyuşmuyor. "
+                    . "Beklenen: " . number_format($check['expected'], 2, ',', '.') . " TL, "
+                    . "Cari'de görülen: " . number_format($check['actual'], 2, ',', '.') . " TL. "
+                    . "Fark: " . number_format($diff, 2, ',', '.') . " TL.",
+                'expected_value' => round($check['expected'], 2),
+                'actual_value'   => round($check['actual'], 2),
+                'difference'     => round($diff, 2),
+            ]);
+            $count++;
+        }
+
         return $count;
     }
 
@@ -1262,8 +1409,11 @@ class AuditEngine
             $profit = $order->real_net_profit;
             $margin = ($profit / (float) $order->gross_amount) * 100;
 
-            if ($margin > 100 || $margin < -100) {
-                MpAuditLog::create([
+            $positiveThreshold = $this->settings->getFloat('audit_tolerances.extreme_margin_positive_threshold', 100);
+            $negativeThreshold = $this->settings->getFloat('audit_tolerances.extreme_margin_negative_threshold', -100);
+
+            if ($margin > $positiveThreshold || $margin < $negativeThreshold) {
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'order_id'       => $order->id,
                     'rule_code'      => 'EXTREME_MARGIN',
@@ -1347,28 +1497,30 @@ class AuditEngine
     {
         $orders = MpOrder::where('period_id', $period->id)
             ->where('status', 'Teslim Edildi')
-            ->where(function ($q) {
-                $q->whereNull('cogs_at_time')->orWhere('cogs_at_time', 0);
-            })
+            ->with(['period', 'operationalOrder.items'])
             ->get();
+        $orders = $orders->filter(fn(MpOrder $order) => (float) $order->resolved_cogs_at_time <= 0);
 
         if ($orders->isEmpty()) return 0;
 
         // SKU bazlı grupla → özet alarm üret
-        $grouped = $orders->groupBy(fn($o) => ($o->barcode ?: $o->stock_code ?: 'unknown'));
+        $grouped = $orders->groupBy(fn(MpOrder $order) => $this->resolveOrderSkuKey($order));
         $count = 0;
 
         foreach ($grouped as $sku => $skuOrders) {
             $totalGross = $skuOrders->sum('gross_amount');
             $orderCount = $skuOrders->count();
-            $sampleName = $skuOrders->first()->product_name;
+            /** @var MpOrder $sampleOrder */
+            $sampleOrder = $skuOrders->first();
+            $sampleName = $sampleOrder->resolved_product_name ?: $sampleOrder->product_name ?: 'Urun bilgisi eksik';
+            $reason = $sampleOrder->cogs_missing_reason ?: 'COGS eslestirmesi kurulamadi.';
 
-            MpAuditLog::create([
+            $this->createAuditLog([
                 'period_id'      => $period->id,
                 'rule_code'      => 'COGS_EKSIK',
                 'severity'       => 'critical',
                 'title'          => "Maliyet Tanımsız: {$sku}",
-                'description'    => "{$sampleName} — {$orderCount} sipariş, toplam {$totalGross} ₺ brüt ciro. COGS (üretim/alış maliyeti) tanımlanmamış, kârlılık hesabı güvenilmez. Pazaryeri Ürünlerim'den maliyet giriniz.",
+                'description'    => "{$sampleName} — {$orderCount} sipariş, toplam {$totalGross} ₺ brüt ciro. COGS (üretim/alış maliyeti) tanımlanmamış, kârlılık hesabı güvenilmez. {$reason}",
                 'expected_value' => $totalGross,
                 'actual_value'   => 0,
                 'difference'     => $totalGross,
@@ -1385,47 +1537,35 @@ class AuditEngine
     // ═══════════════════════════════════════════════════════════════
     protected function checkPriceDrop(MpPeriod $period): int
     {
-        // Önceki dönemi bul
-        $prevMonth = $period->month - 1;
-        $prevYear  = $period->year;
-        if ($prevMonth < 1) { $prevMonth = 12; $prevYear--; }
-
-        $prevPeriod = MpPeriod::where('year', $prevYear)->where('month', $prevMonth)->first();
+        $prevPeriod = $this->resolvePreviousComparablePeriod($period);
         if (!$prevPeriod) return 0;
 
-        // Bu dönem SKU bazlı ortalama fiyat
-        $currentPrices = MpOrder::where('period_id', $period->id)
-            ->where('status', 'Teslim Edildi')
-            ->whereNotNull('barcode')->where('barcode', '!=', '')
-            ->where('gross_amount', '>', 0)
-            ->selectRaw('barcode, AVG(gross_amount / GREATEST(quantity, 1)) as avg_price, COUNT(*) as cnt, MIN(product_name) as product_name')
-            ->groupBy('barcode')
-            ->having('cnt', '>=', 3) // En az 3 sipariş olan ürünler
-            ->get()->keyBy('barcode');
-
-        // Önceki dönem SKU bazlı ortalama fiyat
-        $prevPrices = MpOrder::where('period_id', $prevPeriod->id)
-            ->where('status', 'Teslim Edildi')
-            ->whereNotNull('barcode')->where('barcode', '!=', '')
-            ->where('gross_amount', '>', 0)
-            ->selectRaw('barcode, AVG(gross_amount / GREATEST(quantity, 1)) as avg_price, COUNT(*) as cnt')
-            ->groupBy('barcode')
-            ->having('cnt', '>=', 3)
-            ->get()->keyBy('barcode');
-
+        $minOrders = max(1, $this->settings->getInt('audit_tolerances.price_drop_min_orders', 3));
+        $dropThreshold = $this->settings->getFloat('audit_tolerances.price_drop_percentage', 15);
         $count = 0;
-        foreach ($currentPrices as $barcode => $current) {
-            if (!isset($prevPrices[$barcode])) continue;
 
-            $prev = $prevPrices[$barcode];
+        $currentPrices = $this->buildResolvedUnitPriceStats(
+            $this->loadComparableOrders($period->id, ['Teslim Edildi']),
+            $minOrders
+        );
+
+        $prevPrices = $this->buildResolvedUnitPriceStats(
+            $this->loadComparableOrders($prevPeriod->id, ['Teslim Edildi']),
+            $minOrders
+        );
+
+        foreach ($currentPrices as $skuKey => $current) {
+            if (!isset($prevPrices[$skuKey])) continue;
+
+            $prev = $prevPrices[$skuKey];
             $dropPct = (($prev->avg_price - $current->avg_price) / $prev->avg_price) * 100;
 
-            if ($dropPct >= 15) {
-                MpAuditLog::create([
+            if ($dropPct >= $dropThreshold) {
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'rule_code'      => 'FIYAT_DUSME',
                     'severity'       => 'warning',
-                    'title'          => "Fiyat Düşüşü: %".round($dropPct)." — {$barcode}",
+                    'title'          => "Fiyat Düşüşü: %".round($dropPct)." — {$current->display_key}",
                     'description'    => "{$current->product_name} — Ort. birim fiyat: ".number_format($prev->avg_price, 2)." ₺ → ".number_format($current->avg_price, 2)." ₺ (%".round($dropPct)." düşüş). Kampanya etkisi veya piyasa değişimi olabilir.",
                     'expected_value' => round($prev->avg_price, 2),
                     'actual_value'   => round($current->avg_price, 2),
@@ -1443,14 +1583,16 @@ class AuditEngine
     // ═══════════════════════════════════════════════════════════════
     protected function checkNegativeHakedis(MpPeriod $period): int
     {
+        $negativeThreshold = $this->settings->getFloat('audit_tolerances.negative_hakedis_threshold', 0);
+
         $orders = MpOrder::where('period_id', $period->id)
             ->where('status', 'Teslim Edildi')
-            ->where('net_hakedis', '<', 0)
+            ->where('net_hakedis', '<', $negativeThreshold)
             ->get();
 
         $count = 0;
         foreach ($orders as $order) {
-            MpAuditLog::create([
+            $this->createAuditLog([
                 'period_id'      => $period->id,
                 'order_id'       => $order->id,
                 'rule_code'      => 'NEGATIF_HAKEDIS',
@@ -1472,29 +1614,42 @@ class AuditEngine
     // ═══════════════════════════════════════════════════════════════
     protected function checkCargoOverCost(MpPeriod $period): int
     {
+        if (!$this->settings->usesOwnCargo()) {
+            return 0;
+        }
+
         $orders = MpOrder::where('period_id', $period->id)
             ->where('status', 'Teslim Edildi')
-            ->where('own_cargo_cost_at_time', '>', 0)
             ->where('net_hakedis', '>', 0)
+            ->with(['period', 'operationalOrder.items'])
             ->get();
 
         $count = 0;
         foreach ($orders as $order) {
-            $profit = $order->net_hakedis - ($order->cogs_at_time ?? 0) - ($order->packaging_cost_at_time ?? 0);
+            $resolvedOwnCargo = (float) $order->resolved_own_cargo_cost_at_time;
+            if ($resolvedOwnCargo <= 0) {
+                continue;
+            }
+
+            $profit = (float) $order->net_hakedis
+                - (float) $order->resolved_cogs_at_time
+                - (float) $order->resolved_packaging_cost_at_time;
             if ($profit <= 0) continue; // Zaten zararda, başka kural yakalar
 
-            $cargoRatio = $order->own_cargo_cost_at_time / $profit;
-            if ($cargoRatio >= 0.50) { // Kargo maliyeti brüt kârın %50'sinden fazla
-                MpAuditLog::create([
+            $cargoRatio = $resolvedOwnCargo / $profit;
+            $ratioThreshold = $this->settings->getFloat('audit_tolerances.cargo_over_cost_ratio', 0.50);
+
+            if ($cargoRatio >= $ratioThreshold) {
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'order_id'       => $order->id,
                     'rule_code'      => 'KARGO_MALIYET_ASIMI',
                     'severity'       => 'warning',
                     'title'          => "Kargo Maliyeti Aşımı %" . round($cargoRatio * 100) . " — #{$order->order_number}",
-                    'description'    => "{$order->product_name} — Brüt kâr (hakediş - COGS): ".number_format($profit, 2)." ₺, Kendi kargo maliyeti: ".number_format($order->own_cargo_cost_at_time, 2)." ₺ (%".round($cargoRatio * 100)."). Desi/ambalaj optimizasyonu düşünülmeli.",
+                    'description'    => "{$order->resolved_product_name} — Brüt kâr (hakediş - COGS - ambalaj): ".number_format($profit, 2)." ₺, Kendi kargo maliyeti: ".number_format($resolvedOwnCargo, 2)." ₺ (%".round($cargoRatio * 100)."). Desi/ambalaj optimizasyonu düşünülmeli.",
                     'expected_value' => round($profit, 2),
-                    'actual_value'   => round($order->own_cargo_cost_at_time, 2),
-                    'difference'     => round($order->own_cargo_cost_at_time, 2),
+                    'actual_value'   => round($resolvedOwnCargo, 2),
+                    'difference'     => round($resolvedOwnCargo, 2),
                 ]);
                 $count++;
             }
@@ -1508,31 +1663,24 @@ class AuditEngine
     // ═══════════════════════════════════════════════════════════════
     protected function checkHighReturnRate(MpPeriod $period): int
     {
-        // SKU bazlı sipariş ve iade sayısı
-        $stats = MpOrder::where('period_id', $period->id)
-            ->whereNotNull('barcode')->where('barcode', '!=', '')
-            ->selectRaw("
-                barcode,
-                MIN(product_name) as product_name,
-                SUM(CASE WHEN status = 'Teslim Edildi' THEN quantity ELSE 0 END) as delivered,
-                SUM(CASE WHEN status = 'İade Edildi' THEN quantity ELSE 0 END) as returned,
-                COUNT(*) as total_orders
-            ")
-            ->groupBy('barcode')
-            ->get();
+        $minQuantity = max(1, $this->settings->getInt('audit_tolerances.high_return_rate_min_quantity', 5));
+        $returnThreshold = $this->settings->getFloat('audit_tolerances.high_return_rate_threshold', 15);
+        $stats = $this->buildResolvedReturnRateStats(
+            $this->loadComparableOrders($period->id, ['Teslim Edildi', 'İade Edildi'])
+        );
 
         $count = 0;
         foreach ($stats as $stat) {
             $total = $stat->delivered + $stat->returned;
-            if ($total < 5) continue; // Minimum sipariş eşiği
+            if ($total < $minQuantity) continue;
 
             $returnRate = $total > 0 ? ($stat->returned / $total) * 100 : 0;
-            if ($returnRate >= 15) {
-                MpAuditLog::create([
+            if ($returnRate >= $returnThreshold) {
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'rule_code'      => 'YUKSEK_IADE',
                     'severity'       => 'warning',
-                    'title'          => "Yüksek İade Oranı: %" . round($returnRate) . " — {$stat->barcode}",
+                    'title'          => "Yüksek İade Oranı: %" . round($returnRate) . " — {$stat->display_key}",
                     'description'    => "{$stat->product_name} — Toplam {$total} adet, {$stat->returned} iade (%".round($returnRate)."). Ürün kalitesi, paketleme veya listing bilgilerini gözden geçirin.",
                     'expected_value' => $total,
                     'actual_value'   => $stat->returned,
@@ -1553,22 +1701,25 @@ class AuditEngine
         $orders = MpOrder::where('period_id', $period->id)
             ->where('status', 'Teslim Edildi')
             ->where('campaign_discount', '>', 0)
-            ->where('cogs_at_time', '>', 0) // COGS tanımlı olmalı
+            ->with(['period', 'operationalOrder.items'])
             ->get();
+        $orders = $orders->filter(fn(MpOrder $order) => (float) $order->resolved_cogs_at_time > 0);
 
         // SKU bazlı grupla
-        $grouped = $orders->groupBy(fn($o) => ($o->barcode ?: $o->stock_code ?: 'unknown'));
+        $grouped = $orders
+            ->groupBy(fn(MpOrder $order) => $this->resolveComparableSkuKey($order) ?? ('order:' . $order->order_number));
         $count = 0;
 
         foreach ($grouped as $sku => $skuOrders) {
             $totalLoss = 0;
             $lossOrders = 0;
+            $includeOwnCargo = $this->settings->usesOwnCargo();
 
             foreach ($skuOrders as $order) {
                 $netProfit = $order->net_hakedis
-                    - ($order->cogs_at_time ?? 0)
-                    - ($order->packaging_cost_at_time ?? 0)
-                    - ($order->own_cargo_cost_at_time ?? 0);
+                    - ($order->resolved_cogs_at_time ?? 0)
+                    - ($order->resolved_packaging_cost_at_time ?? 0)
+                    - ($includeOwnCargo ? ($order->resolved_own_cargo_cost_at_time ?? 0) : 0);
 
                 if ($netProfit < 0) {
                     $totalLoss += abs($netProfit);
@@ -1576,15 +1727,19 @@ class AuditEngine
                 }
             }
 
-            if ($lossOrders > 0) {
-                $totalCampaignDiscount = $skuOrders->sum('campaign_discount');
-                $sampleName = $skuOrders->first()->product_name;
+            $minLoss = $this->settings->getFloat('audit_tolerances.campaign_loss_min_total_loss', 0);
+            $minOrderCount = max(1, $this->settings->getInt('audit_tolerances.campaign_loss_min_order_count', 1));
 
-                MpAuditLog::create([
+            if ($lossOrders >= $minOrderCount && $totalLoss >= $minLoss) {
+                $totalCampaignDiscount = $skuOrders->sum('campaign_discount');
+                $sampleName = $skuOrders->first()->resolved_product_name ?: $skuOrders->first()->product_name;
+                $displayKey = $this->resolveDisplaySkuKey($skuOrders->first());
+
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'rule_code'      => 'KAMPANYA_ZARAR',
                     'severity'       => 'critical',
-                    'title'          => "Kampanya Zararı: {$sku} — {$lossOrders} sipariş",
+                    'title'          => "Kampanya Zararı: {$displayKey} — {$lossOrders} sipariş",
                     'description'    => "{$sampleName} — {$lossOrders}/{$skuOrders->count()} kampanyalı siparişte zarar. Toplam kampanya indirimi: ".number_format($totalCampaignDiscount, 2)." ₺, toplam zarar: ".number_format($totalLoss, 2)." ₺. Kampanya katılımını gözden geçirin.",
                     'expected_value' => 0,
                     'actual_value'   => round($totalLoss, 2),
@@ -1602,47 +1757,36 @@ class AuditEngine
     // ═══════════════════════════════════════════════════════════════
     protected function checkCommissionRateChange(MpPeriod $period): int
     {
-        $prevMonth = $period->month - 1;
-        $prevYear  = $period->year;
-        if ($prevMonth < 1) { $prevMonth = 12; $prevYear--; }
-
-        $prevPeriod = MpPeriod::where('year', $prevYear)->where('month', $prevMonth)->first();
+        $prevPeriod = $this->resolvePreviousComparablePeriod($period);
         if (!$prevPeriod) return 0;
 
-        // Bu dönem SKU bazlı ortalama komisyon oranı
-        $currentRates = MpOrder::where('period_id', $period->id)
-            ->where('status', 'Teslim Edildi')
-            ->whereNotNull('barcode')->where('barcode', '!=', '')
-            ->where('commission_rate', '>', 0)
-            ->selectRaw('barcode, AVG(commission_rate) as avg_rate, COUNT(*) as cnt, MIN(product_name) as product_name')
-            ->groupBy('barcode')
-            ->having('cnt', '>=', 3)
-            ->get()->keyBy('barcode');
+        $minOrders = max(1, $this->settings->getInt('audit_tolerances.commission_rate_change_min_orders', 3));
+        $rateThreshold = $this->settings->getFloat('audit_tolerances.commission_rate_change_threshold', 1.0);
 
-        // Önceki dönem
-        $prevRates = MpOrder::where('period_id', $prevPeriod->id)
-            ->where('status', 'Teslim Edildi')
-            ->whereNotNull('barcode')->where('barcode', '!=', '')
-            ->where('commission_rate', '>', 0)
-            ->selectRaw('barcode, AVG(commission_rate) as avg_rate, COUNT(*) as cnt')
-            ->groupBy('barcode')
-            ->having('cnt', '>=', 3)
-            ->get()->keyBy('barcode');
+        $currentRates = $this->buildResolvedCommissionRateStats(
+            $this->loadComparableOrders($period->id, ['Teslim Edildi']),
+            $minOrders
+        );
+
+        $prevRates = $this->buildResolvedCommissionRateStats(
+            $this->loadComparableOrders($prevPeriod->id, ['Teslim Edildi']),
+            $minOrders
+        );
 
         $count = 0;
-        foreach ($currentRates as $barcode => $current) {
-            if (!isset($prevRates[$barcode])) continue;
+        foreach ($currentRates as $skuKey => $current) {
+            if (!isset($prevRates[$skuKey])) continue;
 
-            $prev = $prevRates[$barcode];
+            $prev = $prevRates[$skuKey];
             $diff = $current->avg_rate - $prev->avg_rate;
 
             // %1 puandan fazla artış varsa uyar (ör: %15 → %16.5)
-            if ($diff >= 1.0) {
-                MpAuditLog::create([
+            if ($diff >= $rateThreshold) {
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'rule_code'      => 'KOMISYON_ORANI_DEGISIMI',
                     'severity'       => 'warning',
-                    'title'          => "Komisyon Artışı: +" . round($diff, 1) . " puan — {$barcode}",
+                    'title'          => "Komisyon Artışı: +" . round($diff, 1) . " puan — {$current->display_key}",
                     'description'    => "{$current->product_name} — Komisyon oranı: %" . round($prev->avg_rate, 1) . " → %" . round($current->avg_rate, 1) . " (+" . round($diff, 1) . " puan). Trendyol kategori/politika değişikliği olabilir.",
                     'expected_value' => round($prev->avg_rate, 2),
                     'actual_value'   => round($current->avg_rate, 2),
@@ -1660,11 +1804,7 @@ class AuditEngine
     // ═══════════════════════════════════════════════════════════════
     protected function checkServiceFeeIncrease(MpPeriod $period): int
     {
-        $prevMonth = $period->month - 1;
-        $prevYear  = $period->year;
-        if ($prevMonth < 1) { $prevMonth = 12; $prevYear--; }
-
-        $prevPeriod = MpPeriod::where('year', $prevYear)->where('month', $prevMonth)->first();
+        $prevPeriod = $this->resolvePreviousComparablePeriod($period);
         if (!$prevPeriod) return 0;
 
         // Bu dönem: toplam hizmet bedeli / toplam brüt = oran
@@ -1680,15 +1820,25 @@ class AuditEngine
             ->selectRaw('SUM(service_fee) as total_service, SUM(gross_amount) as total_gross, COUNT(*) as cnt')
             ->first();
 
-        if (!$currentStats || !$prevStats || $currentStats->total_gross <= 0 || $prevStats->total_gross <= 0) return 0;
+        $minOrders = max(1, $this->settings->getInt('audit_tolerances.service_fee_increase_min_orders', 20));
+        $increaseThreshold = $this->settings->getFloat('audit_tolerances.service_fee_increase_threshold', 0.5);
+
+        if (
+            !$currentStats || !$prevStats
+            || $currentStats->total_gross <= 0 || $prevStats->total_gross <= 0
+            || (int) ($currentStats->cnt ?? 0) < $minOrders
+            || (int) ($prevStats->cnt ?? 0) < $minOrders
+        ) {
+            return 0;
+        }
 
         $currentRate = ($currentStats->total_service / $currentStats->total_gross) * 100;
         $prevRate    = ($prevStats->total_service / $prevStats->total_gross) * 100;
         $diff        = $currentRate - $prevRate;
 
         // %0.5 puandan fazla artış varsa uyar
-        if ($diff >= 0.5) {
-            MpAuditLog::create([
+        if ($diff >= $increaseThreshold) {
+            $this->createAuditLog([
                 'period_id'      => $period->id,
                 'rule_code'      => 'HIZMET_BEDELI_ARTISI',
                 'severity'       => 'warning',
@@ -1709,29 +1859,24 @@ class AuditEngine
     // ═══════════════════════════════════════════════════════════════
     protected function checkHighCancellationRate(MpPeriod $period): int
     {
-        $stats = MpOrder::where('period_id', $period->id)
-            ->whereNotNull('barcode')->where('barcode', '!=', '')
-            ->selectRaw("
-                barcode,
-                MIN(product_name) as product_name,
-                COUNT(*) as total_orders,
-                SUM(CASE WHEN status = 'İptal Edildi' THEN 1 ELSE 0 END) as cancelled,
-                SUM(CASE WHEN status = 'Teslim Edildi' THEN 1 ELSE 0 END) as delivered
-            ")
-            ->groupBy('barcode')
-            ->get();
+        $minOrders = max(1, $this->settings->getInt('audit_tolerances.high_cancellation_rate_min_orders', 5));
+        $cancelThreshold = $this->settings->getFloat('audit_tolerances.high_cancellation_rate_threshold', 10);
+
+        $stats = $this->buildResolvedCancellationRateStats(
+            $this->loadComparableOrders($period->id)
+        );
 
         $count = 0;
         foreach ($stats as $stat) {
-            if ($stat->total_orders < 5) continue;
+            if ($stat->total_orders < $minOrders) continue;
 
             $cancelRate = ($stat->cancelled / $stat->total_orders) * 100;
-            if ($cancelRate >= 10) {
-                MpAuditLog::create([
+            if ($cancelRate >= $cancelThreshold) {
+                $this->createAuditLog([
                     'period_id'      => $period->id,
                     'rule_code'      => 'IPTAL_ORANI',
                     'severity'       => 'warning',
-                    'title'          => "Yüksek İptal Oranı: %" . round($cancelRate) . " — {$stat->barcode}",
+                    'title'          => "Yüksek İptal Oranı: %" . round($cancelRate) . " — {$stat->display_key}",
                     'description'    => "{$stat->product_name} — {$stat->total_orders} siparişten {$stat->cancelled} tanesi iptal (%" . round($cancelRate) . "). Stok yönetimi kontrol edilmeli, Trendyol algoritmik sıralama düşüşü ve operasyonel ceza riski var.",
                     'expected_value' => $stat->total_orders,
                     'actual_value'   => $stat->cancelled,
@@ -1742,5 +1887,322 @@ class AuditEngine
         }
 
         return $count;
+    }
+
+    protected function resolveCommissionReference(MpOrder $order): ?array
+    {
+        $settlementRate = (float) ($order->resolved_settlement_commission_rate ?? 0);
+        if ($settlementRate > 0) {
+            return [
+                'rate' => round($settlementRate, 2),
+                'source' => 'Ödeme Detay',
+            ];
+        }
+
+        $operationalRate = (float) ($order->resolved_operational_commission_rate ?? 0);
+        if ($operationalRate > 0) {
+            return [
+                'rate' => round($operationalRate, 2),
+                'source' => 'Operasyon export',
+            ];
+        }
+
+        return null;
+    }
+
+    protected function loadComparableOrders(int $periodId, ?array $statuses = null): Collection
+    {
+        return MpOrder::query()
+            ->where('period_id', $periodId)
+            ->when($statuses !== null, fn($query) => $query->whereIn('status', $statuses))
+            ->with(['period', 'operationalOrder.items'])
+            ->get();
+    }
+
+    protected function buildResolvedUnitPriceStats(Collection $orders, int $minOrders): Collection
+    {
+        $stats = [];
+
+        foreach ($orders as $order) {
+            if ((float) $order->gross_amount <= 0) {
+                continue;
+            }
+
+            $key = $this->resolveComparableSkuKey($order);
+            if ($key === null) {
+                continue;
+            }
+
+            $qty = max(1, (int) $order->resolved_quantity);
+            $stats[$key] ??= [
+                'sum_price' => 0.0,
+                'cnt' => 0,
+                'product_name' => $order->resolved_product_name ?: $order->product_name ?: 'Ürün',
+                'display_key' => $this->resolveDisplaySkuKey($order),
+            ];
+            $stats[$key]['sum_price'] += ((float) $order->gross_amount / $qty);
+            $stats[$key]['cnt']++;
+        }
+
+        return collect($stats)
+            ->filter(fn(array $stat) => $stat['cnt'] >= $minOrders)
+            ->map(fn(array $stat) => (object) [
+                'avg_price' => $stat['sum_price'] / $stat['cnt'],
+                'cnt' => $stat['cnt'],
+                'product_name' => $stat['product_name'],
+                'display_key' => $stat['display_key'],
+            ]);
+    }
+
+    protected function buildResolvedCommissionRateStats(Collection $orders, int $minOrders): Collection
+    {
+        $stats = [];
+
+        foreach ($orders as $order) {
+            $rate = (float) $order->commission_rate;
+            if ($rate <= 0) {
+                continue;
+            }
+
+            $key = $this->resolveComparableSkuKey($order);
+            if ($key === null) {
+                continue;
+            }
+
+            $stats[$key] ??= [
+                'sum_rate' => 0.0,
+                'cnt' => 0,
+                'product_name' => $order->resolved_product_name ?: $order->product_name ?: 'Ürün',
+                'display_key' => $this->resolveDisplaySkuKey($order),
+            ];
+            $stats[$key]['sum_rate'] += $rate;
+            $stats[$key]['cnt']++;
+        }
+
+        return collect($stats)
+            ->filter(fn(array $stat) => $stat['cnt'] >= $minOrders)
+            ->map(fn(array $stat) => (object) [
+                'avg_rate' => $stat['sum_rate'] / $stat['cnt'],
+                'cnt' => $stat['cnt'],
+                'product_name' => $stat['product_name'],
+                'display_key' => $stat['display_key'],
+            ]);
+    }
+
+    protected function buildResolvedReturnRateStats(Collection $orders): Collection
+    {
+        $stats = [];
+
+        foreach ($orders as $order) {
+            $key = $this->resolveComparableSkuKey($order);
+            if ($key === null) {
+                continue;
+            }
+
+            $qty = max(1, (int) $order->resolved_quantity);
+            $stats[$key] ??= (object) [
+                'product_name' => $order->resolved_product_name ?: $order->product_name ?: 'Ürün',
+                'display_key' => $this->resolveDisplaySkuKey($order),
+                'delivered' => 0,
+                'returned' => 0,
+                'total_orders' => 0,
+            ];
+
+            $stats[$key]->total_orders++;
+
+            if ($order->status === 'Teslim Edildi') {
+                $stats[$key]->delivered += $qty;
+            } elseif ($order->status === 'İade Edildi') {
+                $stats[$key]->returned += $qty;
+            }
+        }
+
+        return collect($stats);
+    }
+
+    protected function buildResolvedCancellationRateStats(Collection $orders): Collection
+    {
+        $stats = [];
+
+        foreach ($orders as $order) {
+            $key = $this->resolveComparableSkuKey($order);
+            if ($key === null) {
+                continue;
+            }
+
+            $stats[$key] ??= (object) [
+                'product_name' => $order->resolved_product_name ?: $order->product_name ?: 'Ürün',
+                'display_key' => $this->resolveDisplaySkuKey($order),
+                'total_orders' => 0,
+                'cancelled' => 0,
+            ];
+
+            $stats[$key]->total_orders++;
+
+            if ($order->status === 'İptal Edildi') {
+                $stats[$key]->cancelled++;
+            }
+        }
+
+        return collect($stats);
+    }
+
+    protected function resolveComparableSkuKey(MpOrder $order): ?string
+    {
+        if (filled($order->resolved_barcode)) {
+            return 'barcode:' . trim((string) $order->resolved_barcode);
+        }
+
+        if (filled($order->resolved_stock_code)) {
+            return 'stock:' . trim((string) $order->resolved_stock_code);
+        }
+
+        if (filled($order->resolved_product_name)) {
+            return 'name:' . mb_strtolower(trim((string) $order->resolved_product_name));
+        }
+
+        return null;
+    }
+
+    protected function resolveDisplaySkuKey(MpOrder $order): string
+    {
+        if (filled($order->resolved_barcode)) {
+            return (string) $order->resolved_barcode;
+        }
+
+        if (filled($order->resolved_stock_code)) {
+            return (string) $order->resolved_stock_code;
+        }
+
+        if (filled($order->resolved_product_name)) {
+            return (string) $order->resolved_product_name;
+        }
+
+        return 'Sipariş #' . $order->order_number;
+    }
+
+    protected function resolveOrderSettlements(MpPeriod $period, string $orderNumber, ?int $orderId = null): Collection
+    {
+        $baseQuery = MpSettlement::query()
+            ->where('order_number', $orderNumber)
+            ->orderByRaw('transaction_date is null, transaction_date asc')
+            ->orderBy('id');
+
+        $settlements = collect();
+
+        if ($orderId) {
+            $settlements = $settlements->merge(
+                (clone $baseQuery)->where('order_id', $orderId)->get()
+            );
+        }
+
+        $settlements = $settlements->merge(
+            (clone $baseQuery)->where('period_id', $period->id)->get()
+        );
+
+        $userId = (int) ($period->user_id ?? 0);
+        if ($userId > 0) {
+            $settlements = $settlements->merge(
+                (clone $baseQuery)->where('user_id', $userId)->get()
+            );
+        }
+
+        return $settlements
+            ->unique('id')
+            ->sortBy([
+                fn(MpSettlement $settlement) => $settlement->transaction_date?->getTimestamp() ?? PHP_INT_MAX,
+                fn(MpSettlement $settlement) => $settlement->id,
+            ])
+            ->values();
+    }
+
+    protected function updateSettlementReconciliation(Collection $settlements, bool $isReconciled, ?string $note = null): void
+    {
+        $settlements->each(function (MpSettlement $settlement) use ($isReconciled, $note) {
+            $payload = ['is_reconciled' => $isReconciled];
+            if ($note !== null && array_key_exists('notes', $settlement->getAttributes())) {
+                $payload['notes'] = $note;
+            }
+
+            $settlement->update($payload);
+        });
+    }
+
+    protected function resolveOrderTransactions(MpPeriod $period, string $orderNumber): Collection
+    {
+        $query = MpTransaction::query()
+            ->where(function ($transactionQuery) use ($orderNumber) {
+                $transactionQuery
+                    ->where('order_number', $orderNumber)
+                    ->orWhere('description', 'like', '%' . $orderNumber . '%');
+            })
+            ->orderByRaw('transaction_date is null, transaction_date asc')
+            ->orderBy('id');
+
+        $userPeriodIds = $this->resolveUserPeriodIds($period);
+        if (!empty($userPeriodIds)) {
+            return $query->whereIn('period_id', $userPeriodIds)->get();
+        }
+
+        return $query->where('period_id', $period->id)->get();
+    }
+
+    protected function resolveUserPeriodIds(MpPeriod $period): array
+    {
+        $cacheKey = (int) $period->id;
+        if (array_key_exists($cacheKey, $this->userPeriodIdsCache)) {
+            return $this->userPeriodIdsCache[$cacheKey];
+        }
+
+        $userId = (int) ($period->user_id ?? 0);
+        if ($userId <= 0) {
+            return $this->userPeriodIdsCache[$cacheKey] = [$period->id];
+        }
+
+        $periodIds = MpPeriod::where('user_id', $userId)->pluck('id')->all();
+
+        return $this->userPeriodIdsCache[$cacheKey] = (!empty($periodIds) ? $periodIds : [$period->id]);
+    }
+
+    protected function resolvePreviousComparablePeriod(MpPeriod $period): ?MpPeriod
+    {
+        $prevMonth = $period->month - 1;
+        $prevYear = $period->year;
+
+        if ($prevMonth < 1) {
+            $prevMonth = 12;
+            $prevYear--;
+        }
+
+        return MpPeriod::query()
+            ->where('year', $prevYear)
+            ->where('month', $prevMonth)
+            ->where('marketplace', $period->marketplace)
+            ->when($period->user_id, fn($query) => $query->where('user_id', $period->user_id))
+            ->when(
+                filled($period->seller_id),
+                fn($query) => $query->where('seller_id', $period->seller_id),
+                fn($query) => $query->where(function ($sellerQuery) {
+                    $sellerQuery->whereNull('seller_id')->orWhere('seller_id', '');
+                })
+            )
+            ->first();
+    }
+
+    protected function resolveOrderSkuKey(MpOrder $order): string
+    {
+        if (filled($order->resolved_barcode)) {
+            return $order->resolved_barcode;
+        }
+
+        if (filled($order->resolved_stock_code)) {
+            return $order->resolved_stock_code;
+        }
+
+        if (filled($order->resolved_product_name)) {
+            return mb_strtolower(trim($order->resolved_product_name));
+        }
+
+        return 'order:' . $order->order_number;
     }
 }

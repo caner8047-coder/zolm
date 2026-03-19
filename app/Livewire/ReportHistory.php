@@ -196,6 +196,8 @@ class ReportHistory extends Component
             $query->whereHas('profile', fn($q) => $q->where('type', 'production'));
         } elseif ($this->reportType === 'operation') {
             $query->whereHas('profile', fn($q) => $q->where('type', 'operation'));
+        } elseif ($this->reportType === 'custom') {
+            $query->whereHas('profile', fn($q) => $q->where('type', 'custom'));
         }
 
         if ($this->startDate) {

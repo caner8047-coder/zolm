@@ -91,6 +91,7 @@ class CargoReportItem extends Model
      */
     public const ERROR_TYPES = [
         'none' => ['label' => 'Hata Yok', 'color' => 'green', 'icon' => '✓'],
+        'referans_eksik' => ['label' => 'Referans Eksik', 'color' => 'yellow', 'icon' => '!'],
         'desi_eksik' => ['label' => 'Desi Eksik', 'color' => 'yellow', 'icon' => '↓'],
         'desi_fazla' => ['label' => 'Desi Fazla', 'color' => 'red', 'icon' => '↑'],
         'tutar_eksik' => ['label' => 'Tutar Eksik', 'color' => 'yellow', 'icon' => '↓'],
@@ -98,6 +99,14 @@ class CargoReportItem extends Model
         'parca_eksik' => ['label' => 'Parça Eksik', 'color' => 'red', 'icon' => '⚠'],
         'parca_fazla' => ['label' => 'Parça Fazla', 'color' => 'orange', 'icon' => '+'],
         'eslesmedi' => ['label' => 'Eşleşmedi', 'color' => 'gray', 'icon' => '?'],
+    ];
+
+    public const CLAIMABLE_ERROR_TYPES = [
+        'desi_fazla',
+        'tutar_fazla',
+        'parca_eksik',
+        'parca_fazla',
+        'eslesmedi',
     ];
 
     /**
@@ -148,6 +157,11 @@ class CargoReportItem extends Model
         return $query->where('error_type', $type);
     }
 
+    public function scopeClaimable($query)
+    {
+        return $query->whereIn('error_type', self::CLAIMABLE_ERROR_TYPES);
+    }
+
     /**
      * Eşleşmiş satırlar
      */
@@ -170,6 +184,75 @@ class CargoReportItem extends Model
     public function getErrorInfoAttribute(): array
     {
         return self::ERROR_TYPES[$this->error_type] ?? self::ERROR_TYPES['none'];
+    }
+
+    /**
+     * Referans uyarısına neden olan sipariş detayları
+     *
+     * @return array<int, array{stok_kodu: string, reference_note: string}>
+     */
+    public function getReferenceIssueDetailsAttribute(): array
+    {
+        $details = [];
+
+        foreach (($this->siparis_detay ?? []) as $detail) {
+            if (!is_array($detail)) {
+                continue;
+            }
+
+            if (empty($detail['not_found']) && empty($detail['reference_note'])) {
+                continue;
+            }
+
+            $stokKodu = trim((string) ($detail['stok_kodu'] ?? ''));
+            $referenceNote = trim((string) ($detail['reference_note'] ?? ''));
+            $key = ($stokKodu !== '' ? $stokKodu : 'BILINMIYOR') . '|' . $referenceNote;
+
+            $details[$key] = [
+                'stok_kodu' => $stokKodu,
+                'reference_note' => $referenceNote,
+            ];
+        }
+
+        return array_values($details);
+    }
+
+    /**
+     * Referans sorunu olan benzersiz stok kodları
+     *
+     * @return array<int, string>
+     */
+    public function getReferenceIssueCodesAttribute(): array
+    {
+        $codes = [];
+
+        foreach ($this->reference_issue_details as $detail) {
+            $stokKodu = trim((string) ($detail['stok_kodu'] ?? ''));
+
+            if ($stokKodu !== '') {
+                $codes[] = $stokKodu;
+            }
+        }
+
+        return array_values(array_unique($codes));
+    }
+
+    /**
+     * Tek eksik stok kodu varsa hızlı düzenleme için döndür
+     */
+    public function getEditableStockCodeAttribute(): ?string
+    {
+        $referenceCodes = $this->reference_issue_codes;
+
+        if (count($referenceCodes) === 1) {
+            return $referenceCodes[0];
+        }
+
+        if (!empty($this->stok_kodu) && !str_contains($this->stok_kodu, ',') && !str_contains($this->stok_kodu, '...')) {
+            return $this->stok_kodu;
+        }
+
+        return null;
     }
 
     /**
@@ -243,6 +326,10 @@ class CargoReportItem extends Model
     public function determineErrorType(): string
     {
         // Öncelik sırası: Eşleşmeme > Parça > Desi > Tutar
+
+        if ($this->error_type === 'referans_eksik') {
+            return 'referans_eksik';
+        }
 
         if (!$this->is_matched) {
             return 'eslesmedi';

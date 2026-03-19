@@ -96,18 +96,27 @@
                             <h3 class="font-medium text-gray-900">Haftalık Tarife Analizi</h3>
                             <p class="text-sm text-gray-500 mt-1">Trendyol komisyon tarife Excel dosyasını yükleyin</p>
                             <div class="mt-4">
-                                <input 
-                                    type="file" 
-                                    wire:model="tariffFile"
-                                    accept=".xlsx,.xls"
-                                    class="block w-full text-sm text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200"
-                                >
-                                @if($tariffFile)
-                                    <span class="text-xs text-green-600 mt-1 block">✓ {{ $tariffFile->getClientOriginalName() }}</span>
+                                @if(!$tariffFile)
+                                    <input 
+                                        type="file" 
+                                        wire:model="tariffFile"
+                                        accept=".xlsx,.xls"
+                                        class="block w-full text-sm text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200"
+                                    >
+                                @else
+                                    <div class="flex items-center justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                                        <div class="flex items-center gap-2">
+                                            <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                            <span class="text-sm text-emerald-800 font-medium truncate" style="max-width: 250px;">{{ $tariffFile->getClientOriginalName() }}</span>
+                                        </div>
+                                        <button type="button" wire:click="$set('tariffFile', null)" class="text-xs px-2 py-1 bg-red-100 text-red-600 hover:bg-red-200 rounded-md font-medium transition-colors">
+                                            İptal Et
+                                        </button>
+                                    </div>
                                 @endif
-                                @error('tariffFile') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                                @error('tariffFile') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
                             </div>
-                            <div class="mt-3">
+                            <div class="mt-4">
                                 <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Rapor Adı (Opsiyonel)</label>
                                 <input 
                                     type="text" 

@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Profile;
 use App\Services\AIProfileAnalyzer;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Route;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -20,6 +21,8 @@ class ProfileWizard extends Component
     public string $name = '';
     public string $type = 'production';
     public string $description = '';
+    public string $returnRoute = 'profiles';
+    public bool $lockType = false;
 
     // Step 2: Örnek Girdi (Çoklu dosya desteği)
     public $tempInputFile; // Geçici dosya (yükleme için)
@@ -51,7 +54,7 @@ class ProfileWizard extends Component
         return match ($this->currentStep) {
             1 => [
                 'name' => 'required|string|max:255',
-                'type' => 'required|in:production,operation',
+                'type' => 'required|in:production,operation,custom',
             ],
             2 => [
                 'sampleInputFiles' => 'required|array|min:1',
@@ -61,6 +64,13 @@ class ProfileWizard extends Component
             ],
             default => [],
         };
+    }
+
+    public function mount(): void
+    {
+        if ($this->lockType && $this->type !== 'custom') {
+            $this->type = 'custom';
+        }
     }
 
     protected $messages = [
@@ -105,6 +115,17 @@ class ProfileWizard extends Component
     {
         if ($step <= $this->currentStep && $step >= 1) {
             $this->currentStep = $step;
+        }
+    }
+
+    public function selectType(string $type): void
+    {
+        if ($this->lockType) {
+            return;
+        }
+
+        if (in_array($type, ['production', 'operation', 'custom'], true)) {
+            $this->type = $type;
         }
     }
 
@@ -338,6 +359,10 @@ class ProfileWizard extends Component
         $this->isSaving = true;
 
         try {
+            if ($this->lockType) {
+                $this->type = 'custom';
+            }
+
             // Girdi dosyalarını kaydet
             $inputPaths = [];
             foreach ($this->sampleInputFiles as $inputFile) {
@@ -372,7 +397,8 @@ class ProfileWizard extends Component
 
             session()->flash('success', "'{$this->name}' profili başarıyla oluşturuldu!");
         
-            return redirect()->route('profiles');
+            $targetRoute = Route::has($this->returnRoute) ? $this->returnRoute : 'profiles';
+            return redirect()->route($targetRoute);
             
         } finally {
             $this->isSaving = false;

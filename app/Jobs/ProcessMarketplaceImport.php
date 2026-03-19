@@ -64,7 +64,7 @@ class ProcessMarketplaceImport implements ShouldQueue
             ], 600); // 10 dk TTL
 
             $period  = MpPeriod::findOrFail($this->periodId);
-            $service = new MarketplaceImportService();
+            $service = new MarketplaceImportService($this->userId);
 
             // Get correct path from Storage facade
             $fullPath = Storage::disk('local')->path($this->tempFilePath);
