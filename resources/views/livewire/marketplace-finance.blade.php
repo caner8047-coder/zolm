@@ -607,7 +607,7 @@
                         @endforelse
                     </div>
 
-                    <div class="hidden md:block overflow-hidden rounded-lg border border-slate-200">
+                    <div class="hidden md:block rounded-lg border border-slate-200">
                         @php
                             $columnMeta = [
                                 'siparis' => ['label' => 'Sipariş', 'width' => '240px'],
@@ -623,7 +623,7 @@
                             ];
                         @endphp
 
-                        <div class="overflow-x-auto -mx-4 lg:-mx-6 px-4 lg:px-6" x-data="columnResize()">
+                        <div class="overflow-x-auto w-full" x-data="columnResize()">
                             <table class="mp-finance-v2-table min-w-[1200px] w-full divide-y divide-slate-200 table-fixed">
                                 <thead class="bg-slate-50 text-slate-500">
                                     <tr>

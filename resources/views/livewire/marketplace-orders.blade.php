@@ -599,7 +599,7 @@
                 </div>
 
                 {{-- Desktop tablo --}}
-                <div class="hidden md:block overflow-hidden rounded-lg border border-slate-200">
+                <div class="hidden md:block rounded-lg border border-slate-200">
                     @php
                         $columnMeta = [
                             'siparis' => ['label' => 'Sipariş', 'width' => '190px'],
@@ -612,8 +612,8 @@
                         ];
                     @endphp
 
-                    <div class="overflow-x-auto -mx-4 lg:-mx-6 px-4 lg:px-6" x-data="columnResize()">
-                        <table class="orders-v2-table min-w-[1000px] w-full divide-y divide-slate-200 table-fixed">
+                    <div class="overflow-x-auto w-full" x-data="columnResize()">
+                        <table class="orders-v2-table min-w-[1200px] w-full divide-y divide-slate-200 table-fixed">
                             <thead class="bg-slate-50 text-slate-500">
                                 <tr>
                                     <th class="w-16 px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]">
