@@ -1,534 +1,842 @@
-<div class="space-y-4 lg:space-y-6">
-    <!-- Header & Actions -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-            <h1 class="text-xl lg:text-2xl font-bold text-gray-900">Pazaryeri Siparişlerim</h1>
-            <p class="mt-1 text-sm lg:text-base text-gray-700">Tüm detaylı operasyonel siparişlerinizi, muhasebe verilerini ve ürün satırlarını tek ekranda inceleyin.</p>
-        </div>
-        <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-            <button wire:click="exportCsv" wire:loading.attr="disabled"
-                    class="min-h-[44px] inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors w-full sm:w-auto">
-                <svg class="-ml-1 mr-2 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                Dışa Aktar (CSV)
-            </button>
-            <button wire:click="runSyncEngine" wire:loading.attr="disabled"
-                    class="min-h-[44px] inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 w-full sm:w-auto">
-                <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Finansal Senkronizasyon
-            </button>
-        </div>
-    </div>
+@php
+    $formatMoney = fn ($value) => '₺' . number_format((float) $value, 2, ',', '.');
+    $formatCount = fn ($value) => number_format((float) $value, 0, ',', '.');
+    $sortIcon = function (string $columnKey) use ($sortableColumns, $sortField, $sortDirection) {
+        $dbColumn = $sortableColumns[$columnKey] ?? null;
+        if (!$dbColumn) {
+            return '';
+        }
 
-    <!-- System Messages -->
+        return $sortField === $dbColumn
+            ? ($sortDirection === 'asc' ? '▲' : '▼')
+            : '⇅';
+    };
+@endphp
+
+@once
+    <style>
+        .orders-v2-table {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        .orders-v2-table th,
+        .orders-v2-table td {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .col-resize-handle {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 4px;
+            cursor: col-resize;
+            z-index: 10;
+            background: transparent;
+            transition: background 0.15s;
+        }
+
+        .col-resize-handle:hover,
+        .col-resize-handle.active {
+            background: #0f172a;
+        }
+    </style>
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('columnResize', () => ({
+                resizing: false,
+                startX: 0,
+                startWidth: 0,
+                currentTh: null,
+                handle: null,
+                startResize(event, th) {
+                    this.resizing = true;
+                    this.startX = event.pageX;
+                    this.startWidth = th.offsetWidth;
+                    this.currentTh = th;
+                    this.handle = event.target;
+                    this.handle.classList.add('active');
+
+                    const onMouseMove = (moveEvent) => {
+                        if (!this.resizing) {
+                            return;
+                        }
+
+                        const newWidth = Math.max(84, this.startWidth + (moveEvent.pageX - this.startX));
+                        this.currentTh.style.width = newWidth + 'px';
+                        this.currentTh.style.minWidth = newWidth + 'px';
+                    };
+
+                    const onMouseUp = () => {
+                        this.resizing = false;
+                        if (this.handle) {
+                            this.handle.classList.remove('active');
+                        }
+
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                    };
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                },
+            }));
+        });
+    </script>
+@endonce
+
+<div class="w-full space-y-6">
+
+    {{-- Flash mesajları --}}
     @if(session()->has('sync_message'))
-        <div class="rounded-md bg-green-50 p-4 border border-green-200">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-                    </svg>
-                </div>
-                <div class="ml-3"><p class="text-sm font-medium text-green-800">{{ session('sync_message') }}</p></div>
-            </div>
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            {{ session('sync_message') }}
         </div>
     @endif
 
     @if($importMessage)
-        <div class="rounded-md bg-blue-50 p-4 border border-blue-200 mb-4">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                </div>
-                <div class="ml-3"><p class="text-sm text-blue-700">{{ $importMessage }}</p></div>
-            </div>
+        <div class="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+            {{ $importMessage }}
         </div>
     @endif
 
-    <!-- ═══════════ ÖZET KARTLARI ═══════════ -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-        <!-- Toplam Sipariş -->
-        <div class="bg-white rounded-lg shadow p-3 lg:p-4 border-l-4 border-indigo-500">
-            <div class="flex items-center">
-                <div class="flex-shrink-0">
-                    <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                        <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+    @if($actionMessage !== '')
+        <div class="rounded-xl border p-4 text-sm {{ $actionMessageTone === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-700' }}">
+            {{ $actionMessage }}
+        </div>
+    @endif
+
+    {{-- ═══════════════════════════════════════════════ --}}
+    {{-- BLOK 1: HERO + KPI --}}
+    {{-- ═══════════════════════════════════════════════ --}}
+    <section class="rounded-2xl border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8">
+            {{-- Sol kısım: Başlık ve Butonlar --}}
+            <div class="xl:col-span-7 flex flex-col justify-between">
+                <div>
+                    <div class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 mb-4 lg:mb-5">
+                        Pazaryeri Siparişleri
                     </div>
+                    <h1 class="text-2xl lg:text-3xl font-bold text-slate-900">Sipariş Yönetimi</h1>
+                    <p class="mt-2 text-sm lg:text-base text-slate-500">
+                        Tüm detaylı operasyonel siparişlerinizi, muhasebe verilerini ve ürün satırlarını tek ekranda inceleyin.
+                    </p>
                 </div>
-                <div class="ml-3">
-                    <p class="text-xs font-medium text-gray-500 uppercase">Toplam Sipariş</p>
-                    <p class="text-lg lg:text-xl font-bold text-gray-900">{{ number_format($stats['total_orders']) }}</p>
+                <div class="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    <button type="button"
+                            wire:click="exportCsv"
+                            wire:loading.attr="disabled"
+                            class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
+                        <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Dışa Aktar (CSV)
+                    </button>
+                    <a href="{{ route('mp.integrations') }}"
+                       class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 sm:py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Finansal Senkronizasyon
+                    </a>
+                </div>
+            </div>
+
+            {{-- Sağ kısım: Metrikler --}}
+            <div class="xl:col-span-5 grid grid-cols-2 gap-3 lg:gap-4">
+                <div class="flex flex-col justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 lg:p-5 min-w-0">
+                    <p class="text-[10px] lg:text-xs uppercase tracking-[0.2em] font-medium text-slate-500 truncate">Toplam Sipariş</p>
+                    <p class="mt-2 text-2xl lg:text-3xl font-bold text-slate-900 truncate">{{ $formatCount($stats['total_orders']) }}</p>
+                </div>
+                <div class="flex flex-col justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 lg:p-5 min-w-0">
+                    <p class="text-[10px] lg:text-xs uppercase tracking-[0.2em] font-medium text-slate-500 truncate">Ciro</p>
+                    <p class="mt-2 text-lg lg:text-2xl xl:text-xl font-bold text-slate-900 truncate" title="{{ $formatMoney($stats['total_revenue']) }}">{{ $formatMoney($stats['total_revenue']) }}</p>
+                </div>
+                <div class="flex flex-col justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 lg:p-5 min-w-0">
+                    <p class="text-[10px] lg:text-xs uppercase tracking-[0.2em] font-medium text-slate-500 truncate">Ort. Sepet</p>
+                    <p class="mt-2 text-xl lg:text-2xl font-bold text-slate-900 truncate">{{ $formatMoney($stats['total_orders'] > 0 ? $stats['total_revenue'] / $stats['total_orders'] : 0) }}</p>
+                </div>
+                <div class="flex flex-col justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 lg:p-5 min-w-0">
+                    <p class="text-[10px] lg:text-xs uppercase tracking-[0.2em] font-medium text-slate-500 truncate">Durum Dağılımı</p>
+                    <p class="mt-2 text-xs lg:text-sm font-semibold text-slate-900 line-clamp-2">
+                        <span class="text-emerald-600">● {{ $formatCount($stats['total_orders'] - $stats['finance_waiting_orders']) }}</span>
+                        <span class="text-amber-500 ml-1">● {{ $formatCount($stats['finance_waiting_orders']) }}</span>
+                        <span class="text-rose-500 ml-1">● {{ $formatCount($stats['match_issue_orders']) }}</span>
+                    </p>
                 </div>
             </div>
         </div>
+    </section>
 
-        <!-- Toplam Ciro -->
-        <div class="bg-white rounded-lg shadow p-3 lg:p-4 border-l-4 border-green-500">
-            <div class="flex items-center">
-                <div class="flex-shrink-0">
-                    <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    {{-- ═══════════════════════════════════════════════ --}}
+    {{-- OPERASYONEL SİPARİŞ İÇE AKTARIM --}}
+    {{-- ═══════════════════════════════════════════════ --}}
+    <div x-data="{ importOpen: false }" class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <button type="button"
+                @click="importOpen = !importOpen"
+                class="flex w-full items-center justify-between gap-3 px-4 py-4 text-left">
+            <div>
+                <p class="text-base font-semibold text-slate-900">Operasyonel Sipariş İçe Aktarım</p>
+                <p class="mt-0.5 text-sm text-slate-500">Müşteri detayı, ürün ve varyant içeren geniş kapsamlı "Sipariş Kayıtları" Excelinizi buraya yükleyin.</p>
+            </div>
+            <svg class="h-5 w-5 shrink-0 text-slate-400 transition" :class="{ 'rotate-180': importOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 9l-7 7-7-7" />
+            </svg>
+        </button>
+        <div x-cloak x-show="importOpen" x-transition class="border-t border-slate-200 px-4 py-4">
+            <form wire:submit.prevent="importOrders" class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label class="block">
+                        <span class="mb-1 block text-sm font-medium text-slate-700">Projection mağazası</span>
+                        <select wire:model.live="legacyProjectionStoreId"
+                                class="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-0 sm:py-2 sm:text-sm">
+                            <option value="">Legacy-only bırak</option>
+                            @foreach($legacyProjectionStoreOptions as $optionValue => $optionLabel)
+                                <option value="{{ $optionValue }}">{{ $optionLabel }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <div class="flex items-end gap-3">
+                        <label class="flex-1 block cursor-pointer rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 transition hover:border-slate-400 hover:bg-white">
+                            <input type="file" wire:model="file" accept=".xlsx,.xls" class="hidden">
+                            <div class="flex items-center gap-2">
+                                <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                                <span class="text-sm text-slate-600">{{ $file ? $file->getClientOriginalName() : 'Dosya seçilmedi' }}</span>
+                            </div>
+                        </label>
                     </div>
                 </div>
-                <div class="ml-3">
-                    <p class="text-xs font-medium text-gray-500 uppercase">Toplam Ciro</p>
-                    <p class="text-lg lg:text-xl font-bold text-gray-900">₺{{ number_format($stats['total_revenue'], 0, ',', '.') }}</p>
-                </div>
-            </div>
-        </div>
 
-        <!-- Ort. Sepet -->
-        <div class="bg-white rounded-lg shadow p-3 lg:p-4 border-l-4 border-amber-500">
-            <div class="flex items-center">
-                <div class="flex-shrink-0">
-                    <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
-                        <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+                @error('file') <p class="text-sm text-rose-600">{{ $message }}</p> @enderror
+                @error('legacyProjectionStoreId') <p class="text-sm text-rose-600">{{ $message }}</p> @enderror
+
+                <div class="flex flex-wrap gap-2">
+                    <button type="submit"
+                            wire:loading.attr="disabled"
+                            wire:target="importOrders,file"
+                            class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-rose-600 px-4 py-3 sm:py-2 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60">
+                        <span wire:loading.remove wire:target="importOrders">Yükle ve İşle</span>
+                        <span wire:loading wire:target="importOrders">İşleniyor...</span>
+                    </button>
+                    <button type="button"
+                            wire:click="runSyncEngine"
+                            wire:loading.attr="disabled"
+                            class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                        Legacy finans sync
+                    </button>
+                    <button type="button"
+                            wire:click="previewLegacyFinancials"
+                            wire:loading.attr="disabled"
+                            class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                        Önizleme
+                    </button>
+                    <button type="button"
+                            wire:click="projectLegacyFinancials"
+                            wire:loading.attr="disabled"
+                            @disabled(($legacyFinancialProjectionPreview['projected_rows'] ?? 0) === 0)
+                            class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Eski finansı taşı
+                    </button>
+                </div>
+
+                @if($legacyProjectionResult)
+                    <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                        <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                            <span class="font-semibold text-slate-900">{{ !empty($legacyProjectionResult['executed']) ? 'Aktarım sonucu' : 'Önizleme' }}</span>
+                            <span class="rounded-full border border-slate-200 bg-white px-2 py-0.5">Aday {{ $formatCount((int) data_get($legacyProjectionResult, 'projected_rows', 0)) }}</span>
+                            <span class="rounded-full border border-slate-200 bg-white px-2 py-0.5">Yeni {{ $formatCount((int) data_get($legacyProjectionResult, 'created', 0)) }}</span>
+                            <span class="rounded-full border border-slate-200 bg-white px-2 py-0.5">Güncelleme {{ $formatCount((int) data_get($legacyProjectionResult, 'updated', 0)) }}</span>
+                            <span class="rounded-full border border-slate-200 bg-white px-2 py-0.5">Etkilenen {{ $formatCount((int) data_get($legacyProjectionResult, 'impacted_orders', 0)) }}</span>
+                        </div>
+                        <div class="mt-2 text-xs font-mono text-slate-400">
+                            {{ $this->legacyProjectionRunCommand }}
+                            <br>
+                            {{ $this->legacyProjectionDryRunCommand }}
+                        </div>
                     </div>
-                </div>
-                <div class="ml-3">
-                    <p class="text-xs font-medium text-gray-500 uppercase">Ort. Sepet</p>
-                    <p class="text-lg lg:text-xl font-bold text-gray-900">₺{{ number_format($stats['avg_order_value'], 0, ',', '.') }}</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Durum Dağılımı -->
-        <div class="bg-white rounded-lg shadow p-3 lg:p-4 border-l-4 border-purple-500">
-            <div class="flex items-center">
-                <div class="flex-shrink-0">
-                    <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                        <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                    </div>
-                </div>
-                <div class="ml-3">
-                    <p class="text-xs font-medium text-gray-500 uppercase">Durum Dağılımı</p>
-                    <div class="flex items-center space-x-2 mt-1 flex-wrap">
-                        <span class="inline-flex items-center text-xs"><span class="w-2 h-2 rounded-full bg-green-500 mr-1"></span>{{ $stats['delivered'] }}</span>
-                        <span class="inline-flex items-center text-xs"><span class="w-2 h-2 rounded-full bg-yellow-500 mr-1"></span>{{ $stats['in_transit'] }}</span>
-                        <span class="inline-flex items-center text-xs"><span class="w-2 h-2 rounded-full bg-red-500 mr-1"></span>{{ $stats['cancelled'] }}</span>
-                        <span class="inline-flex items-center text-xs"><span class="w-2 h-2 rounded-full bg-orange-500 mr-1"></span>{{ $stats['returned'] }}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Importer Form -->
-    <div class="bg-white shadow rounded-lg mb-4 lg:mb-6">
-        <div class="p-4 lg:p-6">
-            <h3 class="text-base lg:text-lg leading-6 font-medium text-gray-900">Operasyonel Sipariş İçe Aktarım</h3>
-            <div class="mt-2 text-sm text-gray-500">
-                <p>Müşteri detayı, ürün ve varyant içeren geniş kapsamlı "Sipariş Kayıtları" Excelinizi buraya yükleyin.</p>
-            </div>
-            <form wire:submit.prevent="importOrders" class="mt-4 lg:mt-5 flex flex-col sm:flex-row sm:items-center gap-3">
-                <div class="w-full sm:max-w-xs">
-                    <input type="file" wire:model="file" accept=".xlsx,.xls"
-                           class="min-h-[44px] block w-full text-base sm:text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer border border-gray-300 rounded-md">
-                </div>
-                
-                <div wire:loading wire:target="file" class="ml-3 text-sm text-indigo-600 font-medium">
-                    <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-600 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Sunucuya alınıyor...
-                </div>
-
-                <button type="submit" wire:loading.attr="disabled" wire:target="importOrders, file"
-                        class="w-full sm:w-auto inline-flex items-center justify-center px-4 py-3 sm:py-2 border border-transparent shadow-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 min-h-[44px] transition disabled:opacity-50">
-                    <span wire:loading.remove wire:target="importOrders">Yükle ve İşle</span>
-                    <span wire:loading wire:target="importOrders">İşleniyor...</span>
-                </button>
+                @endif
             </form>
-            @error('file') <span class="text-red-500 text-xs mt-2 block font-medium">{{ $message }}</span> @enderror
         </div>
     </div>
 
-    <!-- ═══════════ FİLTRELER ═══════════ -->
-    <div class="bg-white shadow rounded-lg p-3 lg:p-4" x-data="{ showAdvanced: false }">
-        <!-- Birincil Filtreler -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
-            <div class="relative">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+    {{-- ═══════════════════════════════════════════════ --}}
+    {{-- BLOK 2: TABLO VE FİLTRELER --}}
+    {{-- ═══════════════════════════════════════════════ --}}
+    <section class="rounded-2xl border border-slate-200 bg-white p-4 lg:p-6 shadow-sm"
+             x-data="{
+                advancedFilters: @js(filled($searchProduct) || filled($profitStateFilter) || filled($financialStateFilter) || filled($legalEntityFilter) || filled($matchStateFilter)),
+                bulkToolsOpen: @js(count($selectedOrderIds) > 0 || count($selectedPackageIds) > 0)
+             }">
+
+        {{-- Guidance banner --}}
+        @php
+            $primaryGuidance = $diagnosticsGuidance['items'][0] ?? null;
+            $secondaryGuidance = collect($diagnosticsGuidance['items'] ?? [])->skip(1)->take(4)->values();
+        @endphp
+        @include('livewire.partials.mp-guidance-banner', [
+            'diagnosticsGuidance' => $diagnosticsGuidance,
+            'guidanceItems' => $diagnosticsGuidance['items'] ?? [],
+            'primaryGuidance' => $primaryGuidance,
+            'secondaryGuidance' => $secondaryGuidance,
+        ])
+
+        @php $legacyGuidance = $this->getLegacyProjectionGuidanceCard(); @endphp
+        @if($legacyGuidance)
+            <div class="mb-4 rounded-xl border {{ $legacyGuidance['state'] === 'warning' ? 'border-amber-200 bg-amber-50/60' : 'border-emerald-200 bg-emerald-50/60' }} px-4 py-3">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                            <span class="rounded-full border {{ $legacyGuidance['state'] === 'warning' ? 'border-amber-200 bg-amber-100 text-amber-700' : 'border-emerald-200 bg-emerald-100 text-emerald-700' }} px-2.5 py-0.5 text-xs font-medium">Legacy Finans</span>
+                            <p class="text-sm font-semibold text-slate-900">{{ $legacyGuidance['store_name'] }}</p>
+                            <span class="text-xs text-slate-400">·</span>
+                            <p class="text-xs text-slate-500">{{ $this->humanMarketplace($legacyGuidance['marketplace']) }}</p>
+                        </div>
+                        <p class="mt-1.5 text-sm font-medium text-slate-800">{{ $legacyGuidance['title'] }}</p>
+                        <p class="mt-0.5 text-xs text-slate-500">{{ $legacyGuidance['description'] }}</p>
+                        <div class="mt-2 flex items-center gap-3">
+                            <span class="text-xs font-medium text-amber-700">Bekleyen {{ $legacyGuidance['pending_rows'] }}</span>
+                            <span class="text-xs font-medium text-emerald-700">Kesine dönen {{ $legacyGuidance['confirmed_orders'] }}</span>
+                        </div>
+                    </div>
+                    <div class="flex shrink-0 gap-2">
+                        <button type="button" wire:click="focusLegacyProjectionCard" class="inline-flex min-h-[36px] items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800">
+                            Filtrele ve İncele
+                        </button>
+                    </div>
                 </div>
-                <input wire:model.live.debounce.500ms="search" type="text" placeholder="Sipariş / Paket No..." 
-                       class="min-h-[44px] block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-base sm:text-sm">
             </div>
+        @endif
 
-            <div>
-                <input wire:model.live.debounce.500ms="searchBarcode" type="text" placeholder="Barkod / Ürün / Stok Kodu..." 
-                       class="min-h-[44px] block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-base sm:text-sm">
-            </div>
-
-            <div>
-                <input wire:model.live.debounce.500ms="searchCustomer" type="text" placeholder="Müşteri / Telefon / E-Posta..." 
-                       class="min-h-[44px] block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-base sm:text-sm">
-            </div>
-
-            <div>
-                <select wire:model.live="statusFilter" class="min-h-[44px] block w-full pl-3 pr-10 py-2 border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-base sm:text-sm rounded-md">
+        {{-- Filtreler --}}
+        <div class="space-y-4 mb-6">
+            <div class="flex flex-col lg:flex-row gap-3">
+                <div class="relative flex-1">
+                    <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input type="text"
+                           wire:model.live.debounce.400ms="search"
+                           placeholder="Sipariş / Paket No arayın..."
+                           class="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium text-slate-900 shadow-sm transition focus:border-slate-900 focus:bg-white focus:outline-none">
+                </div>
+                <input type="text"
+                       wire:model.live.debounce.400ms="searchProduct"
+                       placeholder="Barkod / Ürün / Stok Kodu..."
+                       class="w-full lg:w-56 rounded-lg border border-slate-200 bg-white px-4 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                <input type="text"
+                       wire:model.live.debounce.400ms="searchCustomer"
+                       placeholder="Müşteri / Telefon / E-Posta..."
+                       class="w-full lg:w-56 rounded-lg border border-slate-200 bg-white px-4 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                <select wire:model.live="statusFilter"
+                        class="w-full lg:w-48 rounded-lg border border-slate-200 bg-white px-4 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                     <option value="">Tüm Durumlar</option>
-                    @foreach($uniqueStatuses as $st)
-                        <option value="{{ $st }}">{{ $st }}</option>
+                    @foreach($statusOptions as $status)
+                        <option value="{{ $status }}">{{ $this->humanStatus($status) }}</option>
                     @endforeach
+                </select>
+
+                <div class="flex items-center gap-2">
+                    <button type="button"
+                            @click="advancedFilters = !advancedFilters"
+                            class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                        <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                        </svg>
+                        Gelişmiş
+                    </button>
+                    @if(count($activeFilters) > 0)
+                        <button type="button"
+                                wire:click="resetFilters"
+                                class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-100">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    @endif
+                </div>
+            </div>
+
+            {{-- Gelişmiş filtreler --}}
+            <div x-cloak x-show="advancedFilters" x-transition class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
+                <select wire:model.live="marketplaceFilter"
+                        class="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="">Tüm Pazaryerleri</option>
+                    @foreach($marketplaceOptions as $marketplace)
+                        <option value="{{ $marketplace }}">{{ $this->humanMarketplace($marketplace) }}</option>
+                    @endforeach
+                </select>
+                <select wire:model.live="storeFilter"
+                        class="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="">Tüm Mağazalar</option>
+                    @foreach($storeOptions as $store)
+                        <option value="{{ $store->id }}">{{ $store->store_name }}</option>
+                    @endforeach
+                </select>
+                <input type="date" wire:model.live="dateFrom"
+                       class="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                <input type="date" wire:model.live="dateTo"
+                       class="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                <select wire:model.live="profitStateFilter"
+                        class="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="">Kâr Durumu</option>
+                    <option value="confirmed">Kesin</option>
+                    <option value="estimated">Tahmini</option>
+                    <option value="missing">Hesaplanmadı</option>
+                </select>
+                <select wire:model.live="financialStateFilter"
+                        class="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="">Finans Akışı</option>
+                    <option value="ready">Finans geldi</option>
+                    <option value="waiting">Finans bekliyor</option>
                 </select>
             </div>
 
-            <div class="flex items-center space-x-2">
-                <button @click="showAdvanced = !showAdvanced" type="button"
-                        class="min-h-[44px] flex-1 inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition">
-                    <svg class="h-4 w-4 mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
-                    <span x-text="showAdvanced ? 'Gizle' : 'Gelişmiş'"></span>
-                </button>
-                <button wire:click="resetFilters" type="button"
-                        class="min-h-[44px] inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-red-600 bg-white hover:bg-red-50 transition"
-                        title="Filtreleri Temizle">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
+            {{-- Gelişmiş filtreler: firma + eşleşme --}}
+            <div x-cloak x-show="advancedFilters" x-transition class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
+                <select wire:model.live="legalEntityFilter"
+                        class="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="">Tüm Firmalar</option>
+                    @foreach($legalEntityOptions as $entity)
+                        <option value="{{ $entity->id }}">{{ $entity->name }}</option>
+                    @endforeach
+                </select>
+                <select wire:model.live="matchStateFilter"
+                        class="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="">Eşleşme</option>
+                    <option value="full_match">Tam eşleşti</option>
+                    <option value="needs_match">Kontrol gerekiyor</option>
+                </select>
             </div>
         </div>
 
-        <!-- Gelişmiş Filtreler -->
-        <div x-show="showAdvanced" x-collapse class="mt-3 pt-3 border-t border-gray-200">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-500 mb-1">Başlangıç Tarihi</label>
-                    <input wire:model.live="dateFrom" type="date" 
-                           class="min-h-[44px] block w-full px-3 py-2 border border-gray-300 rounded-md text-base sm:text-sm focus:ring-indigo-500 focus:border-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-500 mb-1">Bitiş Tarihi</label>
-                    <input wire:model.live="dateTo" type="date" 
-                           class="min-h-[44px] block w-full px-3 py-2 border border-gray-300 rounded-md text-base sm:text-sm focus:ring-indigo-500 focus:border-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-500 mb-1">Şehir</label>
-                    <select wire:model.live="cityFilter" class="min-h-[44px] block w-full pl-3 pr-10 py-2 border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-base sm:text-sm rounded-md">
-                        <option value="">Tüm Şehirler</option>
-                        @foreach($uniqueCities as $city)
-                            <option value="{{ $city }}">{{ $city }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-500 mb-1">Marka</label>
-                    <select wire:model.live="brandFilter" class="min-h-[44px] block w-full pl-3 pr-10 py-2 border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-base sm:text-sm rounded-md">
-                        <option value="">Tüm Markalar</option>
-                        @foreach($uniqueBrands as $brand)
-                            <option value="{{ $brand }}">{{ $brand }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-500 mb-1">Fatura Tipi</label>
-                    <select wire:model.live="corporateFilter" class="min-h-[44px] block w-full pl-3 pr-10 py-2 border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-base sm:text-sm rounded-md">
-                        <option value="">Tümü</option>
-                        <option value="Evet">Kurumsal</option>
-                        <option value="Hayır">Bireysel</option>
-                    </select>
-                </div>
+        {{-- Tablo araç çubuğu --}}
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+            <div class="flex items-center gap-3 text-sm text-slate-500">
+                <span>{{ $formatCount($orders->total()) }} sipariş</span>
+                @if(count($activeFilters) > 0)
+                    <span class="text-xs">· {{ implode(' · ', $activeFilters) }}</span>
+                @endif
+            </div>
+            <div class="flex items-center gap-2">
+                @include('livewire.partials.mp-column-toggle', ['columnDefs' => $columnDefs, 'visibleColumns' => $visibleColumns])
+
+                {{-- Toplu işlemler --}}
+                @if(config('marketplace.features.bulk_order_actions_enabled', true) || config('marketplace.features.bulk_package_actions_enabled', true))
+                    <div x-data="{ bulkOpen: false }" class="relative">
+                        <button @click="bulkOpen = !bulkOpen"
+                                type="button"
+                                class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 {{ count($selectedOrderIds) > 0 ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : '' }}">
+                            Toplu İşlem
+                            @if(count($selectedOrderIds) > 0 || count($selectedPackageIds) > 0)
+                                <span class="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+                                    {{ count($selectedOrderIds) + count($selectedPackageIds) }}
+                                </span>
+                            @endif
+                        </button>
+
+                        <div x-show="bulkOpen"
+                             @click.outside="bulkOpen = false"
+                             x-transition
+                             class="absolute right-0 top-full z-30 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+                            <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Toplu İşlemler</p>
+
+                            @if(config('marketplace.features.bulk_order_actions_enabled', true))
+                                <div class="mt-3 space-y-2">
+                                    <select wire:model.live="bulkActionType"
+                                            class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm">
+                                        <option value="">Sipariş aksiyonu seçin</option>
+                                        @foreach($this->bulkActionOptions() as $actionValue => $actionLabel)
+                                            <option value="{{ $actionValue }}">{{ $actionLabel }}</option>
+                                        @endforeach
+                                    </select>
+                                    <button type="button"
+                                            wire:click="runBulkOrderAction"
+                                            wire:loading.attr="disabled"
+                                            class="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60">
+                                        Kuyruğa al
+                                    </button>
+                                </div>
+                            @endif
+
+                            @if(config('marketplace.features.bulk_package_actions_enabled', true))
+                                <div class="mt-3 space-y-2 border-t border-slate-200 pt-3">
+                                    <select wire:model.live="bulkPackageActionType"
+                                            class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm">
+                                        <option value="">Paket aksiyonu seçin</option>
+                                        @foreach($this->bulkPackageActionOptions() as $actionValue => $actionLabel)
+                                            <option value="{{ $actionValue }}">{{ $actionLabel }}</option>
+                                        @endforeach
+                                    </select>
+                                    <button type="button"
+                                            wire:click="runBulkPackageAction"
+                                            wire:loading.attr="disabled"
+                                            class="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60">
+                                        Kuyruğa al
+                                    </button>
+                                </div>
+                            @endif
+
+                            <button type="button"
+                                    wire:click="clearSelection"
+                                    class="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                Seçimleri temizle
+                            </button>
+                        </div>
+                    </div>
+                @endif
             </div>
         </div>
-    </div>
 
-    <!-- ═══════════ SİPARİŞ LİSTESİ ═══════════ -->
-    <div x-data="{ expanded: [] }">
-
-        @forelse($orders as $order)
-            @php
-                $hasFinancial = $order->financialOrders->isNotEmpty();
-                $netProfit = $hasFinancial ? $order->total_net_profit : null;
-                $netHakedis = $hasFinancial ? $order->total_net_hakedis : null;
-                $alert = $order->financial_alert;
-                $hasCost = $order->has_cost_data;
-                $estMargin = $order->estimated_margin;
-                $estMarginPct = $order->estimated_margin_percent;
-                $estCogs = $order->estimated_cogs;
-                $estCargo = $order->estimated_cargo;
-                $estPackaging = $order->estimated_packaging;
-                $estCommission = $order->estimated_commission;
-                $estDiscount = (float) $order->items->sum('discount_amount') + (float) $order->items->sum('trendyol_discount');
-                $st = mb_strtolower($order->status ?? '');
-                $color = 'bg-gray-100 text-gray-800';
-                if(str_contains($st, 'teslim') || str_contains($st, 'tamamlandı')) $color = 'bg-green-100 text-green-800';
-                if(str_contains($st, 'iptal') || str_contains($st, 'iade')) $color = 'bg-red-100 text-red-800';
-                if(str_contains($st, 'tedarik') || str_contains($st, 'kargo')) $color = 'bg-yellow-100 text-yellow-800';
-            @endphp
-
-            <!-- ══ MOBİL KART (lg altı) ══ -->
-            <div class="lg:hidden bg-white shadow rounded-lg mb-3 overflow-hidden border border-gray-100">
-                <!-- Kart Üst: Tıklanabilir Başlık -->
-                <div class="p-3 cursor-pointer active:bg-gray-50 transition-colors"
-                     @click="expanded.includes({{ $order->id }}) ? expanded = expanded.filter(i => i !== {{ $order->id }}) : expanded.push({{ $order->id }})">
-                    <!-- Üst Satır: Sipariş No + Durum -->
-                    <div class="flex items-start justify-between gap-2">
-                        <div class="min-w-0 flex-1">
-                            <div class="flex items-center gap-2">
-                                <svg class="w-4 h-4 flex-shrink-0 text-gray-400 transform transition-transform"
-                                     :class="{ 'rotate-90 text-indigo-500': expanded.includes({{ $order->id }}) }"
-                                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                                </svg>
-                                <span class="font-semibold text-indigo-600 text-sm">{{ $order->order_number }}</span>
-                            </div>
-                            <div class="text-xs text-gray-500 mt-0.5 ml-6">{{ $order->order_date ? $order->order_date->format('d M Y - H:i') : '-' }}</div>
-                        </div>
-                        <div class="flex flex-col items-end gap-1 flex-shrink-0">
-                            <span class="px-2 py-0.5 text-xs font-semibold rounded-full {{ $color }}">
-                                {{ $order->status ?? 'Durum Yok' }}
-                            </span>
-                            @if($alert['type'])
-                                <span class="px-2 py-0.5 text-[10px] font-bold rounded-full border {{ $alert['color'] }} flex items-center gap-1">
-                                    @if($alert['type'] === 'iade')
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
-                                    @elseif($alert['type'] === 'ceza')
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-                                    @endif
-                                    {{ $alert['label'] }}
-                                </span>
-                            @endif
-                        </div>
+        {{-- ═══════════════════════════════════════════════ --}}
+        {{-- TABLO --}}
+        {{-- ═══════════════════════════════════════════════ --}}
+        <div x-data="{ expanded: [] }">
+            @if(!$hasConfiguredStores)
+                <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center">
+                    <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-xl bg-slate-900 text-white shadow-lg shadow-slate-900/10">
+                        <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7h18M6 10h12M5 13h14M8 17h8" />
+                        </svg>
                     </div>
-
-                    <!-- Orta: Müşteri + Ciro Bilgisi -->
-                    <div class="mt-2 ml-6 flex items-center justify-between gap-2">
-                        <div class="min-w-0 flex-1">
-                            <div class="font-medium text-gray-900 text-sm truncate">{{ $order->customer_name ?? 'Bilinmiyor' }}</div>
-                            <div class="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                                <svg class="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/></svg>
-                                <span class="truncate">{{ $order->customer_city }}{{ $order->customer_district ? ', ' . $order->customer_district : '' }}</span>
-                            </div>
-                        </div>
-                        <div class="text-right flex-shrink-0">
-                            <div class="font-bold text-gray-900 text-sm">₺{{ number_format($order->total_gross_amount, 2, ',', '.') }}</div>
-                            <div class="text-xs text-indigo-600 font-medium">{{ $order->items->count() }} Ürün</div>
-                        </div>
-                    </div>
-
-                    <!-- Alt: Kargo + Muhasebe + ROI (varsa) -->
-                    <div class="mt-2 ml-6 flex items-center justify-between gap-2">
-                        <span class="bg-gray-100 text-gray-700 text-[11px] px-2 py-0.5 rounded border border-gray-200">{{ $order->cargo_company ?? '-' }}</span>
-                        @if($order->is_corporate_invoice === 'Evet')
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800">Kurumsal</span>
-                        @endif
-                        <div class="flex items-center gap-2">
-                            @if($hasCost && $estMargin !== null)
-                                <span class="text-[11px] font-bold {{ $estMargin >= 0 ? 'text-emerald-600' : 'text-red-600' }} bg-emerald-50 px-1.5 py-0.5 rounded border {{ $estMargin >= 0 ? 'border-emerald-200' : 'border-red-200 bg-red-50' }}">
-                                    <svg class="w-3 h-3 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-                                    {{ $estMargin >= 0 ? '+' : '' }}₺{{ number_format($estMargin, 0, ',', '.') }}
-                                    <span class="text-[10px] font-medium {{ $estMarginPct >= 20 ? 'text-emerald-500' : ($estMarginPct >= 0 ? 'text-amber-500' : 'text-red-500') }}">({{ number_format($estMarginPct, 0) }}%)</span>
-                                </span>
-                            @endif
-                            @if($hasFinancial)
-                                <span class="text-xs font-bold {{ $netProfit >= 0 ? 'text-green-600' : 'text-red-600' }}">
-                                    {{ $netProfit >= 0 ? '+' : '' }}₺{{ number_format($netProfit, 2, ',', '.') }}
-                                </span>
-                            @endif
-                        </div>
+                    <h3 class="mt-4 text-lg font-semibold text-slate-900">Henüz mağaza bağlantısı yok</h3>
+                    <p class="mt-2 text-sm text-slate-500">İlk Trendyol mağazanızı eklediğinizde siparişler burada görünecek.</p>
+                    <div class="mt-4">
+                        <a href="{{ route('mp.integrations') }}" class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+                            Entegrasyon kurulumuna git
+                        </a>
                     </div>
                 </div>
-
-                <!-- Mobil Detay Paneli -->
-                <div x-show="expanded.includes({{ $order->id }})"
-                     x-transition:enter="transition ease-out duration-200"
-                     x-transition:enter-start="opacity-0"
-                     x-transition:enter-end="opacity-100"
-                     x-cloak
-                     class="border-t border-gray-200 bg-slate-50/50">
-                    <div class="p-3 space-y-3">
-                        @include('livewire.partials.marketplace-order-detail', ['order' => $order, 'hasFinancial' => $hasFinancial, 'netProfit' => $netProfit])
-                    </div>
+            @elseif(!$hasChannelData)
+                <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center">
+                    <h3 class="mt-4 text-lg font-semibold text-slate-900">Mağazalar hazır, veri bekleniyor</h3>
+                    <p class="mt-2 text-sm text-slate-500">İlk senkron tamamlandığında siparişler burada listelenecek.</p>
                 </div>
-            </div>
+            @else
+                {{-- Mobil kart görünümü --}}
+                <div class="space-y-3 md:hidden">
+                    @foreach($orders as $order)
+                        @php
+                            $snapshot = data_get($order, 'order_snapshot');
+                            $package = data_get($order, 'package_summary');
+                            $profitState = $order->profit_state_metric ?? ($snapshot?->profit_state ?: 'estimated');
+                            $profitValue = (float) ($order->profit_value_metric ?? ($profitState === 'confirmed' ? $snapshot?->confirmed_profit : $snapshot?->estimated_profit));
+                            $grossRevenue = (float) ($order->gross_revenue_metric ?? $snapshot?->gross_revenue);
+                            $matchRatio = (int) ($order->matched_lines_count ?? 0) . '/' . (int) ($order->item_lines_count ?? 0);
+                        @endphp
 
-            <!-- ══ DESKTOP TABLO SATIRI (lg ve üstü) ══ -->
-            {{-- Aşağıdaki desktop satırları sadece lg+ ekranda gösterilir --}}
-        @empty
-            <!-- Boş Durum (Mobil) -->
-            <div class="lg:hidden bg-white shadow rounded-lg p-8 text-center">
-                <svg class="h-12 w-12 text-gray-400 mb-3 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                </svg>
-                <span class="text-base font-medium text-gray-900 block">Kayıt Bulunamadı</span>
-                <span class="text-sm text-gray-500 mt-1 block">Lütfen detaylı sipariş Excel'inizi yukarıdan yükleyin.</span>
-            </div>
-        @endforelse
-
-        <!-- ══ DESKTOP TABLO (lg ve üstü) ══ -->
-        <div class="hidden lg:block bg-white shadow rounded-lg overflow-hidden">
-            <div class="overflow-x-auto w-full">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th scope="col" class="relative px-3 py-3 w-10"><span class="sr-only">Toggle</span></th>
-                            <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sipariş No & Tarih</th>
-                            <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Müşteri</th>
-                            <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lojistik</th>
-                            <th scope="col" class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ciro</th>
-                            <th scope="col" class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Muhasebe</th>
-                            <th scope="col" class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">ROI</th>
-                            <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Durum</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200 text-sm">
-                        @forelse($orders as $order)
-                            @php
-                                $hasFinancial = $order->financialOrders->isNotEmpty();
-                                $netProfit = $hasFinancial ? $order->total_net_profit : null;
-                                $netHakedis = $hasFinancial ? $order->total_net_hakedis : null;
-                                $alert = $order->financial_alert;
-                                $hasCost = $order->has_cost_data;
-                                $estMargin = $order->estimated_margin;
-                                $estMarginPct = $order->estimated_margin_percent;
-                                $estCogs = $order->estimated_cogs;
-                                $estCargo = $order->estimated_cargo;
-                                $estPackaging = $order->estimated_packaging;
-                                $estCommission = $order->estimated_commission;
-                                $estDiscount = (float) $order->items->sum('discount_amount') + (float) $order->items->sum('trendyol_discount');
-                                $st = mb_strtolower($order->status ?? '');
-                                $color = 'bg-gray-100 text-gray-800';
-                                if(str_contains($st, 'teslim') || str_contains($st, 'tamamlandı')) $color = 'bg-green-100 text-green-800';
-                                if(str_contains($st, 'iptal') || str_contains($st, 'iade')) $color = 'bg-red-100 text-red-800';
-                                if(str_contains($st, 'tedarik') || str_contains($st, 'kargo')) $color = 'bg-yellow-100 text-yellow-800';
-                            @endphp
-                            <!-- MASTER ROW -->
-                            <tr class="hover:bg-gray-50 cursor-pointer transition-colors" @click="expanded.includes({{ $order->id }}) ? expanded = expanded.filter(i => i !== {{ $order->id }}) : expanded.push({{ $order->id }})">
-                                <td class="px-3 py-4 whitespace-nowrap text-center text-gray-500">
-                                    <svg class="w-5 h-5 inline-block transform transition-transform"
-                                         :class="{ 'rotate-90 text-indigo-500': expanded.includes({{ $order->id }}) }"
-                                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                                    </svg>
-                                </td>
-                                <td class="px-3 py-4 whitespace-nowrap">
-                                    <div class="font-medium text-indigo-600">{{ $order->order_number }}</div>
-                                    @if($order->package_number)
-                                        <div class="text-gray-400 text-[10px] font-mono">PKT: {{ $order->package_number }}</div>
-                                    @endif
-                                    <div class="text-gray-500 text-xs mt-0.5">{{ $order->order_date ? $order->order_date->format('d M Y - H:i') : '-' }}</div>
-                                </td>
-                                <td class="px-3 py-4">
-                                    <div class="font-medium text-gray-900">{{ $order->customer_name ?? 'Bilinmiyor' }}</div>
-                                    <div class="text-gray-500 flex items-center space-x-1 mt-0.5 text-xs">
-                                        <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                                        <span>{{ $order->customer_city }}{{ $order->customer_district ? ', ' . $order->customer_district : '' }}</span>
-                                    </div>
-                                    @if($order->is_corporate_invoice === 'Evet')
-                                        <span class="mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800">Kurumsal</span>
-                                    @endif
-                                </td>
-                                <td class="px-3 py-4">
-                                    <span class="bg-gray-100 text-gray-800 text-xs px-2 py-0.5 rounded border border-gray-200">{{ $order->cargo_company ?? '-' }}</span>
-                                    <div class="text-gray-500 text-xs mt-1 truncate max-w-[140px]" title="{{ $order->tracking_number }}">
-                                        {{ $order->tracking_number ?? 'Takip No Yok' }}
-                                    </div>
-                                    @if($order->cargo_delivery_date)
-                                        <div class="text-[10px] text-gray-400 mt-0.5">Kargoya: {{ $order->cargo_delivery_date->format('d/m') }}</div>
-                                    @endif
-                                </td>
-                                <td class="px-3 py-4 whitespace-nowrap text-right">
-                                    <div class="font-semibold text-gray-900">₺{{ number_format($order->total_gross_amount, 2, ',', '.') }}</div>
-                                    @if($order->total_discount > 0)
-                                        <div class="text-red-500 text-xs">-₺{{ number_format($order->total_discount, 2, ',', '.') }}</div>
-                                    @endif
-                                    <div class="text-indigo-600 text-xs font-semibold mt-0.5">
-                                        {{ $order->items->count() }} Ürün
-                                    </div>
-                                </td>
-                                <td class="px-3 py-4 whitespace-nowrap text-right">
-                                    @if($hasFinancial)
-                                        <div class="text-xs text-gray-500">Hakediş</div>
-                                        <div class="font-semibold text-gray-900 text-sm">₺{{ number_format($netHakedis, 2, ',', '.') }}</div>
-                                        <div class="mt-0.5 {{ $netProfit >= 0 ? 'text-green-600' : 'text-red-600' }} text-xs font-bold">
-                                            {{ $netProfit >= 0 ? '+' : '' }}₺{{ number_format($netProfit, 2, ',', '.') }}
+                        <article class="rounded-xl border border-slate-200 bg-white shadow-sm">
+                            <div class="flex items-center justify-between border-b border-slate-200 px-4 pt-4 pb-3">
+                                <label class="inline-flex items-center gap-2 text-sm text-slate-600">
+                                    <input type="checkbox"
+                                           wire:model.live="selectedOrderIds"
+                                           value="{{ $order->id }}"
+                                           class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                    <span>Seç</span>
+                                </label>
+                                <span class="text-xs text-slate-400">#{{ $order->id }}</span>
+                            </div>
+                            <button type="button"
+                                    class="w-full px-4 pb-4 text-left"
+                                    @click="expanded.includes({{ $order->id }}) ? expanded = expanded.filter(i => i !== {{ $order->id }}) : expanded.push({{ $order->id }})">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <svg class="h-4 w-4 shrink-0 text-slate-400 transition"
+                                                 :class="{ 'rotate-90 text-slate-900': expanded.includes({{ $order->id }}) }"
+                                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                            </svg>
+                                            <p class="truncate text-sm font-semibold text-slate-900">{{ $order->order_number }}</p>
                                         </div>
-                                        @if($alert['type'])
-                                            <span class="mt-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold border {{ $alert['color'] }}">
-                                                @if($alert['type'] === 'iade')
-                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
-                                                @elseif($alert['type'] === 'ceza')
-                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-                                                @else
-                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                                        <p class="mt-1 truncate text-xs text-slate-500">{{ $order->store_name_alias }} · {{ $this->humanMarketplace($order->marketplace_alias) }}</p>
+                                        <p class="mt-2 text-sm font-medium text-slate-900">{{ $order->customer_name ?: 'Müşteri bilgisi yok' }}</p>
+                                        <p class="mt-1 text-xs text-slate-500">{{ $order->ordered_at?->format('d.m.Y H:i') ?: '-' }}</p>
+                                    </div>
+
+                                    <div class="text-right">
+                                        <x-zolm.status-badge :tone="$this->statusTone($order->order_status)">
+                                            {{ $this->humanStatus($order->order_status) }}
+                                        </x-zolm.status-badge>
+                                        <p class="mt-3 text-base font-semibold text-slate-900">{{ $formatMoney($grossRevenue) }}</p>
+                                        <p class="mt-1 text-sm font-semibold {{ $profitValue >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $formatMoney($profitValue) }}</p>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 grid grid-cols-2 gap-2">
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+                                        <p class="text-[10px] uppercase tracking-[0.16em] text-slate-500">Kâr durumu</p>
+                                        <p class="mt-1 text-sm font-medium text-slate-900">{{ $this->profitStateLabel($profitState) }}</p>
+                                    </div>
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2">
+                                        <p class="text-[10px] uppercase tracking-[0.16em] text-slate-500">Eşleşme</p>
+                                        <p class="mt-1 text-sm font-medium text-slate-900">{{ $matchRatio }}</p>
+                                    </div>
+                                </div>
+
+                                @if($package)
+                                    <p class="mt-3 text-xs text-slate-500">
+                                        {{ $package->cargo_company ?: 'Kargo yok' }}
+                                        @if($package->cargo_tracking_number)
+                                            · {{ $package->cargo_tracking_number }}
+                                        @endif
+                                    </p>
+                                @endif
+                            </button>
+
+                            <div x-show="expanded.includes({{ $order->id }})"
+                                 x-transition
+                                 x-cloak
+                                 class="border-t border-slate-200 bg-slate-50/60 p-4">
+                                @include('livewire.partials.marketplace-order-v2-detail', ['order' => $order])
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+
+                {{-- Desktop tablo --}}
+                <div class="hidden md:block overflow-hidden rounded-lg border border-slate-200">
+                    @php
+                        $columnMeta = [
+                            'siparis' => ['label' => 'Sipariş', 'width' => '190px'],
+                            'magaza' => ['label' => 'Mağaza', 'width' => '180px'],
+                            'musteri' => ['label' => 'Müşteri', 'width' => '220px'],
+                            'lojistik' => ['label' => 'Lojistik', 'width' => '170px'],
+                            'ciro' => ['label' => 'Ciro', 'width' => '140px'],
+                            'kar' => ['label' => 'Kârlılık', 'width' => '150px'],
+                            'durum' => ['label' => 'Durum', 'width' => '130px'],
+                        ];
+                    @endphp
+
+                    <div class="overflow-x-auto -mx-4 lg:-mx-6 px-4 lg:px-6" x-data="columnResize()">
+                        <table class="orders-v2-table min-w-[1000px] w-full divide-y divide-slate-200 table-fixed">
+                            <thead class="bg-slate-50 text-slate-500">
+                                <tr>
+                                    <th class="w-16 px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]">
+                                        <label class="inline-flex items-center gap-2 text-[11px] text-slate-500">
+                                            <input type="checkbox"
+                                                   wire:model.live="selectPage"
+                                                   class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                            <span>Seç</span>
+                                        </label>
+                                    </th>
+                                    @foreach($columnMeta as $columnKey => $meta)
+                                        @if(in_array($columnKey, $visibleColumns, true))
+                                            <th class="sortable-th relative px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]"
+                                                style="width: {{ $meta['width'] }}; min-width: {{ $meta['width'] }};"
+                                                wire:click="sortTable('{{ $columnKey }}')">
+                                                <div class="flex items-center justify-between gap-2">
+                                                    <span>{{ $meta['label'] }}</span>
+                                                    <span class="text-[10px] {{ ($sortableColumns[$columnKey] ?? null) === $sortField ? 'text-slate-700' : 'text-slate-300' }}">{{ $sortIcon($columnKey) }}</span>
+                                                </div>
+                                                <span class="col-resize-handle" @mousedown.prevent="startResize($event, $el.parentElement)"></span>
+                                            </th>
+                                        @endif
+                                    @endforeach
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200 bg-white text-sm text-slate-700">
+                                @foreach($orders as $order)
+                                    @php
+                                        $snapshot = data_get($order, 'order_snapshot');
+                                        $package = data_get($order, 'package_summary');
+                                        $profitState = $order->profit_state_metric ?? ($snapshot?->profit_state ?: 'estimated');
+                                        $profitValue = (float) ($order->profit_value_metric ?? ($profitState === 'confirmed' ? $snapshot?->confirmed_profit : $snapshot?->estimated_profit));
+                                        $grossRevenue = (float) ($order->gross_revenue_metric ?? $snapshot?->gross_revenue);
+                                        $matchedLines = (int) ($order->matched_lines_count ?? 0);
+                                        $itemLines = (int) ($order->item_lines_count ?? 0);
+                                    @endphp
+
+                                    <tr class="transition hover:bg-slate-50/80">
+                                        <td class="px-3 py-4 align-top">
+                                            <div class="flex items-center gap-2">
+                                                <input type="checkbox"
+                                                       wire:model.live="selectedOrderIds"
+                                                       value="{{ $order->id }}"
+                                                       class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                                <button type="button"
+                                                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                                                        @click="expanded.includes({{ $order->id }}) ? expanded = expanded.filter(i => i !== {{ $order->id }}) : expanded.push({{ $order->id }})">
+                                                    <svg class="h-4 w-4 transition"
+                                                         :class="{ 'rotate-90': expanded.includes({{ $order->id }}) }"
+                                                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </td>
+
+                                        @if(in_array('siparis', $visibleColumns, true))
+                                            <td class="px-3 py-4 align-top">
+                                                <div class="font-semibold text-slate-900">{{ $order->order_number }}</div>
+                                                <div class="mt-1 text-xs text-slate-500">{{ $order->ordered_at?->format('d.m.Y H:i') ?: '-' }}</div>
+                                                @if($package?->package_number)
+                                                    <div class="mt-1 text-[11px] font-mono text-slate-400">PKT {{ $package->package_number }}</div>
                                                 @endif
-                                                {{ $alert['label'] }}
-                                            </span>
+                                            </td>
                                         @endif
-                                    @else
-                                        <span class="text-xs text-gray-400 italic">Veri yok</span>
-                                    @endif
-                                </td>
-                                <td class="px-3 py-4 whitespace-nowrap text-right">
-                                    @if($hasCost && $estMargin !== null)
-                                        <div class="text-[10px] text-gray-500">Maliyet</div>
-                                        <div class="text-xs text-red-500">₺{{ number_format($estCogs, 0, ',', '.') }}</div>
-                                        @if($estDiscount > 0)
-                                            <div class="text-[10px] text-rose-500">İnd: ₺{{ number_format($estDiscount, 0, ',', '.') }}</div>
-                                        @endif
-                                        @if($estCargo > 0)
-                                            <div class="text-[10px] text-orange-500">Kargo: ₺{{ number_format($estCargo, 0, ',', '.') }}</div>
-                                        @endif
-                                        @if($estCommission > 0)
-                                            <div class="text-[10px] text-rose-500">Kom: ₺{{ number_format($estCommission, 0, ',', '.') }}</div>
-                                        @endif
-                                        <div class="mt-0.5 text-xs font-bold {{ $estMargin >= 0 ? 'text-emerald-600' : 'text-red-600' }}">
-                                            {{ $estMargin >= 0 ? '+' : '' }}₺{{ number_format($estMargin, 0, ',', '.') }}
-                                            <span class="text-[10px] font-medium {{ $estMarginPct >= 20 ? 'text-emerald-500' : ($estMarginPct >= 0 ? 'text-amber-500' : 'text-red-500') }}">(%{{ number_format($estMarginPct, 0) }})</span>
-                                        </div>
-                                    @else
-                                        <span class="text-[10px] text-gray-400 italic">Maliyet yok</span>
-                                    @endif
-                                </td>
-                                <td class="px-3 py-4 whitespace-nowrap">
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $color }}">
-                                        {{ $order->status ?? 'Durum Yok' }}
-                                    </span>
-                                    @if($order->alt_delivery_status)
-                                        <div class="text-[10px] text-gray-400 mt-0.5 truncate max-w-[100px]" title="{{ $order->alt_delivery_status }}">{{ $order->alt_delivery_status }}</div>
-                                    @endif
-                                </td>
-                            </tr>
 
-                            <!-- ═══════════ DETAY PANELİ (Desktop) ═══════════ -->
-                            <tr x-show="expanded.includes({{ $order->id }})" class="bg-slate-50/50"
-                                x-transition:enter="transition ease-out duration-200"
-                                x-transition:enter-start="opacity-0 -translate-y-2"
-                                x-transition:enter-end="opacity-100 translate-y-0"
-                                x-cloak>
-                                <td colspan="8" class="p-0 border-b border-gray-200">
-                                    <div class="p-4 pl-14 space-y-4">
-                                        @include('livewire.partials.marketplace-order-detail', ['order' => $order, 'hasFinancial' => $hasFinancial, 'netProfit' => $netProfit])
-                                    </div>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="8" class="px-6 py-10 text-center">
-                                    <div class="flex flex-col items-center">
-                                        <svg class="h-12 w-12 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                        </svg>
-                                        <span class="text-base font-medium text-gray-900">Kayıt Bulunamadı</span>
-                                        <span class="text-sm text-gray-500 mt-1">Lütfen detaylı sipariş Excel'inizi yukarıdan yükleyin.</span>
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
+                                        @if(in_array('magaza', $visibleColumns, true))
+                                            <td class="px-3 py-4 align-top">
+                                                <div class="font-medium text-slate-900">{{ $order->store_name_alias }}</div>
+                                                <div class="mt-1 text-xs text-slate-500">{{ $this->humanMarketplace($order->marketplace_alias) }}</div>
+                                                <div class="mt-2 text-[11px] text-slate-400">{{ $order->legal_entity_name_alias }}</div>
+                                            </td>
+                                        @endif
+
+                                        @if(in_array('musteri', $visibleColumns, true))
+                                            <td class="px-3 py-4 align-top">
+                                                <div class="font-medium text-slate-900">{{ $order->customer_name ?: 'Müşteri bilgisi yok' }}</div>
+                                                <div class="mt-1 text-xs text-slate-500 truncate">{{ $order->shipment_city ?: '-' }}{{ $order->shipment_district ? ', ' . $order->shipment_district : '' }}</div>
+                                                @if($order->customer_phone)
+                                                    <div class="mt-1 text-[11px] text-slate-400">{{ $order->customer_phone }}</div>
+                                                @endif
+                                            </td>
+                                        @endif
+
+                                        @if(in_array('lojistik', $visibleColumns, true))
+                                            <td class="px-3 py-4 align-top">
+                                                <div class="font-medium text-slate-900">{{ $package?->cargo_company ?: 'Kargo bilgisi bekleniyor' }}</div>
+                                                <div class="mt-1 text-xs text-slate-500 truncate">{{ $package?->cargo_tracking_number ?: 'Takip no yok' }}</div>
+                                                <div class="mt-2 flex items-center gap-2 text-[11px] text-slate-400">
+                                                    <span>{{ (int) ($order->financial_event_count ?? 0) }} finans</span>
+                                                    <span>·</span>
+                                                    <span>{{ $matchedLines }}/{{ $itemLines }} eşleşti</span>
+                                                </div>
+                                            </td>
+                                        @endif
+
+                                        @if(in_array('ciro', $visibleColumns, true))
+                                            <td class="px-3 py-4 align-top text-right">
+                                                <div class="font-semibold text-slate-900">{{ $formatMoney($grossRevenue) }}</div>
+                                                <div class="mt-1 text-xs text-slate-500">{{ $formatCount($order->total_quantity ?? 0) }} adet</div>
+                                                @if((float) ($order->total_discount_amount ?? 0) > 0)
+                                                    <div class="mt-1 text-[11px] text-rose-500">İnd. {{ $formatMoney($order->total_discount_amount) }}</div>
+                                                @endif
+                                            </td>
+                                        @endif
+
+                                        @if(in_array('kar', $visibleColumns, true))
+                                            <td class="px-3 py-4 align-top text-right">
+                                                <div class="font-semibold {{ $profitValue >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $formatMoney($profitValue) }}</div>
+                                                <div class="mt-1 text-xs text-slate-500">%{{ number_format((float) ($order->margin_percent_metric ?? 0), 1, ',', '.') }}</div>
+                                                <div class="mt-2">
+                                                    <x-zolm.status-badge :tone="$this->profitStateTone($profitState)">
+                                                        {{ $this->profitStateLabel($profitState) }}
+                                                    </x-zolm.status-badge>
+                                                </div>
+                                            </td>
+                                        @endif
+
+                                        @if(in_array('durum', $visibleColumns, true))
+                                            <td class="px-3 py-4 align-top">
+                                                <x-zolm.status-badge :tone="$this->statusTone($order->order_status)">
+                                                    {{ $this->humanStatus($order->order_status) }}
+                                                </x-zolm.status-badge>
+                                                <div class="mt-2 text-xs text-slate-500">
+                                                    {{ (int) ($order->financial_event_count ?? 0) > 0 ? 'Finans geldi' : 'Finans bekleniyor' }}
+                                                </div>
+                                            </td>
+                                        @endif
+                                    </tr>
+
+                                    <tr x-show="expanded.includes({{ $order->id }})" x-cloak x-transition class="expanded-row bg-slate-50/60">
+                                        <td colspan="{{ count($visibleColumns) + 1 }}" class="p-0">
+                                            <div class="px-4 py-4 lg:px-6 w-full max-w-full overflow-hidden">
+                                                @include('livewire.partials.marketplace-order-v2-detail', ['order' => $order])
+                                            </div>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {{-- Pagination --}}
+                @include('livewire.partials.mp-pagination-bar', ['paginator' => $orders])
+            @endif
         </div>
+    </section>
 
-        <!-- Pagination -->
-        @if($orders->hasPages())
-            <div class="px-4 py-3 border-t border-gray-200 bg-white rounded-b-lg sm:px-6 mt-0 lg:mt-0">
-                {{ $orders->links() }}
-            </div>
-        @endif
-    </div>
+    {{-- TABLO STİLLERİ --}}
+    <style>
+        .orders-v2-table {
+            table-layout: fixed;
+            width: 100%;
+        }
+        .orders-v2-table th, .orders-v2-table tbody > tr:not(.expanded-row) > td {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .orders-v2-table tbody > tr.expanded-row > td {
+            white-space: normal;
+        }
+        .col-resize-handle {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 5px;
+            cursor: col-resize;
+            user-select: none;
+        }
+        .col-resize-handle:hover,
+        .col-resize-handle:active {
+            background-color: #cbd5e1;
+        }
+        .sortable-th {
+            cursor: pointer;
+            user-select: none;
+        }
+        .sortable-th:hover {
+            background-color: #f1f5f9;
+        }
+    </style>
 
+    {{-- Column Resize Alpine.js Component --}}
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('columnResize', () => ({
+                resizing: false,
+                startX: 0,
+                startWidth: 0,
+                currentTh: null,
+                handle: null,
+
+                startResize(e, th) {
+                    this.resizing = true;
+                    this.startX = e.pageX;
+                    this.currentTh = th;
+                    this.startWidth = th.offsetWidth;
+                    this.handle = e.target;
+                    this.handle.classList.add('active');
+
+                    const onMouseMove = (ev) => {
+                        if (!this.resizing) return;
+                        const diff = ev.pageX - this.startX;
+                        const newWidth = Math.max(40, this.startWidth + diff);
+                        this.currentTh.style.width = newWidth + 'px';
+                        this.currentTh.style.minWidth = newWidth + 'px';
+                    };
+
+                    const onMouseUp = () => {
+                        this.resizing = false;
+                        if (this.handle) this.handle.classList.remove('active');
+                        this.currentTh = null;
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                    };
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                }
+            }));
+        });
+    </script>
 </div>
