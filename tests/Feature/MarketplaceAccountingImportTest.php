@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Livewire\MarketplaceAccounting;
+use App\Http\Middleware\AdminMiddleware;
+use App\Models\MpAccountingSetting;
 use App\Models\MpInvoice;
 use App\Models\MpAuditLog;
 use App\Models\MpOrder;
@@ -20,6 +23,7 @@ use App\Services\UnitEconomicsService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Livewire\Livewire;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
@@ -790,7 +794,8 @@ class MarketplaceAccountingImportTest extends TestCase
 
         $result = $this->runSingleAuditRule($period, 'checkEarsivReminder');
 
-        $this->assertSame(0, $result['rules_run']['checkEarsivReminder']);
+        $this->assertArrayNotHasKey('checkEarsivReminder', $result['rules_run']);
+        $this->assertContains('checkEarsivReminder', $result['rules_skipped']);
         $this->assertDatabaseMissing('mp_audit_logs', [
             'period_id' => $period->id,
             'rule_code' => 'EARSIV_UYARI',
@@ -806,6 +811,7 @@ class MarketplaceAccountingImportTest extends TestCase
 
         MpProduct::create([
             'user_id' => $user->id,
+            'barcode' => 'CMP-BC-1',
             'stock_code' => 'CMP-SKU-1',
             'product_name' => 'Kampanya Test Urunu',
             'cogs' => 60,
@@ -835,6 +841,49 @@ class MarketplaceAccountingImportTest extends TestCase
             'period_id' => $period->id,
             'rule_code' => 'KAMPANYA_ZARAR',
         ]);
+    }
+
+    public function test_accounting_tabs_render_selected_tab_content(): void
+    {
+        $user = User::factory()->create();
+        $this->createPeriod($user, 2025, 12);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceAccounting::class)
+            ->assertSet('activeTab', 'dashboard')
+            ->set('activeTab', 'audit')
+            ->assertSet('activeTab', 'audit')
+            ->assertSee('Denetim Kuralları');
+    }
+
+    public function test_accounting_page_can_open_selected_tab_from_query_string(): void
+    {
+        $user = User::factory()->create();
+        $this->createPeriod($user, 2025, 12);
+
+        $response = $this->withoutMiddleware(AdminMiddleware::class)
+            ->actingAs($user)
+            ->get(route('marketplace-accounting', ['tab' => 'audit']));
+
+        $response->assertOk();
+        $response->assertSee('Denetim Kuralları');
+    }
+
+    public function test_accounting_settings_can_persist_help_tip_visibility(): void
+    {
+        $user = User::factory()->create();
+        $this->createPeriod($user, 2025, 12);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceAccounting::class)
+            ->set('settingsHelpTipsEnabled', false)
+            ->call('saveSettings');
+
+        $settings = MpAccountingSetting::where('user_id', $user->id)->firstOrFail();
+
+        $this->assertFalse((bool) data_get($settings->settings, 'ui.help_tips_enabled', true));
     }
 
     private function createPeriod(User $user, int $year, int $month): MpPeriod

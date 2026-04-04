@@ -15,22 +15,24 @@ class MpOrder extends Model
     protected ?MpProduct $resolvedProductCache = null;
 
     protected $fillable = [
-        'period_id', 'order_number', 'barcode', 'stock_code',
+        'period_id', 'store_id', 'legal_entity_id', 'order_number', 'barcode', 'stock_code',
         'product_name', 'quantity',
         'order_date', 'delivery_date', 'payment_date', 'status',
+        'source_marketplace',
         'list_price', 'sale_price', 'gross_amount', 'discount_amount', 'campaign_discount',
         'commission_rate', 'commission_amount', 'commission_tax',
         'cargo_company', 'cargo_desi', 'cargo_amount', 'cargo_tax',
         'service_fee', 'withholding_tax', 'net_hakedis',
         'product_vat_rate', 'cogs_at_time', 'packaging_cost_at_time', 'own_cargo_cost_at_time',
         'calculated_net_profit', 'is_flagged', 'is_reconciled', 'raw_data',
-        'erp_pushed_at', 'erp_status', 'erp_response',
+        'erp_pushed_at', 'erp_status', 'erp_response', 'projected_at',
     ];
 
     protected $casts = [
         'order_date'              => 'datetime',
         'delivery_date'           => 'datetime',
         'payment_date'            => 'date',
+        'projected_at'            => 'datetime',
         'quantity'                => 'integer',
         'list_price'              => 'decimal:2',
         'sale_price'              => 'decimal:2',
@@ -62,6 +64,16 @@ class MpOrder extends Model
     public function period(): BelongsTo
     {
         return $this->belongsTo(MpPeriod::class, 'period_id');
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(MarketplaceStore::class, 'store_id');
+    }
+
+    public function legalEntity(): BelongsTo
+    {
+        return $this->belongsTo(LegalEntity::class, 'legal_entity_id');
     }
 
     public function operationalOrder(): BelongsTo

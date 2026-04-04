@@ -7,6 +7,7 @@ use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 use Livewire\Attributes\Validate;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Url;
 use App\Models\MpPeriod;
 use App\Models\MpOrder;
 use App\Models\MpTransaction;
@@ -29,6 +30,7 @@ class MarketplaceAccounting extends Component
     use WithFileUploads, WithPagination;
 
     // ─── State ──────────────────────────────────────────────────
+    #[Url(as: 'tab', except: 'dashboard')]
     public string $activeTab = 'dashboard';
     public ?int $selectedPeriodId = null;
     public int $selectedYear;
@@ -154,6 +156,7 @@ class MarketplaceAccounting extends Component
 
     // Ayar UI State
     public string $settingsActiveSection = '';
+    public bool $settingsHelpTipsEnabled = true;
 
     // ERP Settings
     public string $erpProvider = '';
@@ -208,9 +211,9 @@ class MarketplaceAccounting extends Component
         'hakedis'  => 'Hakediş',
         'komisyon' => 'Komisyon',
         'kargo'    => 'Kargo',
-        'cogs'     => 'COGS',
+        'cogs'     => 'Maliyet',
         'net_kar'  => 'Net Kâr',
-        'margin'   => 'Margin',
+        'margin'   => 'Marj',
         'detay'    => 'Detay',
     ];
 
@@ -258,6 +261,11 @@ class MarketplaceAccounting extends Component
 
         $this->loadSettings();
 
+        $requestedTab = request()->query('tab');
+        if (is_string($requestedTab) && array_key_exists($requestedTab, $this->tabs)) {
+            $this->activeTab = $requestedTab;
+        }
+
         if (!array_key_exists($this->activeTab, $this->tabs)) {
             $this->activeTab = 'dashboard';
         }
@@ -285,7 +293,7 @@ class MarketplaceAccounting extends Component
                 'label' => 'Siparişler',
             ],
             'settings' => [
-                'label' => 'Ayarlar',
+                'label' => 'Muhasebe Ayarları',
             ],
         ];
     }
@@ -397,6 +405,7 @@ class MarketplaceAccounting extends Component
 
         // UI — Kolon Görünürlüğü
         $this->visibleColumns = (array) ($all['ui']['visible_columns'] ?? ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay']);
+        $this->settingsHelpTipsEnabled = (bool) ($all['ui']['help_tips_enabled'] ?? true);
 
         // Desi fiyatlarını MpFinancialRule tablosundan yükle
         $this->loadDesiPrices();
@@ -530,6 +539,7 @@ class MarketplaceAccounting extends Component
             ],
             'ui' => [
                 'visible_columns' => $this->visibleColumns,
+                'help_tips_enabled' => (bool) $this->settingsHelpTipsEnabled,
             ],
         ]);
 
@@ -1228,7 +1238,7 @@ class MarketplaceAccounting extends Component
         $setting = \App\Models\MpErpSetting::where('user_id', Auth::id())->first();
 
         if (!$setting || !$setting->webhook_url || !$setting->is_active) {
-            session()->flash('error_orders', 'ERP ayarlarına (Tab: Ayarlar) girip Webhook URL tanımlamalısınız ve entegrasyonu aktif etmelisiniz.');
+            session()->flash('error_orders', 'ERP ayarlarına (Tab: Muhasebe Ayarları) girip Webhook URL tanımlamalısınız ve entegrasyonu aktif etmelisiniz.');
             return;
         }
 
@@ -1418,7 +1428,7 @@ class MarketplaceAccounting extends Component
         unset($this->profitData, $this->dashboardStats);
 
         session()->flash('import_success', sprintf(
-            '💰 COGS Senkronizasyonu: %d sipariş güncellendi, %d eşleşme bulunamadı, %d ürünün COGS\'u tanımsız.',
+            '💰 Maliyet Senkronizasyonu: %d sipariş güncellendi, %d eşleşme bulunamadı, %d ürünün maliyeti tanımsız.',
             $updated,
             $notFound,
             $skipped

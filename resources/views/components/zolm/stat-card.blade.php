@@ -2,6 +2,12 @@
     'label' => null,
     'value' => null,
     'description' => null,
+    'helpTitle' => null,
+    'helpSummary' => null,
+    'helpSource' => null,
+    'helpRefresh' => null,
+    'helpImpact' => null,
+    'helpPosition' => 'right',
     'tone' => 'default',
     'variant' => 'default',
     'size' => 'default',
@@ -126,7 +132,19 @@
 
             <div class="{{ $hasIcon ? 'ml-3' : '' }} min-w-0 flex-1">
                 @if($label)
-                    <p class="{{ $labelClasses }}">{{ $label }}</p>
+                    <div class="flex items-center gap-1.5">
+                        <p class="{{ $labelClasses }}">{{ $label }}</p>
+                        @if($helpTitle)
+                            <x-zolm.help-tip
+                                :title="$helpTitle"
+                                :summary="$helpSummary"
+                                :source="$helpSource"
+                                :refresh="$helpRefresh"
+                                :impact="$helpImpact"
+                                :position="$helpPosition"
+                            />
+                        @endif
+                    </div>
                 @endif
 
                 @if(!is_null($value))
@@ -146,13 +164,39 @@
         </div>
     @elseif($variant === 'soft')
         <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5 min-w-0">
+                @if($label)
+                    <p class="{{ $labelClasses }}">{{ $label }}</p>
+                @endif
+                @if($helpTitle)
+                    <x-zolm.help-tip
+                        :title="$helpTitle"
+                        :summary="$helpSummary"
+                        :source="$helpSource"
+                        :refresh="$helpRefresh"
+                        :impact="$helpImpact"
+                        :position="$helpPosition"
+                    />
+                @endif
+            </div>
+            <span class="{{ $size === 'compact' ? 'h-1.5 w-1.5' : 'h-2 w-2' }} shrink-0 rounded-full {{ $dotClasses }}"></span>
+        </div>
+    @elseif($label || $helpTitle)
+        <div class="flex items-center gap-1.5">
             @if($label)
                 <p class="{{ $labelClasses }}">{{ $label }}</p>
             @endif
-            <span class="{{ $size === 'compact' ? 'h-1.5 w-1.5' : 'h-2 w-2' }} shrink-0 rounded-full {{ $dotClasses }}"></span>
+            @if($helpTitle)
+                <x-zolm.help-tip
+                    :title="$helpTitle"
+                    :summary="$helpSummary"
+                    :source="$helpSource"
+                    :refresh="$helpRefresh"
+                    :impact="$helpImpact"
+                    :position="$helpPosition"
+                />
+            @endif
         </div>
-    @elseif($label)
-        <p class="{{ $labelClasses }}">{{ $label }}</p>
     @endif
 
     @unless($variant === 'orders')

@@ -286,7 +286,7 @@
                 @else
                 <div class="mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-700 flex items-start gap-2">
                     <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    <span>Kendi kargo <strong>aktif</strong>. Pazaryeri Ürünlerim'de tanımlı kargo maliyeti (ürün başına) sipariş kâr hesaplarına ve <strong>Kargo Maliyeti Aşımı</strong> denetimine dahil edilir. <strong>COGS Senkronize Et</strong> butonuyla mevcut siparişlere de uygulanır.</span>
+                    <span>Kendi kargo <strong>aktif</strong>. Pazaryeri Ürünlerim'de tanımlı kargo maliyeti (ürün başına) sipariş kâr hesaplarına ve <strong>Kargo Maliyeti Aşımı</strong> denetimine dahil edilir. <strong>Maliyetleri Senkronize Et</strong> butonuyla mevcut siparişlere de uygulanır.</span>
                 </div>
                 @endif
             </div>
@@ -678,6 +678,42 @@
                         <input type="number" step="0.01" wire:model="settingsInvoiceVatDivisor" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg text-sm">
                     </div>
                     <p class="text-xs text-gray-400">KDV dahil tutarı matrah çıkarmak için bölen. %20 KDV → 1.20</p>
+                </div>
+            </div>
+        </div>
+        @endif
+    </div>
+
+    {{-- ═══════════════ BÖLÜM 6B: ARAYÜZ & YARDIM ═══════════════ --}}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <button wire:click="toggleSettingsSection('ui_help')" type="button"
+                class="w-full px-6 py-4 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white hover:from-gray-100 transition-all">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🧭</span>
+                <div class="text-left">
+                    <h3 class="text-base font-bold text-gray-900">Genel Arayüz Ayarları</h3>
+                    <p class="text-xs text-gray-500">Tooltip ve uygulama genelindeki tercihler artık ayrı ayar modülünde</p>
+                </div>
+            </div>
+            <svg class="w-5 h-5 text-gray-400 transition-transform {{ $settingsActiveSection === 'ui_help' ? 'rotate-180' : '' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+        @if($settingsActiveSection === 'ui_help')
+        <div class="p-6 border-t border-gray-100 space-y-5">
+            <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div class="flex items-start gap-4">
+                        <div class="text-2xl">{{ $settingsHelpTipsEnabled ? '💡' : '🙈' }}</div>
+                        <div>
+                            <p class="font-bold text-gray-900 text-sm">Bilgilendirici yardım ipuçları {{ $settingsHelpTipsEnabled ? 'aktif' : 'kapalı' }}</p>
+                            <p class="text-xs text-gray-500 mt-1 leading-relaxed">
+                                Bu tercih artık muhasebe sekmesinden bağımsız, tüm pazaryeri modüllerini etkileyen ayrı bir ayar ekranından yönetiliyor.
+                            </p>
+                        </div>
+                    </div>
+                    <a href="{{ route('mp.settings') }}"
+                       class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
+                        Genel ayarlara git
+                    </a>
                 </div>
             </div>
         </div>

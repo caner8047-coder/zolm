@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 class MpOperationalOrder extends Model
 {
     protected $fillable = [
+        'store_id', 'legal_entity_id',
         'order_number', 'package_number', 'order_date', 'delivery_date',
+        'source_marketplace',
         'deadline_date', 'cargo_delivery_date', 'invoice_date',
         'customer_name', 'customer_city', 'customer_district', 'customer_address', 'customer_phone',
         'billing_address', 'billing_name',
@@ -16,11 +18,12 @@ class MpOperationalOrder extends Model
         'company_name', 'tax_office', 'tax_number',
         'cargo_company', 'tracking_number', 'cargo_code', 'status',
         'alt_delivery_status', 'second_delivery_status', 'second_tracking_number',
-        'invoice_number', 'is_corporate_invoice', 'is_invoiced',
+        'invoice_number', 'is_corporate_invoice', 'is_invoiced', 'projected_at',
         'total_gross_amount', 'total_discount',
     ];
 
     protected $casts = [
+        'projected_at'         => 'datetime',
         'order_date'          => 'datetime',
         'delivery_date'       => 'datetime',
         'deadline_date'       => 'datetime',
@@ -35,6 +38,16 @@ class MpOperationalOrder extends Model
     public function items()
     {
         return $this->hasMany(MpOperationalOrderItem::class, 'operational_order_id');
+    }
+
+    public function store()
+    {
+        return $this->belongsTo(MarketplaceStore::class, 'store_id');
+    }
+
+    public function legalEntity()
+    {
+        return $this->belongsTo(LegalEntity::class, 'legal_entity_id');
     }
 
     /**

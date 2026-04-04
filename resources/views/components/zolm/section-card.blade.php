@@ -2,6 +2,12 @@
     'title' => null,
     'eyebrow' => null,
     'description' => null,
+    'helpTitle' => null,
+    'helpSummary' => null,
+    'helpSource' => null,
+    'helpRefresh' => null,
+    'helpImpact' => null,
+    'helpPosition' => 'right',
     'padding' => 'p-4 lg:p-6',
     'headerPadding' => null,
     'bodyPadding' => null,
@@ -46,7 +52,19 @@
                 @endif
 
                 @if($title)
-                    <h2 class="{{ $titleClasses }}">{{ $title }}</h2>
+                    <div class="flex items-center gap-2">
+                        <h2 class="{{ $titleClasses }}">{{ $title }}</h2>
+                        @if($helpTitle)
+                            <x-zolm.help-tip
+                                :title="$helpTitle"
+                                :summary="$helpSummary"
+                                :source="$helpSource"
+                                :refresh="$helpRefresh"
+                                :impact="$helpImpact"
+                                :position="$helpPosition"
+                            />
+                        @endif
+                    </div>
                 @endif
 
                 @if($description)

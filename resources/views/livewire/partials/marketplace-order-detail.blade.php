@@ -6,9 +6,9 @@
 @endphp
 
 <!-- Müşteri & Fatura & Lojistik Grid -->
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
+<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
     <!-- Müşteri Bilgileri -->
-    <div class="bg-white rounded-lg border border-gray-200 p-3 lg:p-4">
+    <div class="rounded-[6px] border border-gray-200 bg-white p-3 lg:p-4">
         <h5 class="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wide mb-2 flex items-center">
             <svg class="w-3.5 h-3.5 mr-1 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
             Müşteri Bilgileri
@@ -28,7 +28,7 @@
     </div>
 
     <!-- Fatura Bilgileri -->
-    <div class="bg-white rounded-lg border border-gray-200 p-3 lg:p-4">
+    <div class="rounded-[6px] border border-gray-200 bg-white p-3 lg:p-4">
         <h5 class="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wide mb-2 flex items-center">
             <svg class="w-3.5 h-3.5 mr-1 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             Fatura Bilgileri
@@ -51,7 +51,7 @@
     </div>
 
     <!-- Lojistik & Tarihler -->
-    <div class="bg-white rounded-lg border border-gray-200 p-3 lg:p-4">
+    <div class="rounded-[6px] border border-gray-200 bg-white p-3 lg:p-4">
         <h5 class="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wide mb-2 flex items-center">
             <svg class="w-3.5 h-3.5 mr-1 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"/></svg>
             Lojistik & Tarihler
@@ -75,7 +75,7 @@
 
 <!-- Muhasebe Özet -->
 @if($hasFinancial)
-<div class="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 p-3 lg:p-4">
+<div class="mt-4 rounded-[6px] border border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50 p-3 lg:p-4">
     <h5 class="text-xs sm:text-sm font-bold text-indigo-700 uppercase tracking-wide mb-2 flex items-center">
         <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
         Muhasebe Modülü Verileri
@@ -108,13 +108,13 @@
 @endif
 
 <!-- Ürün Satırları -->
-<div>
+<div class="mt-4">
     <h5 class="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wide mb-2">Siparişteki Ürünler ({{ $order->items->count() }} Satır)</h5>
 
     <!-- ══ MOBİL ÜRÜN KARTLARI (sm altı) ══ -->
     <div class="sm:hidden space-y-2">
         @foreach($order->items as $item)
-        <div class="bg-white rounded-lg border border-gray-200 p-3">
+        <div class="rounded-[6px] border border-gray-200 bg-white p-3">
             <!-- Ürün adı + Marka -->
             <div class="flex items-start justify-between gap-2 mb-2">
                 <div class="min-w-0 flex-1">
@@ -122,7 +122,7 @@
                     <div class="flex items-center gap-2 mt-1">
                         <span class="font-mono text-[11px] text-indigo-600 font-semibold">{{ $item->barcode ?? '-' }}</span>
                         @if($item->brand)
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700">{{ $item->brand }}</span>
+                            <span class="inline-flex items-center rounded-[6px] bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">{{ $item->brand }}</span>
                         @endif
                     </div>
                 </div>
@@ -157,7 +157,7 @@
                 @endif
                 @php $itemProduct = $item->relationLoaded('product') ? $item->product : null; @endphp
                 @if($itemProduct && (float)$itemProduct->cogs > 0)
-                    <span class="text-emerald-700 font-medium bg-emerald-50 px-1.5 py-0.5 rounded">COGS: ₺{{ number_format($itemProduct->cogs, 2, ',', '.') }}</span>
+                    <span class="rounded-[6px] bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">Maliyet: ₺{{ number_format($itemProduct->cogs, 2, ',', '.') }}</span>
                     @if((float)($itemProduct->cargo_cost ?? 0) > 0)
                         <span class="text-orange-600 font-medium">Kargo: ₺{{ number_format($itemProduct->cargo_cost, 2, ',', '.') }}</span>
                     @endif
@@ -166,7 +166,7 @@
         </div>
         @endforeach
         <!-- Mobil Toplam -->
-        <div class="bg-gray-50 rounded-lg border border-gray-200 p-3 flex items-center justify-between">
+        <div class="flex items-center justify-between rounded-[6px] border border-gray-200 bg-gray-50 p-3">
             <span class="text-xs font-bold text-gray-500 uppercase">Toplam (x{{ $order->items->sum('quantity') }})</span>
             <div class="text-right">
                 <span class="text-sm font-bold text-gray-900">₺{{ number_format($order->items->sum('sale_price'), 2, ',', '.') }}</span>
@@ -179,7 +179,7 @@
     </div>
 
     <!-- ══ DESKTOP ÜRÜN TABLOSU (sm ve üstü) ══ -->
-    <div class="hidden sm:block bg-white rounded border border-gray-200 overflow-hidden shadow-sm overflow-x-auto">
+    <div class="hidden overflow-x-auto rounded-[6px] border border-gray-200 bg-white shadow-sm sm:block">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr class="text-xs text-gray-500 uppercase text-left">
@@ -205,7 +205,7 @@
                     </td>
                     <td class="px-3 py-2">
                         @if($item->brand)
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700">{{ $item->brand }}</span>
+                            <span class="inline-flex items-center rounded-[6px] bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">{{ $item->brand }}</span>
                         @else
                             <span class="text-gray-400 text-xs">-</span>
                         @endif

@@ -65,6 +65,16 @@ class User extends Authenticatable
         return $this->hasMany(ActivityLog::class);
     }
 
+    public function legalEntities(): HasMany
+    {
+        return $this->hasMany(LegalEntity::class);
+    }
+
+    public function marketplaceStores(): HasMany
+    {
+        return $this->hasMany(MarketplaceStore::class);
+    }
+
     // === ROLE CHECKING (New System) ===
 
     public function roleSlug(): ?string

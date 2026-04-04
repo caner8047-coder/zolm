@@ -1,0 +1,187 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\ChannelListing;
+use App\Models\ChannelOrder;
+use App\Models\ChannelOrderItem;
+use App\Models\ChannelProduct;
+use App\Models\IntegrationConnection;
+use App\Models\LegalEntity;
+use App\Models\MarketplaceStore;
+use App\Models\MpProduct;
+use App\Models\ProductMatchIssue;
+use App\Models\User;
+use App\Services\Marketplace\MarketplaceManualMatchService;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
+
+class MarketplaceManualMatchServiceTest extends TestCase
+{
+    use DatabaseTransactions;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('database.default', 'mysql');
+        config()->set('database.connections.mysql.host', 'mysql');
+        config()->set('database.connections.mysql.port', '3306');
+        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.username', 'sail');
+        config()->set('database.connections.mysql.password', 'password');
+        DB::purge('mysql');
+        DB::reconnect('mysql');
+        DB::setDefaultConnection('mysql');
+    }
+
+    public function test_it_manually_matches_listing_and_order_items_and_recalculates_profit(): void
+    {
+        [$user, $store, $product, $listing, $order, $item, $issue] = $this->createGraph();
+
+        $result = app(MarketplaceManualMatchService::class)->manualMatch($issue, $product, $user->id);
+
+        $this->assertSame(1, $result['updated_items']);
+        $this->assertSame(1, $result['impacted_orders']);
+
+        $this->assertDatabaseHas('channel_listings', [
+            'id' => $listing->id,
+            'mp_product_id' => $product->id,
+        ]);
+
+        $this->assertDatabaseHas('channel_order_items', [
+            'id' => $item->id,
+            'channel_listing_id' => $listing->id,
+            'mp_product_id' => $product->id,
+            'is_matched' => true,
+            'match_source' => 'manual',
+        ]);
+
+        $this->assertDatabaseHas('product_match_issues', [
+            'id' => $issue->id,
+            'match_status' => 'resolved',
+            'resolved_by' => $user->id,
+        ]);
+
+        $this->assertDatabaseHas('order_profit_snapshots', [
+            'store_id' => $store->id,
+            'channel_order_id' => $order->id,
+            'profit_state' => 'estimated',
+        ]);
+    }
+
+    /**
+     * @return array{0: User, 1: MarketplaceStore, 2: MpProduct, 3: ChannelListing, 4: ChannelOrder, 5: ChannelOrderItem, 6: ProductMatchIssue}
+     */
+    protected function createGraph(): array
+    {
+        $user = User::factory()->create();
+        $suffix = (string) random_int(100000, 999999);
+
+        $entity = LegalEntity::query()->create([
+            'user_id' => $user->id,
+            'name' => 'Zem Test Ltd.',
+            'tax_number' => '7' . $suffix,
+            'company_type' => 'limited',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+
+        $store = MarketplaceStore::query()->create([
+            'user_id' => $user->id,
+            'legal_entity_id' => $entity->id,
+            'marketplace' => 'trendyol',
+            'store_name' => 'ZEM MATCH',
+            'store_code' => 'ZEM-MATCH-' . $suffix,
+            'seller_id' => 'S' . $suffix,
+            'status' => 'active',
+            'timezone' => 'Europe/Istanbul',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+
+        IntegrationConnection::query()->create([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'auth_type' => 'api_key_secret',
+            'credentials_encrypted' => [
+                'seller_id' => 'S' . $suffix,
+                'api_key' => 'key',
+                'api_secret' => 'secret',
+            ],
+            'api_base_url' => 'https://apigw.trendyol.com',
+            'status' => 'configured',
+        ]);
+
+        $product = MpProduct::query()->create([
+            'user_id' => $user->id,
+            'product_name' => 'ZEM Test Koltuk',
+            'stock_code' => 'STK-' . $suffix,
+            'barcode' => '869' . $suffix,
+            'brand' => 'ZEM',
+            'category_name' => 'Mobilya',
+            'sale_price' => 1299.90,
+            'cogs' => 700,
+            'packaging_cost' => 50,
+            'cargo_cost' => 100,
+            'stock_quantity' => 5,
+        ]);
+
+        $channelProduct = ChannelProduct::query()->create([
+            'store_id' => $store->id,
+            'external_product_id' => 'CP-' . $suffix,
+            'stock_code' => 'STK-' . $suffix,
+            'barcode' => '869' . $suffix,
+            'title' => 'ZEM Test Koltuk',
+            'brand' => 'ZEM',
+            'category_name' => 'Mobilya',
+        ]);
+
+        $listing = ChannelListing::query()->create([
+            'store_id' => $store->id,
+            'channel_product_id' => $channelProduct->id,
+            'listing_id' => 'LIST-' . $suffix,
+            'listing_status' => 'active',
+            'sale_price' => 1299.90,
+            'stock_quantity' => 5,
+            'currency' => 'TRY',
+        ]);
+
+        $order = ChannelOrder::query()->create([
+            'store_id' => $store->id,
+            'legal_entity_id' => $entity->id,
+            'external_order_id' => 'ORD-' . $suffix,
+            'order_number' => 'ORD-' . $suffix,
+            'order_status' => 'Created',
+            'customer_name' => 'Ayse Demir',
+            'ordered_at' => now(),
+        ]);
+
+        $item = ChannelOrderItem::query()->create([
+            'store_id' => $store->id,
+            'channel_order_id' => $order->id,
+            'channel_listing_id' => $listing->id,
+            'external_line_id' => 'LINE-' . $suffix,
+            'stock_code' => 'STK-' . $suffix,
+            'barcode' => '869' . $suffix,
+            'product_name' => 'ZEM Test Koltuk',
+            'quantity' => 1,
+            'unit_price' => 1299.90,
+            'gross_amount' => 1299.90,
+            'billable_amount' => 1299.90,
+            'commission_rate' => 12,
+            'is_matched' => false,
+        ]);
+
+        $issue = ProductMatchIssue::query()->create([
+            'store_id' => $store->id,
+            'channel_listing_id' => $listing->id,
+            'match_status' => 'pending',
+            'match_reason' => 'not_found',
+            'candidate_ids_json' => [$product->id],
+        ]);
+
+        return [$user, $store, $product, $listing, $order, $item, $issue];
+    }
+}

@@ -85,29 +85,38 @@ Yeni denetim kuralı eklerken:
 
 ### 7. Stil Kuralları
 - Renk paleti: Tailwind varsayılanlar (indigo, emerald, amber, red)
-- Border radius: `rounded-xl` (kartlar), `rounded-lg` (butonlar/input)
+- Border radius: `rounded-[10px]` (ana kartlar), `rounded-[8px]` (iç kartlar), `rounded-[6px]` (butonlar/input)
 - Shadow: `shadow-sm` (kartlar), `shadow-md` (hover)
 - Durum renkleri: Yeşil=başarı, Kırmızı=hata, Amber=uyarı, Mavi=bilgi
 - Badge'ler: `px-2 py-0.5 text-xs font-mono rounded`
-- KPI kartları: `rounded-xl border p-4 text-center`
+- KPI kartları: `rounded-[8px] border border-slate-200 bg-slate-50/70 p-4`
 
 ### 7.1. ZOLM Kurumsal Açık Panel Sistemi (ZORUNLU)
 Yeni modül tasarımlarında varsayılan görsel dil budur.
 
 - Referans sayfa: `resources/views/livewire/production-revenue.blade.php`
+- Venture uyumlu veri yoğun referans: `resources/views/livewire/marketplace-orders.blade.php`
+- Venture kaynak fig referansı: `20.3 [UI8] - Venture CRM.fig`
 - Detay doküman: `docs/zolm-kurumsal-acik-panel-sistemi.md`
 - İstek şablonları: `docs/zolm-ui-prompt-sablonu.md`, `docs/zolm-yeni-modul-istek-sablonu.md`
 - Ortak component'ler: `resources/views/components/zolm/`
 
+Tasarım görevi başlamadan önce zorunlu ön kontrol:
+- Repo kökündeki `20.3 [UI8] - Venture CRM.fig` dosyasına bak
+- Gerekirse `thumbnail.png` ve `canvas.fig` içeriğini referans olarak kullan
+- Venture dilini birebir kopyalama; ZOLM açık panel sistemine adapte et
+
 Bu tasarım sisteminin ana karakteri:
 - Açık zeminli, kurumsal, sade, premium ama gösterişsiz
 - Sayfa zemini açık, ana kartlar beyaz, iç kartlar açık gri
+- Venture uyumlu daha ürünleşmiş command bar, ledger ve tool surface hiyerarşisi
 - Border: `border-slate-200`
 - Ana metin: `text-slate-900`
 - Yardımcı metin: `text-slate-500`
 - Primary button: `bg-slate-900 text-white`
-- Ana section kartı: `rounded-[28px] border border-slate-200 bg-white shadow-sm`
-- İç metrik kartı: `rounded-3xl border border-slate-200 bg-slate-50`
+- Ana section kartı: `rounded-[10px] border border-slate-200 bg-white shadow-sm`
+- İç metrik kartı: `rounded-[8px] border border-slate-200 bg-slate-50/70`
+- Input / select / mini kutu: `rounded-[6px] border border-slate-200 bg-white`
 
 Kaçınılacaklar:
 - Koyu hero alanları
@@ -116,11 +125,14 @@ Kaçınılacaklar:
 - Neon renkler
 - Her modülde farklı tema
 - Bir modülde açık, diğerinde koyu tasarım dili
+- Gereksiz büyük radius kullanan aşırı oval kartlar
 
 Zorunlu yerleşim mantığı:
-- Üstte beyaz ana kontrol/özet kartı
-- Altında sol ana içerik + sağ yardımcı panel
-- Aynı spacing sistemi: `space-y-6`, `p-4 lg:p-6`, `gap-3 lg:gap-4`, `gap-6 lg:gap-8`
+- Üstte beyaz workspace / özet kartı
+- Varsa guidance veya import alanı ayrı ama kompakt kart olarak
+- Altında command bar ve tablo aynı ana section içinde
+- Sağ yardımcı panel desktop'ta ayrı olabilir, mobilde ana kontrol yüzeyi ile birleşmeli
+- Aynı spacing sistemi: `space-y-4 lg:space-y-6`, `p-4 lg:p-6`, `gap-3 lg:gap-4`
 - Aynı tipografi hiyerarşisi: `text-xl lg:text-2xl` başlık, `text-sm text-slate-500` açıklama
 - Aynı buton ve badge dili
 
@@ -133,16 +145,23 @@ Bu proje içinde son onaylanan mikro tasarım tercihleri:
 - Sağ yardımcı paneldeki özet/risk kartları desktop'ta mümkünse tek satırda hizalanmalı; gerekirse kartlar küçültülmeli
 - Kompakt bilgi kartlarında taşma olmamalı; kısa açıklama, sıkı padding ve `min-w-0` yaklaşımı kullanılmalı
 - Aktif filtre bilgisi kullanıcıya aynı blok içinde görünmeli; arama çalışıyor mu hissi görsel olarak net olmalı
+- Guidance / kritik uyarı alanı command bar içine sıkıştırılmamalı; gerekiyorsa üstte kompakt accordion kart olmalı
+- Mobilde sağ tool rail ayrı siyah panel gibi kalmamalı; command bar ile birleşmeli
+- Mini stat kutuları (`Hazır`, `Finans`, `Risk` gibi) kompakt kalmalı ve mümkünse tek satır mantığında hizalanmalı
+- Venture etkisi layout, kontrol yüzeyi ve hiyerarşide hissedilmeli; koyu tema kopyası yapılmamalı
+- Yeni bir tasarım veya büyük UI revizyonu başlamadan önce mutlaka `20.3 [UI8] - Venture CRM.fig` kontrol edilmeli
 
 Kullanıcı şu ifadeyi kullanırsa:
 - `Bu modülü ZOLM Kurumsal Açık Panel Sistemi ile yap`
 
 Şu anlam çıkar:
-1. Üretim Ciro modülünün açık kurumsal tasarım ailesini devam ettir
-2. Mobil Responsive kurallarını eksiksiz uygula
-3. Yeni tablo varsa Standart Tablo Şablonunu uygula
-4. Yeni Excel export varsa Excel Export kurallarını uygula
-5. Türkçe UI metinlerinde doğru karakter kullan
+1. Üretim Ciro temelini koru ama Venture uyumlu ZOLM yorumunu varsayılan kabul et
+2. Tasarıma başlamadan önce `20.3 [UI8] - Venture CRM.fig` dosyasını kontrol et
+3. Mobil Responsive kurallarını eksiksiz uygula
+4. Yeni tablo varsa Standart Tablo Şablonunu uygula
+5. Command bar, tool rail ve ledger ilişkisini tek ürün yüzeyi gibi kur
+6. Yeni Excel export varsa Excel Export kurallarını uygula
+7. Türkçe UI metinlerinde doğru karakter kullan
 
 Tasarım özgürlüğü istenmiyorsa yeni tema üretme. Mevcut ZOLM ailesinin devamı olacak şekilde uygula.
 

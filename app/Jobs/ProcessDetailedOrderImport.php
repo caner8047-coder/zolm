@@ -8,6 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use App\Services\DetailedOrderImportService;
+use App\Models\MarketplaceStore;
 use Illuminate\Support\Facades\File;
 
 class ProcessDetailedOrderImport implements ShouldQueue
@@ -17,13 +18,15 @@ class ProcessDetailedOrderImport implements ShouldQueue
     public $timeout = 1800; // 30 dakika maksimum
     public $tries = 2;
     public string $filePath;
+    public ?int $storeId;
 
     /**
      * Create a new job instance.
      */
-    public function __construct(string $filePath)
+    public function __construct(string $filePath, ?int $storeId = null)
     {
         $this->filePath = $filePath;
+        $this->storeId = $storeId;
     }
 
     /**
@@ -35,7 +38,9 @@ class ProcessDetailedOrderImport implements ShouldQueue
             return;
         }
 
-        $importService->importDetailedOrders($this->filePath);
+        $store = $this->storeId ? MarketplaceStore::query()->find($this->storeId) : null;
+
+        $importService->importDetailedOrders($this->filePath, $store);
 
         // İşlem bitince dosyayı temizle
         if (File::exists($this->filePath)) {

@@ -30,6 +30,10 @@
     @livewireStyles
     
     <style>
+        [x-cloak] {
+            display: none !important;
+        }
+
         /* Mobile sidebar transition */
         .sidebar-overlay {
             transition: opacity 0.3s ease-in-out;
@@ -50,6 +54,10 @@
     </style>
 </head>
 <body class="h-full bg-gray-50 overflow-x-hidden" x-data="{ sidebarOpen: false }">
+    @php
+        $marketplaceFeatures = config('marketplace.features', []);
+        $showMarketplaceV2 = (bool) ($marketplaceFeatures['v2_enabled'] ?? true);
+    @endphp
     <div class="min-h-full flex">
         
         <!-- Mobile Sidebar Overlay -->
@@ -104,20 +112,57 @@
                         </svg>
                     </button>
                     <div x-show="pazaryeriOpen" x-collapse class="ml-8 mt-1 space-y-1">
-                        <a href="{{ route('mp.orders') }}" @click="sidebarOpen = false"
-                           class="block px-4 py-2 text-sm rounded-lg transition-colors
-                                  {{ request()->routeIs('mp.orders') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
-                            Siparişler
-                        </a>
-                        <a href="{{ route('mp.products') }}" @click="sidebarOpen = false"
-                           class="block px-4 py-2 text-sm rounded-lg transition-colors
-                                  {{ request()->routeIs('mp.products') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
-                            Ürünler
-                        </a>
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['overview_enabled'] ?? true))
+                            <a href="{{ route('mp.overview') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.overview') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Özet
+                            </a>
+                        @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['integrations_enabled'] ?? true))
+                            <a href="{{ route('mp.integrations') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.integrations') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Entegrasyonlar
+                            </a>
+                        @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['orders_v2_enabled'] ?? true))
+                            <a href="{{ route('mp.orders') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.orders') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Siparişler
+                            </a>
+                        @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['products_v2_enabled'] ?? true))
+                            <a href="{{ route('mp.products') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.products') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Ürünler
+                            </a>
+                        @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['matching_center_enabled'] ?? true))
+                            <a href="{{ route('mp.matching') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.matching') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Eşleştirme
+                            </a>
+                        @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['finance_v2_enabled'] ?? true))
+                            <a href="{{ route('mp.finance') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.finance') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Finans
+                            </a>
+                        @endif
                         <a href="{{ route('marketplace-accounting') }}" @click="sidebarOpen = false"
                            class="block px-4 py-2 text-sm rounded-lg transition-colors
                                   {{ request()->routeIs('marketplace-accounting') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
                             Muhasebe
+                        </a>
+                        <a href="{{ route('mp.settings') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('mp.settings') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Ayarlar
                         </a>
                     </div>
                 </div>

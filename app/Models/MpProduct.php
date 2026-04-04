@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\User;
 
 class MpProduct extends Model
@@ -86,6 +87,14 @@ class MpProduct extends Model
     public function orders()
     {
         return $this->hasMany(\App\Models\MpOrder::class, 'barcode', 'barcode');
+    }
+
+    /**
+     * Kanallardaki listing bağlantıları
+     */
+    public function channelListings(): HasMany
+    {
+        return $this->hasMany(ChannelListing::class, 'mp_product_id');
     }
 
     /**

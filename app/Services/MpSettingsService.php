@@ -253,6 +253,11 @@ class MpSettingsService
         return $this->getBool('audit_behavior.log_info_rules', false);
     }
 
+    public function helpTipsEnabled(): bool
+    {
+        return $this->getBool('ui.help_tips_enabled', true);
+    }
+
     // ─── Audit Tolerans Kısa Yolları ────────────────────────────
 
     public function getAuditTolerance(string $key): float
@@ -365,6 +370,38 @@ class MpSettingsService
             ],
             'ui' => [
                 'visible_columns' => ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay'],
+                'help_tips_enabled' => true,
+            ],
+            'print' => [
+                'label' => [
+                    'template' => 'courier',
+                    'paper' => 'thermal_100x150',
+                    'barcode_type' => 'code128',
+                    'barcode_height' => 56,
+                    'show_sender' => true,
+                    'show_customer_phone' => true,
+                    'show_items' => true,
+                    'show_marketplace' => true,
+                    'show_tracking_number' => true,
+                    'show_barcode_text' => true,
+                    'show_item_summary' => true,
+                    'footer_note' => '',
+                ],
+                'dispatch' => [
+                    'template' => 'classic',
+                    'paper' => 'a4',
+                    'barcode_type' => 'code128',
+                    'barcode_height' => 44,
+                    'show_sender' => true,
+                    'show_customer_phone' => true,
+                    'show_billing_info' => true,
+                    'show_items' => true,
+                    'show_barcode' => true,
+                    'show_barcode_text' => true,
+                    'show_marketplace' => true,
+                    'show_signature_area' => true,
+                    'footer_note' => '',
+                ],
             ],
             'company' => [
                 'name'       => '',

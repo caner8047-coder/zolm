@@ -1,0 +1,13 @@
+[Unit]
+Description=ZOLM Scheduler Tick
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/zolm
+ExecStart=/usr/bin/php artisan schedule:run --no-interaction
+StandardOutput=append:/var/log/zolm/scheduler.log
+StandardError=append:/var/log/zolm/scheduler-error.log
+

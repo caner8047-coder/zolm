@@ -23,3 +23,21 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 storage/framework/views/
+
+# Local archives, exports, and legacy project copies
+/trendyol dosyalar/
+/zolm v0.5/
+/update_packages/
+/fix_duplicates.zip
+/vendor_update.zip
+/zolm_v0.6_upload.zip
+/zolm_v06_hotfix.zip
+/zolm_v06_lossless.sql
+/zolm_v06_update.sql
+/Pazaryeri_list.xlsx
+/berjer alaves.xlsx
+/reçete hazırlama exceli.xlsx
+/Ürün Listesi.xlsx
+/~$berjer alaves.xlsx
+/~$reçete hazırlama exceli.xlsx
+/tmp_venture_thumbnail.png

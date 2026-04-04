@@ -1,0 +1,21 @@
+[Unit]
+Description=ZOLM Queue Worker
+After=network.target mysql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/zolm
+ExecStart=/usr/bin/php artisan queue:work --queue=default --sleep=3 --tries=3 --timeout=1800 --max-time=3600 --memory=512
+ExecReload=/usr/bin/php artisan queue:restart
+KillSignal=SIGTERM
+TimeoutStopSec=3600
+StandardOutput=append:/var/log/zolm/queue-worker.log
+StandardError=append:/var/log/zolm/queue-worker-error.log
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,6 +1,11 @@
 {{-- ═══ İMPORT MODAL ═══ --}}
-<div x-data="{ open: @entangle('showImportModal') }" x-show="open" class="relative z-50" style="display: none;">
-    <div x-show="open" x-transition.opacity class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
+<div x-data="{ open: @entangle('showImportModal') }"
+     x-show="open"
+     x-cloak
+     @keydown.escape.window="open = false; $wire.closeImportModal()"
+     class="relative z-50"
+     style="display: none;">
+    <div x-show="open" x-transition.opacity class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm" wire:click="closeImportModal"></div>
     <div class="fixed inset-0 z-10 overflow-y-auto">
         <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             <div x-show="open"
@@ -112,6 +117,9 @@
                 <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-gray-100">
                     @if(!$importResult)
                         <button wire:click="importExcel" {{ !$importFile ? 'disabled' : '' }}
+                            wire:loading.attr="disabled"
+                            wire:loading.class="cursor-wait opacity-60"
+                            wire:target="importExcel"
                             class="w-full sm:w-auto px-4 py-3 sm:py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 shadow-sm sm:ml-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                             @if($importing)
                                 <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
@@ -122,7 +130,9 @@
                         </button>
                     @endif
                     <button type="button" wire:click="closeImportModal"
-                        class="mt-3 sm:mt-0 w-full sm:w-auto px-4 py-3 sm:py-2 text-sm font-semibold text-gray-900 bg-white rounded-lg ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors">
+                        wire:loading.attr="disabled"
+                        wire:target="importExcel"
+                        class="mt-3 sm:mt-0 w-full sm:w-auto px-4 py-3 sm:py-2 text-sm font-semibold text-gray-900 bg-white rounded-lg ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60">
                         {{ $importResult ? 'Kapat' : 'İptal' }}
                     </button>
                 </div>

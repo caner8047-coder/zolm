@@ -1,114 +1,198 @@
 # ZOLM Kurumsal Acik Panel Sistemi
 
-Bu dokuman ZOLM icindeki tum yeni modullerin ayni tasarim mimarisinde cikmasi icin referans tasarim sistemidir.
+Bu dokuman ZOLM icindeki yeni moduller icin varsayilan tasarim sistemidir.
 
-Referans sayfa:
+Bu surum artik Venture uyumlu varyanti tanimlar.
+Yani tasarim dili:
+- ZOLM'un acik, kurumsal ve veri yogunlugunu temiz gosteren yapisini korur
+- Venture benzeri daha urunlesmis hiyerarsi, daha rafine panel akisi ve daha modern kontrol yuzeyi kullanir
+- Tam tema kopyasi yapmaz
+- Koyu hero, dev radius ve gosterisli dashboard efektlerine kaymaz
+
+## 1. Referanslar
+
+Ana referans sayfalar:
 - `resources/views/livewire/production-revenue.blade.php`
+- `resources/views/livewire/marketplace-orders.blade.php`
+- `20.3 [UI8] - Venture CRM.fig`
 
-Amac:
+Ilk sayfa genel acik panel dilini temsil eder.
+Ikinci sayfa Venture uyumlu veri yogun modul yorumunu temsil eder.
+Fig dosyasi ise Venture kaynak tasarim dili icin zorunlu gorsel referanstir.
+
+## 1.1. Tasarima Baslamadan Once Zorunlu Venture Kontrolu
+
+Yeni bir tasarim veya buyuk UI revizyonu baslamadan once mutlaka:
+- Repo kokundeki `20.3 [UI8] - Venture CRM.fig` dosyasina bak
+- Mumkunse `thumbnail.png`, `canvas.fig` ve genel paket yapisini kontrol et
+- Venture'daki layout hissi, spacing, kart hiyerarsisi, chip dili ve control surface mantigini hatirla
+- Sonra ZOLM acik panel sistemine uyarlanmis yorumla tasarima basla
+
+Kurallar:
+- Venture dosyasina bakmadan yeni tasarim dili uretme
+- Venture'i birebir koyu tema kopyasi gibi uygulama
+- Venture'i ZOLM acik panel sistemine adapte et
+- Kararsiz kalindiginda son karar verici yerel Venture fig dosyasi + bu dokuman birlikteligi olsun
+
+## 2. Tasarim Kimligi
+
+Bu sistemin ana dili:
 - Acik zeminli
 - Kurumsal
 - Sade
-- Veri yogunlugunu temiz gosteren
-- Her modulu ayni ailede hissettiren bir UI dili kurmak
+- Veri yogun ama duzenli
+- Premium ama gosterissiz
+- Venture etkili ama ZOLM ailesinden kopmayan
 
-## 1. Tasarim Kimligi
-
-Bu sistemin ana dili:
+Gorsel karakter:
 - `bg-slate-50` hissinde acik sayfa zemini
 - `bg-white` ana section kartlari
-- `bg-slate-50` ic kartlar
+- `bg-slate-50/60` veya `bg-slate-50/70` ic yuzeyler
 - `border-slate-200` ince ve yumusak cerceve
 - `text-slate-900` ana metin
 - `text-slate-500` yardimci metin
 - `bg-slate-900 text-white` ana aksiyon
 
-Kacinilacak yaklasimlar:
+Venture uyumlu yorumda beklenen fark:
+- Sayfa daha urun paneli gibi organize olur
+- Ustte workspace/command katmani daha net tanimlanir
+- Ledger, filtre, durum ve arac yuzeyleri birbirine bagli hissedilir
+- Chip, badge ve ust etiket kullanimi daha kontrollu ve urunlesmis olur
+- Venture fig dosyasindaki ritim once okunur, sonra ZOLM'a adapte edilir
+
+## 3. Kacinilacaklar
+
+Su yaklasimlar kullanilmaz:
 - Koyu hero alanlari
+- Tam genislik koyu panel bloklari
 - Gradient agirlikli dashboard dili
 - Glassmorphism
 - Neon renkler
-- Her modulde farkli theme denemesi
-- Font ya da stil karakterini sayfadan sayfaya degistirmek
+- Dev radius kullanan yumusak/balloon kartlar
+- Bir modulde cok keskin, diger modulde cok oval kutular
+- Filtre ile tabloyu kopuk iki ayri urun gibi gosteren yerlesim
+- Sadece guzel gorunuyor diye veri yogunlugunu dusuren bos tasarimlar
 
-## 1.1 Zorunlu Eski Prompt Kurallari
+## 4. Onayli Radius ve Yuzey Sistemi
 
-Bu tasarim sistemi tek basina gorunumu tanimlar. Asagidaki eski proje kurallari da bununla birlikte zorunlu olarak uygulanir:
+Bu proje icinde onaylanan standart radius ailesi budur:
 
-- Yeni Blade view varsa Mobil Responsive Kurallari zorunludur
-- Yeni tablo varsa Standart Tablo Sablonu zorunludur
-- Yeni Excel export varsa Excel Export Kurallari zorunludur
-- UI dili Turkce ve dogru karakterlerle yazilmalidir
+### Ana section kart
+- `rounded-[10px] border border-slate-200 bg-white shadow-sm`
 
-Yani yeni bir modul yapilirken sadece "guzel gorunsun" yeterli degildir. Tasarim, responsive, tablo ve export davranisi birlikte ele alinmalidir.
+### Ic kart / metrik karti / bilgi kutusu
+- `rounded-[8px] border border-slate-200 bg-slate-50/70`
 
-## 2. Yerlesim Sistemi
+### Input / select / action chip / mini kutu
+- `rounded-[6px] border border-slate-200 bg-white`
+
+### Buton
+- `rounded-[6px]` veya `rounded-lg`
+
+Kurallar:
+- Section ile input arasinda radius siralamasi tutarli olmali
+- Ayni ekranda biri `rounded-3xl`, digeri `rounded-md` gibi kopuk sistem kurulmamali
+- Mobilde de ayni radius ailesi korunmali
+
+## 5. Golge ve Border
+
+Standartlar:
+- Ana kartlar: `shadow-sm`
+- Hover varsa hafif ton degisimi veya cok hafif shadow artisi
+- Border her zaman okunur ama bagirmaz olmali
+
+Kurallar:
+- Agir shadow yok
+- 3D hissi yok
+- Border ile golge birbirini dovmez
+
+## 6. Yerlesim Mantigi
 
 Her modulde ana omurga su mantikta kurulmalidir:
 
-1. Ust ozet karti
-2. Module ait ana kontrol/filtre/yukleme alani
-3. Sol ana icerik + sag yardimci panel
-4. Alt metrik veya gecmis kartlari
+1. Ust workspace / ozet karti
+2. Varsa import / guidance / durum kutusu
+3. Command bar veya ana kontrol alani
+4. Ledger / tablo / ana icerik alani
+5. Alt detay, gecmis veya ek ozet bloklari
 
-Standart grid yaklasimi:
+Standart akis:
 
 ```blade
-<div class="w-full space-y-6">
-    <section class="rounded-[28px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
+<div class="w-full space-y-4 lg:space-y-6">
+    <section class="rounded-[10px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
         ...
     </section>
 
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
-        <section class="xl:col-span-2 rounded-[28px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
-            ...
-        </section>
-
-        <aside class="space-y-4 lg:space-y-5">
-            ...
-        </aside>
-    </div>
+    <section class="rounded-[10px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
+        ...
+    </section>
 </div>
 ```
 
-## 3. Kart Dili
+## 7. Command Bar ve Ledger Kurali
+
+Venture uyumlu ZOLM yorumunda en kritik kural budur:
+
+- Filtre, arama ve kontrol alani tabloyla ayni ana section icinde olmalidir
+- `Kolonlar`, toplu islem, aktif filtre bilgisi gibi araclar verinin ustunde konumlanmalidir
+- Sag yardimci panel desktopta ayri durabilir ama mobilde ana kontrol yuzeyi ile birlesmelidir
+- Guidance veya kritik uyari kutulari command bar'in icine sikistirilmaz; gerekiyorsa ustte ayri, kompakt accordion kart olarak durur
+
+Onayli mantik:
+- Ayrik banner yok
+- Ayrik siyah tool rail yok
+- Ayrik ve dev ikinci toolbar yok
+- Tek urune ait kontrol hissi olmali
+
+## 8. Kart Dili
 
 ### Ana section kart
-- `rounded-[28px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm`
-
-Kullanim amaci:
+Kullanim:
 - Modulu sarmalayan ana bloklar
-- Takvim, rapor, kontrol paneli, detay paneli
+- Workspace ozetleri
+- Command bar
+- Ledger kapsayicisi
+- Detay panelleri
 
-### Ic metrik kart
-- `rounded-3xl border border-slate-200 bg-slate-50 p-4`
+Sinif omurgasi:
+- `rounded-[10px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm`
 
-Kullanim amaci:
+### Ic kart
+Kullanim:
 - KPI
-- Ozet bilgiler
-- Haftalik / aylik / durum kutulari
+- Durum kutulari
+- Paket karti
+- Ozet kutusu
+- Alert ic detayi
 
-### Input ve secim alani
-- `rounded-2xl border border-slate-200 bg-white`
+Sinif omurgasi:
+- `rounded-[8px] border border-slate-200 bg-slate-50/70 p-3 lg:p-4`
 
-### Upload alani
-- `rounded-2xl border border-dashed border-slate-300 bg-slate-50`
+### Kompakt bilgi kutusu
+Kullanim:
+- Hazir / Finans / Risk kutulari
+- Mini stat bloklari
+- Kisa label-value kartlari
 
-## 4. Tipografi
+Sinif omurgasi:
+- `rounded-[6px] border border-slate-200 bg-slate-50/80 px-2 py-1.5`
+
+## 9. Tipografi
 
 ### Kucuk ust etiket
 ```html
-<p class="text-xs uppercase tracking-[0.2em] text-slate-500">...</p>
+<p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">...</p>
 ```
 
 ### Ana baslik
 ```html
-<h1 class="text-xl lg:text-2xl font-bold text-slate-900">...</h1>
+<h1 class="text-3xl lg:text-[40px] font-bold tracking-tight text-slate-950">...</h1>
 ```
 
-### Ic kart buyuk deger
+### Section basligi
 ```html
-<p class="text-2xl lg:text-3xl font-bold text-slate-900">...</p>
+<h3 class="text-lg font-semibold text-slate-900">...</h3>
 ```
 
 ### Aciklama
@@ -118,109 +202,105 @@ Kullanim amaci:
 
 Kurallar:
 - Basliklari gereksiz buyutme
-- Deger alaninda sadece ihtiyac kadar vurgu ver
 - Yardimci metni her zaman bir ton geri cek
+- Metrik kutularinda truncation ve `min-w-0` kullan
+- Uzun aciklamayi command bar veya tool rail icinde 1-2 satiri gecirmemeye calis
 
-## 5. Renk ve Durum Sistemi
-
-### Basari
-- Yesil
-- `bg-emerald-50 text-emerald-700 border-emerald-200`
-
-### Uyari
-- Amber
-- `bg-amber-50 text-amber-700 border-amber-200`
-
-### Hata
-- Rose
-- `bg-rose-50 text-rose-700 border-rose-200`
-
-### Bilgi
-- Sky
-- `bg-sky-50 text-sky-700 border-sky-200`
-
-## 6. Radius ve Golge
-
-Standartlar:
-- Ana section: `rounded-[28px]`
-- Ic kart: `rounded-3xl`
-- Input / select / upload: `rounded-2xl`
-- Buton: `rounded-lg`
-- Golge: `shadow-sm`
-
-Kurallar:
-- Agir shadow yok
-- 3D hissi yok
-- Sadece hafif derinlik
-
-## 7. Buton Dili
+## 10. Buton Dili
 
 ### Primary button
 ```html
-<button class="w-full sm:w-auto px-4 py-3 sm:py-2 text-base sm:text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors">
+<button class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 sm:py-2 text-sm font-medium text-white transition hover:bg-slate-800">
 ```
 
 ### Secondary button
 ```html
-<button class="w-full sm:w-auto px-4 py-3 sm:py-2 text-base sm:text-sm font-medium border border-slate-200 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">
+<button class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
 ```
 
 Kurallar:
-- Koyu ana buton
-- Fazla yuksek ya da fazla genis buton kullanma
+- Butonlar mobilde tam genislik kullanabilmeli
 - Desktopta gereksiz kaba gorunume izin verme
+- Ayni yuzeyde uc farkli buton dili kullanma
 
-## 8. Badge Dili
+## 11. Badge ve Chip Dili
 
 Kullanim:
 - Kisa metin
-- `rounded-full`
-- Kucuk padding
-- Tasma riski varsa `whitespace-nowrap`
+- Kisa durum ozeti
+- Aktif filtre gostergesi
+- Mini route / state etiketi
 
-Ornek:
-```html
-<span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">Kayitli</span>
-```
+Standart:
+- `rounded-[6px]`
+- Ince border
+- `px-2.5 py-0.5` veya `px-2.5 py-1`
+- `text-xs` veya `text-[11px]`
+- Tasma varsa `whitespace-nowrap`
 
-## 9. Bosluk Sistemi
+Not:
+- Eski `rounded-full` badge dili varsayilan degildir
+- Cok yumusak pill gorunumu yerine kontrollu kose yaricapi kullanilir
+
+## 12. Bosluk Sistemi
 
 Sayfa standardi:
-- `space-y-6`
+- `space-y-4 lg:space-y-6`
 
 Section ic bosluk:
 - `p-4 lg:p-6`
 
+Ic kart bosluk:
+- `p-3 lg:p-4`
+
 Kartlar arasi gap:
 - `gap-3 lg:gap-4`
 
-Buyuk layout gap:
-- `gap-6 lg:gap-8`
+Kurallar:
+- Section basligi ile icerik arasinda gereksiz buyuk bosluk olmaz
+- Command bar ve ledger arasinda kopukluk olusmaz
+- Detail panellerinde bloklar birbirinin ustune binmis gibi durmaz; her ana blok kendi `mt-4` ritmini korur
 
-## 10. Mobil Responsive Kurallari
+## 13. Tablo Kurallari
+
+Yeni modulde tablo varsa su davranislar zorunludur:
+- Desktop tablo + mobil kart gorunumu
+- Kolon gorunurlugu
+- Backend siralama
+- Kolon resize
+- `table-layout: fixed`
+- Hucre truncation
+- Kaydirilabilir yatay alan
+
+Ek Venture uyumlu kurallar:
+- Ledger ust bandi tabloyun parcasidir
+- `Kolonlar`, kolon sayisi ve toplu islem verinin ustunde gorunur
+- Mobilde masaustu araclari ayri bir rail olarak kalmaz
+- Veri yogunlugu korunur ama hucreler nefes alir
+- Toplu islem dropdown'u ve aktif filtre gostergesi mobilde command bar icine tasinir
+
+Referans:
+- `resources/views/livewire/marketplace-orders.blade.php`
+
+## 14. Mobil Responsive Kurallari
 
 Tum yeni modullerde zorunlu:
 - `flex flex-col sm:flex-row`
 - `grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`
 - `w-full sm:w-auto`
-- `text-xl lg:text-2xl`
+- `text-base sm:text-sm`
 - `p-4 lg:p-6`
 - `gap-3 lg:gap-4`
 
-Input ve select:
-- `text-base sm:text-sm`
+Ek Venture uyumlu mobil kurallari:
+- Sag tool rail mobilde ayri panel olarak birakilmaz; command bar ile birlesir
+- Kisa stat kutulari mobilde mumkunse tek satir 3 kolon gibi derli toplu dizilir
+- Mobil kart header'lari daha kisa olur; gereksiz aciklama metni kisaltilir
+- Expand acilan detay panelleri `p-3 sm:p-4` bandinda tutulur
+- Paket ve aksiyon butonlari mobilde tek kolon ya da rahat 2 kolon akar
+- Pagination ve page size secimi tam genislikte rahat kullanilir
 
-Buton ve input:
-- Mobilde minimum 44px hissi korunmali
-
-Ek zorunlu kurallar:
-- `grid-cols-1` ile basla
-- `gap-3 lg:gap-4` veya `gap-4 lg:gap-6` ritmini koru
-- `text-base sm:text-sm` ile iOS zoom sorununu engelle
-- Mobilde tablo yerine kart veya horizontal scroll kullan
-- Modal varsa mobilde `inset-0`, buyuk ekranda daralmis pencere mantigi kullan
-
-## 11. Icerik Dili
+## 15. Icerik Dili
 
 Kurallar:
 - UI dili Turkce
@@ -229,80 +309,34 @@ Kurallar:
 - Kart aciklamalari tek cumleyi gecmemeli
 - Teknik olmayan kullaniciya uygun okunurluk korunmali
 
-## 11.1 Excel Export Kurallari
+## 16. Excel Export ve Teknik Baglayicilar
 
-Bu dokuman tasarim odaklidir ancak yeni modulde Excel export varsa asagidaki teknik kurallar zorunludur:
+Bu dokuman tasarim odaklidir ancak yeni modulde export veya tablo varsa teknik kurallar da otomatik devreye girer:
 
-- `setCellValue()` kullanma, `setCellValueExplicit()` kullan
-- Tum string degerleri UTF-8 kontrolunden gecir
-- XML kontrol karakterlerini temizle
-- Sheet isimlerini 31 karakter sinirina ve yasak karakter kurallarina uydur
-- Referans servis: `App\\Services\\ExcelService`
+- Yeni Blade view varsa Mobil Responsive Kurallari zorunludur
+- Yeni tablo varsa Standart Tablo Sablonu zorunludur
+- Yeni Excel export varsa Excel Export Kurallari zorunludur
+- `setCellValue()` yerine `setCellValueExplicit()` kullanilir
+- Tum string degerleri UTF-8 kontrolunden gecer
+- XML kontrol karakterleri temizlenir
+- Sheet isimleri 31 karakter sinirina ve yasak karakter kurallarina uyar
 
-Bu tasarim sistemi export davranisindan bagimsiz degildir. Yeni modulu tasarlarken export varsa bu kurallar da otomatik devreye girer.
+Referans servis:
+- `App\\Services\\ExcelService`
 
-## 11.2 Standart Tablo Kurallari
+## 17. Uygulama Kurali
 
-Yeni modulde tablo varsa asagidaki davranislar zorunludur:
-
-- Kolon goster/gizle dropdown
-- Backend tabanli siralama
-- Kolon resize
-- Desktop tablo + mobil kart gorunumu
-- `table-layout: fixed`
-- Hucrelerde truncation
-- Kolon tercihlerini saklayan ayar mantigi
-
-Referans:
-- `resources/views/livewire/marketplace-accounting.blade.php`
-
-## 12. Yeni Modullerde Uygulama Kurali
-
-Bir modulu bu sisteme gore tasarlarken:
-- Yeni theme uretme
-- Referans tasarimdan sapma
-- Farkli radius sistemi kurma
-- Farkli renk mantigi deneme
-- Bir sayfada acik, digerinde koyu tasarim kullanma
-- Mobil kurallari atlama
-- Yeni tabloda eski tablo standardini bozma
-- Excel export kurallarini es gecme
-
-Yeni modullerde ayni mimarinin devam ettirilmesi zorunludur.
-
-## 13. Kontrol Listesi
-
-Yeni bir modulu teslim etmeden once kontrol et:
-- Ana section kartlari beyaz mi
-- Ic kartlar acik gri mi
-- Borderlar ince slate mi
-- Radius sistemi tutarli mi
-- Primary button koyu mu
-- Baslik hiyerarsisi ayni mi
-- Mobil stack kurallari uygulandi mi
-- Turkce karakterler duzgun mu
-- Yeni bir tema olusmadi mi
-- Tablo varsa standart tablo davranislari uygulandi mi
-- Export varsa ExcelService kurallari uygulandi mi
-
-## 14. Komut Kisa Adi
-
-Bu tasarim sisteminin kisa adi:
-
-`ZOLM Kurumsal Acik Panel Sistemi`
-
-Yeni bir modulde bu isim referans alindiginda yukaridaki tum kurallar uygulanmalidir.
-
-## 15. Yorumlama Kurali
-
-Bir kullanici su sekilde talep verdiginde:
-
+Kullanici su ifadeyi kullanirsa:
 - `Bu modulu ZOLM Kurumsal Acik Panel Sistemi ile yap`
 
-su anlam cikarilmalidir:
+Artik varsayilan yorum su olur:
+1. ZOLM acik kurumsal panel mimarisini koru
+2. Tasarima baslamadan once `20.3 [UI8] - Venture CRM.fig` dosyasini kontrol et
+3. Venture uyumlu daha urunlesmis yerlesim ve command bar mantigi kullan
+4. Radius, bosluk, tablo ve tool yerlesiminde bu dokumandaki standartlari uygula
+5. Mobil kurallari eksiksiz uygula
+6. Yeni tablo varsa Standart Tablo Sablonunu uygula
+7. Yeni Excel export varsa Excel Export Kurallarini uygula
 
-1. Uretim Ciro moduluyle ayni UI ailesi kullan
-2. Mobil responsive kurallari eksiksiz uygula
-3. Tablolu bir ekran varsa Standart Tablo Sablonu uygula
-4. Export varsa Excel Export Kurallari uygula
-5. Turkce UI metinlerinde ASCII kisa yol kullanma, dogru karakter kullan
+Yeni bir tema uretme.
+ZOLM tasarim ailesinin Venture uyumlu varsayilanini devam ettir.

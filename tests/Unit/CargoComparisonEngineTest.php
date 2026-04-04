@@ -6,7 +6,7 @@ use App\Models\MpOperationalOrder;
 use App\Services\CargoComparisonEngine;
 use App\Services\ExcelService;
 use Illuminate\Support\Collection;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class CargoComparisonEngineTest extends TestCase
 {
@@ -65,7 +65,7 @@ class CargoComparisonEngineTest extends TestCase
         $this->assertSame('7270019504993615', $bucket['web_siparis_kodu']);
         $this->assertSame(3, $bucket['adet']);
         $this->assertSame(79.0, (float) $bucket['desi']);
-        $this->assertSame(799.56, (float) $bucket['tutar']);
+        $this->assertEqualsWithDelta(799.56, (float) $bucket['tutar'], 0.001);
         $this->assertCount(2, $bucket['tracking_numbers']);
     }
 

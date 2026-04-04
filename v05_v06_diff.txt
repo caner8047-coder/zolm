@@ -1,0 +1,247 @@
+Files ./.DS_Store and zolm v0.5/.DS_Store differ
+Only in .: .agent
+Only in .: .agents
+Only in .: .editorconfig
+Only in .: .env
+Only in .: .env.example
+Only in .: .gitattributes
+Only in .: .gitignore
+Only in .: .phpunit.result.cache
+Only in .: AGENTS.md
+Files ./CHANGELOG.md and zolm v0.5/CHANGELOG.md differ
+Only in .: Pazaryeri Muhasebe Optimizasyonu.md
+Only in .: Pazaryeri_list.xlsx
+Only in .: Siparişler_Detaylı
+Only in .: Trendyol Kampanya
+Only in zolm v0.5: aizemure_lv129.sql
+Files ./app/Http/Controllers/Auth/LoginController.php and zolm v0.5/app/Http/Controllers/Auth/LoginController.php differ
+Files ./app/Http/Controllers/CompensationDownloadController.php and zolm v0.5/app/Http/Controllers/CompensationDownloadController.php differ
+Files ./app/Http/Controllers/SupplyLabelController.php and zolm v0.5/app/Http/Controllers/SupplyLabelController.php differ
+Files ./app/Http/Middleware/AdminMiddleware.php and zolm v0.5/app/Http/Middleware/AdminMiddleware.php differ
+Only in ./app: Jobs
+Files ./app/Livewire/AIChat.php and zolm v0.5/app/Livewire/AIChat.php differ
+Files ./app/Livewire/Admin/ActivityLogs.php and zolm v0.5/app/Livewire/Admin/ActivityLogs.php differ
+Files ./app/Livewire/Admin/Dashboard.php and zolm v0.5/app/Livewire/Admin/Dashboard.php differ
+Files ./app/Livewire/Admin/UserManager.php and zolm v0.5/app/Livewire/Admin/UserManager.php differ
+Files ./app/Livewire/ApiDev.php and zolm v0.5/app/Livewire/ApiDev.php differ
+Only in ./app/Livewire: BadgePricing.php
+Files ./app/Livewire/Cargo/CargoChecker.php and zolm v0.5/app/Livewire/Cargo/CargoChecker.php differ
+Files ./app/Livewire/Cargo/CargoDashboard.php and zolm v0.5/app/Livewire/Cargo/CargoDashboard.php differ
+Files ./app/Livewire/Cargo/CompensationDashboard.php and zolm v0.5/app/Livewire/Cargo/CompensationDashboard.php differ
+Files ./app/Livewire/Cargo/ProductManager.php and zolm v0.5/app/Livewire/Cargo/ProductManager.php differ
+Files ./app/Livewire/Cargo/ReportList.php and zolm v0.5/app/Livewire/Cargo/ReportList.php differ
+Files ./app/Livewire/CargoReports.php and zolm v0.5/app/Livewire/CargoReports.php differ
+Only in ./app/Livewire: CustomMotor.php
+Only in ./app/Livewire: CustomMotorWizard.php
+Only in ./app/Livewire: FlashProducts.php
+Files ./app/Livewire/MarketplaceAccounting.php and zolm v0.5/app/Livewire/MarketplaceAccounting.php differ
+Only in ./app/Livewire: MarketplaceOrders.php
+Only in ./app/Livewire: MpProductsManager.php
+Files ./app/Livewire/OperationMotor.php and zolm v0.5/app/Livewire/OperationMotor.php differ
+Only in ./app/Livewire: PlusCommission.php
+Files ./app/Livewire/ProductionMotor.php and zolm v0.5/app/Livewire/ProductionMotor.php differ
+Files ./app/Livewire/ProfileManager.php and zolm v0.5/app/Livewire/ProfileManager.php differ
+Files ./app/Livewire/ProfileWizard.php and zolm v0.5/app/Livewire/ProfileWizard.php differ
+Only in ./app/Livewire: RecipeBuilder.php
+Only in ./app/Livewire: RecipeMaterialsManager.php
+Files ./app/Livewire/ReportHistory.php and zolm v0.5/app/Livewire/ReportHistory.php differ
+Files ./app/Livewire/SupplyReport.php and zolm v0.5/app/Livewire/SupplyReport.php differ
+Files ./app/Livewire/SupplyReports.php and zolm v0.5/app/Livewire/SupplyReports.php differ
+Files ./app/Livewire/TariffOptimizer.php and zolm v0.5/app/Livewire/TariffOptimizer.php differ
+Files ./app/Livewire/UniversalMotor.php and zolm v0.5/app/Livewire/UniversalMotor.php differ
+Files ./app/Models/AIConversation.php and zolm v0.5/app/Models/AIConversation.php differ
+Files ./app/Models/ActivityLog.php and zolm v0.5/app/Models/ActivityLog.php differ
+Files ./app/Models/CargoReport.php and zolm v0.5/app/Models/CargoReport.php differ
+Files ./app/Models/CargoReportItem.php and zolm v0.5/app/Models/CargoReportItem.php differ
+Files ./app/Models/Compensation.php and zolm v0.5/app/Models/Compensation.php differ
+Only in ./app/Models: Material.php
+Only in ./app/Models: MpAccountingSetting.php
+Only in ./app/Models: MpAuditLog.php
+Only in ./app/Models: MpErpSetting.php
+Only in ./app/Models: MpFinancialRule.php
+Only in ./app/Models: MpInvoice.php
+Only in ./app/Models: MpOperationalOrder.php
+Only in ./app/Models: MpOperationalOrderItem.php
+Only in ./app/Models: MpOrder.php
+Only in ./app/Models: MpPeriod.php
+Only in ./app/Models: MpProduct.php
+Only in ./app/Models: MpSettlement.php
+Only in ./app/Models: MpTransaction.php
+Files ./app/Models/OptimizationReport.php and zolm v0.5/app/Models/OptimizationReport.php differ
+Files ./app/Models/OptimizationReportItem.php and zolm v0.5/app/Models/OptimizationReportItem.php differ
+Files ./app/Models/Product.php and zolm v0.5/app/Models/Product.php differ
+Files ./app/Models/ProductCost.php and zolm v0.5/app/Models/ProductCost.php differ
+Files ./app/Models/Profile.php and zolm v0.5/app/Models/Profile.php differ
+Only in ./app/Models: Recipe.php
+Only in ./app/Models: RecipeLine.php
+Only in ./app/Models: RecipeSetting.php
+Files ./app/Models/Report.php and zolm v0.5/app/Models/Report.php differ
+Files ./app/Models/ReportFile.php and zolm v0.5/app/Models/ReportFile.php differ
+Files ./app/Models/Role.php and zolm v0.5/app/Models/Role.php differ
+Files ./app/Models/SupplyOrder.php and zolm v0.5/app/Models/SupplyOrder.php differ
+Files ./app/Models/User.php and zolm v0.5/app/Models/User.php differ
+Files ./app/Providers/AuthServiceProvider.php and zolm v0.5/app/Providers/AuthServiceProvider.php differ
+Files ./app/Services/AIProfileAnalyzer.php and zolm v0.5/app/Services/AIProfileAnalyzer.php differ
+Files ./app/Services/AIService.php and zolm v0.5/app/Services/AIService.php differ
+Only in ./app/Services: AuditEngine.php
+Only in ./app/Services: BadgePricingService.php
+Only in ./app/Services: CampaignAnalysisService.php
+Files ./app/Services/CargoComparisonEngine.php and zolm v0.5/app/Services/CargoComparisonEngine.php differ
+Only in ./app/Services: ChunkReadFilter.php
+Files ./app/Services/CompensationPdfService.php and zolm v0.5/app/Services/CompensationPdfService.php differ
+Only in ./app/Services: DetailedOrderImportService.php
+Files ./app/Services/DynamicTransformEngine.php and zolm v0.5/app/Services/DynamicTransformEngine.php differ
+Only in ./app/Services: ErpIntegrationService.php
+Files ./app/Services/ExcelService.php and zolm v0.5/app/Services/ExcelService.php differ
+Only in ./app/Services: FlashProductsService.php
+Only in ./app/Services: MarketplaceExportService.php
+Only in ./app/Services: MarketplaceImportService.php
+Only in ./app/Services: MpProductImportService.php
+Only in ./app/Services: MpSettingsService.php
+Files ./app/Services/OperationEngine.php and zolm v0.5/app/Services/OperationEngine.php differ
+Only in ./app/Services: OrderDetailsService.php
+Only in ./app/Services: PlusCommissionService.php
+Files ./app/Services/ProductionEngine.php and zolm v0.5/app/Services/ProductionEngine.php differ
+Only in ./app/Services: RecipeCalculationService.php
+Only in ./app/Services: ReportService.php
+Files ./app/Services/TariffOptimizerService.php and zolm v0.5/app/Services/TariffOptimizerService.php differ
+Only in ./app/Services: UnitEconomicsService.php
+Only in .: berjer alaves.xlsx
+Only in ./bootstrap/cache: .gitignore
+Only in .: campaign_discount
+Only in .: compose.yaml
+Files ./config/ai.php and zolm v0.5/config/ai.php differ
+Files ./config/cargo.php and zolm v0.5/config/cargo.php differ
+Files ./config/version.php and zolm v0.5/config/version.php differ
+Only in zolm v0.5/database: database.sqlite
+Files ./database/migrations/2026_01_19_100001_create_roles_table.php and zolm v0.5/database/migrations/2026_01_19_100001_create_roles_table.php differ
+Files ./database/migrations/2026_01_19_100002_create_profiles_table.php and zolm v0.5/database/migrations/2026_01_19_100002_create_profiles_table.php differ
+Files ./database/migrations/2026_01_19_100003_create_reports_table.php and zolm v0.5/database/migrations/2026_01_19_100003_create_reports_table.php differ
+Files ./database/migrations/2026_01_19_100004_create_report_files_table.php and zolm v0.5/database/migrations/2026_01_19_100004_create_report_files_table.php differ
+Files ./database/migrations/2026_01_19_100005_create_ai_conversations_table.php and zolm v0.5/database/migrations/2026_01_19_100005_create_ai_conversations_table.php differ
+Files ./database/migrations/2026_01_19_160000_add_ai_fields_to_profiles_table.php and zolm v0.5/database/migrations/2026_01_19_160000_add_ai_fields_to_profiles_table.php differ
+Files ./database/migrations/2026_01_19_232800_add_performance_indexes_to_reports.php and zolm v0.5/database/migrations/2026_01_19_232800_add_performance_indexes_to_reports.php differ
+Files ./database/migrations/2026_01_20_035000_add_role_to_users_table.php and zolm v0.5/database/migrations/2026_01_20_035000_add_role_to_users_table.php differ
+Files ./database/migrations/2026_01_20_035100_create_activity_logs_table.php and zolm v0.5/database/migrations/2026_01_20_035100_create_activity_logs_table.php differ
+Files ./database/migrations/2026_01_27_130001_create_products_table.php and zolm v0.5/database/migrations/2026_01_27_130001_create_products_table.php differ
+Files ./database/migrations/2026_01_27_130002_create_cargo_reports_table.php and zolm v0.5/database/migrations/2026_01_27_130002_create_cargo_reports_table.php differ
+Files ./database/migrations/2026_01_27_130003_create_cargo_report_items_table.php and zolm v0.5/database/migrations/2026_01_27_130003_create_cargo_report_items_table.php differ
+Files ./database/migrations/2026_01_27_130004_create_compensations_table.php and zolm v0.5/database/migrations/2026_01_27_130004_create_compensations_table.php differ
+Files ./database/migrations/2026_01_27_160000_add_siparis_detay_to_cargo_report_items.php and zolm v0.5/database/migrations/2026_01_27_160000_add_siparis_detay_to_cargo_report_items.php differ
+Files ./database/migrations/2026_01_27_173000_add_is_parca_gonderi_to_cargo_report_items.php and zolm v0.5/database/migrations/2026_01_27_173000_add_is_parca_gonderi_to_cargo_report_items.php differ
+Files ./database/migrations/2026_01_28_100000_add_petition_text_to_compensations_table.php and zolm v0.5/database/migrations/2026_01_28_100000_add_petition_text_to_compensations_table.php differ
+Files ./database/migrations/2026_02_02_000001_create_supply_orders_table.php and zolm v0.5/database/migrations/2026_02_02_000001_create_supply_orders_table.php differ
+Only in ./database/migrations: 2026_02_11_000001_create_product_costs_table.php
+Only in ./database/migrations: 2026_02_11_000002_create_optimization_reports_table.php
+Only in ./database/migrations: 2026_02_11_000003_add_scenario_details_to_optimization_report_items.php
+Only in ./database/migrations: 2026_02_12_063626_add_selected_tariff_index_and_custom_price_to_optimization_report_items.php
+Only in ./database/migrations: 2026_02_12_163000_add_ai_analysis_to_optimization_reports_table.php
+Only in ./database/migrations: 2026_02_12_170000_add_loss_analysis_to_optimization_reports_table.php
+Only in ./database/migrations: 2026_02_12_173000_add_optimization_report_id_to_ai_conversations_table.php
+Only in ./database/migrations: 2026_02_24_100000_add_packaging_and_vat_to_product_costs.php
+Only in ./database/migrations: 2026_02_24_100001_create_mp_periods_table.php
+Only in ./database/migrations: 2026_02_24_100002_create_mp_orders_table.php
+Only in ./database/migrations: 2026_02_24_100003_create_mp_transactions_table.php
+Only in ./database/migrations: 2026_02_24_100004_create_mp_invoices_table.php
+Only in ./database/migrations: 2026_02_24_100005_create_mp_audit_logs_table.php
+Only in ./database/migrations: 2026_02_24_100006_create_mp_financial_rules_table.php
+Only in ./database/migrations: 2026_02_24_210910_create_mp_settlements_table.php
+Only in ./database/migrations: 2026_02_25_123700_create_mp_products_table.php
+Only in ./database/migrations: 2026_02_25_162500_add_is_locked_to_mp_periods_table.php
+Only in ./database/migrations: 2026_02_25_183557_add_is_reconciled_to_mp_orders_table.php
+Only in ./database/migrations: 2026_02_25_191204_create_mp_erp_settings_table.php
+Only in ./database/migrations: 2026_02_25_191216_add_erp_fields_to_mp_orders_table.php
+Only in ./database/migrations: 2026_02_25_224640_create_mp_operational_orders_table.php
+Only in ./database/migrations: 2026_02_25_224642_create_mp_operational_order_items_table.php
+Only in ./database/migrations: 2026_02_26_220000_add_enrichment_fields_to_operational_tables.php
+Only in ./database/migrations: 2026_02_27_010000_create_mp_accounting_settings_table.php
+Only in ./database/migrations: 2026_02_27_140000_add_full_product_data_to_mp_products_table.php
+Only in ./database/migrations: 2026_02_28_195614_add_unique_index_to_mp_orders_table.php
+Only in ./database/migrations: 2026_03_02_100001_create_materials_table.php
+Only in ./database/migrations: 2026_03_02_100002_create_recipes_table.php
+Only in ./database/migrations: 2026_03_02_100003_create_recipe_lines_table.php
+Only in ./database/migrations: 2026_03_02_100004_create_recipe_settings_table.php
+Only in ./database/migrations: 2026_03_04_225100_add_own_cargo_cost_to_mp_orders_table.php
+Only in ./database/migrations: 2026_03_05_120000_add_campaign_type_to_optimization_reports.php
+Only in ./database/migrations: 2026_03_06_010000_add_document_number_to_mp_settlements_table.php
+Only in ./database/migrations: 2026_03_06_090000_add_custom_type_to_profiles_table.php
+Files ./database/seeders/AdminUserSeeder.php and zolm v0.5/database/seeders/AdminUserSeeder.php differ
+Files ./database/seeders/DefaultProfileSeeder.php and zolm v0.5/database/seeders/DefaultProfileSeeder.php differ
+Only in ./database/seeders: MpFinancialRuleSeeder.php
+Only in ./database/seeders: MpFinancialRulesSeeder.php
+Files ./database/seeders/RoleSeeder.php and zolm v0.5/database/seeders/RoleSeeder.php differ
+Only in .: discount_amount
+Only in .: find_headers.php
+Only in .: fix_periods.php
+Only in .: fix_stopaj.php
+Only in .: gross_amount
+Only in .: inspect.php
+Only in .: inspect_headers.php
+Only in .: migrate_cargo_company.php
+Only in .: migrate_is_locked.php
+Files ./package-lock.json and zolm v0.5/package-lock.json differ
+Only in .: pazaryerimuh
+Only in zolm v0.5: php.ini
+Only in zolm v0.5/public: C:\laragon\www\zolm\storage\logs
+Only in zolm v0.5/public/build/assets: app-ArkhHZZS.css
+Only in ./public/build/assets: app-ClnlaAb8.css
+Files ./public/build/manifest.json and zolm v0.5/public/build/manifest.json differ
+Only in ./public: check.php
+Only in ./public: hot
+Only in ./public: test_output.txt
+Only in .: read_headers.php
+Only in .: read_new_excel_cols.php
+Only in ./resources/views: .DS_Store
+Files ./resources/views/auth/login.blade.php and zolm v0.5/resources/views/auth/login.blade.php differ
+Only in ./resources/views: components
+Files ./resources/views/layouts/app.blade.php and zolm v0.5/resources/views/layouts/app.blade.php differ
+Files ./resources/views/livewire/a-i-chat.blade.php and zolm v0.5/resources/views/livewire/a-i-chat.blade.php differ
+Files ./resources/views/livewire/admin/activity-logs.blade.php and zolm v0.5/resources/views/livewire/admin/activity-logs.blade.php differ
+Files ./resources/views/livewire/admin/dashboard.blade.php and zolm v0.5/resources/views/livewire/admin/dashboard.blade.php differ
+Files ./resources/views/livewire/admin/user-manager.blade.php and zolm v0.5/resources/views/livewire/admin/user-manager.blade.php differ
+Files ./resources/views/livewire/api-dev.blade.php and zolm v0.5/resources/views/livewire/api-dev.blade.php differ
+Only in ./resources/views/livewire: badge-pricing.blade.php
+Files ./resources/views/livewire/cargo/cargo-checker.blade.php and zolm v0.5/resources/views/livewire/cargo/cargo-checker.blade.php differ
+Files ./resources/views/livewire/cargo/cargo-dashboard.blade.php and zolm v0.5/resources/views/livewire/cargo/cargo-dashboard.blade.php differ
+Files ./resources/views/livewire/cargo/compensation-dashboard.blade.php and zolm v0.5/resources/views/livewire/cargo/compensation-dashboard.blade.php differ
+Files ./resources/views/livewire/cargo/product-manager.blade.php and zolm v0.5/resources/views/livewire/cargo/product-manager.blade.php differ
+Files ./resources/views/livewire/cargo/report-list.blade.php and zolm v0.5/resources/views/livewire/cargo/report-list.blade.php differ
+Files ./resources/views/livewire/cargo-reports.blade.php and zolm v0.5/resources/views/livewire/cargo-reports.blade.php differ
+Only in ./resources/views/livewire: custom-motor.blade.php
+Only in ./resources/views/livewire: flash-products.blade.php
+Files ./resources/views/livewire/marketplace-accounting.blade.php and zolm v0.5/resources/views/livewire/marketplace-accounting.blade.php differ
+Only in ./resources/views/livewire: marketplace-orders.blade.php
+Only in ./resources/views/livewire: mp-order-modal.blade.php
+Only in ./resources/views/livewire: mp-products-manager.blade.php
+Only in ./resources/views/livewire: mp-settings-panel.blade.php
+Files ./resources/views/livewire/operation-motor.blade.php and zolm v0.5/resources/views/livewire/operation-motor.blade.php differ
+Only in ./resources/views/livewire: partials
+Only in ./resources/views/livewire: plus-commission.blade.php
+Files ./resources/views/livewire/production-motor.blade.php and zolm v0.5/resources/views/livewire/production-motor.blade.php differ
+Files ./resources/views/livewire/profile-manager.blade.php and zolm v0.5/resources/views/livewire/profile-manager.blade.php differ
+Files ./resources/views/livewire/profile-wizard.blade.php and zolm v0.5/resources/views/livewire/profile-wizard.blade.php differ
+Only in ./resources/views/livewire: recipe-builder.blade.php
+Only in ./resources/views/livewire: recipe-materials-manager.blade.php
+Files ./resources/views/livewire/report-history.blade.php and zolm v0.5/resources/views/livewire/report-history.blade.php differ
+Files ./resources/views/livewire/supply-report.blade.php and zolm v0.5/resources/views/livewire/supply-report.blade.php differ
+Files ./resources/views/livewire/supply-reports.blade.php and zolm v0.5/resources/views/livewire/supply-reports.blade.php differ
+Files ./resources/views/livewire/tariff-optimizer.blade.php and zolm v0.5/resources/views/livewire/tariff-optimizer.blade.php differ
+Files ./resources/views/livewire/universal-motor.blade.php and zolm v0.5/resources/views/livewire/universal-motor.blade.php differ
+Files ./resources/views/pdf/compensation/form.blade.php and zolm v0.5/resources/views/pdf/compensation/form.blade.php differ
+Files ./resources/views/pdf/compensation/petition.blade.php and zolm v0.5/resources/views/pdf/compensation/petition.blade.php differ
+Files ./resources/views/pdf/supply-label.blade.php and zolm v0.5/resources/views/pdf/supply-label.blade.php differ
+Only in .: reçete hazırlama exceli.xlsx
+Files ./routes/web.php and zolm v0.5/routes/web.php differ
+Only in .: test_import.php
+Files ./tests/Feature/ExampleTest.php and zolm v0.5/tests/Feature/ExampleTest.php differ
+Only in .: update_nav.py
+Only in .: v05_v06_diff.txt
+Files ./walkthrough.md and zolm v0.5/walkthrough.md differ
+Only in zolm v0.5: zolm v0.5.zip
+Only in zolm v0.5: zolm-prod.zip
+Only in zolm v0.5: zolmson.zip
+Only in zolm v0.5: zolmv0.3.zip
+Only in zolm v0.5: zolmv0.4.zip
+Only in .: ~$berjer alaves.xlsx
+Only in .: ~$reçete hazırlama exceli.xlsx
+Only in .: Ürün Listesi.xlsx

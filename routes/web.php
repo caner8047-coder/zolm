@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\MarketplaceOrderDocumentController;
 use App\Livewire\AIChat;
 use App\Livewire\CustomMotor;
 use App\Livewire\CustomMotorWizard;
@@ -29,7 +30,13 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->midd
 Route::middleware('auth')->group(function () {
     // Dashboard (redirect to mp.orders by default)
     Route::get('/dashboard', function () {
-        return redirect()->route('mp.orders');
+        $preferredRoute = match (true) {
+            config('marketplace.features.v2_enabled') && config('marketplace.features.orders_v2_enabled') => 'mp.orders',
+            config('marketplace.features.v2_enabled') && config('marketplace.features.overview_enabled') => 'mp.overview',
+            default => 'marketplace-accounting',
+        };
+
+        return redirect()->route($preferredRoute);
     })->name('dashboard');
 
     // Production Motor
@@ -91,10 +98,41 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/marketplace-orders', \App\Livewire\MarketplaceOrders::class)
         ->name('mp.orders')
+        ->middleware('mp.feature:orders_v2_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-orders/documents/{documentType}', [MarketplaceOrderDocumentController::class, 'download'])
+        ->name('mp.orders.documents.download')
+        ->middleware('mp.feature:orders_v2_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-overview', \App\Livewire\MarketplaceOverview::class)
+        ->name('mp.overview')
+        ->middleware('mp.feature:overview_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-integrations', \App\Livewire\MarketplaceIntegrations::class)
+        ->name('mp.integrations')
+        ->middleware('mp.feature:integrations_enabled')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
     Route::get('/marketplace-products', \App\Livewire\MpProductsManager::class)
         ->name('mp.products')
+        ->middleware('mp.feature:products_v2_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-matching-center', \App\Livewire\MarketplaceMatchingCenter::class)
+        ->name('mp.matching')
+        ->middleware('mp.feature:matching_center_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-finance', \App\Livewire\MarketplaceFinance::class)
+        ->name('mp.finance')
+        ->middleware('mp.feature:finance_v2_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-settings', \App\Livewire\MarketplaceSettings::class)
+        ->name('mp.settings')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
     // Reçete Modülü

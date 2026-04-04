@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\MarketplaceStore;
 use App\Models\MpOperationalOrder;
 use App\Models\MpOperationalOrderItem;
+use App\Services\Marketplace\LegacyOperationalProjectionService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -11,8 +13,6 @@ use Carbon\Carbon;
 
 class DetailedOrderImportService
 {
-    protected ExcelService $excelService;
-
     // Sütun eşleştirme sözlüğü
     protected array $columnAliases = [
         // ── Sipariş Tanımlayıcıları ──
@@ -80,17 +80,28 @@ class DetailedOrderImportService
         'invoiced_cargo_amount' => ['Faturalanan Kargo Tutarı', 'Kargo Fatura Tutarı'],
     ];
 
-    public function __construct(ExcelService $excelService)
-    {
-        $this->excelService = $excelService;
+    public function __construct(
+        protected ExcelService $excelService,
+        protected LegacyOperationalProjectionService $legacyProjectionService,
+    ) {
     }
 
     /**
      * ChunkReadFilter kullanarak RAM dostu şekilde Excel'i işler.
      */
-    public function importDetailedOrders(string $filePath): array
+    public function importDetailedOrders(string $filePath, ?MarketplaceStore $targetStore = null): array
     {
-        $stats = ['imported_master' => 0, 'imported_items' => 0, 'updated_master' => 0, 'updated_items' => 0, 'errors' => []];
+        $stats = [
+            'imported_master' => 0,
+            'imported_items' => 0,
+            'updated_master' => 0,
+            'updated_items' => 0,
+            'projected_orders' => 0,
+            'projected_created' => 0,
+            'projected_updated' => 0,
+            'errors' => [],
+            'touched_operational_order_ids' => [],
+        ];
 
         try {
             $chunkSize = 1000;
@@ -150,7 +161,7 @@ class DetailedOrderImportService
                 }
 
                 if (!empty($chunkData)) {
-                    $this->processChunkGrouped($chunkData, $stats);
+                    $this->processChunkGrouped($chunkData, $stats, $targetStore);
                 }
 
                 $spreadsheet->disconnectWorksheets();
@@ -162,6 +173,8 @@ class DetailedOrderImportService
             Log::error('DetailedOrderImportError', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             $stats['errors'][] = $e->getMessage();
         }
+
+        unset($stats['touched_operational_order_ids']);
 
         return $stats;
     }
@@ -225,7 +238,7 @@ class DetailedOrderImportService
     /**
      * Okunan satırları Order bazında gruplayıp Master-Detail olarak DB'ye yazar.
      */
-    protected function processChunkGrouped(array $rows, array &$stats): void
+    protected function processChunkGrouped(array $rows, array &$stats, ?MarketplaceStore $targetStore = null): void
     {
         // order_number'a göre grupla
         $grouped = collect($rows)->groupBy('order_number');
@@ -243,8 +256,11 @@ class DetailedOrderImportService
                 $cargoCompany = $firstRow['cargo_partner'] ?? $firstRow['cargo_company'] ?? null;
 
                 $masterData = [
+                    'store_id'            => $targetStore?->id,
+                    'legal_entity_id'     => $targetStore?->legal_entity_id,
                     'order_number'       => $orderNumber,
                     'package_number'     => $firstRow['package_number'] ?? null,
+                    'source_marketplace' => $targetStore?->marketplace,
                     // Tarihler
                     'order_date'         => $this->parseDate($firstRow['order_date'] ?? null),
                     'delivery_date'      => $this->parseDate($firstRow['delivery_date'] ?? null),
@@ -337,12 +353,54 @@ class DetailedOrderImportService
                         $stats['imported_items']++;
                     }
                 }
+
+                $stats['touched_operational_order_ids'][] = $masterOrder->id;
             }
             DB::commit();
+
+            if ($targetStore) {
+                $this->projectTouchedOrders($targetStore, $stats);
+            }
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
         }
+    }
+
+    protected function projectTouchedOrders(MarketplaceStore $targetStore, array &$stats): void
+    {
+        $orderIds = collect($stats['touched_operational_order_ids'] ?? [])
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($orderIds === []) {
+            return;
+        }
+
+        try {
+            $result = $this->legacyProjectionService->projectOperationalOrders(
+                $targetStore,
+                MpOperationalOrder::query()
+                    ->with('items.product')
+                    ->whereIn('id', $orderIds)
+                    ->get()
+            );
+
+            $stats['projected_orders'] += (int) ($result['projected_orders'] ?? 0);
+            $stats['projected_created'] += (int) ($result['created'] ?? 0);
+            $stats['projected_updated'] += (int) ($result['updated'] ?? 0);
+        } catch (\Throwable $exception) {
+            Log::error('DetailedOrderLegacyProjectionError', [
+                'store_id' => $targetStore->id,
+                'error' => $exception->getMessage(),
+            ]);
+
+            $stats['errors'][] = 'Legacy projection hatası: ' . $exception->getMessage();
+        }
+
+        $stats['touched_operational_order_ids'] = [];
     }
 
     protected function parseNumber($val): float
