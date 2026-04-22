@@ -1104,8 +1104,8 @@
                                     </div>
 
                                     <div class="text-right">
-                                        <x-zolm.status-badge size="sm" :tone="$this->statusTone($order->order_status)">
-                                            {{ $this->humanStatus($order->order_status) }}
+                                        <x-zolm.status-badge size="sm" :tone="$this->statusTone($order->order_status, $order->marketplace_alias, $package?->cargo_tracking_number, $package?->delivered_at)">
+                                            {{ $this->humanStatus($order->order_status, $order->marketplace_alias, $package?->cargo_tracking_number, $package?->delivered_at) }}
                                         </x-zolm.status-badge>
                                         @if($orderColorLabel)
                                             <div class="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold"
@@ -1367,7 +1367,8 @@
                                         $locationDistrict = $legacyOrder?->customer_district ?: $order->shipment_district;
                                         $cargoCompany = $legacyOrder?->cargo_company ?: ($package?->cargo_company ?: null);
                                         $trackingNumber = $legacyOrder?->tracking_number ?: ($package?->cargo_tracking_number ?: null);
-                                        $cargoDate = $legacyOrder?->cargo_delivery_date ?: ($package?->shipped_at ?: null);
+                                        $cargoDate = $legacyOrder?->cargo_delivery_date ?: ($package ? $this->packageShipmentAt($package, $order->marketplace_alias) : null);
+                                        $cargoDateLabel = $this->shipmentDateShortLabel($order->marketplace_alias, $package?->package_status, $package?->cargo_tracking_number, $package?->delivered_at, $package?->raw_payload);
                                         $financialAlert = $legacyHasFinancial ? $legacyOrder->financial_alert : ['type' => null, 'label' => null, 'color' => null];
                                         $estimatedCogs = $legacyOrder
                                             ? (float) (($legacyOrder->estimated_cogs ?? 0) + ($legacyOrder->estimated_packaging ?? 0))
@@ -1484,7 +1485,7 @@
                                                 <div class="font-medium text-slate-900">{{ $cargoCompany ?: 'Kargo bilgisi bekleniyor' }}</div>
                                                 <div class="mt-1 text-xs text-slate-500 truncate">{{ $trackingNumber ?: 'Takip no yok' }}</div>
                                                 @if($cargoDate)
-                                                    <div class="mt-1 text-[11px] text-slate-400">Kargoya: {{ $cargoDate->format('d/m H:i') }}</div>
+                                                    <div class="mt-1 text-[11px] text-slate-400">{{ $cargoDateLabel }}: {{ $cargoDate->format('d/m H:i') }}</div>
                                                 @else
                                                     <div class="mt-1 text-[11px] text-slate-400">{{ $matchedLines }}/{{ $itemLines }} satır eşleşti</div>
                                                 @endif
@@ -1568,8 +1569,8 @@
 
                                         @if(in_array('durum', $visibleColumns, true))
                                             <td class="px-2.5 py-3.5 align-top">
-                                                <x-zolm.status-badge size="xs" :tone="$this->statusTone($order->order_status)">
-                                                    {{ $this->humanStatus($order->order_status) }}
+                                                <x-zolm.status-badge size="xs" :tone="$this->statusTone($order->order_status, $order->marketplace_alias, $package?->cargo_tracking_number, $package?->delivered_at)">
+                                                    {{ $this->humanStatus($order->order_status, $order->marketplace_alias, $package?->cargo_tracking_number, $package?->delivered_at) }}
                                                 </x-zolm.status-badge>
                                                 @if($orderColorLabel && !in_array('siparis', $visibleColumns, true))
                                                     <div class="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold"

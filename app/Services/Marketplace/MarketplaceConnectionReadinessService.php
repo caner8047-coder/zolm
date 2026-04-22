@@ -42,8 +42,13 @@ class MarketplaceConnectionReadinessService
             default => $this->inspectGeneric($store, $credentials),
         };
 
+        [$liveChecks, $liveWarnings, $liveFailures] = $this->inspectLiveVerificationState($store);
+
         $warnings = array_merge($warnings, $this->unsupportedProfileWarnings($store, $provider));
+        $warnings = array_merge($warnings, $liveWarnings);
+        $failures = array_merge($failures, $liveFailures);
         $checks = array_merge($checks, $providerChecks);
+        $checks = array_merge($checks, $liveChecks);
         $isReady = $failures === [];
 
         return [
@@ -249,7 +254,19 @@ class MarketplaceConnectionReadinessService
             ? $store->getRelation('syncProfile')
             : ($store->exists ? $store->syncProfile : null);
 
-        $baseUrlPresent = filled($store->connection?->api_base_url) || filled($store->store_url);
+        $sellerId = trim((string) ($store->seller_id ?? ''));
+        $legacyStoreUrlPresent = $sellerId !== '' && filter_var($sellerId, FILTER_VALIDATE_URL) !== false;
+        $storeUrl = collect([
+            trim((string) ($store->connection?->api_base_url ?? '')),
+            trim((string) ($credentials['store_url'] ?? '')),
+            trim((string) ($store->store_url ?? '')),
+            $legacyStoreUrlPresent ? $sellerId : '',
+        ])->first(fn ($value) => $value !== '');
+        $placeholderUrl = $this->looksLikePlaceholderUrl($storeUrl);
+        $baseUrlPresent = filled($store->connection?->api_base_url)
+            || filled($credentials['store_url'] ?? null)
+            || filled($store->store_url)
+            || $legacyStoreUrlPresent;
         $consumerKeyPresent = filled($credentials['api_key'] ?? null);
         $consumerSecretPresent = filled($credentials['api_secret'] ?? null);
         $webhookSecretPresent = filled($store->connection?->webhook_secret);
@@ -273,7 +290,15 @@ class MarketplaceConnectionReadinessService
         };
 
         $checks = [
-            $this->check('Mağaza / API URL', $baseUrlPresent, $baseUrlPresent ? 'WooCommerce mağaza URL tanımlı.' : 'WooCommerce mağaza URL eksik.'),
+            $this->check(
+                'Mağaza / API URL',
+                $baseUrlPresent && !$placeholderUrl,
+                match (true) {
+                    !$baseUrlPresent => 'WooCommerce mağaza URL eksik.',
+                    $placeholderUrl => 'WooCommerce mağaza URL örnek / placeholder görünüyor.',
+                    default => 'WooCommerce mağaza URL tanımlı.',
+                }
+            ),
             $this->check('Consumer key', $consumerKeyPresent, $consumerKeyPresent ? 'Consumer key tanımlı.' : 'WooCommerce consumer key eksik.'),
             $this->check('Consumer secret', $consumerSecretPresent, $consumerSecretPresent ? 'Consumer secret tanımlı.' : 'WooCommerce consumer secret eksik.'),
             $this->check('Webhook secret', $webhookSecretPresent, $webhookSecretPresent ? 'Webhook secret tanımlı.' : 'Webhook secret boş. Okuma akışı için zorunlu değil, webhook için gereklidir.'),
@@ -283,6 +308,10 @@ class MarketplaceConnectionReadinessService
 
         if (!$baseUrlPresent) {
             $failures[] = 'WooCommerce mağaza URL veya API base URL eksik.';
+        }
+
+        if ($placeholderUrl) {
+            $failures[] = 'WooCommerce mağaza URL örnek / placeholder görünüyor. Gerçek site URL girilmelidir.';
         }
 
         if (!$consumerKeyPresent) {
@@ -410,32 +439,30 @@ class MarketplaceConnectionReadinessService
         $apiKeyPresent = filled($credentials['api_key'] ?? null);
         $apiSecretPresent = filled($credentials['api_secret'] ?? null);
         $sellerIdPresent = filled($store->seller_id);
-        $baseUrlPresent = filled($store->connection?->api_base_url);
+        $baseUrlPresent = filled($store->connection?->api_base_url ?: config('marketplace.pazarama.base_url'));
 
         $checks = [
-            $this->check('API key', $apiKeyPresent, $apiKeyPresent ? 'Pazarama API key tanımlı.' : 'Pazarama API key eksik.'),
-            $this->check('API secret', $apiSecretPresent, $apiSecretPresent ? 'Pazarama API secret tanımlı.' : 'Pazarama API secret eksik.'),
-            $this->check('Satıcı / mağaza kodu', $sellerIdPresent, $sellerIdPresent ? 'Satıcı / mağaza kodu tanımlı.' : 'Satıcı / mağaza kodu boş. Bazı akışlarda gerekli olabilir.'),
-            $this->check('API base URL', $baseUrlPresent, $baseUrlPresent ? 'API base URL tanımlı.' : 'API base URL boş. Resmi endpoint doğrulanınca doldurulmalı.'),
+            $this->check('Client ID / API key', $apiKeyPresent, $apiKeyPresent ? 'Pazarama client ID tanımlı.' : 'Pazarama client ID eksik.'),
+            $this->check('Client secret', $apiSecretPresent, $apiSecretPresent ? 'Pazarama client secret tanımlı.' : 'Pazarama client secret eksik.'),
+            $this->check('Satıcı / mağaza kodu', $sellerIdPresent, $sellerIdPresent ? 'Satıcı / mağaza kodu tanımlı.' : 'Satıcı / mağaza kodu boş. Sipariş eşleme ve operasyon ekranlarında faydalıdır.'),
+            $this->check('API base URL', $baseUrlPresent, $baseUrlPresent ? 'Pazarama API URL tanımlı.' : 'Pazarama API URL eksik.'),
         ];
 
         if (!$apiKeyPresent) {
-            $failures[] = 'Pazarama API key eksik.';
+            $failures[] = 'Pazarama client ID / API key eksik.';
         }
 
         if (!$apiSecretPresent) {
-            $failures[] = 'Pazarama API secret eksik.';
+            $failures[] = 'Pazarama client secret / API secret eksik.';
         }
 
         if (!$sellerIdPresent) {
-            $warnings[] = 'Pazarama mağaza / satıcı kodu boş. Sipariş eşleme sırasında gerekli olabilir.';
+            $warnings[] = 'Pazarama mağaza / satıcı kodu boş. Sipariş eşleme ve operasyon loglarında görünür bir anahtar olması önerilir.';
         }
 
         if (!$baseUrlPresent) {
-            $warnings[] = 'Pazarama API base URL boş. Resmi endpoint bilgisi onaylandığında doldurulmalıdır.';
+            $failures[] = 'Pazarama API base URL eksik.';
         }
-
-        $warnings[] = 'Pazarama bağlayıcısı şimdilik güvenli skeleton aşamasında. Resmi doküman ve canlı credential gelmeden smoke test ile veri çekimi açılmayacaktır.';
 
         return [$checks, $warnings, $failures];
     }
@@ -492,34 +519,34 @@ class MarketplaceConnectionReadinessService
         $failures = [];
 
         $apiKeyPresent = filled($credentials['api_key'] ?? null);
-        $apiSecretPresent = filled($credentials['api_secret'] ?? null);
         $sellerIdPresent = filled($store->seller_id);
-        $baseUrlPresent = filled($store->connection?->api_base_url);
+        $integratorNamePresent = filled($credentials['extra_user'] ?? null);
+        $baseUrlPresent = filled($store->connection?->api_base_url ?: config('marketplace.ciceksepeti.base_url'));
 
         $checks = [
             $this->check('API key', $apiKeyPresent, $apiKeyPresent ? 'Çiçeksepeti API key tanımlı.' : 'Çiçeksepeti API key eksik.'),
-            $this->check('API secret', $apiSecretPresent, $apiSecretPresent ? 'Çiçeksepeti API secret tanımlı.' : 'Çiçeksepeti API secret eksik.'),
-            $this->check('Satıcı / mağaza kodu', $sellerIdPresent, $sellerIdPresent ? 'Satıcı / mağaza kodu tanımlı.' : 'Satıcı / mağaza kodu boş. Bazı akışlarda gerekli olabilir.'),
-            $this->check('API base URL', $baseUrlPresent, $baseUrlPresent ? 'API base URL tanımlı.' : 'API base URL boş. Resmi endpoint doğrulanınca doldurulmalı.'),
+            $this->check('Satıcı / mağaza kodu', $sellerIdPresent, $sellerIdPresent ? 'Satıcı / mağaza kodu tanımlı.' : 'Çiçeksepeti user-agent için satıcı kodu eksik.'),
+            $this->check(
+                'User-Agent / entegratör adı',
+                true,
+                $integratorNamePresent
+                    ? 'Entegratör adı tanımlı. User-Agent satıcıId-entegratörAdı şeklinde kurulabilir.'
+                    : 'Entegratör adı boş. Kendi yazılımınızı kullanıyorsanız yalnızca satıcı ID ile devam edilebilir.'
+            ),
+            $this->check('API base URL', $baseUrlPresent, $baseUrlPresent ? 'Çiçeksepeti API URL tanımlı.' : 'Çiçeksepeti API URL eksik.'),
         ];
 
         if (!$apiKeyPresent) {
             $failures[] = 'Çiçeksepeti API key eksik.';
         }
 
-        if (!$apiSecretPresent) {
-            $failures[] = 'Çiçeksepeti API secret eksik.';
-        }
-
         if (!$sellerIdPresent) {
-            $warnings[] = 'Çiçeksepeti mağaza / satıcı kodu boş. Sipariş eşleme sırasında gerekli olabilir.';
+            $failures[] = 'Çiçeksepeti satıcı / mağaza kodu eksik.';
         }
 
         if (!$baseUrlPresent) {
-            $warnings[] = 'Çiçeksepeti API base URL boş. Resmi endpoint bilgisi onaylandığında doldurulmalıdır.';
+            $failures[] = 'Çiçeksepeti API base URL eksik.';
         }
-
-        $warnings[] = 'Çiçeksepeti bağlayıcısı şimdilik güvenli skeleton aşamasında. Resmi doküman ve canlı credential gelmeden smoke test ile veri çekimi açılmayacaktır.';
 
         return [$checks, $warnings, $failures];
     }
@@ -638,5 +665,51 @@ class MarketplaceConnectionReadinessService
             'state' => $condition ? 'ok' : 'missing',
             'message' => $message,
         ];
+    }
+
+    /**
+     * @return array{0: array<int, array{label: string, state: string, message: string}>, 1: array<int, string>, 2: array<int, string>}
+     */
+    protected function inspectLiveVerificationState(MarketplaceStore $store): array
+    {
+        $connection = $store->connection;
+
+        if (!$connection) {
+            return [[], [], []];
+        }
+
+        $checks = [];
+        $warnings = [];
+        $failures = [];
+        $lastVerifiedAt = $connection->last_verified_at;
+        $lastError = trim((string) ($connection->last_error ?? ''));
+
+        if ($lastVerifiedAt) {
+            $checks[] = $this->check(
+                'Son canlı doğrulama',
+                $lastError === '',
+                $lastError === ''
+                    ? 'Son canlı doğrulama başarılı.'
+                    : 'Son canlı doğrulama hata verdi: '.$lastError
+            );
+        }
+
+        if ($lastError !== '') {
+            $failures[] = 'Son canlı doğrulama başarısız: '.$lastError;
+        }
+
+        return [$checks, $warnings, $failures];
+    }
+
+    protected function looksLikePlaceholderUrl(?string $url): bool
+    {
+        $host = (string) parse_url((string) $url, PHP_URL_HOST);
+        $host = mb_strtolower($host);
+
+        if ($host === '') {
+            return false;
+        }
+
+        return in_array($host, ['example.com', 'www.example.com', 'example.org', 'localhost'], true);
     }
 }

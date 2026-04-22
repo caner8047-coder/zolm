@@ -7,6 +7,7 @@ use App\Models\ChannelOrder;
 use App\Models\IntegrationSyncRun;
 use App\Models\MarketplaceStore;
 use App\Models\OrderProfitSnapshot;
+use App\Services\Marketplace\MarketplaceConnectionReadinessService;
 use App\Services\Marketplace\MarketplaceProfitSnapshotService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -20,6 +21,11 @@ class NightlyRepairSyncCommand extends Command
         {--dry-run : Sadece analiz yap, aksiyon alma}';
 
     protected $description = 'Gece onarım sync: eksik finansları tamamla, eşleşmeyen ürünleri yeniden eşleştir, snapshot'ları yeniden hesapla.';
+
+    public function __construct(protected MarketplaceConnectionReadinessService $connectionReadiness)
+    {
+        parent::__construct();
+    }
 
     public function handle(MarketplaceProfitSnapshotService $profitService): int
     {
@@ -50,6 +56,14 @@ class NightlyRepairSyncCommand extends Command
         foreach ($stores as $store) {
             $this->newLine();
             $this->line("━━━ Mağaza #{$store->id}: {$store->store_name} ({$store->marketplace}) ━━━");
+
+            $readiness = $this->connectionReadiness->inspect($store);
+
+            if ($readiness['failures'] !== []) {
+                $this->warn('   ⏭️  Readiness başarısız, mağaza atlanıyor: '.($readiness['failures'][0] ?? 'Bilinmeyen hata'));
+
+                continue;
+            }
 
             // 1. Finans eksik siparişleri tespit et
             $sinceDate = CarbonImmutable::now()->subDays($lookbackDays);

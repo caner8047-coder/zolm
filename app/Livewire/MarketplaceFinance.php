@@ -587,9 +587,50 @@ class MarketplaceFinance extends Component
         return (string) (MarketplaceProviderRegistry::get((string) $marketplace)['label'] ?? ucfirst((string) $marketplace));
     }
 
-    public function humanStatus(?string $status): string
+    protected function shouldTreatPazaramaCargoAsApproved(
+        ?string $status,
+        ?string $marketplace = null,
+        ?string $trackingNumber = null,
+        mixed $deliveredAt = null,
+    ): bool
+    {
+        if (MarketplaceProviderRegistry::normalize((string) $marketplace) !== 'pazarama') {
+            return false;
+        }
+
+        $normalized = Str::lower(trim((string) $status));
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        if (str_contains($normalized, 'deliver') || str_contains($normalized, 'teslim')) {
+            return false;
+        }
+
+        if (!str_contains($normalized, 'ship') && !str_contains($normalized, 'kargo')) {
+            return false;
+        }
+
+        if (filled($trackingNumber)) {
+            return false;
+        }
+
+        return !filled($deliveredAt);
+    }
+
+    public function humanStatus(
+        ?string $status,
+        ?string $marketplace = null,
+        ?string $trackingNumber = null,
+        mixed $deliveredAt = null,
+    ): string
     {
         $normalized = Str::lower(trim((string) $status));
+
+        if ($this->shouldTreatPazaramaCargoAsApproved($status, $marketplace, $trackingNumber, $deliveredAt)) {
+            return 'Onaylandı';
+        }
 
         return match (true) {
             $normalized === '' => 'Durum yok',
@@ -605,9 +646,18 @@ class MarketplaceFinance extends Component
         };
     }
 
-    public function statusTone(?string $status): string
+    public function statusTone(
+        ?string $status,
+        ?string $marketplace = null,
+        ?string $trackingNumber = null,
+        mixed $deliveredAt = null,
+    ): string
     {
         $normalized = Str::lower(trim((string) $status));
+
+        if ($this->shouldTreatPazaramaCargoAsApproved($status, $marketplace, $trackingNumber, $deliveredAt)) {
+            return 'info';
+        }
 
         return match (true) {
             $normalized === '' => 'default',

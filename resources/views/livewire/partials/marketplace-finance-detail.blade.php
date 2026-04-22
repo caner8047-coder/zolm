@@ -66,8 +66,8 @@
                 <div class="flex items-start justify-between gap-3">
                     <dt class="text-slate-500">Durum</dt>
                     <dd>
-                        <x-zolm.status-badge :tone="$this->statusTone($order->order_status)">
-                            {{ $this->humanStatus($order->order_status) }}
+                        <x-zolm.status-badge :tone="$this->statusTone($order->order_status, $order->marketplace_alias, data_get($order, 'packages.0.cargo_tracking_number'), data_get($order, 'packages.0.delivered_at'))">
+                            {{ $this->humanStatus($order->order_status, $order->marketplace_alias, data_get($order, 'packages.0.cargo_tracking_number'), data_get($order, 'packages.0.delivered_at')) }}
                         </x-zolm.status-badge>
                     </dd>
                 </div>

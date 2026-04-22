@@ -22,7 +22,7 @@ class DetailedOrderImportService
         // ── Tarihler ──
         'order_date'        => ['Sipariş Tarihi', 'Siparis Tarihi', 'Order Date', 'Tarih'],
         'delivery_date'     => ['Teslim Tarihi', 'Delivery Date', 'Teslimat Tarihi'],
-        'deadline_date'     => ['Termin Süresinin Bittiği Tarih', 'Termin Tarihi', 'Son Tarih'],
+        'deadline_date'     => ['Termin Süresinin Bittiği Tarih', 'Termin Tarihi', 'Son Tarih', 'Kargolama Tarihi'],
         'cargo_delivery_date' => ['Kargoya Teslim Tarihi', 'Kargoya Veriliş Tarihi'],
         'invoice_date'      => ['Fatura Tarihi'],
 
@@ -54,6 +54,7 @@ class DetailedOrderImportService
         'tracking_number'   => ['Teslimat Numarası', 'Kargo Takip No', 'Gönderi Numarası', 'Takip Numarası'],
         'cargo_code'        => ['Kargo Kodu'],
         'status'            => ['Sipariş Statüsü', 'Sipariş Durumu', 'Durum', 'Sipariş Satır Durumu', 'Paket Durumu'],
+        'status_summary'    => ['Sipariş Özeti', 'Order Summary'],
         'alt_delivery_status' => ['Alternatif Teslimat Statüsü', 'Alt. Teslimat Durumu'],
         'second_delivery_status' => ['2.Teslimat Paketi Statüsü', '2. Teslimat Durumu'],
         'second_tracking_number' => ['2.Teslimat Takip Numarası', '2. Teslimat Takip No'],
@@ -291,7 +292,7 @@ class DetailedOrderImportService
                     'cargo_company'      => $cargoCompany,
                     'tracking_number'    => $firstRow['tracking_number'] ?? null,
                     'cargo_code'         => $firstRow['cargo_code'] ?? null,
-                    'status'             => $firstRow['status'] ?? null,
+                    'status'             => $this->resolveImportedStatus($firstRow),
                     'alt_delivery_status' => $firstRow['alt_delivery_status'] ?? null,
                     'second_delivery_status' => $firstRow['second_delivery_status'] ?? null,
                     'second_tracking_number' => $firstRow['second_tracking_number'] ?? null,
@@ -401,6 +402,19 @@ class DetailedOrderImportService
         }
 
         $stats['touched_operational_order_ids'] = [];
+    }
+
+    protected function resolveImportedStatus(array $row): ?string
+    {
+        $summary = trim((string) ($row['status_summary'] ?? ''));
+
+        if ($summary !== '') {
+            return $summary;
+        }
+
+        $status = trim((string) ($row['status'] ?? ''));
+
+        return $status !== '' ? $status : null;
     }
 
     protected function parseNumber($val): float

@@ -651,7 +651,7 @@
 
                                         <div class="text-right">
                                             <p class="mt-3 text-sm font-semibold {{ $profitValue >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $formatMoney($profitValue) }}</p>
-                                            <p class="mt-1 text-xs text-slate-500">{{ $this->humanStatus($row->order_status) }} · {{ $formatCount($row->financial_event_count) }} olay</p>
+                                            <p class="mt-1 text-xs text-slate-500">{{ $this->humanStatus($row->order_status, $row->marketplace_alias, data_get($row, 'packages.0.cargo_tracking_number'), data_get($row, 'packages.0.delivered_at')) }} · {{ $formatCount($row->financial_event_count) }} olay</p>
                                         </div>
                                     </div>
                                 </button>
@@ -785,8 +785,8 @@
                                             @if(in_array('durum', $visibleColumns, true))
                                                 <td class="px-2 py-3 align-top">
                                                     <div class="flex flex-col gap-2">
-                                                        <x-zolm.status-badge :tone="$this->statusTone($row->order_status)">
-                                                            {{ $this->humanStatus($row->order_status) }}
+                                                        <x-zolm.status-badge :tone="$this->statusTone($row->order_status, $row->marketplace_alias, data_get($row, 'packages.0.cargo_tracking_number'), data_get($row, 'packages.0.delivered_at'))">
+                                                            {{ $this->humanStatus($row->order_status, $row->marketplace_alias, data_get($row, 'packages.0.cargo_tracking_number'), data_get($row, 'packages.0.delivered_at')) }}
                                                         </x-zolm.status-badge>
                                                         <x-zolm.status-badge :tone="$this->profitStateTone($row->profit_state_metric)">
                                                             {{ $this->profitStateLabel($row->profit_state_metric) }}

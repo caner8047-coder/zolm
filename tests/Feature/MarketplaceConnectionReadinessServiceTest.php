@@ -47,6 +47,24 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         $this->assertNotEmpty($result['failures']);
     }
 
+    public function test_it_marks_connection_not_ready_when_last_live_verification_failed(): void
+    {
+        $store = $this->makeStore('trendyol', '12345', [
+            'api_key' => 'key',
+            'api_secret' => 'secret',
+        ], 'https://apigw.trendyol.com/');
+
+        $store->connection->last_verified_at = now();
+        $store->connection->last_error = '401 Unauthorized';
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+
+        $this->assertFalse($result['is_ready']);
+        $this->assertTrue(collect($result['failures'])->contains(
+            fn (string $failure) => str_contains($failure, '401 Unauthorized')
+        ));
+    }
+
     public function test_it_marks_woocommerce_ready_with_consumer_credentials(): void
     {
         $store = $this->makeStore('woocommerce', 'woo-test', [
@@ -56,6 +74,20 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
 
         $store->store_url = 'https://shop.example.com';
         $store->connection->webhook_secret = 'woo-secret';
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+
+        $this->assertTrue($result['is_ready']);
+        $this->assertEmpty($result['failures']);
+    }
+
+    public function test_it_marks_woocommerce_ready_when_store_url_is_only_in_credentials(): void
+    {
+        $store = $this->makeStore('woocommerce', 'woo-test', [
+            'api_key' => 'ck_test',
+            'api_secret' => 'cs_test',
+            'store_url' => 'https://shop.example.com',
+        ], '');
 
         $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
 
@@ -111,6 +143,21 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         $this->assertTrue(collect($result['warnings'])->contains(
             fn (string $warning) => str_contains(mb_strtolower($warning), 'finans sync')
                 && str_contains(mb_strtolower($warning), 'capability pasif')
+        ));
+    }
+
+    public function test_it_marks_woocommerce_not_ready_when_placeholder_url_is_used(): void
+    {
+        $store = $this->makeStore('woocommerce', 'woo-test', [
+            'api_key' => 'ck_test',
+            'api_secret' => 'cs_test',
+        ], 'https://example.com/wp-json/wc/v3/');
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+
+        $this->assertFalse($result['is_ready']);
+        $this->assertTrue(collect($result['failures'])->contains(
+            fn (string $failure) => str_contains(mb_strtolower($failure), 'placeholder')
         ));
     }
 
@@ -192,7 +239,7 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         $this->assertSame('ready', $summary['rows'][0]['state']);
     }
 
-    public function test_it_marks_pazarama_as_ready_with_warnings_in_skeleton_mode_when_api_credentials_exist(): void
+    public function test_it_marks_pazarama_as_ready_when_client_credentials_exist(): void
     {
         $store = $this->makeStore('pazarama', 'pazarama-test', [
             'api_key' => 'pazarama_key',
@@ -203,10 +250,9 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         $summary = app(MarketplaceConnectionReadinessService::class)->inspectCollection([$store]);
 
         $this->assertTrue($result['is_ready']);
-        $this->assertNotEmpty($result['warnings']);
-        $this->assertTrue(collect($result['warnings'])->contains(fn (string $warning) => str_contains(mb_strtolower($warning), 'skeleton')));
-        $this->assertSame(1, $summary['totals']['warning']);
-        $this->assertSame('warning', $summary['rows'][0]['state']);
+        $this->assertEmpty($result['warnings']);
+        $this->assertSame(1, $summary['totals']['ready']);
+        $this->assertSame('ready', $summary['rows'][0]['state']);
     }
 
     public function test_it_marks_amazon_as_ready_with_warnings_in_skeleton_mode_when_api_credentials_exist(): void
@@ -226,21 +272,20 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         $this->assertSame('warning', $summary['rows'][0]['state']);
     }
 
-    public function test_it_marks_ciceksepeti_as_ready_with_warnings_in_skeleton_mode_when_api_credentials_exist(): void
+    public function test_it_marks_ciceksepeti_as_ready_when_api_key_and_seller_id_exist(): void
     {
         $store = $this->makeStore('ciceksepeti', 'ciceksepeti-test', [
             'api_key' => 'ciceksepeti_key',
-            'api_secret' => 'ciceksepeti_secret',
+            'extra_user' => 'ZOLM',
         ], '');
 
         $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
         $summary = app(MarketplaceConnectionReadinessService::class)->inspectCollection([$store]);
 
         $this->assertTrue($result['is_ready']);
-        $this->assertNotEmpty($result['warnings']);
-        $this->assertTrue(collect($result['warnings'])->contains(fn (string $warning) => str_contains(mb_strtolower($warning), 'skeleton')));
-        $this->assertSame(1, $summary['totals']['warning']);
-        $this->assertSame('warning', $summary['rows'][0]['state']);
+        $this->assertEmpty($result['warnings']);
+        $this->assertSame(1, $summary['totals']['ready']);
+        $this->assertSame('ready', $summary['rows'][0]['state']);
     }
 
     public function test_it_summarizes_store_readiness_states(): void

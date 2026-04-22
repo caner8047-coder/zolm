@@ -111,7 +111,7 @@ class MarketplaceProductMatcher
 
     public function applyToOrderItem(ChannelOrderItem $item, ?string $stockCode, ?string $barcode): void
     {
-        $item->loadMissing(['store', 'listing']);
+        $item->loadMissing(['store.syncProfile', 'listing']);
 
         $result = $this->resolve($item->store, $stockCode, $barcode);
         $listing = $item->listing ?: $this->resolveListing($item->store_id, $stockCode, $barcode);

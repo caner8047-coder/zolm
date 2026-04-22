@@ -333,7 +333,22 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
 
     protected function baseUrlFor(MarketplaceStore $store): string
     {
-        $base = trim((string) ($store->connection?->api_base_url ?: $store->store_url ?: config('marketplace.woocommerce.base_url')));
+        $credentials = $store->connection?->credentials_encrypted ?? [];
+        $sellerId = trim((string) ($store->seller_id ?? ''));
+        $legacyStoreUrl = filter_var($sellerId, FILTER_VALIDATE_URL) ? $sellerId : '';
+
+        $candidates = [
+            trim((string) ($store->connection?->api_base_url ?? '')),
+            trim((string) ($credentials['store_url'] ?? '')),
+            trim((string) ($store->store_url ?? '')),
+            $legacyStoreUrl,
+            trim((string) config('marketplace.woocommerce.base_url')),
+        ];
+
+        $base = collect($candidates)
+            ->filter(fn ($value) => $value !== '')
+            ->sortBy(fn (string $value) => $this->looksLikePlaceholderUrl($value) ? 1 : 0)
+            ->first() ?? '';
 
         if ($base === '') {
             throw new \RuntimeException('WooCommerce bağlantısı için mağaza URL veya API base URL zorunludur.');
@@ -347,6 +362,18 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
         }
 
         return $base.'/wp-json/'.$version.'/';
+    }
+
+    protected function looksLikePlaceholderUrl(string $url): bool
+    {
+        $host = (string) parse_url($url, PHP_URL_HOST);
+        $host = Str::lower($host);
+
+        if ($host === '') {
+            return false;
+        }
+
+        return in_array($host, ['example.com', 'www.example.com', 'example.org', 'localhost'], true);
     }
 
     /**

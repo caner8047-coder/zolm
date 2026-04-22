@@ -107,6 +107,8 @@ class IntegrationSyncProfile extends Model
             'hepsiburada' => array_replace($defaults, config('marketplace.hepsiburada.sync_defaults', [])),
             'n11' => array_replace($defaults, config('marketplace.n11.sync_defaults', [])),
             'koctas' => array_replace($defaults, config('marketplace.koctas.sync_defaults', [])),
+            'pazarama' => array_replace($defaults, config('marketplace.pazarama.sync_defaults', [])),
+            'ciceksepeti' => array_replace($defaults, config('marketplace.ciceksepeti.sync_defaults', [])),
             'woocommerce' => array_replace($defaults, config('marketplace.woocommerce.sync_defaults', []), [
                 'extra_settings' => [
                     'webhook_topics' => self::recommendedWebhookTopicsForMarketplace('woocommerce'),

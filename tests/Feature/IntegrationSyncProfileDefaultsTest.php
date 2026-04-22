@@ -80,4 +80,34 @@ class IntegrationSyncProfileDefaultsTest extends TestCase
         $this->assertSame(15, $defaults['request_jitter_seconds']);
         $this->assertSame('7_days', $defaults['backfill_mode']);
     }
+
+    public function test_it_uses_conservative_defaults_for_pazarama(): void
+    {
+        $defaults = IntegrationSyncProfile::defaultsForMarketplace('pazarama');
+
+        $this->assertSame(20, $defaults['orders_poll_minutes']);
+        $this->assertSame(720, $defaults['products_poll_minutes']);
+        $this->assertFalse($defaults['finance_enabled']);
+        $this->assertFalse($defaults['webhook_enabled']);
+        $this->assertFalse($defaults['price_push_enabled']);
+        $this->assertFalse($defaults['stock_push_enabled']);
+        $this->assertSame(1, $defaults['max_parallel_jobs']);
+        $this->assertSame(10, $defaults['request_jitter_seconds']);
+        $this->assertSame('7_days', $defaults['backfill_mode']);
+    }
+
+    public function test_it_uses_conservative_defaults_for_ciceksepeti(): void
+    {
+        $defaults = IntegrationSyncProfile::defaultsForMarketplace('ciceksepeti');
+
+        $this->assertSame(20, $defaults['orders_poll_minutes']);
+        $this->assertSame(720, $defaults['products_poll_minutes']);
+        $this->assertFalse($defaults['finance_enabled']);
+        $this->assertFalse($defaults['webhook_enabled']);
+        $this->assertFalse($defaults['price_push_enabled']);
+        $this->assertFalse($defaults['stock_push_enabled']);
+        $this->assertSame(1, $defaults['max_parallel_jobs']);
+        $this->assertSame(10, $defaults['request_jitter_seconds']);
+        $this->assertSame('7_days', $defaults['backfill_mode']);
+    }
 }

@@ -30,8 +30,12 @@ class MarketplaceManualMatchService
         }
 
         $listing = $issue->channelListing;
+
+        // Listing bulunamadıysa (channel_listing_id = NULL olan issue'lar):
+        // Ürünün kendi stock_code/barcode'u ile mağazadaki eşleşmemiş
+        // sipariş satırlarını bulup doğrudan eşleştiriyoruz.
         if (!$listing) {
-            throw new \RuntimeException('Bu kayıt doğrudan bir listing ile ilişkili değil. Şimdilik sadece listing bazlı issue kayıtları manuel eşleştirilebilir.');
+            return $this->manualMatchWithoutListing($issue, $product, $resolvedBy);
         }
 
         $channelProduct = $listing->channelProduct;
@@ -101,6 +105,82 @@ class MarketplaceManualMatchService
 
         return [
             'updated_items' => $updatedItems,
+            'impacted_orders' => count($impactedOrderIds),
+        ];
+    }
+
+    /**
+     * Listing kaydı olmayan issue'lar için fallback eşleştirme.
+     * Seçilen ürünün stock_code ve barcode'u ile mağazadaki tüm
+     * eşleşmemiş sipariş satırlarını bulup doğrudan eşleştirir.
+     *
+     * @return array{updated_items: int, impacted_orders: int}
+     */
+    protected function manualMatchWithoutListing(ProductMatchIssue $issue, MpProduct $product, ?int $resolvedBy = null): array
+    {
+        $stockCode = trim((string) $product->stock_code);
+        $barcode   = trim((string) $product->barcode);
+
+        if ($stockCode === '' && $barcode === '') {
+            throw new \RuntimeException('Seçilen ürünün stok kodu veya barkodu yok; eşleştirme yapılamaz.');
+        }
+
+        $updatedItems     = 0;
+        $impactedOrderIds = [];
+
+        DB::transaction(function () use (
+            $issue,
+            $product,
+            $resolvedBy,
+            $stockCode,
+            $barcode,
+            &$updatedItems,
+            &$impactedOrderIds
+        ) {
+            // Aynı mağazada stock_code veya barcode eşleşen, henüz eşleşmemiş satırları bul.
+            $items = ChannelOrderItem::query()
+                ->where('store_id', $issue->store_id)
+                ->where('is_matched', false)
+                ->where(function ($query) use ($stockCode, $barcode) {
+                    if ($stockCode !== '') {
+                        $query->orWhere('stock_code', $stockCode);
+                    }
+                    if ($barcode !== '') {
+                        $query->orWhere('barcode', $barcode);
+                    }
+                })
+                ->get();
+
+            foreach ($items as $item) {
+                $item->forceFill([
+                    'mp_product_id' => $product->id,
+                    'is_matched'    => true,
+                    'match_source'  => 'manual',
+                ])->save();
+
+                $updatedItems++;
+                $impactedOrderIds[] = $item->channel_order_id;
+            }
+
+            // Bu issue'yu ve aynı mağazada listing'siz diğer bekleyen issue'ları kapat.
+            ProductMatchIssue::query()
+                ->where('store_id', $issue->store_id)
+                ->whereNull('channel_listing_id')
+                ->where('match_status', 'pending')
+                ->update([
+                    'match_status' => 'resolved',
+                    'resolved_by'  => $resolvedBy,
+                    'resolved_at'  => now(),
+                ]);
+        });
+
+        $impactedOrderIds = array_values(array_unique(array_filter($impactedOrderIds)));
+        if ($impactedOrderIds !== []) {
+            $this->profitSnapshotService->recalculateForOrders($issue->store, $impactedOrderIds);
+        }
+
+        return [
+            'updated_items'   => $updatedItems,
             'impacted_orders' => count($impactedOrderIds),
         ];
     }

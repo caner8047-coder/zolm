@@ -11,6 +11,7 @@
     $financialEvents = $order->financialEvents ?? collect();
     $actionRuns = ($order->actionRuns ?? collect())->sortByDesc('created_at')->values();
     $matchIssues = max(0, (int) ($order->item_lines_count ?? 0) - (int) ($order->matched_lines_count ?? 0));
+    $marketplaceKey = $order->store?->marketplace ?? $order->marketplace_alias ?? null;
     $formatMoney = fn ($value) => '₺' . number_format((float) $value, 2, ',', '.');
     $supportsPackagePicking = $this->orderSupportsCapability($order, 'package_picking');
     $supportsPackageInvoiced = $this->orderSupportsCapability($order, 'package_invoiced');
@@ -18,6 +19,11 @@
     $supportsCommonLabelGet = $this->orderSupportsCapability($order, 'package_common_label_get');
     $supportsInvoiceLink = $this->orderSupportsCapability($order, 'package_invoice_link');
     $supportsAnyPackageOperation = $supportsPackagePicking || $supportsPackageInvoiced || $supportsCommonLabelCreate || $supportsCommonLabelGet || $supportsInvoiceLink;
+    $supportsOrderRefresh = $this->orderSupportsAction($order, 'refresh_order');
+    $supportsCargoRefresh = $this->orderSupportsAction($order, 'refresh_cargo');
+    $supportsFinanceRefresh = $this->orderSupportsAction($order, 'refresh_finance');
+    $orderActionSupportNotice = $this->orderActionSupportNotice($order);
+    $packageActionSupportNotice = $this->packageActionSupportNotice($order->store?->marketplace);
 @endphp
 
 <div class="space-y-3 sm:space-y-4">
@@ -63,27 +69,33 @@
 
         @if(config('marketplace.features.order_actions_enabled', true))
             <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                <button type="button"
-                        wire:click="runOrderAction({{ $order->id }}, 'refresh_order')"
-                        wire:loading.attr="disabled"
-                        wire:target="runOrderAction"
-                        class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                    Siparişi yenile
-                </button>
-                <button type="button"
-                        wire:click="runOrderAction({{ $order->id }}, 'refresh_cargo')"
-                        wire:loading.attr="disabled"
-                        wire:target="runOrderAction"
-                        class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                    Kargoyu yenile
-                </button>
-                <button type="button"
-                        wire:click="runOrderAction({{ $order->id }}, 'refresh_finance')"
-                        wire:loading.attr="disabled"
-                        wire:target="runOrderAction"
-                        class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                    Finansı yenile
-                </button>
+                @if($supportsOrderRefresh)
+                    <button type="button"
+                            wire:click="runOrderAction({{ $order->id }}, 'refresh_order')"
+                            wire:loading.attr="disabled"
+                            wire:target="runOrderAction"
+                            class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
+                        Siparişi yenile
+                    </button>
+                @endif
+                @if($supportsCargoRefresh)
+                    <button type="button"
+                            wire:click="runOrderAction({{ $order->id }}, 'refresh_cargo')"
+                            wire:loading.attr="disabled"
+                            wire:target="runOrderAction"
+                            class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
+                        Kargoyu yenile
+                    </button>
+                @endif
+                @if($supportsFinanceRefresh)
+                    <button type="button"
+                            wire:click="runOrderAction({{ $order->id }}, 'refresh_finance')"
+                            wire:loading.attr="disabled"
+                            wire:target="runOrderAction"
+                            class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
+                        Finansı yenile
+                    </button>
+                @endif
                 <button type="button"
                         wire:click="runOrderAction({{ $order->id }}, 'recalculate_profit')"
                         wire:loading.attr="disabled"
@@ -92,6 +104,12 @@
                     Kârı hesapla
                 </button>
             </div>
+
+            @if($orderActionSupportNotice)
+                <div class="mt-3 rounded-[6px] border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                    {{ $orderActionSupportNotice }}
+                </div>
+            @endif
 
             <div class="mt-4 rounded-[6px] border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500" wire:loading wire:target="runOrderAction">
                 Sipariş aksiyonu kuyruğa alınıyor...
@@ -212,6 +230,9 @@
             @if($packages->isNotEmpty())
                 <div class="mt-3 space-y-3">
                     @foreach($packages as $package)
+                        @php
+                            $shipmentAt = $this->packageShipmentAt($package, $marketplaceKey);
+                        @endphp
                         <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 p-3">
                             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div class="min-w-0">
@@ -226,8 +247,8 @@
                                                class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
                                         <span>Toplu seç</span>
                                     </label>
-                                    <x-zolm.status-badge :tone="$this->statusTone($package->package_status)">
-                                        {{ $this->humanStatus($package->package_status) }}
+                                    <x-zolm.status-badge :tone="$this->statusTone($package->package_status, $marketplaceKey, $package->cargo_tracking_number, $package->delivered_at)">
+                                        {{ $this->humanStatus($package->package_status, $marketplaceKey, $package->cargo_tracking_number, $package->delivered_at) }}
                                     </x-zolm.status-badge>
                                 </div>
                             </div>
@@ -241,8 +262,8 @@
                                     <p class="mt-1 font-medium text-slate-900">{{ $package->cargo_desi ? number_format((float) $package->cargo_desi, 2, ',', '.') : '-' }}</p>
                                 </div>
                                 <div>
-                                    <p>Kargoya verildi</p>
-                                    <p class="mt-1 font-medium text-slate-900">{{ $package->shipped_at?->format('d.m.Y H:i') ?: '-' }}</p>
+                                    <p>{{ $this->shipmentDateLabel($marketplaceKey, $package->package_status, $package->cargo_tracking_number, $package->delivered_at, $package->raw_payload) }}</p>
+                                    <p class="mt-1 font-medium text-slate-900">{{ $shipmentAt?->format('d.m.Y H:i') ?: '-' }}</p>
                                 </div>
                                 <div>
                                     <p>Teslim</p>
@@ -259,7 +280,11 @@
                                     <div class="text-xs text-slate-400">PKT #{{ $package->id }}</div>
                                 </div>
 
-                                @if(config('marketplace.features.package_actions_enabled', true) && $supportsAnyPackageOperation)
+                                @if(!config('marketplace.features.package_actions_enabled', true))
+                                    <div class="mt-3 rounded-[6px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                                        Paket aksiyonları şu anda feature flag ile kapalı.
+                                    </div>
+                                @elseif($supportsAnyPackageOperation)
                                     <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                                         @if($supportsPackageInvoiced || $supportsInvoiceLink)
                                             <div>
@@ -380,7 +405,7 @@
                                     </div>
                                 @else
                                     <div class="mt-3 rounded-[6px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                                        Bu mağazanın bağlayıcısında paket operasyon servisi tanımlı değil.
+                                        {{ $packageActionSupportNotice }}
                                     </div>
                                 @endif
                             </div>
@@ -487,6 +512,9 @@
                 </thead>
                 <tbody class="divide-y divide-slate-200 bg-white text-sm text-slate-700">
                     @foreach($items as $item)
+                        @php
+                            $itemPackage = $packages->firstWhere('id', $item->channel_order_package_id);
+                        @endphp
                         <tr>
                             <td class="px-3 py-3">
                                 <div class="font-medium text-slate-900">{{ $item->product_name ?: 'Ürün adı yok' }}</div>
@@ -517,7 +545,7 @@
                                     <x-zolm.status-badge :tone="$item->is_matched ? 'success' : 'warning'">
                                         {{ $item->is_matched ? 'Eşleşti' : 'Kontrol' }}
                                     </x-zolm.status-badge>
-                                    <span class="text-xs text-slate-500">{{ $this->humanStatus($item->line_status) }}</span>
+                                    <span class="text-xs text-slate-500">{{ $this->humanStatus($item->line_status, $marketplaceKey, $itemPackage?->cargo_tracking_number, $itemPackage?->delivered_at) }}</span>
                                 </div>
                             </td>
                         </tr>

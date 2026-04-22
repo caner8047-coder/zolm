@@ -239,6 +239,11 @@ class MarketplaceIntegrations extends Component
             'extra_password' => $validated['connectionForm']['extraPassword'] ?: ($existingCredentials['extra_password'] ?? null),
             'store_url' => $validated['connectionForm']['storeUrl'] ?: null,
         ];
+        $resolvedApiBaseUrl = $this->resolveConnectionApiBaseUrl(
+            marketplace: $store->marketplace,
+            explicitApiBaseUrl: $validated['connectionForm']['apiBaseUrl'] ?: null,
+            storeUrl: $validated['connectionForm']['storeUrl'] ?: null,
+        );
 
         $store->connection()->updateOrCreate(
             ['store_id' => $store->id],
@@ -248,7 +253,7 @@ class MarketplaceIntegrations extends Component
                 'credentials_encrypted' => array_filter($credentials, fn ($value) => filled($value)),
                 'webhook_secret' => $validated['connectionForm']['webhookSecret'] ?: ($existingConnection?->webhook_secret ?: Str::random(40)),
                 'webhook_url' => $this->buildWebhookUrl($store),
-                'api_base_url' => $validated['connectionForm']['apiBaseUrl'] ?: MarketplaceProviderRegistry::defaultApiBaseUrl($store->marketplace),
+                'api_base_url' => $resolvedApiBaseUrl,
                 'status' => filled($credentials['api_key']) || filled($credentials['store_url']) ? 'configured' : 'draft',
                 'last_error' => null,
             ],
@@ -1135,11 +1140,11 @@ class MarketplaceIntegrations extends Component
                 'seller_id_label' => 'Pazarama mağaza / satıcı kodu',
                 'seller_id_placeholder' => 'Opsiyonel satıcı kodu',
                 'api_base_url_label' => 'Pazarama API URL',
-                'api_base_url_placeholder' => 'Resmi endpoint onaylandığında doldurulacak',
-                'api_key_label' => 'API Anahtarı',
-                'api_key_placeholder' => 'Pazarama API anahtarı',
-                'api_secret_label' => 'API Gizli Anahtarı',
-                'api_secret_placeholder' => 'Pazarama API gizli anahtarı',
+                'api_base_url_placeholder' => 'https://isortagimapi.pazarama.com',
+                'api_key_label' => 'Client ID / API Anahtarı',
+                'api_key_placeholder' => 'Pazarama client ID',
+                'api_secret_label' => 'Client Secret / API Gizli Anahtarı',
+                'api_secret_placeholder' => 'Pazarama client secret',
                 'store_front_code_label' => 'Ek mağaza kodu',
                 'store_front_code_placeholder' => 'Şimdilik kullanılmıyor',
                 'extra_user_label' => 'Ek kullanıcı',
@@ -1149,10 +1154,10 @@ class MarketplaceIntegrations extends Component
                 'store_url_label' => 'Mağaza / panel URL',
                 'store_url_placeholder' => 'https://www.pazarama.com/magaza/ornek',
                 'hints' => [
-                    'Pazarama için alan yapısı şimdilik güvenli iskelet modunda tutuluyor; API anahtarı ve gizli anahtar saklanabilir.',
-                    'Resmi uç nokta ve doğrulama akışı netleşmeden bağlantı doğrulama bilerek başarısız döner.',
-                    'Bu nedenle yetenek rozetleri pasif görünür; mağaza kaydı ve kimlik bilgisi hazırlığı için kullanılır.',
-                    'Canlı ön test açılmadan önce resmi Pazarama dokümanı ve gerçek kimlik bilgileri ile alan eşleme sıkılaştırılacaktır.',
+                    'Pazarama access token akışı client_credentials modeli ile çalışır; client ID ve client secret alanları zorunludur.',
+                    'Varsayılan ürün ve sipariş uç noktası https://isortagimapi.pazarama.com üzerinden çalışır.',
+                    'Sipariş ve ürün çekme akışları aktif; finans, webhook ve paket operasyonları bu iterasyonda kapalı tutulur.',
+                    'İlk backfill önerisi 7 gündür; daha geniş aralıklar Pazarama dokümanındaki tarih limiti nedeniyle parçalara bölünerek çağrılır.',
                 ],
             ],
             'amazon' => [
@@ -1183,26 +1188,26 @@ class MarketplaceIntegrations extends Component
             'ciceksepeti' => [
                 'default_auth_type' => 'api_key_secret',
                 'seller_id_label' => 'Çiçeksepeti mağaza / satıcı kodu',
-                'seller_id_placeholder' => 'Opsiyonel satıcı kodu',
+                'seller_id_placeholder' => 'User-Agent için zorunlu satıcı kodu',
                 'api_base_url_label' => 'Çiçeksepeti API URL',
-                'api_base_url_placeholder' => 'Resmi endpoint onaylandığında doldurulacak',
+                'api_base_url_placeholder' => 'https://apis.ciceksepeti.com/api/v1',
                 'api_key_label' => 'API Anahtarı',
                 'api_key_placeholder' => 'Çiçeksepeti API anahtarı',
-                'api_secret_label' => 'API Gizli Anahtarı',
-                'api_secret_placeholder' => 'Çiçeksepeti API gizli anahtarı',
+                'api_secret_label' => 'API Gizli Anahtarı (opsiyonel)',
+                'api_secret_placeholder' => 'Şimdilik kullanılmıyor',
                 'store_front_code_label' => 'Ek mağaza kodu',
                 'store_front_code_placeholder' => 'Şimdilik kullanılmıyor',
-                'extra_user_label' => 'Ek kullanıcı',
-                'extra_user_placeholder' => 'Şimdilik kullanılmıyor',
+                'extra_user_label' => 'Entegratör adı (opsiyonel)',
+                'extra_user_placeholder' => 'User-Agent için entegratör adı',
                 'extra_password_label' => 'Ek şifre',
                 'extra_password_placeholder' => 'Şimdilik kullanılmıyor',
                 'store_url_label' => 'Mağaza / panel URL',
                 'store_url_placeholder' => 'https://www.ciceksepeti.com/merchant',
                 'hints' => [
-                    'Çiçeksepeti için alan yapısı şimdilik güvenli iskelet modunda tutuluyor; API anahtarı ve gizli anahtar saklanabilir.',
-                    'Resmi uç nokta ve doğrulama akışı netleşmeden bağlantı doğrulama bilerek başarısız döner.',
-                    'Bu nedenle yetenek rozetleri pasif görünür; mağaza kaydı ve kimlik bilgisi hazırlığı için kullanılır.',
-                    'Canlı ön test açılmadan önce resmi Çiçeksepeti dokümanı ve gerçek kimlik bilgileri ile alan eşleme sıkılaştırılacaktır.',
+                    'Çiçeksepeti tüm isteklerde x-api-key ve user-agent bekler; user-agent satıcıId veya satıcıId-entegratörAdı formatında gönderilir.',
+                    'Varsayılan prod endpoint https://apis.ciceksepeti.com/api/v1 adresidir; test için sandbox-apis.ciceksepeti.com/api/v1 kullanılır.',
+                    'Sipariş ve ürün çekme akışları aktif; finans, webhook ve paket operasyonları bu iterasyonda kapalı tutulur.',
+                    'Sipariş listeleme servisi 2 haftalık tarih aralığı limiti uygular; sistem uzun aralıkları otomatik parçalara böler.',
                 ],
             ],
             'woocommerce' => [
@@ -1760,5 +1765,18 @@ class MarketplaceIntegrations extends Component
             'provider' => $store->marketplace,
             'store' => $store->id,
         ]);
+    }
+
+    protected function resolveConnectionApiBaseUrl(string $marketplace, ?string $explicitApiBaseUrl, ?string $storeUrl): ?string
+    {
+        if (filled($explicitApiBaseUrl)) {
+            return $explicitApiBaseUrl;
+        }
+
+        if (in_array($marketplace, ['woocommerce', 'shopify'], true) && filled($storeUrl)) {
+            return $storeUrl;
+        }
+
+        return MarketplaceProviderRegistry::defaultApiBaseUrl($marketplace);
     }
 }

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Jobs\SyncMarketplaceDataJob;
 use App\Models\IntegrationSyncRun;
 use App\Models\MarketplaceStore;
+use App\Services\Marketplace\MarketplaceConnectionReadinessService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 
@@ -16,6 +17,11 @@ class DispatchDueMarketplaceSyncsCommand extends Command
         {--force : Zaman penceresini beklemeden dispatch et}';
 
     protected $description = 'Aktif mağazalar için profil ayarlarına göre zamanı gelmiş sync işlerini kuyruğa alır.';
+
+    public function __construct(protected MarketplaceConnectionReadinessService $connectionReadiness)
+    {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -37,6 +43,14 @@ class DispatchDueMarketplaceSyncsCommand extends Command
 
         foreach ($stores as $store) {
             if (!$store->connection || !in_array($store->connection->status, ['configured', 'connected'], true)) {
+                continue;
+            }
+
+            $readiness = $this->connectionReadiness->inspect($store);
+
+            if ($readiness['failures'] !== []) {
+                $this->warn("Skipped store #{$store->id} ({$store->store_name}): ".$readiness['failures'][0]);
+
                 continue;
             }
 

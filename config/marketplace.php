@@ -147,8 +147,26 @@ return [
     ],
 
     'pazarama' => [
-        'base_url' => env('PAZARAMA_API_BASE_URL', ''),
+        'base_url' => env('PAZARAMA_API_BASE_URL', 'https://isortagimapi.pazarama.com'),
+        'token_url' => env('PAZARAMA_TOKEN_URL', 'https://isortagimgiris.pazarama.com/connect/token'),
         'request_timeout' => (int) env('PAZARAMA_REQUEST_TIMEOUT', 45),
+        'order_page_size' => (int) env('PAZARAMA_ORDER_PAGE_SIZE', 500),
+        'product_page_size' => (int) env('PAZARAMA_PRODUCT_PAGE_SIZE', 100),
+        'max_order_pages_per_sync' => (int) env('PAZARAMA_MAX_ORDER_PAGES_PER_SYNC', 20),
+        'max_product_pages_per_sync' => (int) env('PAZARAMA_MAX_PRODUCT_PAGES_PER_SYNC', 20),
+        'sync_defaults' => [
+            'orders_poll_minutes' => 20,
+            'finance_poll_minutes' => 360,
+            'products_poll_minutes' => 720,
+            'backfill_mode' => '7_days',
+            'backfill_days' => 7,
+            'finance_enabled' => false,
+            'webhook_enabled' => false,
+            'price_push_enabled' => false,
+            'stock_push_enabled' => false,
+            'max_parallel_jobs' => 1,
+            'request_jitter_seconds' => 10,
+        ],
     ],
 
     'amazon' => [
@@ -179,8 +197,27 @@ return [
     ],
 
     'ciceksepeti' => [
-        'base_url' => env('CICEKSEPETI_API_BASE_URL', ''),
+        'base_url' => env('CICEKSEPETI_API_BASE_URL', 'https://apis.ciceksepeti.com/api/v1'),
         'request_timeout' => (int) env('CICEKSEPETI_REQUEST_TIMEOUT', 45),
+        'order_page_size' => (int) env('CICEKSEPETI_ORDER_PAGE_SIZE', 100),
+        'product_page_size' => (int) env('CICEKSEPETI_PRODUCT_PAGE_SIZE', 60),
+        'max_order_pages_per_sync' => (int) env('CICEKSEPETI_MAX_ORDER_PAGES_PER_SYNC', 20),
+        'max_product_pages_per_sync' => (int) env('CICEKSEPETI_MAX_PRODUCT_PAGES_PER_SYNC', 20),
+        'product_rate_limit_max_attempts' => (int) env('CICEKSEPETI_PRODUCT_RATE_LIMIT_MAX_ATTEMPTS', 3),
+        'product_rate_limit_grace_seconds' => (int) env('CICEKSEPETI_PRODUCT_RATE_LIMIT_GRACE_SECONDS', 1),
+        'sync_defaults' => [
+            'orders_poll_minutes' => 20,
+            'finance_poll_minutes' => 360,
+            'products_poll_minutes' => 720,
+            'backfill_mode' => '7_days',
+            'backfill_days' => 7,
+            'finance_enabled' => false,
+            'webhook_enabled' => false,
+            'price_push_enabled' => false,
+            'stock_push_enabled' => false,
+            'max_parallel_jobs' => 1,
+            'request_jitter_seconds' => 10,
+        ],
     ],
 
     'woocommerce' => [

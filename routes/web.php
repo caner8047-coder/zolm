@@ -96,6 +96,24 @@ Route::middleware('auth')->group(function () {
         ->name('marketplace-accounting')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
+    // Legacy aliases kept for backward compatibility.
+    // These pages were removed from the current codebase; route names remain valid.
+    Route::get('/marketplace-messages', fn () => redirect()->route('mp.orders'))
+        ->name('marketplace-messages')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-claims', fn () => redirect()->route('mp.orders'))
+        ->name('marketplace-claims')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-performance', fn () => redirect()->route('mp.orders'))
+        ->name('marketplace-performance')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-listing-push', fn () => redirect()->route('mp.orders'))
+        ->name('marketplace-listing-push')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
     Route::get('/marketplace-orders', \App\Livewire\MarketplaceOrders::class)
         ->name('mp.orders')
         ->middleware('mp.feature:orders_v2_enabled')
@@ -143,6 +161,31 @@ Route::middleware('auth')->group(function () {
         ->name('recipe.builder')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
+    Route::get('/returns', \App\Livewire\Returns\ReturnWorkspace::class)
+        ->name('returns.workspace')
+        ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class);
+
+    Route::get('/returns/intake', function () {
+        return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'kabul']));
+    })
+        ->name('returns.intake')
+        ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+        ->middleware('can:accessReturnsIntake');
+
+    Route::get('/returns/center', function () {
+        return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'havuz']));
+    })
+        ->name('returns.center')
+        ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+        ->middleware('can:accessReturnsReview');
+
+    Route::get('/returns/whatsapp-bridge', function () {
+        return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'whatsapp']));
+    })
+        ->name('returns.whatsapp-bridge')
+        ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+        ->middleware('can:accessReturnsReview');
+
     Route::get('/api-dev', \App\Livewire\ApiDev::class)->name('api-dev');
 
     // Route cache temizleme
@@ -168,6 +211,13 @@ Route::middleware('auth')->group(function () {
 
     // File downloads - doğrudan binary response
     Route::get('/download/{reportFile}', function (\App\Models\ReportFile $reportFile) {
+        $user = auth()->user();
+        if (!$user->isAdmin()) {
+            if (!$reportFile->report || $reportFile->report->user_id !== $user->id) {
+                abort(403, 'Bu dosyaya erişim yetkiniz yok.');
+            }
+        }
+
         $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($reportFile->file_path);
         
         if (!file_exists($fullPath)) {
@@ -255,6 +305,100 @@ if (app()->environment('local')) {
             
         } catch (\Exception $e) {
             return 'Hata: ' . $e->getMessage();
+        }
+    });
+
+    // Kuyrukta bekleyen tüm entegrasyon işlerini anında senkronize et
+    Route::get('/force-sync', function () {
+        $runs = \App\Models\IntegrationSyncRun::where('status', 'queued')
+                    ->orderBy('id', 'desc')
+                    ->take(10) // Sadece en yeni 10 işi al, eski takılıları çekme
+                    ->get();
+
+        if ($runs->isEmpty()) {
+            return 'Kuyrukta bekleyen (queued) yeni senkronizasyon işi yok.';
+        }
+
+        $count = 0;
+        $errors = [];
+        $syncService = app(\App\Services\Marketplace\MarketplaceSyncService::class);
+        
+        foreach($runs as $run) {
+            try {
+                $syncService->run($run->id);
+                $count++;
+            } catch (\Exception $e) {
+                // Eski run'u fail yapıp kurtul
+                $run->status = 'failed';
+                $run->save();
+                $errors[] = "Run #{$run->id}: " . $e->getMessage();
+            }
+        }
+        
+        $output = "{$count} adet senkronizasyon kuyruğu başarıyla işlendi! Siparişler ekrana düşmüş olmalı.<br><br>";
+        if (!empty($errors)) {
+            $output .= "<b>Alınan Hatalar (Bu hatalar eski veya geçersiz bağlantılara ait olabilir ve atlanmıştır):</b><br>" . implode('<br>', $errors);
+        }
+        return $output;
+    });
+
+    Route::get('/debug-runs', function () {
+        $runs = \App\Models\IntegrationSyncRun::where('status', 'completed')
+                    ->orderBy('id', 'desc')
+                    ->take(5)
+                    ->get();
+        
+        $output = "";
+        foreach($runs as $run) {
+            $notes = json_encode($run->notes_json, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            $output .= "Run #{$run->id} (Store {$run->store_id} - {$run->sync_type}): <pre>{$notes}</pre><hr>";
+        }
+        return $output;
+    });
+
+    Route::get('/woo-reset', function () {
+        $storeIds = \App\Models\MarketplaceStore::where('marketplace', 'woocommerce')->pluck('id');
+        if ($storeIds->isEmpty()) return 'WooCommerce mağazası bulunamadı.';
+        
+        $runs = \App\Models\IntegrationSyncRun::whereIn('store_id', $storeIds)
+            ->where('sync_type', 'orders')
+            ->where('status', 'completed')
+            ->update(['status' => 'failed', 'notes_json' => []]);
+            
+        return "Tüm WooCommerce mağazalarının geçmiş kilitleri sıfırlandı ({$runs} adet işlem iptal edildi). Şimdi 'Siparişleri Çek' butonuna bastığınızda tüm son 7 günü baştan tarayacaktır!";
+    });
+
+    Route::get('/woo-test', function () {
+        $store = \App\Models\MarketplaceStore::where('marketplace', 'woocommerce')->orderBy('id', 'desc')->first();
+        if (!$store) return 'Store not found';
+        
+        $startDate = \Carbon\CarbonImmutable::now()->subDays(7);
+        $connector = app(\App\Services\Marketplace\MarketplaceConnectorManager::class)->resolve('woocommerce');
+        
+        try {
+            $options = ['start_date' => $startDate->toIso8601String(), 'end_date' => now()->toIso8601String(), 'page_size' => 100];
+            $response = $connector->pullOrders($store, $options);
+            
+            $results = [];
+            $items = $response['items'] ?? [];
+            foreach (array_slice($items, 0, 10) as $order) {
+                // Return simple structure
+                $results[] = [
+                    'external_id' => $order['order']['external_order_id'] ?? null,
+                    'status' => $order['order']['store_status_code'] ?? null,
+                    'date' => $order['order']['ordered_at'] ?? null,
+                    'customer' => $order['customer']['full_name'] ?? null,
+                ];
+            }
+            
+            return response()->json([
+                'success' => true,
+                'count' => count($items),
+                'top_10' => $results,
+                'meta' => $response['meta'] ?? null
+            ]);
+        } catch (\Exception $e) {
+            return $e->getMessage();
         }
     });
 }

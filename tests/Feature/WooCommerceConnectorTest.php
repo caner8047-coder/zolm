@@ -48,6 +48,43 @@ class WooCommerceConnectorTest extends TestCase
         });
     }
 
+    public function test_it_can_resolve_store_url_from_saved_credentials_when_api_base_url_is_missing(): void
+    {
+        Http::fake([
+            'https://zemshop.example/wp-json/wc/v3/products*' => Http::response([
+                ['id' => 101],
+            ], 200, ['X-WP-TotalPages' => '1']),
+        ]);
+
+        $store = new MarketplaceStore([
+            'marketplace' => 'woocommerce',
+            'store_name' => 'Woo Credential URL',
+            'seller_id' => 'woo-credential-url',
+            'timezone' => 'Europe/Istanbul',
+            'currency' => 'TRY',
+        ]);
+
+        $connection = new IntegrationConnection([
+            'provider' => 'woocommerce',
+            'auth_type' => 'consumer_key_secret',
+            'credentials_encrypted' => [
+                'api_key' => 'ck_test',
+                'api_secret' => 'cs_test',
+                'store_url' => 'https://zemshop.example',
+            ],
+            'api_base_url' => '',
+            'status' => 'configured',
+        ]);
+
+        $store->setRelation('connection', $connection);
+
+        $result = app(WooCommerceConnector::class)->testConnection($store);
+
+        $this->assertTrue($result['ok']);
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://zemshop.example/wp-json/wc/v3/products?per_page=1&page=1&_fields=id');
+    }
+
     public function test_it_normalizes_woocommerce_products(): void
     {
         Http::fake([

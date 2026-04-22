@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Jobs\SyncMarketplaceDataJob;
 use App\Models\IntegrationSyncRun;
 use App\Models\MarketplaceStore;
+use App\Services\Marketplace\MarketplaceConnectionReadinessService;
 use Illuminate\Console\Command;
 
 class DispatchMarketplaceSyncCommand extends Command
@@ -17,6 +18,11 @@ class DispatchMarketplaceSyncCommand extends Command
         {--order-number= : Tek sipariş no ile sınırla}';
 
     protected $description = 'Tek bir mağaza için pazaryeri senkronunu kuyruğa alır.';
+
+    public function __construct(protected MarketplaceConnectionReadinessService $connectionReadiness)
+    {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -40,6 +46,14 @@ class DispatchMarketplaceSyncCommand extends Command
 
         if (!$store->is_active || $store->connection?->status === 'draft') {
             $this->error('Mağaza aktif değil veya bağlantı taslak durumda.');
+
+            return self::FAILURE;
+        }
+
+        $readiness = $this->connectionReadiness->inspect($store);
+
+        if ($readiness['failures'] !== []) {
+            $this->error('Mağaza hazır değil: '.($readiness['failures'][0] ?? 'Bilinmeyen doğrulama hatası.'));
 
             return self::FAILURE;
         }

@@ -774,6 +774,13 @@ class MarketplaceOrders extends Component
             ->whereHas('store', fn (Builder $query) => $query->where('user_id', auth()->id()))
             ->firstOrFail();
 
+        if (!$this->orderSupportsAction($order, $actionType)) {
+            $this->actionMessage = $this->orderActionSupportNotice($order) ?? 'Bu sipariş için seçilen kanal aksiyonu desteklenmiyor.';
+            $this->actionMessageTone = 'warning';
+
+            return;
+        }
+
         $result = app(MarketplaceOrderActionService::class)->dispatch(
             $order,
             $actionType,
@@ -808,6 +815,14 @@ class MarketplaceOrders extends Component
             ->whereKey($packageId)
             ->whereHas('store', fn (Builder $query) => $query->where('user_id', auth()->id()))
             ->firstOrFail();
+
+        if (!$this->packageSupportsAction($package, $actionType)) {
+            $marketplace = (string) ($package->store?->marketplace ?? $package->order?->store?->marketplace ?? '');
+            $this->actionMessage = $this->packageActionSupportNotice($marketplace);
+            $this->actionMessageTone = 'warning';
+
+            return;
+        }
 
         $context = $this->buildPackageActionContext($packageId, $actionType);
 
@@ -874,8 +889,15 @@ class MarketplaceOrders extends Component
         $coalescedCount = 0;
         $busyCount = 0;
         $recentCount = 0;
+        $unsupportedCount = 0;
 
         foreach ($orders as $order) {
+            if (!$this->orderSupportsAction($order, $this->bulkActionType)) {
+                $unsupportedCount++;
+
+                continue;
+            }
+
             $result = app(MarketplaceOrderActionService::class)->dispatch(
                 $order,
                 $this->bulkActionType,
@@ -904,6 +926,10 @@ class MarketplaceOrders extends Component
 
         if ($recentCount > 0) {
             $messageParts[] = $recentCount . ' siparişte çok yeni tamamlanan aksiyon debounce edildi';
+        }
+
+        if ($unsupportedCount > 0) {
+            $messageParts[] = $unsupportedCount . ' siparişte kanal desteği olmadığı için işlem açılmadı';
         }
 
         $this->actionMessage = implode('. ', $messageParts) . '.';
@@ -1049,7 +1075,7 @@ class MarketplaceOrders extends Component
             ->with([
                 'store:id,legal_entity_id,marketplace,store_name,store_code,status,is_active',
                 'legalEntity:id,name,tax_number',
-                'packages:id,channel_order_id,package_number,package_status,cargo_company,cargo_tracking_number,cargo_barcode,cargo_desi,shipped_at,delivered_at',
+                'packages:id,channel_order_id,package_number,package_status,cargo_company,cargo_tracking_number,cargo_barcode,cargo_desi,shipped_at,delivered_at,raw_payload',
                 'items:id,channel_order_id,channel_order_package_id,mp_product_id,stock_code,barcode,product_name,quantity,unit_price,gross_amount,discount_amount,marketplace_discount_amount,billable_amount,commission_rate,vat_rate,line_status,is_matched,match_source',
                 'profitSnapshots' => fn ($snapshotQuery) => $snapshotQuery
                     ->whereNull('channel_order_item_id')
@@ -1216,7 +1242,7 @@ class MarketplaceOrders extends Component
             ->with([
                 'store:id,legal_entity_id,marketplace,store_name,store_code,status,is_active',
                 'legalEntity:id,name,tax_number',
-                'packages:id,channel_order_id,package_number,package_status,cargo_company,cargo_tracking_number,cargo_barcode,cargo_desi,shipped_at,delivered_at',
+                'packages:id,channel_order_id,package_number,package_status,cargo_company,cargo_tracking_number,cargo_barcode,cargo_desi,shipped_at,delivered_at,raw_payload',
                 'items:id,channel_order_id,channel_order_package_id,mp_product_id,stock_code,barcode,product_name,quantity,unit_price,gross_amount,discount_amount,marketplace_discount_amount,billable_amount,commission_rate,vat_rate,line_status,is_matched,match_source',
                 'items.product:id,stock_code,barcode,product_name,brand,cogs,packaging_cost,cargo_cost,vat_rate',
                 'actionRuns:id,channel_order_id,channel_order_package_id,triggered_by,action_type,status,attempt_count,external_action_id,request_context_json,response_json,error_message,started_at,finished_at,created_at',
@@ -1879,14 +1905,55 @@ class MarketplaceOrders extends Component
         );
     }
 
+    protected function shouldTreatPazaramaCargoAsApproved(
+        ?string $status,
+        ?string $marketplace = null,
+        ?string $trackingNumber = null,
+        mixed $deliveredAt = null,
+    ): bool
+    {
+        if (MarketplaceProviderRegistry::normalize((string) $marketplace) !== 'pazarama') {
+            return false;
+        }
+
+        $normalized = Str::lower(trim((string) $status));
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        if (str_contains($normalized, 'deliver') || str_contains($normalized, 'teslim')) {
+            return false;
+        }
+
+        if (!str_contains($normalized, 'ship') && !str_contains($normalized, 'kargo')) {
+            return false;
+        }
+
+        if (filled($trackingNumber)) {
+            return false;
+        }
+
+        return !filled($deliveredAt);
+    }
+
     public function humanMarketplace(?string $marketplace): string
     {
         return (string) (MarketplaceProviderRegistry::get((string) $marketplace)['label'] ?? Str::headline((string) $marketplace));
     }
 
-    public function humanStatus(?string $status): string
+    public function humanStatus(
+        ?string $status,
+        ?string $marketplace = null,
+        ?string $trackingNumber = null,
+        mixed $deliveredAt = null,
+    ): string
     {
         $normalized = Str::lower(trim((string) $status));
+
+        if ($this->shouldTreatPazaramaCargoAsApproved($status, $marketplace, $trackingNumber, $deliveredAt)) {
+            return 'Onaylandı';
+        }
 
         return match (true) {
             $normalized === '' => 'Durum yok',
@@ -1910,9 +1977,18 @@ class MarketplaceOrders extends Component
         };
     }
 
-    public function statusTone(?string $status): string
+    public function statusTone(
+        ?string $status,
+        ?string $marketplace = null,
+        ?string $trackingNumber = null,
+        mixed $deliveredAt = null,
+    ): string
     {
         $normalized = Str::lower(trim((string) $status));
+
+        if ($this->shouldTreatPazaramaCargoAsApproved($status, $marketplace, $trackingNumber, $deliveredAt)) {
+            return 'info';
+        }
 
         return match (true) {
             $normalized === '' => 'default',
@@ -1930,6 +2006,117 @@ class MarketplaceOrders extends Component
             str_contains($normalized, 'kargo') => 'warning',
             default => 'info',
         };
+    }
+
+    public function shipmentDateLabel(
+        ?string $marketplace = null,
+        ?string $status = null,
+        ?string $trackingNumber = null,
+        mixed $deliveredAt = null,
+        mixed $rawPayload = null,
+    ): string
+    {
+        if ($this->shouldUsePazaramaPlannedShipmentDate($marketplace, $status, $trackingNumber, $deliveredAt, $rawPayload)) {
+            return 'Kargolama tarihi';
+        }
+
+        return 'Kargoya verildi';
+    }
+
+    public function shipmentDateShortLabel(
+        ?string $marketplace = null,
+        ?string $status = null,
+        ?string $trackingNumber = null,
+        mixed $deliveredAt = null,
+        mixed $rawPayload = null,
+    ): string
+    {
+        if ($this->shouldUsePazaramaPlannedShipmentDate($marketplace, $status, $trackingNumber, $deliveredAt, $rawPayload)) {
+            return 'Kargolama';
+        }
+
+        return 'Kargoya';
+    }
+
+    public function packageShipmentAt(
+        ?ChannelOrderPackage $package,
+        ?string $marketplace = null,
+    ): ?Carbon {
+        if (!$package) {
+            return null;
+        }
+
+        if ($package->shipped_at instanceof Carbon) {
+            return $package->shipped_at;
+        }
+
+        if (!$this->shouldUsePazaramaPlannedShipmentDate(
+            $marketplace,
+            $package->package_status,
+            $package->cargo_tracking_number,
+            $package->delivered_at,
+            $package->raw_payload,
+        )) {
+            return null;
+        }
+
+        $estimatedShippingDate = data_get($package->raw_payload ?? [], 'estimatedShippingDate');
+
+        if (!filled($estimatedShippingDate)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse((string) $estimatedShippingDate);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    protected function shouldUsePazaramaPlannedShipmentDate(
+        ?string $marketplace = null,
+        ?string $status = null,
+        ?string $trackingNumber = null,
+        mixed $deliveredAt = null,
+        mixed $rawPayload = null,
+    ): bool {
+        if (MarketplaceProviderRegistry::normalize((string) $marketplace) !== 'pazarama') {
+            return false;
+        }
+
+        if (filled($trackingNumber) || filled($deliveredAt)) {
+            return false;
+        }
+
+        $normalized = Str::lower(trim((string) $status));
+
+        if (
+            str_contains($normalized, 'deliver')
+            || str_contains($normalized, 'teslim')
+            || str_contains($normalized, 'cancel')
+            || str_contains($normalized, 'iptal')
+            || str_contains($normalized, 'return')
+            || str_contains($normalized, 'iade')
+        ) {
+            return false;
+        }
+
+        if ($this->shouldTreatPazaramaCargoAsApproved($status, $marketplace, $trackingNumber, $deliveredAt)) {
+            return true;
+        }
+
+        if (
+            str_contains($normalized, 'approve')
+            || str_contains($normalized, 'onay')
+            || str_contains($normalized, 'processing')
+            || str_contains($normalized, 'pack')
+            || str_contains($normalized, 'new')
+            || str_contains($normalized, 'created')
+        ) {
+            return filled(data_get($rawPayload ?? [], 'estimatedShippingDate'));
+        }
+
+        return false;
     }
 
     public function profitStateLabel(?string $state): string
@@ -2355,6 +2542,48 @@ class MarketplaceOrders extends Component
         return $this->marketplaceSupportsCapability($marketplace, $capability);
     }
 
+    public function orderSupportsSync(ChannelOrder $order, string $syncType): bool
+    {
+        $marketplace = (string) ($order->store?->marketplace ?? '');
+
+        if ($marketplace === '') {
+            return false;
+        }
+
+        return (bool) ($this->marketplaceCapabilities($marketplace)[$syncType] ?? false);
+    }
+
+    public function orderSupportsAction(ChannelOrder $order, string $actionType): bool
+    {
+        return match ($actionType) {
+            'refresh_order', 'refresh_cargo' => $this->orderSupportsSync($order, 'orders'),
+            'refresh_finance' => $this->orderSupportsSync($order, 'finance'),
+            'recalculate_profit' => true,
+            default => false,
+        };
+    }
+
+    public function orderActionSupportNotice(ChannelOrder $order): ?string
+    {
+        $supportsOrderSync = $this->orderSupportsSync($order, 'orders');
+        $supportsFinanceSync = $this->orderSupportsSync($order, 'finance');
+
+        if ($supportsOrderSync && $supportsFinanceSync) {
+            return null;
+        }
+
+        $marketplace = (string) ($order->store?->marketplace ?? '');
+        if (!$supportsOrderSync && !$supportsFinanceSync) {
+            return $this->humanMarketplace($marketplace) . ' bağlayıcısında sipariş, kargo ve finans yenileme aksiyonları henüz aktif değil.';
+        }
+
+        if (!$supportsOrderSync) {
+            return $this->humanMarketplace($marketplace) . ' bağlayıcısında sipariş ve kargo yenileme aksiyonları henüz aktif değil.';
+        }
+
+        return $this->humanMarketplace($marketplace) . ' bağlayıcısında finans yenileme aksiyonu henüz aktif değil.';
+    }
+
     public function packageSupportsAction(ChannelOrderPackage $package, string $actionType): bool
     {
         $capability = $this->packageActionCapability($actionType);
@@ -2427,6 +2656,13 @@ class MarketplaceOrders extends Component
         };
 
         return $fallback !== null && (($capabilities[$fallback] ?? false) === true);
+    }
+
+    public function packageActionSupportNotice(?string $marketplace): string
+    {
+        return ($marketplace !== null && $marketplace !== '')
+            ? $this->humanMarketplace($marketplace) . ' bağlayıcısında paket operasyonları henüz aktif değil.'
+            : 'Bu mağazanın bağlayıcısında paket operasyonları henüz aktif değil.';
     }
 
     /**
