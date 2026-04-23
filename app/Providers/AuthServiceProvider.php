@@ -36,5 +36,13 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('accessCustomMotor', function (User $user) {
             return $user->canAccessCustomMotor();
         });
+
+        Gate::define('accessReturnsIntake', function (User $user) {
+            return $user->canAccessReturnsIntake();
+        });
+
+        Gate::define('accessReturnsReview', function (User $user) {
+            return $user->canAccessReturnsReview();
+        });
     }
 }

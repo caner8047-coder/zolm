@@ -148,6 +148,20 @@ class User extends Authenticatable
             || $this->canAccessReports();
     }
 
+    public function canAccessReturnsIntake(): bool
+    {
+        $role = $this->roleSlug();
+
+        return in_array($role, ['admin', 'manager', 'operator', 'operasyon_sorumlusu'], true);
+    }
+
+    public function canAccessReturnsReview(): bool
+    {
+        $role = $this->roleSlug();
+
+        return in_array($role, ['admin', 'manager', 'operator', 'operasyon_sorumlusu', 'crm_sorumlusu'], true);
+    }
+
     // === HELPERS ===
 
     public function getRoleLabelAttribute(): string

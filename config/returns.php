@@ -1,0 +1,26 @@
+<?php
+
+return [
+    'enabled' => (bool) env('RETURNS_CENTER_ENABLED', true),
+    'storage_disk' => env('RETURN_MEDIA_DISK', 'public'),
+    'storage_path' => env('RETURN_MEDIA_PATH', 'returns'),
+    'max_image_kb' => (int) env('RETURN_MEDIA_MAX_KB', 6144),
+    'max_dimension' => (int) env('RETURN_MEDIA_MAX_DIMENSION', 2200),
+    'thumbnail_dimension' => (int) env('RETURN_MEDIA_THUMB_DIMENSION', 480),
+    'jpeg_quality' => (int) env('RETURN_MEDIA_JPEG_QUALITY', 82),
+    'analysis_after_response' => (bool) env('RETURN_ANALYSIS_AFTER_RESPONSE', true),
+    'auto_decision_enabled' => (bool) env('RETURN_AUTO_DECISION_ENABLED', true),
+    'auto_marketplace_actions_enabled' => (bool) env('RETURN_AUTO_MARKETPLACE_ENABLED', false),
+    'auto_policy_min_confidence' => (float) env('RETURN_AUTO_POLICY_MIN_CONFIDENCE', 88),
+    'auto_policy_limit' => (int) env('RETURN_AUTO_POLICY_LIMIT', 25),
+    'auto_reject_reason' => env('RETURN_AUTO_REJECT_REASON', 'Fiziksel iade incelemesinde ürün sipariş ile uyumsuz veya hasarlı bulundu.'),
+    'daily_report_time' => env('RETURN_DAILY_REPORT_TIME', '20:15'),
+    'whatsapp_bridge_enabled' => (bool) env('RETURN_WHATSAPP_BRIDGE_ENABLED', false),
+    'whatsapp_bridge_system_user_id' => (int) env('RETURN_WHATSAPP_BRIDGE_SYSTEM_USER_ID', 0),
+    'whatsapp_verify_token' => env('RETURN_WHATSAPP_VERIFY_TOKEN', ''),
+    'whatsapp_app_secret' => env('RETURN_WHATSAPP_APP_SECRET', ''),
+    'whatsapp_access_token' => env('RETURN_WHATSAPP_ACCESS_TOKEN', ''),
+    'whatsapp_graph_base_url' => env('RETURN_WHATSAPP_GRAPH_BASE_URL', 'https://graph.facebook.com'),
+    'whatsapp_graph_version' => env('RETURN_WHATSAPP_GRAPH_VERSION', 'v23.0'),
+    'whatsapp_message_window_minutes' => (int) env('RETURN_WHATSAPP_MESSAGE_WINDOW_MINUTES', 8),
+];

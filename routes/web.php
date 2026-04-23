@@ -161,37 +161,43 @@ Route::middleware('auth')->group(function () {
         ->name('recipe.builder')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
-    Route::get('/returns', \App\Livewire\Returns\ReturnWorkspace::class)
-        ->name('returns.workspace')
-        ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class);
+    if (
+        class_exists(\App\Livewire\Returns\ReturnWorkspace::class)
+        && class_exists(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+    ) {
+        Route::get('/returns', \App\Livewire\Returns\ReturnWorkspace::class)
+            ->name('returns.workspace')
+            ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class);
 
-    Route::get('/returns/intake', function () {
-        return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'kabul']));
-    })
-        ->name('returns.intake')
-        ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
-        ->middleware('can:accessReturnsIntake');
+        Route::get('/returns/intake', function () {
+            return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'kabul']));
+        })
+            ->name('returns.intake')
+            ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+            ->middleware('can:accessReturnsIntake');
 
-    Route::get('/returns/center', function () {
-        return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'havuz']));
-    })
-        ->name('returns.center')
-        ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
-        ->middleware('can:accessReturnsReview');
+        Route::get('/returns/center', function () {
+            return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'havuz']));
+        })
+            ->name('returns.center')
+            ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+            ->middleware('can:accessReturnsReview');
 
-    Route::get('/returns/whatsapp-bridge', function () {
-        return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'whatsapp']));
-    })
-        ->name('returns.whatsapp-bridge')
-        ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
-        ->middleware('can:accessReturnsReview');
+        Route::get('/returns/whatsapp-bridge', function () {
+            return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'whatsapp']));
+        })
+            ->name('returns.whatsapp-bridge')
+            ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+            ->middleware('can:accessReturnsReview');
+    }
 
     Route::get('/api-dev', \App\Livewire\ApiDev::class)->name('api-dev');
 
-    // Route cache temizleme
-    Route::get('/fix-routes', function() {
-        \Illuminate\Support\Facades\Artisan::call('route:clear');
-        return 'Routes cleared! <a href="/dashboard">Return to Dashboard</a>';
+    // Route / view / config cache temizleme
+    Route::get('/fix-routes', function () {
+        \Illuminate\Support\Facades\Artisan::call('optimize:clear');
+
+        return 'Optimize cache temizlendi. <a href="/dashboard">Dashboard\'a dön</a>';
     });
 
     // Profile Management
