@@ -380,7 +380,9 @@
         <aside class="min-w-0 w-full lg:w-[360px] xl:w-[400px] lg:flex-shrink-0">
             <div class="rounded-[10px] border border-slate-200 bg-white shadow-sm lg:sticky lg:top-20 lg:max-h-[calc(100vh-6.5rem)] lg:overflow-y-auto">
                 @if($selectedItem)
-                    @php($selectedItemCrmSnapshot = $crmSnapshots->forSubject(auth()->user(), 'return', $selectedItem))
+                    @php
+                        $selectedItemCrmSnapshot = $crmSnapshots->forSubject(auth()->user(), 'return', $selectedItem);
+                    @endphp
                     <div class="p-4 border-b border-slate-200">
                         <div class="flex items-center justify-between">
                             <h3 class="text-sm font-semibold text-slate-900">İade Detayı</h3>

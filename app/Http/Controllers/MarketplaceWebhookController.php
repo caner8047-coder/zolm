@@ -47,6 +47,7 @@ class MarketplaceWebhookController extends Controller
 
         $event = $externalEventId !== ''
             ? IntegrationWebhookEvent::firstOrNew([
+                'store_id' => $store->id,
                 'provider' => $normalizedProvider,
                 'external_event_id' => $externalEventId,
             ])
@@ -127,15 +128,6 @@ class MarketplaceWebhookController extends Controller
             return (string) $existingStoreEvent->external_event_id;
         }
 
-        $crossStoreCollisionExists = IntegrationWebhookEvent::query()
-            ->where('provider', $provider)
-            ->where('external_event_id', $externalEventId)
-            ->where(function ($query) use ($storeId) {
-                $query->whereNull('store_id')
-                    ->orWhere('store_id', '!=', $storeId);
-            })
-            ->exists();
-
-        return $crossStoreCollisionExists ? $storeScopedEventId : $externalEventId;
+        return $externalEventId;
     }
 }

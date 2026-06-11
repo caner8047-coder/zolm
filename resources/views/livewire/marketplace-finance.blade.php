@@ -294,7 +294,7 @@
                                             <button type="button"
                                                     wire:click="focusLegacyProjectionCard"
                                                     class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                                                Kuyruğu odakla
+                                                Backlogu odakla
                                             </button>
                                             @if($legacyProjectionGuidanceCard['confirmed_orders'] > 0)
                                                 <button type="button"

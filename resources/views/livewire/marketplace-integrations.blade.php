@@ -399,10 +399,21 @@
 
                         @if($this->selectedStoreSupportsSafeProfile && $safeProfileStatus && !($safeProfileStatus['aligned'] ?? true))
                             <div class="rounded-lg border border-rose-200 bg-rose-50/80 p-4 shadow-sm">
+                                <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-700">Güvenli profil ile fark var</p>
                                 <h4 class="text-sm font-semibold text-rose-900">{{ $safeProfileLabel }} güvenli profilinden sapma var</h4>
                                 <p class="mt-1 text-sm text-rose-800">Entegrasyonlar ekranında güvenli {{ $safeProfileLabel }} profilini uygula.</p>
                                 <div class="mt-3 flex flex-wrap gap-2">
-                                    <button type="button" wire:click="applySelectedStoreSafeDefaults" class="inline-flex rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100">
+                                    <button type="button" wire:click="applySelectedStoreSafeProfile" class="inline-flex rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100">
+                                        {{ $this->selectedStoreSafeProfileButtonLabel }}
+                                    </button>
+                                </div>
+                            </div>
+                        @elseif($this->selectedStoreSupportsSafeProfile && $safeProfileStatus)
+                            <div class="rounded-lg border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm">
+                                <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Form güvenli profile uyumlu</p>
+                                <h4 class="text-sm font-semibold text-emerald-900">{{ $safeProfileLabel }} güvenli profili hazır</h4>
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <button type="button" wire:click="applySelectedStoreSafeProfile" class="inline-flex rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-100">
                                         {{ $this->selectedStoreSafeProfileButtonLabel }}
                                     </button>
                                 </div>

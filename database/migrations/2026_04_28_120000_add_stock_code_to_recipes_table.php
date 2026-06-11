@@ -18,11 +18,31 @@ return new class extends Migration
             $table->index(['user_id', 'stock_code'], 'recipes_user_stock_code_idx');
         });
 
-        DB::table('recipes')
-            ->join('mp_products', 'recipes.mp_product_id', '=', 'mp_products.id')
-            ->whereNull('recipes.stock_code')
-            ->whereNotNull('mp_products.stock_code')
-            ->update(['recipes.stock_code' => DB::raw('mp_products.stock_code')]);
+        if (Schema::hasColumn('mp_products', 'stock_code')) {
+            DB::table('recipes')
+                ->select(['id', 'mp_product_id'])
+                ->whereNull('stock_code')
+                ->whereNotNull('mp_product_id')
+                ->orderBy('id')
+                ->chunkById(500, function ($recipes): void {
+                    $productStockCodes = DB::table('mp_products')
+                        ->whereIn('id', $recipes->pluck('mp_product_id')->filter()->unique()->values())
+                        ->whereNotNull('stock_code')
+                        ->pluck('stock_code', 'id');
+
+                    foreach ($recipes as $recipe) {
+                        $stockCode = trim((string) ($productStockCodes->get($recipe->mp_product_id) ?? ''));
+
+                        if ($stockCode === '') {
+                            continue;
+                        }
+
+                        DB::table('recipes')
+                            ->where('id', $recipe->id)
+                            ->update(['stock_code' => $stockCode]);
+                    }
+                });
+        }
 
         $factoryRecipePath = base_path('fabrika/recete_list.json');
         if (is_file($factoryRecipePath)) {

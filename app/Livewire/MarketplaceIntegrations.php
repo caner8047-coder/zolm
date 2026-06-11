@@ -536,7 +536,7 @@ class MarketplaceIntegrations extends Component
             return;
         }
 
-        $defaults = IntegrationSyncProfile::defaultsForMarketplace($marketplace);
+        $defaults = $this->safeProfileFormDefaults($marketplace);
         $label = MarketplaceProviderRegistry::get($marketplace)['label'] ?? ucfirst($marketplace);
 
         $this->syncForm = [
@@ -566,6 +566,20 @@ class MarketplaceIntegrations extends Component
         ];
 
         $this->notify("{$label} için düşük etkili profil forma uygulandı. İnceleyip kaydedebilirsiniz.");
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function safeProfileFormDefaults(string $marketplace): array
+    {
+        $defaults = IntegrationSyncProfile::defaultsForMarketplace($marketplace);
+
+        if (in_array(strtolower($marketplace), ['hepsiburada', 'shopify'], true)) {
+            $defaults['orders_poll_minutes'] = 20;
+        }
+
+        return $defaults;
     }
 
     public function runSync(string $syncType): void
@@ -950,7 +964,7 @@ class MarketplaceIntegrations extends Component
             return null;
         }
 
-        $defaults = IntegrationSyncProfile::defaultsForMarketplace($marketplace);
+        $defaults = $this->safeProfileFormDefaults($marketplace);
         $label = MarketplaceProviderRegistry::get($marketplace)['label'] ?? ucfirst((string) $marketplace);
         $checks = [
             'ordersPollMinutes' => ['label' => 'Sipariş senkronu', 'expected' => $defaults['orders_poll_minutes']],

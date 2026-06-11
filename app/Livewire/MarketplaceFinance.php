@@ -339,8 +339,8 @@ class MarketplaceFinance extends Component
             'scope_count' => $rows->count(),
             'state' => $top['pending_rows'] > 0 ? 'warning' : ($top['confirmed_orders'] > 0 ? 'success' : 'default'),
             'title' => $top['pending_rows'] > 0
-                ? 'Eski veri muhasebe kuyruğu bu mağazada öne çıkıyor'
-                : 'Eski veri yansıtmasının kesin etkisi bu mağazada görünüyor',
+                ? 'Legacy muhasebe backlogu bu mağazada öne çıkıyor'
+                : 'Legacy yansıtmanın kesin etkisi bu mağazada görünüyor',
             'description' => $top['pending_rows'] > 0
                 ? 'Yansıtma mağazasını sipariş ekranında hazırla, bekleyen eski veri satırlarını V2 kayıt defterine taşı ve ardından bu ekranda kesin etkisini kontrol et.'
                 : 'Bu mağazada eski veri yansıtması tamamlanmış; kesin sipariş ve net alacak etkisini bu ekrandan takip edebilirsiniz.',

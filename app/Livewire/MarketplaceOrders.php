@@ -1720,7 +1720,10 @@ class MarketplaceOrders extends Component
         if (DB::connection()->getDriverName() === 'sqlite') {
             return "
                 CASE
-                    WHEN {$valueSql} GLOB '[0-9]*'
+                    WHEN (
+                        ({$valueSql} GLOB '[0-9]*' AND {$valueSql} NOT GLOB '*[^0-9]*')
+                        OR ({$valueSql} GLOB '-[0-9]*' AND substr({$valueSql}, 2) NOT GLOB '*[^0-9]*')
+                    )
                     THEN datetime(
                         (
                         CASE

@@ -1811,7 +1811,7 @@
                                                     :result-tone="$profitValue >= 0 ? 'success' : 'danger'"
                                                     :formulas="array_values(array_filter([
                                                         $profitFormula,
-                                                        $costProfitPercent !== null ? 'Kârlılık = Kâr / Maliyet' : null,
+                                                        'Kârlılık = Kâr / Maliyet',
                                                         $costProfitPercent !== null ? $formatProfitabilityPercent($costProfitPercent) . ' = ' . $formatMoney($profitValue) . ' / ' . $formatMoney($estimatedCogs) : null,
                                                     ]))"
                                                     note="Örnek: 218,09 / 522,09 = %41,8. Bu değer ciro marjı değil, maliyete göre net kâr oranıdır."
