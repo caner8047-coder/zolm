@@ -8,6 +8,7 @@ use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -57,9 +58,11 @@ class MarketplaceIntegrationsConnectionSaveTest extends TestCase
 
     public function test_it_uses_store_url_as_api_base_url_for_woocommerce_when_api_url_is_blank(): void
     {
-        $user = User::factory()->create();
-        $this->createdUserIds[] = $user->id;
         $suffix = (string) random_int(100000, 999999);
+        $user = User::factory()->create([
+            'email' => 'woo-connection-'.$suffix.'@example.test',
+        ]);
+        $this->createdUserIds[] = $user->id;
 
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
@@ -107,5 +110,113 @@ class MarketplaceIntegrationsConnectionSaveTest extends TestCase
         $this->assertSame('https://shop.example.com', $connection->api_base_url);
         $this->assertSame('https://shop.example.com', data_get($connection->credentials_encrypted, 'store_url'));
         $this->assertSame('configured', $connection->status);
+    }
+
+    public function test_successful_connection_verification_clears_previous_live_error_before_readiness_check(): void
+    {
+        [$user, $store, $connection] = $this->makeCiceksepetiStoreWithStaleError();
+
+        Http::fake([
+            'https://apis.ciceksepeti.com/api/v1/Order/GetOrders' => Http::response([
+                'orderListCount' => 0,
+                'supplierOrderListWithBranch' => [],
+            ], 200),
+        ]);
+
+        $this->actingAs($user);
+
+        Livewire::withQueryParams(['store' => $store->id])
+            ->test(MarketplaceIntegrations::class)
+            ->call('verifyConnection')
+            ->assertSet('flashMessageType', 'success')
+            ->assertSet('flashMessage', 'Çiçeksepeti bağlantısı doğrulandı.');
+
+        $connection->refresh();
+
+        $this->assertSame('configured', $connection->status);
+        $this->assertNull($connection->last_error);
+        $this->assertNotNull($connection->last_verified_at);
+    }
+
+    public function test_saving_connection_does_not_keep_previous_live_error_in_draft_readiness(): void
+    {
+        [$user, $store, $connection] = $this->makeCiceksepetiStoreWithStaleError();
+
+        $this->actingAs($user);
+
+        Livewire::withQueryParams(['store' => $store->id])
+            ->test(MarketplaceIntegrations::class)
+            ->set('connectionForm.authType', 'api_key_secret')
+            ->set('connectionForm.apiBaseUrl', 'https://apis.ciceksepeti.com/api/v1')
+            ->set('connectionForm.webhookSecret', '')
+            ->set('connectionForm.apiKey', 'ciceksepeti-key')
+            ->set('connectionForm.apiSecret', '')
+            ->set('connectionForm.storeFrontCode', '')
+            ->set('connectionForm.extraUser', 'ZOLM')
+            ->set('connectionForm.extraPassword', '')
+            ->set('connectionForm.storeUrl', '')
+            ->call('saveConnection')
+            ->assertHasNoErrors()
+            ->assertSet('flashMessageType', 'success');
+
+        $connection->refresh();
+        $store->refresh();
+
+        $this->assertSame('configured', $connection->status);
+        $this->assertNull($connection->last_error);
+        $this->assertNull($connection->last_verified_at);
+        $this->assertSame('configured', $store->status);
+    }
+
+    /**
+     * @return array{0: User, 1: MarketplaceStore, 2: IntegrationConnection}
+     */
+    protected function makeCiceksepetiStoreWithStaleError(): array
+    {
+        $suffix = (string) random_int(100000, 999999);
+        $user = User::factory()->create([
+            'email' => 'ciceksepeti-connection-'.$suffix.'@example.test',
+        ]);
+        $this->createdUserIds[] = $user->id;
+
+        $legalEntity = LegalEntity::query()->create([
+            'user_id' => $user->id,
+            'name' => 'Zem Çiçeksepeti Ltd.',
+            'tax_number' => '8'.$suffix,
+            'company_type' => 'limited',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        $this->createdEntityIds[] = $legalEntity->id;
+
+        $store = MarketplaceStore::query()->create([
+            'user_id' => $user->id,
+            'legal_entity_id' => $legalEntity->id,
+            'marketplace' => 'ciceksepeti',
+            'store_name' => 'ZEM ÇİÇEKSEPETİ',
+            'store_code' => 'CS-'.$suffix,
+            'seller_id' => '1500041287-'.$suffix,
+            'status' => 'error',
+            'timezone' => 'Europe/Istanbul',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        $this->createdStoreIds[] = $store->id;
+
+        $connection = IntegrationConnection::query()->create([
+            'store_id' => $store->id,
+            'provider' => 'ciceksepeti',
+            'auth_type' => 'api_key_secret',
+            'credentials_encrypted' => [
+                'api_key' => 'ciceksepeti-key',
+                'extra_user' => 'ZOLM',
+            ],
+            'api_base_url' => 'https://apis.ciceksepeti.com/api/v1',
+            'status' => 'error',
+            'last_verified_at' => now()->subHour(),
+            'last_error' => 'HTTP request returned status code 404',
+        ]);
+
+        return [$user, $store, $connection];
     }
 }

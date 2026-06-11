@@ -5,8 +5,10 @@ namespace App\Livewire;
 use App\Models\OptimizationReport;
 use App\Models\OptimizationReportItem;
 use App\Services\CampaignAnalysisService;
+use App\Services\ProfitabilityMetric;
 use App\Services\TariffOptimizerService;
 use App\Models\AIConversation;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -37,6 +39,26 @@ class TariffOptimizer extends Component
     public ?float $profitabilityMin = null;
     public ?float $profitabilityMax = null;
     public ?int $profitabilityTariffIndex = null; // 0=1.Tarife, 1=2.Tarife, 2=3.Tarife, 3=4.Tarife
+    public string $search = '';
+    public string $statusFilter = 'all';
+    public string $sortField = 'extra_profit';
+    public string $sortDirection = 'desc';
+    public array $visibleColumns = [
+        'costs' => true,
+        'tariff_1' => true,
+        'tariff_2' => true,
+        'tariff_3' => true,
+        'tariff_4' => true,
+        'price_action' => true,
+    ];
+    public array $sortableColumns = [
+        'product_name' => 'Ürün',
+        'current_price' => 'Mevcut fiyat',
+        'current_net_profit' => 'Mevcut kâr',
+        'extra_profit' => 'Ek kâr',
+        'total_cost' => 'Toplam maliyet',
+        'suggested_net_profit' => 'Önerilen kâr',
+    ];
 
     // Processing animation
     public bool $isProcessing = false;
@@ -103,6 +125,111 @@ class TariffOptimizer extends Component
             ->where('campaign_type', 'tariff')
             ->orderByDesc('created_at')
             ->get();
+    }
+
+    #[Computed]
+    public function filteredItems(): Collection
+    {
+        $report = $this->activeReport;
+        if (!$report) {
+            return collect();
+        }
+
+        $query = trim(Str::lower($this->search));
+        $items = $report->items;
+
+        if ($query !== '') {
+            $items = $items->filter(function ($item) use ($query) {
+                return Str::contains(Str::lower((string) $item->product_name), $query)
+                    || Str::contains(Str::lower((string) $item->stock_code), $query)
+                    || Str::contains(Str::lower((string) $item->barcode), $query);
+            });
+        }
+
+        $items = $items->filter(function ($item) {
+            return match ($this->statusFilter) {
+                'opportunity' => $item->action === 'update',
+                'risk' => $item->action === 'warning' || (float) $item->current_net_profit < 0,
+                'selected' => in_array($item->id, $this->selectedItems, true) || $item->selected_tariff_index !== null || $item->custom_price !== null,
+                'missing_cost' => $item->totalCost() <= 0,
+                'kept' => $item->action === 'keep',
+                default => true,
+            };
+        });
+
+        if ($this->profitabilityTariffIndex !== null && $this->profitabilityMin !== null) {
+            $items = $items->filter(function ($item) {
+                $scenarios = $item->scenario_details ?? [];
+                $scenario = $scenarios[$this->profitabilityTariffIndex] ?? null;
+                $productCost = $item->productCostForProfitability();
+
+                if (!$scenario || $productCost <= 0) {
+                    return false;
+                }
+
+                $profitabilityMultiplier = (float) ($scenario['margin_pct'] ?? $item->profitMarginPercent((float) ($scenario['net_profit'] ?? 0)));
+                $profitPercent = ProfitabilityMetric::profitPercentFromMultiplier($profitabilityMultiplier);
+
+                return $profitPercent !== null
+                    && $profitPercent >= (float) $this->profitabilityMin
+                    && $profitPercent <= (float) ($this->profitabilityMax ?? 999);
+            });
+        }
+
+        $sorter = function ($item) {
+            return match ($this->sortField) {
+                'product_name' => Str::lower((string) ($item->product_name ?: $item->stock_code)),
+                'current_price' => (float) $item->current_price,
+                'current_net_profit' => (float) $item->current_net_profit,
+                'total_cost' => $item->totalCost(),
+                'suggested_net_profit' => (float) ($item->suggested_net_profit ?? $item->current_net_profit),
+                default => (float) $item->extra_profit,
+            };
+        };
+
+        return ($this->sortDirection === 'asc'
+            ? $items->sortBy($sorter, SORT_REGULAR)
+            : $items->sortByDesc($sorter, SORT_REGULAR))
+            ->values();
+    }
+
+    #[Computed]
+    public function reportMetrics(): array
+    {
+        $report = $this->activeReport;
+        if (!$report) {
+            return [
+                'filtered_count' => 0,
+                'risk_count' => 0,
+                'selected_count' => 0,
+                'selected_impact' => 0,
+                'cost_coverage' => 0,
+                'top_opportunity' => null,
+                'worst_loss' => null,
+                'visible_extra_profit' => 0,
+            ];
+        }
+
+        $items = $report->items;
+        $selectedItems = $items->filter(fn ($item) => in_array($item->id, $this->selectedItems, true));
+
+        $selectedImpact = $selectedItems->sum(function ($item) {
+            return $this->projectedNetProfit($item) - (float) $item->current_net_profit;
+        });
+
+        $costReadyCount = $items->filter(fn ($item) => $item->totalCost() > 0)->count();
+        $totalCount = max(1, $items->count());
+
+        return [
+            'filtered_count' => $this->filteredItems->count(),
+            'risk_count' => $items->filter(fn ($item) => $item->action === 'warning' || (float) $item->current_net_profit < 0)->count(),
+            'selected_count' => $selectedItems->count(),
+            'selected_impact' => round($selectedImpact, 2),
+            'cost_coverage' => round(($costReadyCount / $totalCount) * 100, 1),
+            'top_opportunity' => $items->where('action', 'update')->sortByDesc('extra_profit')->first(),
+            'worst_loss' => $items->filter(fn ($item) => (float) $item->current_net_profit < 0)->sortBy('current_net_profit')->first(),
+            'visible_extra_profit' => round($this->filteredItems->sum(fn ($item) => max(0, (float) $item->extra_profit)), 2),
+        ];
     }
 
     #[Computed]
@@ -274,7 +401,7 @@ class TariffOptimizer extends Component
     public function deleteReport(int $reportId)
     {
         $report = OptimizationReport::where('user_id', auth()->id())
-            ->where('campaign_type', 'product_commission')
+            ->where('campaign_type', 'tariff')
             ->find($reportId);
         if ($report) {
             $report->delete();
@@ -326,6 +453,65 @@ class TariffOptimizer extends Component
     public function deselectAll()
     {
         $this->selectedItems = [];
+    }
+
+    public function selectFilteredOpportunities()
+    {
+        $this->selectedItems = $this->filteredItems
+            ->filter(fn ($item) => $item->action === 'update' || $item->selected_tariff_index !== null || $item->custom_price !== null)
+            ->pluck('id')
+            ->values()
+            ->toArray();
+
+        if (empty($this->selectedItems)) {
+            $this->message = 'Görünen ürünler içinde seçilecek fırsat bulunamadı.';
+            $this->messageType = 'info';
+        }
+    }
+
+    public function setStatusFilter(string $filter)
+    {
+        if (!in_array($filter, ['all', 'opportunity', 'risk', 'selected', 'missing_cost', 'kept'], true)) {
+            return;
+        }
+
+        $this->statusFilter = $filter;
+    }
+
+    public function sortTable(string $field)
+    {
+        if (!array_key_exists($field, $this->sortableColumns)) {
+            return;
+        }
+
+        if ($this->sortField === $field) {
+            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
+            return;
+        }
+
+        $this->sortField = $field;
+        $this->sortDirection = $field === 'product_name' ? 'asc' : 'desc';
+    }
+
+    public function toggleColumn(string $column)
+    {
+        if (!array_key_exists($column, $this->visibleColumns)) {
+            return;
+        }
+
+        $this->visibleColumns[$column] = !$this->visibleColumns[$column];
+    }
+
+    public function showColumn(string $column): bool
+    {
+        return (bool) ($this->visibleColumns[$column] ?? false);
+    }
+
+    public function clearTableFilters()
+    {
+        $this->search = '';
+        $this->statusFilter = 'all';
+        $this->clearProfitabilityFilter();
     }
 
     /**
@@ -538,6 +724,10 @@ class TariffOptimizer extends Component
     {
         $this->validate(['chatMessage' => 'required|string|max:1000']);
         
+        if (!$this->chatConversationId && $this->activeReportId) {
+            $this->toggleChat();
+        }
+
         if (!$this->chatConversationId) return;
         
         $conversation = AIConversation::find($this->chatConversationId);
@@ -582,7 +772,11 @@ class TariffOptimizer extends Component
             $service = app(\App\Services\AIService::class);
             $totalCost = $item->production_cost + $item->shipping_cost;
             
-            $suggestion = $service->suggestPrice($item->product_name, $totalCost, $item->current_price);
+            $suggestion = $service->suggestPrice($item->product_name, $totalCost, $item->current_price, [
+                'current_commission' => (float) $item->current_commission,
+                'current_net_profit' => (float) $item->current_net_profit,
+                'scenarios' => $item->scenario_details ?? [],
+            ]);
             
             $this->suggestedPrices[$itemId] = [
                 'price' => $suggestion['suggested_price'],
@@ -609,6 +803,20 @@ class TariffOptimizer extends Component
         if (isset($this->suggestedPrices[$itemId])) {
             unset($this->suggestedPrices[$itemId]);
         }
+    }
+
+    protected function projectedNetProfit(OptimizationReportItem $item): float
+    {
+        $price = (float) ($item->custom_price ?: $item->suggested_price ?: $item->current_price);
+        $commission = (float) ($item->suggested_commission ?: $item->current_commission);
+
+        if ($item->selected_tariff_index !== null && isset($item->scenario_details[$item->selected_tariff_index])) {
+            $scenario = $item->scenario_details[$item->selected_tariff_index];
+            $price = (float) ($item->custom_price ?: ($scenario['price'] ?? $price));
+            $commission = (float) ($scenario['commission'] ?? $commission);
+        }
+
+        return round(($price * (1 - ($commission / 100))) - $item->totalCost(), 2);
     }
 
     public function render()

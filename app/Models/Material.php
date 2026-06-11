@@ -13,7 +13,8 @@ class Material extends Model
         'density_kg_m3', 'thickness_cm',
         'rounding_mode', 'rounding_step',
         'unit_price', 'currency', 'supplier',
-        'notes', 'is_active',
+        'notes', 'is_active', 'image_path',
+        'tags', 'last_price_updated_at',
     ];
 
     protected $casts = [
@@ -24,6 +25,8 @@ class Material extends Model
         'rounding_step'      => 'float',
         'unit_price'         => 'float',
         'is_active'          => 'boolean',
+        'tags'               => 'array',
+        'last_price_updated_at' => 'datetime',
     ];
 
     // ─── Kategori & Birim Sabitleri ────────────────────────
@@ -70,6 +73,16 @@ class Material extends Model
     public function recipeLines()
     {
         return $this->hasMany(RecipeLine::class);
+    }
+
+    public function priceHistories()
+    {
+        return $this->hasMany(MaterialPriceHistory::class)->orderBy('created_at', 'desc');
+    }
+
+    public function latestPriceHistory()
+    {
+        return $this->hasOne(MaterialPriceHistory::class)->latestOfMany();
     }
 
     // ─── Accessor'lar ──────────────────────────────────────

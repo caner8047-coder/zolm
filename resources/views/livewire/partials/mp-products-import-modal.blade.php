@@ -5,7 +5,7 @@
      @keydown.escape.window="open = false; $wire.closeImportModal()"
      class="relative z-50"
      style="display: none;">
-    <div x-show="open" x-transition.opacity class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm" wire:click="closeImportModal"></div>
+    <div x-show="open" x-transition.opacity class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" wire:click="closeImportModal"></div>
     <div class="fixed inset-0 z-10 overflow-y-auto">
         <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             <div x-show="open"
@@ -14,23 +14,23 @@
                  class="relative transform overflow-hidden rounded-xl bg-white text-left shadow-xl transition-all w-full sm:my-8 sm:max-w-lg">
 
                 {{-- Header --}}
-                <div class="bg-white px-4 pt-5 pb-4 sm:px-6 border-b border-gray-100">
-                    <h3 class="text-lg font-semibold text-gray-900">📥 Excel Dosyası İçe Aktar</h3>
-                    <p class="text-sm text-gray-500 mt-1">Trendyol dışa aktarma veya manuel ürün listesini yükleyin. Dosya formatı otomatik algılanır.</p>
+                <div class="bg-white px-4 pt-5 pb-4 sm:px-6 border-b border-slate-100">
+                    <h3 class="text-lg font-semibold text-slate-900">📥 Excel Dosyası İçe Aktar</h3>
+                    <p class="text-sm text-slate-500 mt-1">Trendyol dışa aktarma, ZOLM ürün listesi exportu veya manuel ürün listesini yükleyin. Dosya formatı otomatik algılanır.</p>
                 </div>
 
                 {{-- Body --}}
                 <div class="px-4 py-5 sm:px-6">
                     @if(!$importResult)
                         {{-- Dosya Yükleme Alanı --}}
-                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors">
+                        <div class="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors">
                             <input type="file" wire:model="importFile" accept=".xlsx,.xls" class="hidden" id="importFileInput">
                             <label for="importFileInput" class="cursor-pointer">
-                                <svg class="mx-auto h-10 w-10 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg class="mx-auto h-10 w-10 text-slate-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                                 </svg>
-                                <p class="text-sm text-gray-600">Dosya seçmek için tıklayın</p>
-                                <p class="text-xs text-gray-400 mt-1">.xlsx veya .xls (max 10MB)</p>
+                                <p class="text-sm text-slate-600">Dosya seçmek için tıklayın</p>
+                                <p class="text-xs text-slate-400 mt-1">.xlsx veya .xls (max 10MB)</p>
                             </label>
                         </div>
 
@@ -46,9 +46,9 @@
                         @error('importFile') <p class="text-red-500 text-xs mt-2">{{ $message }}</p> @enderror
 
                         {{-- Desteklenen formatlar --}}
-                        <div class="mt-4 p-3 bg-gray-50 rounded-lg">
-                            <p class="text-xs font-medium text-gray-700 mb-2">Desteklenen Formatlar:</p>
-                            <div class="grid grid-cols-1 gap-2 text-xs text-gray-500">
+                        <div class="mt-4 p-3 bg-slate-50 rounded-lg">
+                            <p class="text-xs font-medium text-slate-700 mb-2">Desteklenen Formatlar:</p>
+                            <div class="grid grid-cols-1 gap-2 text-xs text-slate-500">
                                 <div class="flex items-center gap-2">
                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">Trendyol</span>
                                     <span>Dışa aktar → Barkod, fiyat, stok, görseller</span>
@@ -56,6 +56,10 @@
                                 <div class="flex items-center gap-2">
                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">Manuel</span>
                                     <span>Stok Kodu, Ürün Adı, Maliyet, Desi, Durum</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">ZOLM Export</span>
+                                    <span>Birim Maliyet (COGS), Ambalaj, Kargo, Stok Adedi</span>
                                 </div>
                             </div>
                         </div>
@@ -66,7 +70,7 @@
                                 <div class="inline-flex items-center justify-center w-14 h-14 bg-emerald-100 rounded-full mb-4">
                                     <svg class="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                                 </div>
-                                <h4 class="text-lg font-semibold text-gray-900 mb-2">İçe Aktarma Tamamlandı!</h4>
+                                <h4 class="text-lg font-semibold text-slate-900 mb-2">İçe Aktarma Tamamlandı!</h4>
                                 @if($importResult['type'])
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium mb-3 {{ $importResult['type'] === 'trendyol' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700' }}">
                                         {{ $importResult['type'] === 'trendyol' ? 'Trendyol Listesi' : 'Manuel Liste' }}
@@ -76,10 +80,10 @@
                                 <div class="inline-flex items-center justify-center w-14 h-14 bg-red-100 rounded-full mb-4">
                                     <svg class="w-7 h-7 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                                 </div>
-                                <h4 class="text-lg font-semibold text-gray-900 mb-2">Hata Oluştu</h4>
+                                <h4 class="text-lg font-semibold text-slate-900 mb-2">Hata Oluştu</h4>
                             @endif
 
-                            <p class="text-sm text-gray-600 mb-4">{{ $importResult['message'] }}</p>
+                            <p class="text-sm text-slate-600 mb-4">{{ $importResult['message'] }}</p>
 
                             @if($importResult['success'])
                             <div class="grid grid-cols-3 gap-3">
@@ -91,9 +95,9 @@
                                     <p class="text-2xl font-bold text-blue-700">{{ $importResult['updated'] }}</p>
                                     <p class="text-xs text-blue-600">Güncellenen</p>
                                 </div>
-                                <div class="bg-gray-50 rounded-lg p-3">
-                                    <p class="text-2xl font-bold text-gray-600">{{ $importResult['skipped'] }}</p>
-                                    <p class="text-xs text-gray-500">Atlanan</p>
+                                <div class="bg-slate-50 rounded-lg p-3">
+                                    <p class="text-2xl font-bold text-slate-600">{{ $importResult['skipped'] }}</p>
+                                    <p class="text-xs text-slate-500">Atlanan</p>
                                 </div>
                             </div>
                             @endif
@@ -114,7 +118,7 @@
                 </div>
 
                 {{-- Footer --}}
-                <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-gray-100">
+                <div class="bg-slate-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-slate-100">
                     @if(!$importResult)
                         <button wire:click="importExcel" {{ !$importFile ? 'disabled' : '' }}
                             wire:loading.attr="disabled"
@@ -132,7 +136,7 @@
                     <button type="button" wire:click="closeImportModal"
                         wire:loading.attr="disabled"
                         wire:target="importExcel"
-                        class="mt-3 sm:mt-0 w-full sm:w-auto px-4 py-3 sm:py-2 text-sm font-semibold text-gray-900 bg-white rounded-lg ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60">
+                        class="mt-3 sm:mt-0 w-full sm:w-auto px-4 py-3 sm:py-2 text-sm font-semibold text-slate-900 bg-white rounded-lg ring-1 ring-inset ring-slate-300 hover:bg-slate-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60">
                         {{ $importResult ? 'Kapat' : 'İptal' }}
                     </button>
                 </div>

@@ -162,6 +162,12 @@ class CompensationDashboard extends Component
             array_keys(static::$compensationColumnDefs),
             ['date', 'customer', 'reason', 'claimed', 'approved', 'status', 'documents', 'actions']
         );
+
+        $requestedCargoItemId = request()->integer('cargoItem');
+
+        if ($requestedCargoItemId > 0) {
+            $this->openCreateModal($requestedCargoItemId);
+        }
     }
 
     /**

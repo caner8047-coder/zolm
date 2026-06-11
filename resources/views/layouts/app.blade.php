@@ -26,7 +26,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @endif
     @livewireStyles
     
     <style>
@@ -81,7 +83,7 @@
             <!-- Logo -->
             <div class="h-16 flex items-center justify-between px-6 border-b border-gray-200">
                 <a href="{{ route('dashboard') }}" class="text-2xl font-bold text-gray-900 tracking-tight flex items-baseline">
-                    zolm <span class="text-xs font-normal text-gray-400 ml-1">v.0.6</span>
+                    zolm <span class="text-xs font-normal text-gray-400 ml-1">v.{{ config('version.version', '0.7.0') }}</span>
                 </a>
                 <!-- Mobile close button -->
                 <button 
@@ -97,10 +99,10 @@
             <!-- Navigation -->
             <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
                 {{-- Pazaryeri Dropdown --}}
-                <div x-data="{ pazaryeriOpen: {{ request()->routeIs('mp.*', 'marketplace-accounting', 'reports') ? 'true' : 'false' }} }">
+                <div x-data="{ pazaryeriOpen: {{ request()->routeIs('mp.*', 'marketplace-messages', 'reports') ? 'true' : 'false' }} }">
                     <button @click="pazaryeriOpen = !pazaryeriOpen"
                         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                               {{ request()->routeIs('mp.*', 'marketplace-accounting', 'reports') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                               {{ request()->routeIs('mp.*', 'marketplace-messages', 'reports') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
                         <span class="flex items-center">
                             <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
@@ -133,6 +135,13 @@
                                 Siparişler
                             </a>
                         @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['questions_enabled'] ?? true))
+                            <a href="{{ route('marketplace-messages') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('marketplace-messages') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Sorular
+                            </a>
+                        @endif
                         @if($showMarketplaceV2 && ($marketplaceFeatures['products_v2_enabled'] ?? true))
                             <a href="{{ route('mp.products') }}" @click="sidebarOpen = false"
                                class="block px-4 py-2 text-sm rounded-lg transition-colors
@@ -154,11 +163,6 @@
                                 Finans
                             </a>
                         @endif
-                        <a href="{{ route('marketplace-accounting') }}" @click="sidebarOpen = false"
-                           class="block px-4 py-2 text-sm rounded-lg transition-colors
-                                  {{ request()->routeIs('marketplace-accounting') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
-                            Muhasebe
-                        </a>
                         <a href="{{ route('mp.settings') }}" @click="sidebarOpen = false"
                            class="block px-4 py-2 text-sm rounded-lg transition-colors
                                   {{ request()->routeIs('mp.settings') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
@@ -166,6 +170,46 @@
                         </a>
                     </div>
                 </div>
+
+                @if(($marketplaceFeatures['crm_enabled'] ?? true) && auth()->user()->canAccessCrm())
+                    <div x-data="{ crmOpen: {{ request()->routeIs('crm.*') ? 'true' : 'false' }} }">
+                        <button @click="crmOpen = !crmOpen"
+                            class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                                   {{ request()->routeIs('crm.*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m8-4a4 4 0 10-8 0 4 4 0 008 0zm-8 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                                </svg>
+                                CRM
+                            </span>
+                            <svg :class="crmOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                        <div x-show="crmOpen" x-collapse class="ml-8 mt-1 space-y-1">
+                            <a href="{{ route('crm.workspace') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('crm.workspace') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Müşteri 360
+                            </a>
+                            <a href="{{ route('crm.customer-ledger') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('crm.customer-ledger') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Müşteri Cari
+                            </a>
+                        </div>
+                    </div>
+                @endif
+
+                <a href="{{ route('marketplace-accounting') }}"
+                   @click="sidebarOpen = false"
+                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                          {{ request()->routeIs('marketplace-accounting') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
+                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M9 7h6m-6 4h6m-7 4h.01M12 15h.01M16 15h.01M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" />
+                    </svg>
+                    Muhasebe
+                </a>
 
                 {{-- Araçlar Dropdown --}}
                 <div x-data="{ araclarOpen: {{ request()->routeIs('production', 'operation', 'custom-motors*', 'profiles*', 'returns.*') ? 'true' : 'false' }} }">
@@ -260,6 +304,11 @@
                                   {{ request()->routeIs('recipe.*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
                             Reçete
                         </a>
+                        <a href="{{ route('production.planner') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('production.planner') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Üretim Planlama
+                        </a>
                         <a href="#" @click.prevent="" class="flex items-center justify-between px-4 py-2 text-sm rounded-lg transition-colors text-gray-400 cursor-not-allowed">
                             Mamül / Yarı Mamül
                             <span class="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded ml-2">YAKINDA</span>
@@ -313,6 +362,12 @@
                                   {{ request()->routeIs('campaigns.flash-products') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
                             Flaş Ürünler
                         </a>
+                        <a href="{{ route('campaigns.basket-discount') }}"
+                           @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('campaigns.basket-discount') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Sepet İndirimi
+                        </a>
                     </div>
                 </div>
 
@@ -323,7 +378,7 @@
                     <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                     </svg>
-                    Kargo Raporu
+                    Kargo Operasyon
                 </a>
 
                 <a href="{{ route('supply-reports') }}" 
@@ -387,9 +442,12 @@
                 
                 <!-- Right side -->
                 <div class="flex items-center space-x-2 sm:space-x-4">
+                    @if($showMarketplaceV2 && ($marketplaceFeatures['notifications_enabled'] ?? true))
+                        <x-zolm.live-notifications />
+                    @endif
                     @if(auth()->user()->isAdmin())
                     <a href="{{ route('admin.dashboard') }}" class="px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium text-gray-700 border border-gray-300 rounded hover:bg-gray-50">
-                        Admin
+                        Yönetim
                     </a>
                     @endif
                     <span class="hidden sm:inline text-sm text-gray-600">{{ auth()->user()->name }}</span>

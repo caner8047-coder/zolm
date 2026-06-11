@@ -8,8 +8,10 @@ use App\Models\Recipe;
 use App\Models\RecipeLine;
 use App\Models\MpProduct;
 use App\Services\RecipeCalculationService;
+use App\Services\RecipeProductCostSyncService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class RecipeBuilder extends Component
 {
@@ -31,6 +33,9 @@ class RecipeBuilder extends Component
     public array $materialSearchResults = [];
     public ?int $searchingLineIndex = null;
 
+    public string $globalMaterialSearch = '';
+    public array $globalMaterialResults = [];
+
     // ─── Quick-create Material Modal ───────────────────────
     public bool $showQuickMaterialModal = false;
     public string $qmCode = '';
@@ -44,13 +49,19 @@ class RecipeBuilder extends Component
     // ─── Hesap Sonuçları ───────────────────────────────────
     public array $calculationResults = [];
 
+    // ─── Simülatör (What-If) ───────────────────────────────
+    public bool $showSimModal = false;
+    public string $simCategory = 'all'; // all, fabric, foam, wood vb.
+    public float $simPercent = 0; // % zam/indirim
+    public bool $simIncludeSubRecipes = true;
+
     public function mount(?int $recipeId = null)
     {
         $this->recipeId = $recipeId;
 
         if ($recipeId) {
             $recipe = Recipe::where('user_id', Auth::id())
-                ->with('lines.material', 'product')
+                ->with('lines.material', 'lines.subRecipe', 'product')
                 ->findOrFail($recipeId);
 
             $this->recipeName = $recipe->name;
@@ -63,11 +74,23 @@ class RecipeBuilder extends Component
                 $this->productSearch = $recipe->product->product_name;
             }
 
-            $this->lines = $recipe->lines->map(fn($l) => [
+            $this->lines = $recipe->lines->map(function($l) {
+                $label = '';
+                $unitPrice = 0;
+                if ($l->subRecipe) {
+                    $label = "Yarım Mamul: {$l->subRecipe->name}";
+                    $unitPrice = $l->subRecipe->total_cost;
+                } elseif ($l->material) {
+                    $label = "{$l->material->code} — {$l->material->name}";
+                    $unitPrice = $l->material->unit_price ?? 0;
+                }
+
+                return [
                 'id'                    => $l->id,
                 'material_id'           => $l->material_id,
-                'material_label'        => $l->material ? "{$l->material->code} — {$l->material->name}" : '',
-                'unit_price'            => $l->material->unit_price ?? 0,
+                'sub_recipe_id'         => $l->sub_recipe_id,
+                'material_label'        => $label,
+                'unit_price'            => $unitPrice,
                 'operation'             => $l->operation,
                 'usage_area'            => $l->usage_area ?? '',
                 'calc_type'             => $l->calc_type,
@@ -81,7 +104,8 @@ class RecipeBuilder extends Component
                 'calculated_qty'        => $l->calculated_qty,
                 'calculated_unit'       => $l->calculated_unit,
                 'notes'                 => $l->notes ?? '',
-            ])->toArray();
+                ];
+            })->toArray();
 
             $this->recalculateAll();
         }
@@ -128,6 +152,7 @@ class RecipeBuilder extends Component
         $this->lines[] = [
             'id'                    => null,
             'material_id'           => null,
+            'sub_recipe_id'         => null,
             'material_label'        => '',
             'unit_price'            => 0,
             'operation'             => 'terzihane',
@@ -170,6 +195,48 @@ class RecipeBuilder extends Component
         $this->lines = array_values($this->lines);
     }
 
+    // ─── Genel Malzeme / Reçete Arama (Sol Menü İçin) ──────
+
+    public function updatedGlobalMaterialSearch()
+    {
+        if (strlen($this->globalMaterialSearch) < 2) {
+            $this->globalMaterialResults = [];
+            return;
+        }
+
+        $term = $this->globalMaterialSearch;
+
+        $materials = Material::where('user_id', Auth::id())
+            ->active()
+            ->search($term)
+            ->limit(15)
+            ->get(['id', 'code', 'name', 'category', 'base_unit', 'unit_price'])
+            ->map(function($m) {
+                $arr = $m->toArray();
+                $arr['type'] = 'material';
+                return $arr;
+            });
+
+        $recipes = Recipe::where('user_id', Auth::id())
+            ->where('name', 'like', "%{$term}%")
+            ->where('id', '!=', $this->recipeId)
+            ->limit(10)
+            ->get()
+            ->map(function($r) {
+                return [
+                    'id' => clone $r->id,
+                    'type' => 'recipe',
+                    'code' => 'YARIM MAMUL',
+                    'name' => $r->name,
+                    'category' => 'recipe',
+                    'base_unit' => 'pcs',
+                    'unit_price' => $r->total_cost,
+                ];
+            });
+
+        $this->globalMaterialResults = $materials->concat($recipes)->toArray();
+    }
+
     // ─── Malzeme Seçimi (satır içi) ────────────────────────
 
     public function searchMaterial(int $lineIndex, string $term)
@@ -179,35 +246,83 @@ class RecipeBuilder extends Component
             $this->materialSearchResults = [];
             return;
         }
-        $this->materialSearchResults = Material::where('user_id', Auth::id())
+
+        // 1. Malzemeleri ara
+        $materials = Material::where('user_id', Auth::id())
             ->active()
             ->search($term)
             ->limit(10)
             ->get(['id', 'code', 'name', 'category', 'base_unit', 'fabric_width_cm'])
-            ->toArray();
+            ->map(function($m) {
+                $mArr = $m->toArray();
+                $mArr['is_sub_recipe'] = false;
+                return $mArr;
+            });
+
+        // 2. Alt reçeteleri ara
+        $recipes = Recipe::where('user_id', Auth::id())
+            ->where('name', 'like', "%{$term}%")
+            ->where('id', '!=', $this->recipeId) // Kendini alt reçete olarak ekleyemez
+            ->limit(5)
+            ->get()
+            ->map(function($r) {
+                return [
+                    'id' => clone $r->id,
+                    'is_sub_recipe' => true,
+                    'code' => '🔄 YARIM MAMUL',
+                    'name' => $r->name,
+                    'category' => 'recipe',
+                    'base_unit' => 'pcs',
+                    'fabric_width_cm' => null,
+                ];
+            });
+
+        $this->materialSearchResults = $materials->concat($recipes)->toArray();
     }
 
-    public function selectMaterial(int $lineIndex, int $materialId)
+    public function selectMaterial(int $lineIndex, int $materialId, bool $isSubRecipe = false)
     {
-        $material = Material::find($materialId);
-        if (!$material || !isset($this->lines[$lineIndex])) return;
+        if (!isset($this->lines[$lineIndex])) return;
 
-        $this->lines[$lineIndex]['material_id'] = $materialId;
-        $this->lines[$lineIndex]['material_label'] = "{$material->code} — {$material->name}";
-        $this->lines[$lineIndex]['unit_price'] = $material->unit_price ?? 0;
+        if ($isSubRecipe) {
+            $recipe = Recipe::find($materialId);
+            if (!$recipe) return;
 
-        // Hesap tipini malzeme kategorisine göre otomatik ayarla
-        $this->lines[$lineIndex]['calc_type'] = match ($material->category) {
-            'fabric'   => 'fabric_meter',
-            'foam'     => 'volume_m3',
-            'wood'     => str_contains(mb_strtolower($material->name), 'm2') ? 'area_m2' : 'fixed_qty',
-            'textile', 'lining' => 'fabric_meter',
-            default    => 'fixed_qty',
-        };
+            $this->lines[$lineIndex]['material_id'] = null;
+            $this->lines[$lineIndex]['sub_recipe_id'] = $materialId;
+            $this->lines[$lineIndex]['material_label'] = "Yarım Mamul: {$recipe->name}";
+            $this->lines[$lineIndex]['unit_price'] = $recipe->total_cost ?? 0;
+            $this->lines[$lineIndex]['calc_type'] = 'piece';
+        } else {
+            $material = Material::find($materialId);
+            if (!$material) return;
+
+            $this->lines[$lineIndex]['material_id'] = $materialId;
+            $this->lines[$lineIndex]['sub_recipe_id'] = null;
+            $this->lines[$lineIndex]['material_label'] = "{$material->code} — {$material->name}";
+            $this->lines[$lineIndex]['unit_price'] = $material->unit_price ?? 0;
+
+            // Hesap tipini malzeme kategorisine göre otomatik ayarla
+            $this->lines[$lineIndex]['calc_type'] = match ($material->category) {
+                'fabric'   => 'fabric_meter',
+                'foam'     => 'volume_m3',
+                'wood'     => str_contains(mb_strtolower($material->name), 'm2') ? 'area_m2' : 'fixed_qty',
+                'textile', 'lining' => 'fabric_meter',
+                default    => 'fixed_qty',
+            };
+        }
 
         $this->materialSearchResults = [];
         $this->searchingLineIndex = null;
         $this->recalculateLine($lineIndex);
+    }
+
+    public function addMaterialFromDrag(int $materialId, string $type = 'material')
+    {
+        $this->addLine();
+        $newIndex = count($this->lines) - 1;
+        $isSubRecipe = ($type === 'recipe');
+        $this->selectMaterial($newIndex, $materialId, $isSubRecipe);
     }
 
     // ─── Hızlı Malzeme Oluşturma ──────────────────────────
@@ -259,9 +374,22 @@ class RecipeBuilder extends Component
 
     public function recalculateLine(int $index)
     {
-        if (!isset($this->lines[$index]) || !$this->lines[$index]['material_id']) return;
-
+        if (!isset($this->lines[$index])) return;
         $lineData = $this->lines[$index];
+
+        if (empty($lineData['material_id']) && empty($lineData['sub_recipe_id'])) return;
+
+        if (!empty($lineData['sub_recipe_id'])) {
+            $recipe = Recipe::find($lineData['sub_recipe_id']);
+            if (!$recipe) return;
+            // Alt reçeteler sadece adet üzerinden hesaplanır
+            $qty = $lineData['pieces'] ?? 1;
+            $this->lines[$index]['calculated_qty'] = $qty;
+            $this->lines[$index]['calculated_unit'] = 'pcs';
+            $this->lines[$index]['unit_price'] = $recipe->total_cost ?? 0;
+            return;
+        }
+
         $material = Material::find($lineData['material_id']);
         if (!$material) return;
 
@@ -280,7 +408,7 @@ class RecipeBuilder extends Component
     public function recalculateAll()
     {
         foreach ($this->lines as $i => $line) {
-            if ($line['material_id']) {
+            if (!empty($line['material_id']) || !empty($line['sub_recipe_id'])) {
                 $this->recalculateLine($i);
             }
         }
@@ -318,6 +446,11 @@ class RecipeBuilder extends Component
                 'status'        => $this->status,
                 'notes'         => $this->notes ?: null,
             ];
+            if (Schema::hasColumn('recipes', 'stock_code')) {
+                $recipeData['stock_code'] = $this->selectedProductId
+                    ? MpProduct::where('user_id', Auth::id())->whereKey($this->selectedProductId)->value('stock_code')
+                    : null;
+            }
 
             if ($this->recipeId) {
                 $recipe = Recipe::where('user_id', Auth::id())->findOrFail($this->recipeId);
@@ -331,11 +464,12 @@ class RecipeBuilder extends Component
 
             // Satırları kaydet
             foreach ($this->lines as $i => $lineData) {
-                if (!$lineData['material_id']) continue;
+                if (empty($lineData['material_id']) && empty($lineData['sub_recipe_id'])) continue;
 
                 RecipeLine::create([
                     'recipe_id'             => $recipe->id,
-                    'material_id'           => $lineData['material_id'],
+                    'material_id'           => $lineData['material_id'] ?: null,
+                    'sub_recipe_id'         => $lineData['sub_recipe_id'] ?: null,
                     'operation'             => $lineData['operation'],
                     'usage_area'            => $lineData['usage_area'] ?: null,
                     'calc_type'             => $lineData['calc_type'],
@@ -356,9 +490,16 @@ class RecipeBuilder extends Component
             // Hesapları güncelle
             $service = new RecipeCalculationService();
             $service->calculateRecipe($recipe);
+            $syncSummary = app(RecipeProductCostSyncService::class)->syncRecipe($recipe->refresh(), false);
 
             DB::commit();
-            session()->flash('success', '✅ Reçete kaydedildi.');
+
+            $message = '✅ Reçete kaydedildi.';
+            if (($syncSummary['enabled'] ?? false) && (int) ($syncSummary['matched_products'] ?? 0) > 0) {
+                $message .= ' Stok kartı maliyeti güncellendi: ' . number_format((float) ($syncSummary['last_total_cost'] ?? 0), 2, ',', '.') . ' ₺';
+            }
+
+            session()->flash('success', $message);
         } catch (\Exception $e) {
             DB::rollBack();
             session()->flash('error', '❌ Hata: ' . $e->getMessage());
@@ -385,19 +526,14 @@ class RecipeBuilder extends Component
         $recipe->update(['status' => 'active']);
         $this->status = 'active';
 
-        // COGS Senkronizasyonu: Bağlı ürünün maliyetini güncelle
-        if ($recipe->mp_product_id) {
-            $totalCost = $recipe->total_cost;
-            if ($totalCost > 0) {
-                MpProduct::where('id', $recipe->mp_product_id)
-                    ->update(['cogs' => round($totalCost, 2)]);
-                session()->flash('success', '✅ Reçete aktifleştirildi ve ürün COGS güncellendi: ' . number_format($totalCost, 2) . ' ₺');
-            } else {
-                session()->flash('success', '✅ Reçete aktifleştirildi.');
-            }
-        } else {
-            session()->flash('success', '✅ Reçete aktifleştirildi.');
+        $syncSummary = app(RecipeProductCostSyncService::class)->syncRecipe($recipe->refresh(), false);
+        $message = '✅ Reçete aktifleştirildi.';
+
+        if (($syncSummary['enabled'] ?? false) && (int) ($syncSummary['matched_products'] ?? 0) > 0) {
+            $message .= ' Stok kartı maliyeti güncellendi: ' . number_format((float) ($syncSummary['last_total_cost'] ?? 0), 2, ',', '.') . ' ₺';
         }
+
+        session()->flash('success', $message);
     }
 
     public function duplicateRecipe()
@@ -453,6 +589,44 @@ class RecipeBuilder extends Component
             })
             ->filter(fn($g) => $g['cost'] > 0)
             ->toArray();
+    }
+
+    /**
+     * What-If Simüle Edilmiş Toplam Maliyet
+     */
+    public function getSimulatedCostProperty(): float
+    {
+        if ($this->simPercent == 0) return $this->totalCost;
+
+        $multiplier = 1 + ($this->simPercent / 100);
+        $simTotal = 0;
+
+        foreach ($this->lines as $line) {
+            $cost = (float)($line['unit_price'] ?? 0) * (float)($line['calculated_qty'] ?? 0);
+
+            // Alt reçete mi kontrol et
+            if (!empty($line['sub_recipe_id'])) {
+                if ($this->simIncludeSubRecipes) {
+                    $simTotal += $cost * $multiplier;
+                } else {
+                    $simTotal += $cost; // Alt reçeteyi etkileme
+                }
+                continue;
+            }
+
+            // Normal malzeme kategorisi kontrolü
+            if ($this->simCategory === 'all') {
+                $simTotal += $cost * $multiplier;
+            } else {
+                $material = Material::find($line['material_id']);
+                if ($material && $material->category === $this->simCategory) {
+                    $simTotal += $cost * $multiplier;
+                } else {
+                    $simTotal += $cost;
+                }
+            }
+        }
+        return $simTotal;
     }
 
     // ─── Render ────────────────────────────────────────────

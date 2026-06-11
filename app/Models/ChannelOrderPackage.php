@@ -34,6 +34,7 @@ class ChannelOrderPackage extends Model
             'cargo_desi' => 'decimal:2',
             'shipped_at' => 'datetime',
             'delivered_at' => 'datetime',
+            'label_printed_at' => 'datetime',
             'last_synced_at' => 'datetime',
             'raw_payload' => 'array',
         ];
@@ -57,5 +58,10 @@ class ChannelOrderPackage extends Model
     public function actionRuns(): HasMany
     {
         return $this->hasMany(IntegrationOrderActionRun::class, 'channel_order_package_id');
+    }
+
+    public function shipments(): HasMany
+    {
+        return $this->hasMany(Shipment::class, 'channel_order_package_id');
     }
 }

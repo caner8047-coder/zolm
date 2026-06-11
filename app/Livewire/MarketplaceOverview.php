@@ -57,7 +57,7 @@ class MarketplaceOverview extends Component
             'total_orders' => (clone $orderQuery)->count(),
             'finance_ready_orders' => (clone $orderQuery)->has('financialEvents')->count(),
             'total_listings' => (clone $listingQuery)->count(),
-            'active_listings' => (clone $listingQuery)->whereIn('listing_status', ['active', 'approved', 'live', 'on_sale', 'published'])->count(),
+            'active_listings' => (clone $listingQuery)->whereIn('listing_status', ['active', 'approved', 'live', 'on_sale', 'onsale', 'published', 'publish', 'enabled'])->count(),
             'net_receivable' => round((float) (clone $snapshotQuery)->sum('net_receivable'), 2),
             'confirmed_profit' => round((float) (clone $snapshotQuery)->where('profit_state', 'confirmed')->sum('confirmed_profit'), 2),
         ];

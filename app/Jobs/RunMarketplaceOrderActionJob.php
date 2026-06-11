@@ -24,7 +24,7 @@ class RunMarketplaceOrderActionJob implements ShouldQueue
 
     public function __construct(public int $actionRunId)
     {
-        $this->onQueue('marketplace-actions');
+        $this->onQueue((string) config('marketplace.queues.order_actions', 'default'));
     }
 
     public function handle(MarketplaceOrderActionService $orderActionService): void

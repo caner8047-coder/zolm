@@ -59,6 +59,48 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | API Entegrasyonları
+    |--------------------------------------------------------------------------
+    | Sürat Kargo resmi REST servis adresleri varsayılan olarak tanımlıdır.
+    | Gerekirse .env veya hesap bazlı panel ayarlarıyla canlı/prova ortamı
+    | değiştirilebilir. Şifreler kesinlikle burada tutulmaz.
+    */
+    'integrations' => [
+        'surat' => [
+            'base_url' => env('SURAT_CARGO_API_BASE_URL', 'https://api01.suratkargo.com.tr'),
+            'query_base_url' => env('SURAT_CARGO_QUERY_BASE_URL', env('SURAT_CARGO_API_BASE_URL', 'https://api01.suratkargo.com.tr')),
+            'soap_url' => env('SURAT_CARGO_SOAP_URL', 'https://webservices.suratkargo.com.tr/services.asmx'),
+            'soap_wsdl_url' => env('SURAT_CARGO_SOAP_WSDL_URL', 'https://webservices.suratkargo.com.tr/services.asmx?WSDL'),
+            'test_base_url' => env('SURAT_CARGO_TEST_API_BASE_URL', 'https://api02.suratkargo.com.tr'),
+            'test_soap_url' => env('SURAT_CARGO_TEST_SOAP_URL', 'https://prova.suratkargo.com.tr/services.asmx'),
+            'test_soap_wsdl_url' => env('SURAT_CARGO_TEST_SOAP_WSDL_URL', 'https://prova.suratkargo.com.tr/services.asmx?WSDL'),
+            'timeout' => (int) env('SURAT_CARGO_TIMEOUT', 30),
+            'vat_rate' => (float) env('SURAT_CARGO_VAT_RATE', 0.20),
+            'endpoints' => [
+                'test_connection' => env('SURAT_CARGO_TEST_ENDPOINT', '/api/KargoTakipHareketDetayi'),
+                'create_shipment' => env('SURAT_CARGO_CREATE_ENDPOINT', '/api/GonderiyiKargoyaGonder'),
+                'cancel_shipment' => env('SURAT_CARGO_CANCEL_ENDPOINT', '/api/GonderiSil'),
+                'recall_shipment' => env('SURAT_CARGO_RECALL_ENDPOINT', '/api/GonderiGeriCek'),
+                'track_shipment' => env('SURAT_CARGO_TRACK_ENDPOINT', '/api/KargoTakipHareketDetayi'),
+                'sent_shipment_details' => env('SURAT_CARGO_SENT_DETAILS_ENDPOINT', '/api/BarkodDetay/GonderilenKargoDetayi'),
+                'multi_tracking' => env('SURAT_CARGO_MULTI_TRACKING_ENDPOINT', '/api/KargoTakipHareketCoklu'),
+                'invoice_lines' => env('SURAT_CARGO_INVOICE_ENDPOINT'),
+            ],
+            'methods' => [
+                'test_connection' => env('SURAT_CARGO_TEST_METHOD', 'POST'),
+                'create_shipment' => env('SURAT_CARGO_CREATE_METHOD', 'POST'),
+                'cancel_shipment' => env('SURAT_CARGO_CANCEL_METHOD', 'POST'),
+                'recall_shipment' => env('SURAT_CARGO_RECALL_METHOD', 'POST'),
+                'track_shipment' => env('SURAT_CARGO_TRACK_METHOD', 'POST'),
+                'sent_shipment_details' => env('SURAT_CARGO_SENT_DETAILS_METHOD', 'POST'),
+                'multi_tracking' => env('SURAT_CARGO_MULTI_TRACKING_METHOD', 'POST'),
+                'invoice_lines' => env('SURAT_CARGO_INVOICE_METHOD', 'POST'),
+            ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Sipariş/İade Ayrımı için Çıkış İli
     |--------------------------------------------------------------------------
     | Bu ilden çıkan kargolar "sipariş", diğerleri "iade" olarak işaretlenir.

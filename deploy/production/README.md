@@ -5,6 +5,7 @@ Bu klasor, ZOLM pazaryeri entegrasyon omurgasini production ortamina alirken kul
 ## Icerik
 
 - `.env.production.example`
+- `../cpanel/after_upload_v07.sh`
 - `supervisor/zolm-queue.conf`
 - `supervisor/zolm-scheduler.conf`
 - `systemd/zolm-queue.service`
@@ -28,12 +29,13 @@ Ayni sunucuda ikisini birden aktif etmeyin. Tek bir process yonetim stratejisi s
 
 1. `.env.production.example` dosyasini referans alip production `.env` hazirlayin
 2. uygulama dizinini `/var/www/zolm` benzeri hedefe deploy edin
-3. artisan cache komutlarini calistirin
-4. `php artisan migrate --force` calistirin
-5. `php artisan marketplace:health-check` ile ilk saglik kontrolunu alin
-6. queue ve scheduler process'lerini secilen yonteme gore aktif edin
-7. test magazada `Urun cek > Siparis cek > Finans cek` sirasi ile smoke test yapin
-8. feature flag'leri ihtiyaca gore kademeli acin
+3. cPanel kullaniyorsaniz `chmod +x deploy/cpanel/after_upload_v07.sh && deploy/cpanel/after_upload_v07.sh` calistirin
+4. artisan cache komutlarini calistirin
+5. `php artisan migrate --force` calistirin
+6. `php artisan marketplace:health-check` ile ilk saglik kontrolunu alin
+7. queue ve scheduler process'lerini secilen yonteme gore aktif edin
+8. test magazada `Urun cek > Siparis cek > Soru cek > Finans cek` sirasi ile smoke test yapin
+9. feature flag'leri ihtiyaca gore kademeli acin
 
 ## Kontrol Komutlari
 
@@ -41,6 +43,7 @@ Ayni sunucuda ikisini birden aktif etmeyin. Tek bir process yonetim stratejisi s
 php artisan marketplace:health-check
 php artisan marketplace:health-check --fail-on-warning
 php artisan marketplace:smoke-test 12 --type=orders --hours=24 --preview=2
+php artisan marketplace:smoke-test 12 --type=questions --hours=168 --preview=2
 php artisan marketplace:apply-woo-safe-profile --store=12 --dry-run
 php artisan marketplace:apply-woo-safe-profile --store=12
 php artisan marketplace:apply-woo-safe-profile --all --dry-run
@@ -70,10 +73,12 @@ php artisan schedule:list
 
 - `APP_URL` production domain ile ayni olmali
 - webhook URL disaridan HTTPS uzerinden erisilebilir olmali
+- pazaryeri webhook URL formati `https://m.zolm.com.tr/api/webhooks/marketplaces/{provider}/{store_id}` olmalidir
+- app kok dizini document root ise repo kokundeki `.htaccess` istekleri `public/` altina yonlendirir
 - queue driver production'da `sync` olmamali
 - deploy sonrasi worker process'lerine `queue:restart` sinyali verilmeli
 - V2 rollout gerekirse sadece `MARKETPLACE_V2_ENABLED=false` ile tek adimda geri alinabilir
-- paneldeki manuel `Siparis cek / Urun cek / Finans cek` aksiyonlari magaza + veri tipi bazinda debounce edilir; ayni magazada kisa surede tekrar tiklama ikinci `integration_sync_runs` kaydi acmaz
+- paneldeki manuel `Siparis cek / Soru cek / Urun cek / Finans cek` aksiyonlari magaza + veri tipi bazinda debounce edilir; ayni magazada kisa surede tekrar tiklama ikinci `integration_sync_runs` kaydi acmaz
 - manuel sync korumasi icin `MARKETPLACE_MANUAL_SYNC_DEBOUNCE_SECONDS` ve `MARKETPLACE_MANUAL_SYNC_ACTIVE_RUN_BLOCK_SECONDS` env degerleri production'da acikca ayarlanmalidir
 - paneldeki `Fiyat push / Stok push` aksiyonlari listing + push tipi bazinda sakinlestirilir; kuyruktaki ayni push kaydi guncellenir, `processing` durumundaki is icin ikinci kayit acilmaz
 - listing push korumasi icin `MARKETPLACE_LISTING_PUSH_DEBOUNCE_SECONDS` ve `MARKETPLACE_LISTING_PUSH_ACTIVE_RUN_BLOCK_SECONDS` env degerleri production'da acikca ayarlanmalidir
@@ -82,11 +87,11 @@ php artisan schedule:list
 - Trendyol icin dusuk etkili baslangic profili gerekiyorsa `php artisan marketplace:apply-trendyol-safe-profile --store={id} --dry-run`, sonra ayni komut dry-run olmadan calistirilabilir
 - Hepsiburada icin `seller_id` alani `merchantId`, `apiKey` alani `serviceKey`, `extraUser` alani ise `User-Agent`/entegrator kullanicisi olarak dusunulmeli
 - Hepsiburada icin dusuk etkili baslangic profili gerekiyorsa `php artisan marketplace:apply-hepsiburada-safe-profile --store={id} --dry-run`, sonra ayni komut dry-run olmadan calistirilabilir
-- N11 tarafi su anda guvenli skeleton modundadir; credential alanlari hazirlanabilir ancak resmi endpoint ve auth modeli netlesmeden canli verify/smoke acilmaz
-- Koctas tarafi da su anda guvenli skeleton modundadir; credential alanlari hazirlanabilir ancak resmi endpoint ve auth modeli netlesmeden canli verify/smoke acilmaz
-- Pazarama tarafi da su anda guvenli skeleton modundadir; credential alanlari hazirlanabilir ancak resmi endpoint ve auth modeli netlesmeden canli verify/smoke acilmaz
+- N11 tarafi siparis, urun, soru ve iade cekimini destekler; finans sync kapali kalir, soru akisi SOAP endpointi uzerinden kontrol edilmelidir
+- Koctas tarafi Mirakl uzerinden siparis, urun, soru ve iade cekimini destekler; finans sync kapali kalir, shop secimi gerekiyorsa ekstra ayarlar kontrol edilmelidir
+- Pazarama tarafi tokenli API uzerinden siparis, urun, soru ve iade cekimini destekler; finans sync kapali kalir, token URL production env'de dolu olmalidir
 - Amazon tarafi da su anda guvenli skeleton modundadir; SP-API region, role ve auth modeli netlesmeden canli verify/smoke acilmaz
-- Ciceksepeti tarafi da su anda guvenli skeleton modundadir; credential alanlari hazirlanabilir ancak resmi endpoint ve auth modeli netlesmeden canli verify/smoke acilmaz
+- Ciceksepeti tarafi siparis, urun, soru ve iade cekimini destekler; finans sync kapali kalir, soru endpointi varsayilan olarak `sellerquestions` kabul edilir
 - WooCommerce icin `apiKey=consumer key`, `apiSecret=consumer secret`, `api_base_url` ise site kok URL veya dogrudan `/wp-json/wc/v3` base URL olabilir
 - mevcut WooCommerce magazalari icin guvenli dusuk etkili profil gerekirse once `php artisan marketplace:apply-woo-safe-profile --store={id} --dry-run`, sonra ayni komut dry-run olmadan calistirilabilir
 - mevcut WooCommerce magazalari icin onerilen webhook topic seti tek komutla uygulanabilir: `php artisan marketplace:apply-recommended-webhook-topics --store={id}`

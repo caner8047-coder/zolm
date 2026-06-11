@@ -1,956 +1,910 @@
-<div class="space-y-6 overflow-x-hidden">
-    {{-- Başlık --}}
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-            <h1 class="text-xl lg:text-2xl font-bold text-gray-900">📊 Ürün Komisyon Tarifeleri</h1>
-            <p class="text-sm lg:text-base text-gray-500 mt-1">Tarife optimizasyonu ile net kârınızı maksimize edin</p>
-        </div>
-    </div>
+@php
+    $formatMoney = fn ($value) => '₺' . number_format((float) $value, 2, ',', '.');
+    $formatMoneyShort = fn ($value) => '₺' . number_format((float) $value, 0, ',', '.');
+    $formatSignedMoney = fn ($value) => ((float) $value >= 0 ? '+' : '-') . '₺' . number_format(abs((float) $value), 2, ',', '.');
+    $formatPercent = fn ($value) => '%' . number_format((float) $value, 1, ',', '.');
+    $formatMultiplier = fn ($value) => '%' . number_format((((float) $value) - 1) * 100, 1, ',', '.');
+    $statusFilters = [
+        'all' => 'Tümü',
+        'opportunity' => 'Fırsat',
+        'risk' => 'Risk',
+        'selected' => 'Seçili',
+        'missing_cost' => 'Maliyet eksik',
+        'kept' => 'Korunan',
+    ];
+    $tariffColumns = [
+        0 => ['key' => 'tariff_1', 'label' => 'Mevcut'],
+        1 => ['key' => 'tariff_2', 'label' => '2. Tarife'],
+        2 => ['key' => 'tariff_3', 'label' => '3. Tarife'],
+        3 => ['key' => 'tariff_4', 'label' => '4. Tarife'],
+    ];
+    $visibleOptionalColumns = collect($visibleColumns)->filter()->count();
+    $tableColspan = 3 + $visibleOptionalColumns;
+    $sortLabel = fn ($field) => $sortField === $field ? ($sortDirection === 'asc' ? 'Artan' : 'Azalan') : 'Sırala';
+@endphp
 
-    {{-- Mesaj --}}
+<div class="w-full space-y-4 overflow-x-hidden lg:space-y-6">
+    @once
+        <style>
+            [x-cloak] {
+                display: none !important;
+            }
+
+            .tariff-scrollbar::-webkit-scrollbar {
+                height: 8px;
+                width: 8px;
+            }
+
+            .tariff-scrollbar::-webkit-scrollbar-thumb {
+                background: rgba(148, 163, 184, 0.55);
+                border-radius: 999px;
+            }
+
+            .tariff-ledger-table {
+                table-layout: fixed;
+                min-width: 1160px;
+            }
+
+            .tariff-ledger-table th,
+            .tariff-ledger-table td {
+                vertical-align: top;
+            }
+
+            .tariff-ledger-table td {
+                overflow: visible;
+            }
+
+            .tariff-resize-handle {
+                position: absolute;
+                inset-block: 0;
+                right: 0;
+                width: 4px;
+                cursor: col-resize;
+            }
+
+            .tariff-resize-handle:hover,
+            .tariff-resize-handle.active {
+                background: #0f172a;
+            }
+        </style>
+        <script>
+            document.addEventListener('alpine:init', () => {
+                Alpine.data('tariffColumnResize', () => ({
+                    resizing: false,
+                    startX: 0,
+                    startWidth: 0,
+                    currentTh: null,
+                    handle: null,
+                    startResize(event, th) {
+                        this.resizing = true;
+                        this.startX = event.pageX;
+                        this.startWidth = th.offsetWidth;
+                        this.currentTh = th;
+                        this.handle = event.target;
+                        this.handle.classList.add('active');
+
+                        const onMouseMove = (moveEvent) => {
+                            if (!this.resizing || !this.currentTh) {
+                                return;
+                            }
+
+                            const newWidth = Math.max(96, this.startWidth + (moveEvent.pageX - this.startX));
+                            this.currentTh.style.width = newWidth + 'px';
+                            this.currentTh.style.minWidth = newWidth + 'px';
+                        };
+
+                        const onMouseUp = () => {
+                            this.resizing = false;
+                            if (this.handle) {
+                                this.handle.classList.remove('active');
+                            }
+
+                            document.removeEventListener('mousemove', onMouseMove);
+                            document.removeEventListener('mouseup', onMouseUp);
+                        };
+
+                        document.addEventListener('mousemove', onMouseMove);
+                        document.addEventListener('mouseup', onMouseUp);
+                    },
+                }));
+            });
+        </script>
+    @endonce
+
     @if($message)
-        <div class="rounded-lg p-4 {{ 
-            $messageType === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 
-            ($messageType === 'error' ? 'bg-red-50 text-red-800 border border-red-200' : 
-            'bg-blue-50 text-blue-800 border border-blue-200') 
-        }}">
+        <div class="rounded-[8px] border p-4 text-sm {{ $messageType === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : ($messageType === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-sky-200 bg-sky-50 text-sky-800') }}">
             {{ $message }}
         </div>
     @endif
 
-    {{-- Tab Navigation --}}
-    <div class="border-b border-gray-200">
-        <nav class="flex gap-4 sm:gap-8">
-            <button wire:click="switchTab('analyze')"
-                class="py-3 px-1 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
-                    {{ $activeTab === 'analyze' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                🔬 Yeni Analiz
-            </button>
-            <button wire:click="switchTab('history')"
-                class="py-3 px-1 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
-                    {{ $activeTab === 'history' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                📋 Geçmiş Raporlar
-                @if($this->reports->count() > 0)
-                    <span class="ml-1.5 px-2 py-0.5 text-xs bg-gray-200 text-gray-700 rounded-full">{{ $this->reports->count() }}</span>
-                @endif
-            </button>
-        </nav>
-    </div>
-
-    {{-- ===================================================== --}}
-    {{-- TAB 1: YENİ ANALİZ --}}
-    {{-- ===================================================== --}}
-    @if($activeTab === 'analyze')
-
-        {{-- ADIM 1: Setup & Yükleme --}}
-        @if($step === 1)
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
-                {{-- Sol: Ürün Veritabanı Durumu (MpProduct) --}}
-                <div class="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl p-4 lg:p-6 border border-blue-200">
-                    <div class="flex items-start gap-4">
-                        <div class="w-12 h-12 rounded-lg bg-white shadow flex items-center justify-center flex-shrink-0">
-                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                      d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
-                            </svg>
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <h3 class="font-medium text-gray-900">Ürün Veritabanı</h3>
-                            <p class="text-sm text-gray-500 mt-1">Pazaryeri Ürünlerim modülündeki maliyet verileri</p>
-                            <div class="mt-3 space-y-2">
-                                <div class="flex items-center gap-2">
-                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                                        📦 {{ $this->productCount }} toplam ürün
-                                    </span>
-                                </div>
-                                @if($this->costCount > 0)
-                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                                        ✓ {{ $this->costCount }} ürünün maliyeti tanımlı
-                                    </span>
-                                @else
-                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
-                                        ⚠ Henüz maliyet tanımlı ürün yok
-                                    </span>
-                                @endif
-                            </div>
-                            <div class="mt-4 p-3 bg-white/60 rounded-lg">
-                                <p class="text-xs text-gray-500">
-                                    💡 Maliyet verileri <strong>Pazaryeri Ürünlerim</strong> modülünden otomatik çekilir. 
-                                    Ayrı maliyet dosyası yüklemenize gerek yoktur.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+    <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-6">
+            <div class="min-w-0 xl:col-span-7">
+                <div class="inline-flex rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500">
+                    Kampanya karar paneli
                 </div>
+                <h1 class="mt-3 text-xl font-bold text-slate-900 lg:text-2xl">Ürün Komisyon Tarifeleri</h1>
+                <p class="mt-1 max-w-3xl text-sm text-slate-500">
+                    Trendyol tarife dosyasını ürün maliyetleriyle eşleştirir, net kârı koruyan fiyat/tarife kararlarını görünür hale getirir.
+                </p>
 
-                {{-- Sağ: Tarife Excel Yükleme --}}
-                <div class="bg-gradient-to-br from-emerald-50 to-green-100 rounded-xl p-4 lg:p-6 border border-emerald-200">
-                    <div class="flex items-start gap-4">
-                        <div class="w-12 h-12 rounded-lg bg-white shadow flex items-center justify-center flex-shrink-0">
-                            <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                      d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                            </svg>
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <h3 class="font-medium text-gray-900">Haftalık Tarife Analizi</h3>
-                            <p class="text-sm text-gray-500 mt-1">Trendyol komisyon tarife Excel dosyasını yükleyin</p>
-                            <div class="mt-4">
-                                @if(!$tariffFile)
-                                    <input 
-                                        type="file" 
-                                        wire:model="tariffFile"
-                                        accept=".xlsx,.xls"
-                                        class="block w-full text-sm text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200"
-                                    >
-                                @else
-                                    <div class="flex items-center justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                                        <div class="flex items-center gap-2">
-                                            <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                            <span class="text-sm text-emerald-800 font-medium truncate" style="max-width: 250px;">{{ $tariffFile->getClientOriginalName() }}</span>
-                                        </div>
-                                        <button type="button" wire:click="$set('tariffFile', null)" class="text-xs px-2 py-1 bg-red-100 text-red-600 hover:bg-red-200 rounded-md font-medium transition-colors">
-                                            İptal Et
-                                        </button>
-                                    </div>
-                                @endif
-                                @error('tariffFile') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
-                            </div>
-                            <div class="mt-4">
-                                <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Rapor Adı (Opsiyonel)</label>
-                                <input 
-                                    type="text" 
-                                    wire:model="reportName"
-                                    placeholder="Örn: 11 Şubat 2026 Analizi"
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-base sm:text-sm min-h-[44px]"
-                                >
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {{-- Maliyet uyarısı --}}
-            @if($this->costCount === 0)
-                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-700">
-                    <div class="flex items-start gap-2">
-                        <svg class="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
-                        </svg>
-                        <span>Pazaryeri Ürünlerim modülünde henüz maliyetli ürün yok. Önce ürünlerinizin COGS, ambalaj ve kargo maliyetlerini tanımlayın. Aksi halde motor maliyetleri 0 kabul ederek çalışır.</span>
-                    </div>
-                </div>
-            @endif
-
-            {{-- Motoru Çalıştır Butonu --}}
-            @if($tariffFile)
-                <div class="flex justify-center">
-                    <button 
-                        wire:click="analyze"
-                        wire:loading.attr="disabled"
-                        class="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold rounded-xl hover:from-emerald-700 hover:to-green-700 transition shadow-lg disabled:opacity-50 flex justify-center items-center gap-3 text-lg min-h-[56px]"
+                <div class="mt-4 inline-flex w-full rounded-[8px] border border-slate-200 bg-slate-50/70 p-1 sm:w-auto">
+                    <button
+                        type="button"
+                        wire:click="switchTab('analyze')"
+                        class="flex-1 rounded-[6px] px-4 py-2 text-sm font-medium transition sm:flex-none {{ $activeTab === 'analyze' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-slate-900' }}"
                     >
-                        <span wire:loading.remove wire:target="analyze">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                            </svg>
-                        </span>
-                        <span wire:loading wire:target="analyze">
-                            <svg class="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                        </span>
-                        <span wire:loading.remove wire:target="analyze">Motoru Çalıştır</span>
-                        <span wire:loading wire:target="analyze">Analiz ediliyor...</span>
+                        Analiz
                     </button>
+                    <button
+                        type="button"
+                        wire:click="switchTab('history')"
+                        class="flex-1 rounded-[6px] px-4 py-2 text-sm font-medium transition sm:flex-none {{ $activeTab === 'history' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-slate-900' }}"
+                    >
+                        Geçmiş
+                        @if($this->reports->count() > 0)
+                            <span class="ml-1 rounded-[6px] bg-white/80 px-1.5 py-0.5 text-[11px] text-slate-700">{{ $this->reports->count() }}</span>
+                        @endif
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:col-span-5">
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                    <p class="text-xs font-medium text-slate-500">Ürün havuzu</p>
+                    <p class="mt-2 text-xl font-bold text-slate-900">{{ number_format($this->productCount, 0, ',', '.') }}</p>
+                    <p class="mt-1 text-xs text-slate-500">MpProduct kaydı</p>
+                </div>
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                    <p class="text-xs font-medium text-slate-500">Maliyet hazır</p>
+                    <p class="mt-2 text-xl font-bold text-emerald-700">{{ number_format($this->costCount, 0, ',', '.') }}</p>
+                    <p class="mt-1 text-xs text-slate-500">COGS tanımlı</p>
+                </div>
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                    <p class="text-xs font-medium text-slate-500">AI durumu</p>
+                    <p class="mt-2 text-xl font-bold text-slate-900">{{ $this->activeReport?->ai_analysis ? 'Hazır' : 'Bekliyor' }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Rapor bazlı destek</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    @if($activeTab === 'analyze')
+        @if($step === 1)
+            <div class="grid grid-cols-1 gap-4 lg:gap-6 xl:grid-cols-12">
+                <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6 xl:col-span-8">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div class="min-w-0">
+                            <h2 class="text-lg font-semibold text-slate-900">Yeni tarife analizi</h2>
+                            <p class="mt-1 text-sm text-slate-500">Seller Center komisyon Excel dosyasını yükleyin; motor mevcut formülüyle senaryoları hesaplasın.</p>
+                        </div>
+                        <div class="rounded-[6px] border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-600">
+                            Max 10 MB · XLSX/XLS
+                        </div>
+                    </div>
+
+                    <div class="mt-5 grid grid-cols-1 gap-3 lg:gap-4">
+                        <label class="group cursor-pointer rounded-[8px] border border-dashed border-slate-300 bg-slate-50/60 p-4 transition hover:border-slate-400 hover:bg-white">
+                            <input type="file" wire:model="tariffFile" accept=".xlsx,.xls" class="hidden">
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div class="flex min-w-0 items-center gap-3">
+                                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] bg-slate-900 text-white">
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 16V4m0 12-4-4m4 4 4-4M4 20h16" />
+                                        </svg>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="truncate text-sm font-semibold text-slate-900">{{ $tariffFile ? $tariffFile->getClientOriginalName() : 'Trendyol komisyon tarife dosyası seçin' }}</p>
+                                        <p class="mt-1 text-xs text-slate-500">Stok kodu, güncel fiyat, komisyon ve tarife kolonları otomatik eşleşir.</p>
+                                    </div>
+                                </div>
+                                <span class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition group-hover:border-slate-300">
+                                    Dosya seç
+                                </span>
+                            </div>
+                        </label>
+                        @error('tariffFile')
+                            <p class="text-sm text-rose-600">{{ $message }}</p>
+                        @enderror
+
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-slate-700">Rapor adı</label>
+                            <input
+                                type="text"
+                                wire:model="reportName"
+                                placeholder="Örn: Nisan 2026 Komisyon Tarife Kontrolü"
+                                class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 sm:py-2 sm:text-sm"
+                            >
+                        </div>
+                    </div>
+
+                    @if($tariffFile)
+                        <div class="mt-5 flex flex-col gap-3 rounded-[8px] border border-emerald-200 bg-emerald-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="min-w-0 text-sm text-emerald-800">
+                                <span class="font-semibold">Dosya hazır.</span>
+                                Analiz çalışınca mevcut tarife, alternatif tarifeler ve net kâr senaryoları kaydedilecek.
+                            </div>
+                            <div class="flex w-full gap-2 sm:w-auto">
+                                <button
+                                    type="button"
+                                    wire:click="$set('tariffFile', null)"
+                                    class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-emerald-200 bg-white px-4 py-3 text-sm font-medium text-emerald-800 transition hover:bg-emerald-50 sm:flex-none sm:py-2"
+                                >
+                                    Temizle
+                                </button>
+                                <button
+                                    type="button"
+                                    wire:click="analyze"
+                                    wire:loading.attr="disabled"
+                                    wire:target="analyze"
+                                    class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60 sm:flex-none sm:py-2"
+                                >
+                                    <span wire:loading.remove wire:target="analyze">Analizi başlat</span>
+                                    <span wire:loading wire:target="analyze">İşleniyor...</span>
+                                </button>
+                            </div>
+                        </div>
+                    @endif
+                </section>
+
+                <aside class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6 xl:col-span-4">
+                    <h3 class="text-sm font-semibold text-slate-900">Akıllı çalışma akışı</h3>
+                    <div class="mt-4 space-y-3">
+                        <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                            <p class="text-sm font-semibold text-slate-900">1. Maliyet kontrolü</p>
+                            <p class="mt-1 text-xs text-slate-500">COGS, ambalaj ve kargo maliyetleri Pazaryeri Ürünlerim üzerinden okunur.</p>
+                        </div>
+                        <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                            <p class="text-sm font-semibold text-slate-900">2. Komisyon senaryosu</p>
+                            <p class="mt-1 text-xs text-slate-500">Net kâr formülü korunur: fiyat eksi komisyon, ardından toplam maliyet.</p>
+                        </div>
+                        <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                            <p class="text-sm font-semibold text-slate-900">3. AI destekli karar</p>
+                            <p class="mt-1 text-xs text-slate-500">Rapor sonrasında strateji analizi, zarar denetimi ve satır bazlı fiyat önerisi aynı ekrandan çalışır.</p>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
+            @if($this->costCount === 0)
+                <div class="rounded-[10px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    Pazaryeri Ürünlerim modülünde maliyetli ürün bulunamadı. Analiz çalışır, fakat maliyetler 0 kabul edildiği için kârlılık kararları güvenilir olmaz.
                 </div>
             @endif
         @endif
 
-        {{-- ADIM 2: İşlem Animasyonu --}}
         @if($step === 2)
-            <div class="flex flex-col items-center justify-center py-12 lg:py-20">
-                <div class="relative">
-                    <div class="w-24 h-24 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin"></div>
-                    <div class="absolute inset-0 flex items-center justify-center">
-                        <svg class="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                        </svg>
-                    </div>
+            <section class="rounded-[10px] border border-slate-200 bg-white p-8 text-center shadow-sm lg:p-12">
+                <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-slate-200 bg-slate-50">
+                    <div class="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900"></div>
                 </div>
-                <h2 class="mt-6 text-xl lg:text-2xl font-bold text-gray-900">Komisyon Analizi Çalışıyor</h2>
-                <div class="mt-4 space-y-2 text-sm lg:text-base text-gray-500 text-center" x-data="{ step: 0 }" x-init="setInterval(() => step = (step + 1) % 4, 1500)">
-                    <p x-show="step === 0" x-transition>📊 Tarife verileri okunuyor...</p>
-                    <p x-show="step === 1" x-transition>🔗 Maliyetler eşleştiriliyor...</p>
-                    <p x-show="step === 2" x-transition>🔍 Komisyon tuzakları taranıyor...</p>
-                    <p x-show="step === 3" x-transition>💰 Kârlılık hesaplanıyor...</p>
-                </div>
-            </div>
+                <h2 class="mt-5 text-xl font-semibold text-slate-900">Komisyon motoru çalışıyor</h2>
+                <p class="mt-2 text-sm text-slate-500">Tarife kolonları okunuyor, ürün maliyetleri eşleşiyor ve senaryolar hesaplanıyor.</p>
+            </section>
         @endif
 
-        {{-- ADIM 3: Sonuç Raporu --}}
         @if($step === 3 && $this->activeReport)
-            @php $report = $this->activeReport; @endphp
+            @php
+                $report = $this->activeReport;
+                $items = $this->filteredItems;
+                $metrics = $this->reportMetrics;
+                $topOpportunity = $metrics['top_opportunity'];
+                $worstLoss = $metrics['worst_loss'];
+            @endphp
 
+            <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
+                <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">Tamamlanan rapor</span>
+                            <span class="rounded-[6px] border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500">{{ $report->created_at->format('d.m.Y H:i') }}</span>
+                        </div>
+                        <h2 class="mt-3 text-xl font-bold text-slate-900 lg:text-2xl">{{ $report->name }}</h2>
+                        <p class="mt-1 truncate text-sm text-slate-500">{{ $report->original_filename }}</p>
+                    </div>
 
-
-            {{-- Üst Butonlar --}}
-            <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
-                <div class="flex gap-2 w-full sm:w-auto">
-                    <button wire:click="resetAnalysis"
-                        class="flex-1 sm:flex-none px-4 py-3 sm:py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 flex justify-center items-center gap-2 min-h-[44px]">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                        </svg>
-                        Yeni Analiz
-                    </button>
-                    <button x-on:click="$dispatch('openAiPanel', { tab: 'campaign' })" class="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-indigo-100 text-indigo-700 font-medium rounded-lg hover:bg-indigo-200 border border-indigo-200 flex items-center justify-center gap-1.5 min-h-[44px] transition-colors">
-                        🤖 AI Analiz
-                    </button>
-                    <button x-on:click="$dispatch('openAiPanel', { tab: 'loss' })" class="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-red-100 text-red-700 font-medium rounded-lg hover:bg-red-200 border border-red-200 flex items-center justify-center gap-1.5 min-h-[44px] transition-colors">
-                        🔴 Zarar Denetimi
-                    </button>
-                </div>
-
-                <div class="flex items-center gap-2 w-full sm:w-auto">
-                    @if(count($selectedItems) > 0)
-                        <span class="text-sm text-gray-500">{{ count($selectedItems) }} ürün seçili</span>
-                    @endif
-                    <button wire:click="exportSelected"
-                        class="w-full sm:w-auto px-4 py-3 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex justify-center items-center gap-2 min-h-[44px]">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                        </svg>
-                        Düzeltme Dosyasını İndir
-                    </button>
-                </div>
-            </div>
-
-            {{-- KPI Kartları --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-                <div class="bg-white rounded-xl p-3 sm:p-4 border border-gray-200 shadow-sm">
-                    <div class="text-gray-500 text-xs sm:text-sm">Analiz Edilen</div>
-                    <div class="text-xl sm:text-2xl font-bold text-gray-900">{{ number_format($report->total_products) }}</div>
-                    <div class="text-xs text-gray-400 mt-1">ürün</div>
-                </div>
-                <div class="bg-white rounded-xl p-3 sm:p-4 border border-emerald-200 shadow-sm">
-                    <div class="text-emerald-500 text-xs sm:text-sm">Fırsat Bulunan</div>
-                    <div class="text-xl sm:text-2xl font-bold text-emerald-600">{{ number_format($report->opportunity_count) }}</div>
-                    <div class="text-xs text-emerald-400 mt-1">ürün</div>
-                </div>
-                <div class="bg-white rounded-xl p-3 sm:p-4 border border-green-200 shadow-sm">
-                    <div class="text-green-500 text-xs sm:text-sm">Toplam Ek Kâr</div>
-                    <div class="text-xl sm:text-2xl font-bold text-green-600">+{{ number_format($report->total_extra_profit, 2) }} ₺</div>
-                    <div class="text-xs text-green-400 mt-1">birim başına potansiyel</div>
-                </div>
-                <div class="bg-white rounded-xl p-3 sm:p-4 border border-yellow-200 shadow-sm">
-                    <div class="text-yellow-500 text-xs sm:text-sm">Eşleşmeyen</div>
-                    <div class="text-xl sm:text-2xl font-bold text-yellow-600">{{ number_format($report->unmatched_count) }}</div>
-                    <div class="text-xs text-yellow-400 mt-1">maliyetsiz ürün</div>
-                </div>
-            </div>
-
-            {{-- Toplu İşlem Alanı --}}
-            <div class="flex flex-col sm:flex-row items-center gap-3 bg-gray-50 rounded-lg p-3 lg:p-4">
-                <button wire:click="selectAllOpportunities" class="w-full sm:w-auto px-3 py-2 text-sm bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 min-h-[44px]">
-                    ✓ Tüm Fırsatları Seç
-                </button>
-                <button wire:click="deselectAll" class="w-full sm:w-auto px-3 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 min-h-[44px]">
-                    Seçimi Temizle
-                </button>
-                @if(count($selectedItems) > 0)
-                    <span class="text-sm font-medium text-orange-600">
-                        🛒 {{ count($selectedItems) }} ürün seçildi
-                    </span>
-                @endif
-                <div class="text-sm text-gray-500 sm:ml-auto">
-                    {{ $report->original_filename }} · {{ $report->created_at->format('d.m.Y H:i') }}
-                </div>
-            </div>
-
-            {{-- ═════════════════════════════════════════════════════════ --}}
-            {{-- KARLILIK FİLTRESİ --}}
-            {{-- ═════════════════════════════════════════════════════════ --}}
-            <div class="bg-white rounded-lg border border-gray-200 p-3 mb-3" x-data="{ showCustom: false }">
-                {{-- Satır 1: Hedef Tarife Seçimi --}}
-                <div class="flex flex-wrap items-center gap-2 mb-2">
-                    <span class="text-xs font-semibold text-gray-600 mr-1">📋 Hedef Tarife:</span>
-                    @foreach([0 => '1. Tarife', 1 => '2. Tarife', 2 => '3. Tarife', 3 => '4. Tarife'] as $tIdx => $tName)
-                        <button wire:click="setProfitabilityFilter({{ $tIdx }}, {{ $profitabilityMin ?? 0 }}, {{ $profitabilityMax ?? 999 }})"
-                            class="px-3 py-1.5 text-[11px] font-semibold rounded-lg border-2 transition-all {{ $profitabilityTariffIndex === $tIdx ? ($tIdx === 0 ? 'bg-orange-500 text-white border-orange-500 shadow-md' : 'bg-indigo-600 text-white border-indigo-600 shadow-md') : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-600' }}">
-                            {{ $tName }}
+                    <div class="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
+                        <button type="button" wire:click="resetAnalysis" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 sm:flex-none sm:py-2">
+                            Yeni analiz
                         </button>
-                    @endforeach
-
-                    @if($profitabilityTariffIndex !== null)
-                        <button wire:click="clearProfitabilityFilter" class="px-2 py-1 text-[11px] text-red-500 hover:text-red-700 font-medium ml-1">
-                            ✕ Temizle
+                        <button type="button" wire:click="generateAIAnalysis" x-on:click="$dispatch('openAiPanel', { tab: 'campaign' })" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100 sm:flex-none sm:py-2">
+                            <span wire:loading.remove wire:target="generateAIAnalysis">AI strateji</span>
+                            <span wire:loading wire:target="generateAIAnalysis">AI çalışıyor...</span>
                         </button>
-                    @endif
+                        <button type="button" wire:click="exportSelected" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 sm:flex-none sm:py-2">
+                            Düzeltme dosyası
+                        </button>
+                    </div>
                 </div>
 
-                {{-- Satır 2: ROI Aralığı (tarife seçildiyse göster) --}}
-                @if($profitabilityTariffIndex !== null)
-                    <div class="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100">
-                        <span class="text-xs font-semibold text-gray-500 mr-1">🎯 ROI %:</span>
-                        @php
-                            $ranges = [[0,5],[5,10],[10,15],[15,20],[20,25],[25,30],[30,null]];
-                        @endphp
-                        @foreach($ranges as [$rMin, $rMax])
-                            <button wire:click="setProfitabilityFilter({{ $profitabilityTariffIndex }}, {{ $rMin }}, {{ $rMax ?? 'null' }})"
-                                class="px-2 py-1 text-[10px] font-medium rounded-full border transition-all {{ $profitabilityMin == $rMin && ($profitabilityMax == $rMax || ($rMax === null && $profitabilityMax == 999)) ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-emerald-400 hover:text-emerald-600' }}">
-                                {{ $rMax !== null ? "%{$rMin}-{$rMax}" : "%{$rMin}+" }}
+                <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                        <p class="text-xs font-medium text-slate-500">Analiz edilen</p>
+                        <p class="mt-2 text-2xl font-bold text-slate-900">{{ number_format($report->total_products, 0, ',', '.') }}</p>
+                    </div>
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                        <p class="text-xs font-medium text-slate-500">Fırsat</p>
+                        <p class="mt-2 text-2xl font-bold text-emerald-700">{{ number_format($report->opportunity_count, 0, ',', '.') }}</p>
+                    </div>
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                        <p class="text-xs font-medium text-slate-500">Ek kâr</p>
+                        <p class="mt-2 text-2xl font-bold text-emerald-700">{{ $formatSignedMoney($report->total_extra_profit) }}</p>
+                    </div>
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                        <p class="text-xs font-medium text-slate-500">Riskli satır</p>
+                        <p class="mt-2 text-2xl font-bold text-rose-700">{{ number_format($metrics['risk_count'], 0, ',', '.') }}</p>
+                    </div>
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                        <p class="text-xs font-medium text-slate-500">Maliyet kapsama</p>
+                        <p class="mt-2 text-2xl font-bold text-slate-900">{{ $formatPercent($metrics['cost_coverage']) }}</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
+                <div class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-sm font-semibold text-slate-900">AI strateji notu</p>
+                            <p class="mt-1 text-xs text-slate-500">{{ $report->ai_analysis ? 'Son analiz hazır. Panelden detayını okuyabilirsiniz.' : 'Raporu AI ile yorumlatıp aksiyon planı çıkarın.' }}</p>
+                        </div>
+                        <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">{{ $report->ai_analysis ? 'Hazır' : 'Boş' }}</span>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button type="button" wire:click="generateAIAnalysis" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+                            <span wire:loading.remove wire:target="generateAIAnalysis">{{ $report->ai_analysis ? 'Yenile' : 'Başlat' }}</span>
+                            <span wire:loading wire:target="generateAIAnalysis">İşleniyor...</span>
+                        </button>
+                        <button type="button" x-on:click="$dispatch('openAiPanel', { tab: 'campaign' })" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                            Aç
+                        </button>
+                    </div>
+                </div>
+
+                <div class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-sm font-semibold text-slate-900">Zarar denetimi</p>
+                            <p class="mt-1 text-xs text-slate-500">{{ $worstLoss ? 'En zayıf satır: ' . \Illuminate\Support\Str::limit($worstLoss->product_name ?: $worstLoss->stock_code, 42) : 'Mevcut fiyatla zarar eden ürün görünmüyor.' }}</p>
+                        </div>
+                        <span class="rounded-[6px] border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700">{{ number_format($metrics['risk_count'], 0, ',', '.') }} risk</span>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button type="button" wire:click="analyzeLosses" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] bg-rose-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-rose-700">
+                            <span wire:loading.remove wire:target="analyzeLosses">{{ $report->loss_analysis ? 'Yenile' : 'Denetle' }}</span>
+                            <span wire:loading wire:target="analyzeLosses">Denetleniyor...</span>
+                        </button>
+                        <button type="button" x-on:click="$dispatch('openAiPanel', { tab: 'loss' })" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                            Aç
+                        </button>
+                    </div>
+                </div>
+
+                <div class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-sm font-semibold text-slate-900">Seçim etkisi</p>
+                            <p class="mt-1 text-xs text-slate-500">{{ $metrics['selected_count'] }} ürün seçili; tahmini etki {{ $formatSignedMoney($metrics['selected_impact']) }}.</p>
+                        </div>
+                        <span class="rounded-[6px] border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">{{ $formatMoneyShort($metrics['visible_extra_profit']) }}</span>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button type="button" wire:click="selectFilteredOpportunities" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                            Görünen fırsatları seç
+                        </button>
+                        <button type="button" wire:click="toggleChat" x-on:click="$dispatch('openAiPanel', { tab: 'chat' })" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white">
+                            AI sohbet
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="rounded-[10px] border border-slate-200 bg-white shadow-sm" x-data="{ columnsOpen: false, profitabilityOpen: {{ $profitabilityTariffIndex !== null ? 'true' : 'false' }} }">
+                <div class="border-b border-slate-200 p-4 lg:p-5">
+                    <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button type="button" wire:click="$set('tabView', 'products')" class="rounded-[6px] px-3 py-2 text-sm font-medium transition {{ $tabView === 'products' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50' }}">
+                                    Ürün ledger
+                                </button>
+                                <button type="button" wire:click="$set('tabView', 'categories')" class="rounded-[6px] px-3 py-2 text-sm font-medium transition {{ $tabView === 'categories' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50' }}">
+                                    Kategori görünümü
+                                </button>
+                            </div>
+                            <p class="mt-3 text-sm text-slate-500">
+                                {{ number_format($metrics['filtered_count'], 0, ',', '.') }} satır gösteriliyor.
+                                @if($statusFilter !== 'all' || $search || $profitabilityTariffIndex !== null)
+                                    Aktif filtre uygulanıyor.
+                                @endif
+                            </p>
+                        </div>
+
+                        <div class="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
+                            <button type="button" wire:click="selectAllOpportunities" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 transition hover:bg-emerald-100 sm:flex-none sm:py-2">
+                                Tüm fırsatları seç
                             </button>
-                        @endforeach
-
-                        {{-- Özel Aralık Toggle --}}
-                        <button x-on:click="showCustom = !showCustom"
-                            class="px-2 py-1 text-[10px] font-medium rounded-full border transition-all bg-white text-gray-500 border-gray-200 hover:border-emerald-400">
-                            ⚙️ Özel
-                        </button>
+                            <button type="button" wire:click="deselectAll" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 sm:flex-none sm:py-2">
+                                Seçimi temizle
+                            </button>
+                            <button type="button" x-on:click="columnsOpen = !columnsOpen" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 sm:flex-none sm:py-2">
+                                Kolonlar
+                            </button>
+                        </div>
                     </div>
 
-                    {{-- Özel Aralık Input --}}
-                    <div x-show="showCustom" x-transition class="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100">
-                        <span class="text-xs text-gray-500">Min %</span>
-                        <input type="number" x-ref="customMin" value="{{ $profitabilityMin ?? 0 }}" class="w-16 text-xs text-center border border-gray-300 rounded px-1 py-1" min="0" max="100" step="1">
-                        <span class="text-xs text-gray-400">—</span>
-                        <span class="text-xs text-gray-500">Max %</span>
-                        <input type="number" x-ref="customMax" value="{{ $profitabilityMax != 999 ? $profitabilityMax : 100 }}" class="w-16 text-xs text-center border border-gray-300 rounded px-1 py-1" min="0" max="100" step="1">
-                        <button x-on:click="$wire.setProfitabilityFilter({{ $profitabilityTariffIndex }}, $refs.customMin.value, $refs.customMax.value)"
-                            class="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700 font-medium">Filtrele</button>
+                    <div x-show="columnsOpen" x-cloak x-transition class="mt-3 rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-6">
+                            @foreach([
+                                'costs' => 'Maliyet',
+                                'tariff_1' => 'Mevcut',
+                                'tariff_2' => '2. Tarife',
+                                'tariff_3' => '3. Tarife',
+                                'tariff_4' => '4. Tarife',
+                                'price_action' => 'Fiyat aksiyonu',
+                            ] as $columnKey => $columnLabel)
+                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                                    <input type="checkbox" wire:click="toggleColumn('{{ $columnKey }}')" @checked($visibleColumns[$columnKey] ?? false) class="rounded border-slate-300 text-slate-900 focus:ring-slate-900">
+                                    <span>{{ $columnLabel }}</span>
+                                </label>
+                            @endforeach
+                        </div>
                     </div>
-                @endif
-            </div>
 
-            {{-- TABS: ÜRÜN BAZLI / KATEGORİ BAZLI --}}
-            <div class="flex gap-2 mb-4 border-b border-gray-200">
-                <button wire:click="$set('tabView', 'products')" 
-                    class="px-4 py-2 text-sm font-medium transition-colors border-b-2 {{ $tabView === 'products' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
-                    📦 Ürün Bazlı
-                </button>
-                <button wire:click="$set('tabView', 'categories')" 
-                    class="px-4 py-2 text-sm font-medium transition-colors border-b-2 {{ $tabView === 'categories' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
-                    📊 Kategori Analizi
-                </button>
-            </div>
+                    <div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-12">
+                        <div class="xl:col-span-4">
+                            <label class="sr-only" for="tariff-search">Ürün ara</label>
+                            <input
+                                id="tariff-search"
+                                type="search"
+                                wire:model.live.debounce.300ms="search"
+                                placeholder="Ürün, stok kodu veya barkod ara"
+                                class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 sm:py-2 sm:text-sm"
+                            >
+                        </div>
 
-            {{-- ═════════════════════════════════════════════════════════ --}}
-            {{-- TRENDYOL-STİL RATE CARD TABLOSU --}}
-            {{-- ═════════════════════════════════════════════════════════ --}}
-            @if($tabView === 'products')
-            <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                        <div class="flex gap-2 overflow-x-auto pb-1 xl:col-span-5">
+                            @foreach($statusFilters as $filterKey => $filterLabel)
+                                <button type="button" wire:click="setStatusFilter('{{ $filterKey }}')" class="whitespace-nowrap rounded-[6px] border px-3 py-2 text-sm font-medium transition {{ $statusFilter === $filterKey ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }}">
+                                    {{ $filterLabel }}
+                                </button>
+                            @endforeach
+                        </div>
 
-                {{-- Desktop Tablo --}}
-                <div class="hidden xl:block overflow-x-auto">
-                    <table class="w-full text-xs">
-                        <thead>
-                            <tr class="bg-gray-800 text-white">
-                                <th class="px-2 py-3 text-center align-middle" rowspan="2" style="min-width:60px">
-                                    <span class="text-[10px]">Tarife<br>Seç</span>
-                                </th>
-                                <th class="px-3 py-3 text-left align-middle" rowspan="2" style="min-width:180px; max-width:250px">
-                                    Ürün Bilgileri
-                                </th>
-                                <th class="px-2 py-3 text-center align-middle" rowspan="2" style="min-width:80px">
-                                    <div class="text-[10px] leading-tight">Kargo M</div>
-                                    <div class="text-[10px] leading-tight text-gray-400">Üretim M</div>
-                                </th>
-                                <th class="px-2 py-1.5 text-center bg-orange-600 text-white font-bold border-l border-orange-700 border-r border-orange-700" colspan="1">
-                                    <span class="text-[10px]">1. Tarife</span>
-                                </th>
-                                <th class="px-2 py-1.5 text-center bg-gray-700 font-medium border-r border-gray-600" colspan="1">
-                                    <span class="text-[10px]">2. Tarife</span>
-                                </th>
-                                <th class="px-2 py-1.5 text-center bg-gray-700 font-medium border-r border-gray-600" colspan="1">
-                                    <span class="text-[10px]">3. Tarife</span>
-                                </th>
-                                <th class="px-2 py-1.5 text-center bg-gray-700 font-medium border-r border-gray-600" colspan="1">
-                                    <span class="text-[10px]">4. Tarife</span>
-                                </th>
-                                <th class="px-2 py-3 text-center align-middle bg-emerald-700" rowspan="2" style="min-width:120px">
-                                    <span class="text-[10px]">Fiyat Güncelle</span>
-                                </th>
-                            </tr>
-                            <tr class="bg-gray-700 text-gray-300">
-                                <th class="px-1 py-1 text-center text-[9px] bg-orange-500/20 border-l border-r border-orange-700">Fiyat · Kom · Kâr</th>
-                                <th class="px-1 py-1 text-center text-[9px] border-r border-gray-600">Fiyat · Kom · Kâr</th>
-                                <th class="px-1 py-1 text-center text-[9px] border-r border-gray-600">Fiyat · Kom · Kâr</th>
-                                <th class="px-1 py-1 text-center text-[9px] border-r border-gray-600">Fiyat · Kom · Kâr</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            @forelse($report->items as $item)
-                                @php
-                                    $scenarios = $item->scenario_details;
-                                    $sc1 = $scenarios[0] ?? null;
-                                    $sc2 = $scenarios[1] ?? null;
-                                    $sc3 = $scenarios[2] ?? null;
-                                    $sc4 = $scenarios[3] ?? null;
-                                    $totalCost = $item->production_cost + $item->shipping_cost;
-                                    $selectedIdx = $item->selected_tariff_index;
+                        <div class="flex gap-2 xl:col-span-3 xl:justify-end">
+                            <button type="button" x-on:click="profitabilityOpen = !profitabilityOpen" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 xl:flex-none">
+                                Kârlılık filtresi
+                            </button>
+                            <button type="button" wire:click="clearTableFilters" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 xl:flex-none">
+                                Temizle
+                            </button>
+                        </div>
+                    </div>
 
-                                    // Karlılık filtresi: seçilen tarifenin karlılığına göre filtrele
-                                    if ($profitabilityTariffIndex !== null && $profitabilityMin !== null && $totalCost > 0) {
-                                        $targetSc = $scenarios[$profitabilityTariffIndex] ?? null;
-                                        if ($targetSc) {
-                                            $profitPct = ($targetSc['net_profit'] / $totalCost) * 100;
-                                            if ($profitPct < $profitabilityMin || $profitPct > $profitabilityMax) continue;
-                                        } else {
-                                            continue; // Bu ürünün hedef tarifesi yok
-                                        }
-                                    }
-                                @endphp
-                                <tr wire:key="desktop-item-{{ $item->id }}" class="hover:bg-gray-50 group transition {{ $item->action === 'warning' ? 'bg-red-50/50' : '' }}">
-                                    {{-- Tarife Seç Butonları --}}
-                                    <td class="px-1 py-2 text-center align-middle">
-                                        <div class="flex flex-col gap-0.5 items-center">
-                                            @for($ti = 0; $ti < 4; $ti++)
-                                                @if(isset($scenarios[$ti]))
-                                                    <button 
-                                                        wire:click="selectTariff({{ $item->id }}, {{ $ti }})"
-                                                        class="w-6 h-5 rounded text-[9px] font-bold transition-all {{ $selectedIdx === $ti ? 'bg-orange-500 text-white ring-2 ring-orange-300 shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-orange-100 hover:text-orange-600' }}"
-                                                        title="{{ ($ti + 1) }}. Tarife Seç">
-                                                        {{ $ti + 1 }}
-                                                    </button>
-                                                @endif
-                                            @endfor
-                                        </div>
-                                    </td>
+                    <div x-show="profitabilityOpen" x-cloak x-transition class="mt-3 rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-xs font-semibold text-slate-600">Hedef tarife</span>
+                            @foreach([0 => 'Mevcut', 1 => '2. Tarife', 2 => '3. Tarife', 3 => '4. Tarife'] as $tIdx => $tName)
+                                <button type="button" wire:click="setProfitabilityFilter({{ $tIdx }}, {{ $profitabilityMin ?? 0 }}, {{ $profitabilityMax ?? 999 }})" class="rounded-[6px] border px-3 py-2 text-xs font-semibold transition {{ $profitabilityTariffIndex === $tIdx ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }}">
+                                    {{ $tName }}
+                                </button>
+                            @endforeach
+                            @if($profitabilityTariffIndex !== null)
+                                <button type="button" wire:click="clearProfitabilityFilter" class="rounded-[6px] border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50">
+                                    Kârlılık temizle
+                                </button>
+                            @endif
+                        </div>
 
-                                    {{-- Ürün Bilgileri --}}
-                                    <td class="px-3 py-3 align-top" style="max-width:250px">
-                                        <div class="flex items-start gap-2">
-                                            <div class="min-w-0 flex-1">
-                                                <p class="font-medium text-gray-900 text-xs leading-tight break-words" title="{{ $item->product_name }}">
-                                                    {{ $item->product_name ?: $item->stock_code }}
-                                                </p>
-                                                <p class="text-[10px] text-indigo-500 font-mono mt-0.5">{{ $item->stock_code }}</p>
-                                                @if($item->action === 'update')
-                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-100 text-green-700 mt-1">🚀 FIRSAT</span>
-                                                @elseif($item->action === 'warning')
-                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-600 mt-1">⚠ ZARAR</span>
-                                                @endif
-                                            </div>
-                                        </div>
-                                    </td>
-
-                                    {{-- Kargo Maliyeti / Üretim Maliyeti --}}
-                                    <td class="px-2 py-2 text-center align-middle border-r border-gray-100">
-                                        <div class="text-xs font-bold text-gray-800">{{ number_format($item->shipping_cost, 0) }}₺</div>
-                                        <div class="text-[10px] text-gray-400">{{ number_format($item->production_cost, 0) }}₺</div>
-                                    </td>
-
-                                    {{-- 4 Tarife Hücreleri --}}
-                                    @foreach([$sc1, $sc2, $sc3, $sc4] as $idx => $sc)
-                                        @php
-                                            $isSelected = ($selectedIdx === $idx);
-                                            $isBest = $sc && ($sc['is_best'] ?? false);
-                                            $hasTariffSelected = ($selectedIdx !== null);
-                                            // Seçili tarife: turuncu çerçeve. Başka tarife seçiliyse geri kalanlar gri.
-                                            $cellClass = '';
-                                            if ($isSelected) {
-                                                $cellClass = 'border-2 border-orange-400 bg-orange-50/30';
-                                            } elseif ($hasTariffSelected) {
-                                                // Başka tarife seçili — bu hücre gri
-                                                $cellClass = 'border-gray-100 bg-gray-50/50';
-                                            } elseif ($isBest) {
-                                                $cellClass = ($idx === 0) ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200';
-                                            } else {
-                                                $cellClass = 'border-gray-100';
-                                            }
-                                        @endphp
-                                        <td class="px-2 py-2 text-center align-middle border-r {{ $cellClass }} {{ $idx === 0 ? 'border-l' : '' }} transition-all cursor-pointer"
-                                            wire:click="selectTariff({{ $item->id }}, {{ $idx }})"
-                                            title="{{ ($idx + 1) }}. Tarife seçmek için tıklayın">
-                                            @if($sc)
-                                                <div class="space-y-0.5">
-                                                    <div class="font-bold text-gray-900">{{ number_format($sc['price'], 0) }}₺</div>
-                                                    <div class="{{ $idx === 0 ? 'text-orange-600 font-semibold' : 'text-gray-500 font-medium' }}">%{{ number_format($sc['commission'], 1) }}</div>
-                                                    <div class="font-bold text-xs {{ $sc['net_profit'] >= 0 ? 'text-green-600' : 'text-red-600' }}">
-                                                        {{ number_format($sc['net_profit'], 0) }}₺
-                                                        <span class="text-[9px] {{ $sc['net_profit'] >= 0 ? 'text-blue-500' : 'text-red-400' }} font-medium">%{{ $item->totalCost() > 0 ? number_format(($sc['net_profit'] / $item->totalCost()) * 100, 1) : '0' }}</span>
-                                                    </div>
-                                                    @if($isSelected)
-                                                        <div class="text-[7px] bg-orange-500 text-white px-1 py-0.5 rounded font-bold inline-block">SEÇİLDİ</div>
-                                                    @elseif($isBest && !$hasTariffSelected)
-                                                        <div class="text-[7px] {{ $idx === 0 ? 'bg-orange-500' : 'bg-green-600' }} text-white px-1 py-0.5 rounded font-bold inline-block">EN İYİ</div>
-                                                    @endif
-                                                </div>
-                                            @else
-                                                <span class="text-gray-300">—</span>
-                                            @endif
-                                        </td>
-                                    @endforeach
-
-                                    {{-- Fiyat Güncelle --}}
-                                    <td class="px-2 py-2 text-center align-middle">
-                                        <div class="flex flex-col items-center gap-1 relative" x-data>
-                                            @php
-                                                $displayPrice = $item->custom_price ?: ($item->suggested_price ?: $item->current_price);
-                                                $suggestion = $suggestedPrices[$item->id] ?? null;
-                                            @endphp
-                                            
-                                            <div class="relative flex items-center gap-1">
-                                                <div class="relative">
-                                                    <input type="number" 
-                                                        x-ref="price{{ $item->id }}"
-                                                        value="{{ number_format($displayPrice, 2, '.', '') }}"
-                                                        class="w-20 text-xs text-center border border-gray-300 rounded-md px-1 py-1 font-bold focus:ring-2 focus:ring-orange-400 focus:border-orange-400 {{ $item->custom_price ? 'bg-orange-50 border-orange-300' : '' }}"
-                                                        step="0.01"
-                                                        min="0"
-                                                        title="Özel fiyat gir">
-                                                </div>
-                                                
-                                                {{-- Magic Wand Button --}}
-                                                <button wire:click="getAiPriceSuggestion({{ $item->id }})" 
-                                                    class="p-1.5 rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors"
-                                                    title="AI ile Fiyat Öner">
-                                                    @if($suggestion && ($suggestion['loading'] ?? false))
-                                                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                                    @else
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
-                                                    @endif
-                                                </button>
-                                            </div>
-
-                                            {{-- Suggestion Popover --}}
-                                            @if($suggestion && !($suggestion['loading'] ?? false) && !isset($suggestion['error']))
-                                                <div x-data="{ showPop: true }" x-show="showPop" x-transition
-                                                     class="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 w-32 bg-white rounded-md shadow-lg border border-indigo-100 p-1.5 text-center">
-                                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
-                                                        <span class="text-[8px] text-gray-400">AI Önerisi</span>
-                                                        <span x-on:click.stop="showPop = false" 
-                                                            style="cursor:pointer; background:#ef4444; color:white; font-size:9px; font-weight:bold; padding:0 4px; border-radius:3px; display:inline-block; line-height:1.5;">✕</span>
-                                                    </div>
-                                                    <div class="font-bold text-indigo-600 text-xs">{{ number_format($suggestion['price'], 2) }} ₺</div>
-                                                    <p class="text-[7px] text-gray-400 italic my-0.5 leading-tight">{{ Str::limit($suggestion['reason'], 30) }}</p>
-                                                    <button wire:click="applySuggestedPrice({{ $item->id }})" 
-                                                        class="w-full bg-indigo-600 text-white text-[8px] py-0.5 rounded hover:bg-indigo-700 transition">
-                                                        Uygula
-                                                    </button>
-                                                </div>
-                                            @endif
-
-                                            <button 
-                                                x-on:click="$wire.updateCustomPrice({{ $item->id }}, $refs.price{{ $item->id }}.value)"
-                                                class="bg-orange-500 hover:bg-orange-600 text-white text-[9px] font-bold px-3 py-1 rounded transition-colors shadow-sm w-full">
-                                                Kaydet
-                                            </button>
-                                            
-                                            @if($item->custom_price)
-                                                <div class="flex items-center gap-1">
-                                                    <span class="text-[8px] text-emerald-600 font-medium">✅ Düzenlendi</span>
-                                                    @if($item->custom_price != ($suggestion['price'] ?? 0))
-                                                        {{-- Eğer AI önerisi varsa ama farklı bir fiyat girildiyse --}}
-                                                    @endif
-                                                </div>
-                                            @endif
-                                        </div>
-                                    </td>
-
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">Sonuç bulunamadı</td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
-
-                {{-- Tablet Görünümü (lg ama xl değil) --}}
-                <div class="hidden lg:block xl:hidden overflow-x-auto">
-                    <table class="w-full text-xs" style="min-width:800px">
-                        <thead class="bg-gray-800 text-white">
-                            <tr>
-                                <th class="px-1 py-2 text-center text-[10px]" style="width:50px">Tarife<br>Seç</th>
-                                <th class="px-3 py-2 text-left text-[10px]" style="min-width:130px">Ürün</th>
-                                <th class="px-2 py-2 text-center text-[10px]"><div>Kargo</div><div class="text-gray-400">Üretim</div></th>
-                                <th class="px-2 py-2 text-center text-[10px] bg-orange-600 border-l border-r border-orange-700">1. Tarife</th>
-                                <th class="px-2 py-2 text-center text-[10px]">2. Tarife</th>
-                                <th class="px-2 py-2 text-center text-[10px]">3. Tarife</th>
-                                <th class="px-2 py-2 text-center text-[10px]">4. Tarife</th>
-                                <th class="px-2 py-2 text-center text-[10px] bg-emerald-700">Fiyat<br>Güncelle</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            @forelse($report->items as $item)
-                                @php
-                                    $scenarios = $item->scenario_details;
-                                    $sc1 = $scenarios[0] ?? null; $sc2 = $scenarios[1] ?? null;
-                                    $sc3 = $scenarios[2] ?? null; $sc4 = $scenarios[3] ?? null;
-                                    $totalCost = $item->production_cost + $item->shipping_cost;
-                                    $selectedIdx = $item->selected_tariff_index;
-
-                                    // Karlılık filtresi
-                                    if ($profitabilityTariffIndex !== null && $profitabilityMin !== null && $item->production_cost > 0) {
-                                        $targetSc = $scenarios[$profitabilityTariffIndex] ?? null;
-                                        if ($targetSc) {
-                                            $profitPct = ($targetSc['net_profit'] / $item->production_cost) * 100;
-                                            if ($profitPct < $profitabilityMin || $profitPct > $profitabilityMax) continue;
-                                        } else {
-                                            continue;
-                                        }
-                                    }
-                                @endphp
-                                <tr class="hover:bg-gray-50 {{ $item->action === 'warning' ? 'bg-red-50/50' : '' }}">
-                                    <td class="px-1 py-2 text-center">
-                                        <div class="flex flex-col gap-0.5 items-center">
-                                            @for($ti = 0; $ti < 4; $ti++)
-                                                @if(isset($scenarios[$ti]))
-                                                    <button wire:click="selectTariff({{ $item->id }}, {{ $ti }})"
-                                                        class="w-5 h-4 rounded text-[8px] font-bold {{ $selectedIdx === $ti ? 'bg-orange-500 text-white ring-1 ring-orange-300' : 'bg-gray-100 text-gray-500 hover:bg-orange-100' }}">
-                                                        {{ $ti + 1 }}
-                                                    </button>
-                                                @endif
-                                            @endfor
-                                        </div>
-                                    </td>
-                                    <td class="px-3 py-2">
-                                        <p class="font-medium text-gray-900" title="{{ $item->product_name }}">{{ $item->product_name ?: $item->stock_code }}</p>
-                                        <p class="text-[9px] text-indigo-500 font-mono">{{ $item->stock_code }}</p>
-                                        @if($item->action === 'update')<span class="text-[8px] bg-green-100 text-green-700 px-1 rounded font-bold">FIRSAT</span>@elseif($item->action === 'warning')<span class="text-[8px] bg-red-100 text-red-600 px-1 rounded font-bold">ZARAR</span>@endif
-                                    </td>
-                                    <td class="px-1 py-2 text-center">
-                                        <div class="text-[10px] font-bold text-gray-800">{{ number_format($item->shipping_cost, 0) }}₺</div>
-                                        <div class="text-[9px] text-gray-400">{{ number_format($item->production_cost, 0) }}₺</div>
-                                    </td>
-                                    @foreach([$sc1, $sc2, $sc3, $sc4] as $idx => $sc)
-                                        @php
-                                            $isSelected = ($selectedIdx === $idx);
-                                            $isBest = $sc && ($sc['is_best'] ?? false);
-                                            $cellCls = $isSelected ? 'border-2 border-orange-400 bg-orange-50/30' : ($isBest ? ($idx === 0 ? 'bg-orange-50' : 'bg-green-50') : '');
-                                        @endphp
-                                        <td class="px-1 py-2 text-center cursor-pointer {{ $cellCls }} {{ $idx === 0 ? 'border-l border-r border-orange-100' : 'border-r border-gray-50' }}"
-                                            wire:click="selectTariff({{ $item->id }}, {{ $idx }})">
-                                            @if($sc)
-                                                <div class="text-[10px] font-bold">{{ number_format($sc['price'], 0) }}₺</div>
-                                                <div class="text-[9px] {{ $idx === 0 ? 'text-orange-600' : 'text-gray-400' }}">%{{ number_format($sc['commission'], 1) }}</div>
-                                                <div class="text-[10px] font-bold {{ $sc['net_profit'] >= 0 ? 'text-green-600' : 'text-red-600' }}">{{ number_format($sc['net_profit'], 0) }}₺ <span class="text-[8px] {{ $sc['net_profit'] >= 0 ? 'text-blue-500' : 'text-red-400' }}">%{{ $item->totalCost() > 0 ? number_format(($sc['net_profit'] / $item->totalCost()) * 100, 1) : '0' }}</span></div>
-                                                @if($isSelected)<div class="text-[7px] bg-orange-500 text-white px-0.5 rounded font-bold inline-block mt-0.5">SEÇİLDİ</div>
-                                                @elseif($isBest)<div class="text-[7px] bg-orange-500 text-white px-0.5 rounded font-bold inline-block mt-0.5">EN İYİ</div>@endif
-                                            @else <span class="text-gray-300">—</span> @endif
-                                        </td>
-                                    @endforeach
-                                    <td class="px-1 py-2 text-center align-middle">
-                                        <div class="flex flex-col items-center gap-1 relative" x-data="{ showSuggestion: true }">
-                                            @php
-                                                $dp = $item->custom_price ?: ($item->suggested_price ?: $item->current_price);
-                                                $suggestion = $suggestedPrices[$item->id] ?? null;
-                                            @endphp
-                                            
-                                            <div class="relative flex items-center gap-1 justify-center">
-                                                <input type="number" x-ref="tp{{ $item->id }}" value="{{ number_format($dp, 2, '.', '') }}" class="w-16 text-[10px] text-center border rounded px-1 py-0.5 font-bold {{ $item->custom_price ? 'bg-orange-50 border-orange-300' : 'border-gray-300' }}" step="0.01" min="0">
-                                                
-                                                <button wire:click="getAiPriceSuggestion({{ $item->id }})" class="p-1 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors" title="AI Fiyat Öner">
-                                                    @if($suggestion && ($suggestion['loading'] ?? false))
-                                                        <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                                    @else
-                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
-                                                    @endif
-                                                </button>
-                                            </div>
-
-                                            @if($suggestion && !($suggestion['loading'] ?? false) && !isset($suggestion['error']))
-                                                <div x-show="showSuggestion" x-transition
-                                                     class="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 w-44 bg-white rounded-lg shadow-xl border border-indigo-200 p-2">
-                                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                                        <span class="text-[10px] text-gray-500">AI Önerisi</span>
-                                                        <span x-on:click.stop="showSuggestion = false" 
-                                                            style="cursor:pointer; background:#ef4444; color:white; font-size:11px; font-weight:bold; padding:1px 6px; border-radius:4px; display:inline-block; line-height:1.4;">X</span>
-                                                    </div>
-                                                    <div class="font-bold text-indigo-700 text-base text-center mb-1">{{ number_format($suggestion['price'], 2) }} ₺</div>
-                                                    <p class="text-[8px] text-gray-400 italic mb-2 leading-tight text-center">{{ Str::limit($suggestion['reason'], 50) }}</p>
-                                                    <button wire:click="applySuggestedPrice({{ $item->id }})" class="w-full bg-indigo-600 text-white text-[10px] py-1 rounded hover:bg-indigo-700 transition font-medium">Uygula</button>
-                                                </div>
-                                            @endif
-
-                                            <button x-on:click="$wire.updateCustomPrice({{ $item->id }}, $refs.tp{{ $item->id }}.value)"
-                                                class="bg-orange-500 text-white text-[8px] font-bold px-2 py-0.5 rounded mt-0.5 block mx-auto w-full">Güncelle</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr><td colspan="8" class="p-8 text-center text-gray-500">Sonuç bulunamadı</td></tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
-
-                {{-- Mobil Kart Görünümü --}}
-                <div class="lg:hidden divide-y divide-gray-200">
-                    @forelse($report->items as $item)
-                        @php
-                            $scenarios = $item->scenario_details;
-                            $totalCost = $item->production_cost + $item->shipping_cost;
-                            $selectedIdx = $item->selected_tariff_index;
-
-                            // Karlılık filtresi
-                            if ($profitabilityTariffIndex !== null && $profitabilityMin !== null && $item->production_cost > 0) {
-                                $targetSc = $scenarios[$profitabilityTariffIndex] ?? null;
-                                if ($targetSc) {
-                                    $profitPct = ($targetSc['net_profit'] / $item->production_cost) * 100;
-                                    if ($profitPct < $profitabilityMin || $profitPct > $profitabilityMax) continue;
-                                } else {
-                                    continue;
-                                }
-                            }
-                        @endphp
-                        <div wire:key="mobile-item-{{ $item->id }}" class="p-4 {{ $item->action === 'update' ? 'bg-green-50/50' : ($item->action === 'warning' ? 'bg-red-50/50' : '') }}">
-                            {{-- Üst Kısım --}}
-                            <div class="flex items-start justify-between mb-3">
-                                <div class="flex items-start gap-2 min-w-0 flex-1">
-                                    <div class="min-w-0">
-                                        <p class="text-sm font-medium text-gray-900 line-clamp-2">{{ $item->product_name ?: $item->stock_code }}</p>
-                                        <p class="text-[10px] text-indigo-500 font-mono mt-0.5">{{ $item->stock_code }}</p>
-                                    </div>
-                                </div>
-                                @if($item->action === 'update')
-                                    <span class="text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold flex-shrink-0 ml-2">🚀 FIRSAT</span>
-                                @elseif($item->action === 'warning')
-                                    <span class="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold flex-shrink-0 ml-2">⚠ ZARAR</span>
-                                @endif
-                            </div>
-
-                            {{-- Kargo / Üretim Maliyet Satırı --}}
-                            <div class="flex justify-center gap-4 text-[10px] text-gray-400 mb-2">
-                                <span>Kargo: <span class="font-medium text-gray-700">{{ number_format($item->shipping_cost, 0) }}₺</span></span>
-                                <span>Üretim: <span class="font-medium text-gray-700">{{ number_format($item->production_cost, 0) }}₺</span></span>
-                            </div>
-
-                            {{-- 4 Tarife Grid --}}
-                            <div class="grid grid-cols-4 gap-1.5">
-                                @if($scenarios)
-                                    @foreach($scenarios as $idx => $sc)
-                                        @php
-                                            $isSelected = ($selectedIdx === $idx);
-                                            $isBest = ($sc['is_best'] ?? false);
-                                            $hasTariffSelected = ($selectedIdx !== null);
-                                        @endphp
-                                        <div wire:click="selectTariff({{ $item->id }}, {{ $idx }})"
-                                             class="rounded-lg p-2 text-center cursor-pointer transition-all {{ $isSelected ? 'bg-orange-50 border-2 border-orange-400 ring-2 ring-orange-200 shadow-md' : ($hasTariffSelected ? 'bg-gray-50 border border-gray-200' : ($isBest ? ($idx === 0 ? 'bg-orange-50 border-2 border-orange-300 ring-1 ring-orange-200' : 'bg-green-50 border-2 border-green-300 ring-1 ring-green-200') : 'bg-gray-50 border border-gray-200 hover:border-orange-200')) }}">
-                                            <div class="text-[9px] font-bold {{ $idx === 0 ? 'text-orange-600' : 'text-gray-500' }} mb-1">
-                                                {{ $idx === 0 ? 'Mevcut' : ($idx+1) . '. Tarife' }}
-                                            </div>
-                                            <div class="text-xs font-bold text-gray-900">{{ number_format($sc['price'], 0) }}₺</div>
-                                            <div class="text-[9px] {{ $idx === 0 ? 'text-orange-500' : 'text-gray-400' }}">%{{ number_format($sc['commission'], 1) }}</div>
-                                            <div class="text-xs font-bold mt-0.5 {{ $sc['net_profit'] >= 0 ? 'text-green-600' : 'text-red-500' }}">
-                                                {{ number_format($sc['net_profit'], 0) }}₺ <span class="text-[9px] {{ $sc['net_profit'] >= 0 ? 'text-blue-500' : 'text-red-400' }}">%{{ $item->totalCost() > 0 ? number_format(($sc['net_profit'] / $item->totalCost()) * 100, 1) : '0' }}</span>
-                                            </div>
-                                            @if($isSelected)
-                                                <div class="text-[7px] bg-orange-500 text-white px-1 py-0.5 rounded font-bold mt-0.5 inline-block">SEÇİLDİ</div>
-                                            @elseif($isBest && !$hasTariffSelected)
-                                                <div class="text-[7px] bg-orange-500 text-white px-1 py-0.5 rounded font-bold mt-0.5 inline-block">EN İYİ</div>
-                                            @endif
-                                        </div>
-                                    @endforeach
-                                @else
-                                    <div class="col-span-4 text-center text-gray-400 text-xs py-2">Senaryo verisi yok</div>
-                                @endif
-                            </div>
-
-                            {{-- Fiyat Güncelle --}}
-                            <div x-data="{ showSuggestion: true }" class="flex flex-col items-center gap-2 mt-3 pt-2 border-t border-gray-100 relative">
-                                @php 
-                                    $dp = $item->custom_price ?: ($item->suggested_price ?: $item->current_price);
-                                    $suggestion = $suggestedPrices[$item->id] ?? null;
-                                @endphp
-                                
+                        @if($profitabilityTariffIndex !== null)
+                            <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
+                                <span class="text-xs font-semibold text-slate-600">Kârlılık aralığı</span>
+                                @foreach([[-100,0],[0,20],[20,40],[40,60],[60,100],[100,null]] as [$rMin, $rMax])
+                                    <button type="button" wire:click="setProfitabilityFilter({{ $profitabilityTariffIndex }}, {{ $rMin }}, {{ $rMax ?? 'null' }})" class="rounded-[6px] border px-3 py-2 text-xs font-medium transition {{ $profitabilityMin == $rMin && ($profitabilityMax == $rMax || ($rMax === null && $profitabilityMax == 999)) ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }}">
+                                        {{ $rMax !== null ? "%{$rMin}-%{$rMax}" : "%{$rMin}+" }}
+                                    </button>
+                                @endforeach
                                 <div class="flex items-center gap-2">
-                                    <input type="number" x-ref="mp{{ $item->id }}" value="{{ number_format($dp, 2, '.', '') }}" 
-                                        class="w-28 text-xs text-center border rounded-md px-2 py-1.5 font-bold {{ $item->custom_price ? 'bg-orange-50 border-orange-300' : 'border-gray-300' }}" step="0.01" min="0">
-                                    
-                                    <button wire:click="getAiPriceSuggestion({{ $item->id }})" class="p-2 rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors shadow-sm" title="AI Fiyat Öner">
-                                        @if($suggestion && ($suggestion['loading'] ?? false))
-                                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                        @else
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+                                    <input type="number" x-ref="customMin" value="{{ $profitabilityMin ?? 0 }}" class="min-h-[44px] w-20 rounded-[6px] border border-slate-200 bg-white px-2 py-2 text-base text-slate-900 sm:text-sm" min="-100" max="1000" step="0.1">
+                                    <span class="text-slate-400">-</span>
+                                    <input type="number" x-ref="customMax" value="{{ $profitabilityMax != 999 ? $profitabilityMax : 100 }}" class="min-h-[44px] w-20 rounded-[6px] border border-slate-200 bg-white px-2 py-2 text-base text-slate-900 sm:text-sm" min="-100" max="1000" step="0.1">
+                                    <button type="button" x-on:click="$wire.setProfitabilityFilter({{ $profitabilityTariffIndex }}, $refs.customMin.value, $refs.customMax.value)" class="min-h-[44px] rounded-[6px] bg-slate-900 px-3 py-2 text-sm font-medium text-white">
+                                        Uygula
+                                    </button>
+                                </div>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+
+                @if($tabView === 'products')
+                    <div class="hidden md:block">
+                        <div class="tariff-scrollbar overflow-x-auto" x-data="tariffColumnResize()">
+                            <table class="tariff-ledger-table w-full text-xs">
+                                <thead class="border-b border-slate-200 bg-slate-50 text-slate-600">
+                                    <tr>
+                                        <th class="relative w-16 px-3 py-3 text-left font-semibold">Seç</th>
+                                        <th class="relative w-[280px] px-3 py-3 text-left font-semibold">
+                                            <button type="button" wire:click="sortTable('product_name')" class="flex w-full items-center justify-between gap-2 text-left">
+                                                <span>Ürün</span>
+                                                <span class="text-[10px] text-slate-400">{{ $sortLabel('product_name') }}</span>
+                                            </button>
+                                            <span class="tariff-resize-handle" x-on:mousedown.prevent="startResize($event, $el.closest('th'))"></span>
+                                        </th>
+                                        <th class="relative w-36 px-3 py-3 text-right font-semibold">
+                                            <button type="button" wire:click="sortTable('current_net_profit')" class="flex w-full items-center justify-between gap-2 text-left">
+                                                <span>Mevcut</span>
+                                                <span class="text-[10px] text-slate-400">{{ $sortLabel('current_net_profit') }}</span>
+                                            </button>
+                                            <span class="tariff-resize-handle" x-on:mousedown.prevent="startResize($event, $el.closest('th'))"></span>
+                                        </th>
+                                        @if($this->showColumn('costs'))
+                                            <th class="relative w-32 px-3 py-3 text-right font-semibold">
+                                                <button type="button" wire:click="sortTable('total_cost')" class="flex w-full items-center justify-between gap-2 text-left">
+                                                    <span>Maliyet</span>
+                                                    <span class="text-[10px] text-slate-400">{{ $sortLabel('total_cost') }}</span>
+                                                </button>
+                                                <span class="tariff-resize-handle" x-on:mousedown.prevent="startResize($event, $el.closest('th'))"></span>
+                                            </th>
                                         @endif
+                                        @foreach($tariffColumns as $idx => $column)
+                                            @if($this->showColumn($column['key']))
+                                                <th class="relative w-36 px-3 py-3 text-center font-semibold">
+                                                    {{ $column['label'] }}
+                                                    <span class="tariff-resize-handle" x-on:mousedown.prevent="startResize($event, $el.closest('th'))"></span>
+                                                </th>
+                                            @endif
+                                        @endforeach
+                                        @if($this->showColumn('price_action'))
+                                            <th class="relative w-44 px-3 py-3 text-center font-semibold">Fiyat aksiyonu</th>
+                                        @endif
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 bg-white">
+                                    @forelse($items as $item)
+                                        @php
+                                            $scenarios = $item->scenario_details ?? [];
+                                            $selectedIdx = $item->selected_tariff_index;
+                                            $statusClass = $item->action === 'update'
+                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                : ($item->action === 'warning' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-200 bg-slate-50 text-slate-600');
+                                            $statusLabel = $item->action === 'update' ? 'Fırsat' : ($item->action === 'warning' ? 'Risk' : 'Koru');
+                                            $isChecked = in_array($item->id, $selectedItems, true);
+                                            $displayPrice = $item->custom_price ?: ($item->suggested_price ?: $item->current_price);
+                                            $suggestion = $suggestedPrices[$item->id] ?? null;
+                                        @endphp
+                                        <tr wire:key="tariff-row-{{ $item->id }}" class="transition hover:bg-slate-50/80">
+                                            <td class="px-3 py-3">
+                                                <button type="button" wire:click="toggleItem({{ $item->id }})" class="flex h-8 w-8 items-center justify-center rounded-[6px] border text-xs font-semibold transition {{ $isChecked ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-400' }}">
+                                                    {{ $isChecked ? '✓' : '+' }}
+                                                </button>
+                                            </td>
+                                            <td class="px-3 py-3">
+                                                <div class="min-w-0">
+                                                    <div class="flex items-start gap-2">
+                                                        <span class="mt-0.5 shrink-0 rounded-[6px] border px-1.5 py-0.5 text-[10px] font-semibold {{ $statusClass }}">{{ $statusLabel }}</span>
+                                                        <p class="min-w-0 text-sm font-semibold leading-5 text-slate-900">{{ $item->product_name ?: $item->stock_code }}</p>
+                                                    </div>
+                                                    <div class="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                                                        <span class="font-mono">{{ $item->stock_code }}</span>
+                                                        @if($item->barcode)
+                                                            <span class="font-mono">{{ $item->barcode }}</span>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="px-3 py-3 text-right">
+                                                <p class="font-semibold text-slate-900">{{ $formatMoney($item->current_price) }}</p>
+                                                <p class="mt-1 text-[11px] text-slate-500">Kom. {{ $formatPercent($item->current_commission) }}</p>
+                                                <p class="mt-1 font-semibold {{ (float) $item->current_net_profit >= 0 ? 'text-emerald-700' : 'text-rose-700' }}">{{ $formatMoney($item->current_net_profit) }}</p>
+                                            </td>
+                                            @if($this->showColumn('costs'))
+                                                <td class="px-3 py-3 text-right">
+                                                    <p class="font-semibold text-slate-900">{{ $formatMoney($item->totalCost()) }}</p>
+                                                    <p class="mt-1 text-[11px] text-slate-500">Üretim {{ $formatMoneyShort($item->production_cost) }}</p>
+                                                    <p class="text-[11px] text-slate-500">Kargo {{ $formatMoneyShort($item->shipping_cost) }}</p>
+                                                </td>
+                                            @endif
+                                            @foreach($tariffColumns as $idx => $column)
+                                                @if($this->showColumn($column['key']))
+                                                    @php
+                                                        $scenario = $scenarios[$idx] ?? null;
+                                                        $isSelected = $selectedIdx === $idx;
+                                                        $isBest = $scenario && ($scenario['is_best'] ?? false);
+                                                        $scenarioProfit = (float) ($scenario['net_profit'] ?? 0);
+                                                        $scenarioRoi = (float) ($scenario['margin_pct'] ?? $item->profitMarginPercent($scenarioProfit));
+                                                        $scenarioShell = $isSelected
+                                                            ? 'border-slate-900 bg-slate-900 text-white'
+                                                            : ($isBest ? 'border-emerald-200 bg-emerald-50 text-slate-900' : 'border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50');
+                                                    @endphp
+                                                    <td class="px-2 py-3 text-center">
+                                                        @if($scenario)
+                                                            <button type="button" wire:click="selectTariff({{ $item->id }}, {{ $idx }})" class="w-full rounded-[8px] border p-2 text-left transition {{ $scenarioShell }}">
+                                                                <div class="flex items-center justify-between gap-2">
+                                                                    <span class="text-[11px] font-semibold {{ $isSelected ? 'text-slate-200' : 'text-slate-500' }}">{{ $scenario['name'] ?? $column['label'] }}</span>
+                                                                    @if($isSelected)
+                                                                        <span class="rounded-[6px] bg-white/15 px-1.5 py-0.5 text-[9px] font-semibold text-white">Seçili</span>
+                                                                    @elseif($isBest)
+                                                                        <span class="rounded-[6px] bg-emerald-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">En iyi</span>
+                                                                    @endif
+                                                                </div>
+                                                                <p class="mt-1 text-sm font-bold">{{ $formatMoney($scenario['price'] ?? 0) }}</p>
+                                                                <p class="mt-1 text-[11px] {{ $isSelected ? 'text-slate-200' : 'text-slate-500' }}">Kom. {{ $formatPercent($scenario['commission'] ?? 0) }}</p>
+                                                                <p class="mt-1 text-sm font-bold {{ $isSelected ? 'text-white' : ($scenarioProfit >= 0 ? 'text-emerald-700' : 'text-rose-700') }}">{{ $formatMoney($scenarioProfit) }}</p>
+                                                                <p class="mt-1 text-[11px] {{ $isSelected ? 'text-slate-200' : 'text-slate-500' }}">Kârlılık {{ $formatMultiplier($scenarioRoi) }}</p>
+                                                            </button>
+                                                        @else
+                                                            <div class="rounded-[8px] border border-dashed border-slate-200 bg-slate-50 p-3 text-center text-slate-400">Yok</div>
+                                                        @endif
+                                                    </td>
+                                                @endif
+                                            @endforeach
+                                            @if($this->showColumn('price_action'))
+                                                <td class="px-3 py-3">
+                                                    <div class="space-y-2" x-data>
+                                                        <div class="flex items-center gap-2">
+                                                            <input type="number" x-ref="price{{ $item->id }}" value="{{ number_format((float) $displayPrice, 2, '.', '') }}" step="0.01" min="0" class="min-h-[40px] w-full rounded-[6px] border border-slate-200 bg-white px-2 py-2 text-right text-sm font-semibold text-slate-900 outline-none focus:border-slate-900">
+                                                            <button type="button" wire:click="getAiPriceSuggestion({{ $item->id }})" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] border border-indigo-200 bg-indigo-50 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100" title="AI fiyat öner">
+                                                                <span wire:loading.remove wire:target="getAiPriceSuggestion({{ $item->id }})">AI</span>
+                                                                <span wire:loading wire:target="getAiPriceSuggestion({{ $item->id }})" class="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-700"></span>
+                                                            </button>
+                                                        </div>
+                                                        <button type="button" x-on:click="$wire.updateCustomPrice({{ $item->id }}, $refs.price{{ $item->id }}.value)" class="min-h-[40px] w-full rounded-[6px] bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800">
+                                                            Kaydet
+                                                        </button>
+                                                        @if($suggestion && !($suggestion['loading'] ?? false))
+                                                            <div class="rounded-[6px] border {{ isset($suggestion['error']) ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-indigo-200 bg-indigo-50 text-indigo-800' }} p-2 text-[11px]">
+                                                                @if(isset($suggestion['error']))
+                                                                    {{ $suggestion['error'] }}
+                                                                @else
+                                                                    <div class="flex items-center justify-between gap-2">
+                                                                        <span class="font-semibold">{{ $formatMoney($suggestion['price']) }}</span>
+                                                                        <button type="button" wire:click="applySuggestedPrice({{ $item->id }})" class="rounded-[6px] bg-indigo-700 px-2 py-1 text-[10px] font-semibold text-white">Uygula</button>
+                                                                    </div>
+                                                                    <p class="mt-1 text-indigo-700">{{ \Illuminate\Support\Str::limit($suggestion['reason'] ?? '', 72) }}</p>
+                                                                @endif
+                                                            </div>
+                                                        @endif
+                                                    </div>
+                                                </td>
+                                            @endif
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="{{ $tableColspan }}" class="px-4 py-10 text-center text-sm text-slate-500">
+                                                Bu filtrelerle eşleşen ürün bulunamadı.
+                                            </td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="divide-y divide-slate-200 md:hidden">
+                        @forelse($items as $item)
+                            @php
+                                $scenarios = $item->scenario_details ?? [];
+                                $selectedIdx = $item->selected_tariff_index;
+                                $displayPrice = $item->custom_price ?: ($item->suggested_price ?: $item->current_price);
+                                $suggestion = $suggestedPrices[$item->id] ?? null;
+                                $isChecked = in_array($item->id, $selectedItems, true);
+                            @endphp
+                            <article wire:key="tariff-mobile-{{ $item->id }}" class="p-4">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-semibold text-slate-900">{{ $item->product_name ?: $item->stock_code }}</p>
+                                        <p class="mt-1 font-mono text-[11px] text-slate-500">{{ $item->stock_code }}</p>
+                                    </div>
+                                    <button type="button" wire:click="toggleItem({{ $item->id }})" class="shrink-0 rounded-[6px] border px-2 py-1 text-xs font-semibold {{ $isChecked ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600' }}">
+                                        {{ $isChecked ? 'Seçili' : 'Seç' }}
                                     </button>
                                 </div>
 
-                                @if($suggestion && !($suggestion['loading'] ?? false) && !isset($suggestion['error']))
-                                    <div x-show="showSuggestion" x-transition
-                                         class="w-full bg-indigo-50 rounded px-2 py-1.5 border border-indigo-200 flex items-center justify-between gap-2">
-                                        <span class="text-[9px] text-indigo-500 font-semibold whitespace-nowrap">AI:</span>
-                                        <span class="font-bold text-indigo-700 text-xs whitespace-nowrap">{{ number_format($suggestion['price'], 2) }} ₺</span>
-                                        <button type="button" wire:click="applySuggestedPrice({{ $item->id }})" class="bg-indigo-600 text-white text-[8px] px-2 py-0.5 rounded hover:bg-indigo-700 transition font-medium whitespace-nowrap">Uygula</button>
-                                        <span x-on:click.stop="showSuggestion = false" 
-                                            style="cursor:pointer; background:#ef4444; color:white; font-size:9px; font-weight:bold; padding:0 4px; border-radius:3px; display:inline-block; line-height:1.5;">✕</span>
+                                <div class="mt-3 grid grid-cols-2 gap-2">
+                                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                                        <p class="text-xs text-slate-500">Mevcut kâr</p>
+                                        <p class="mt-1 font-semibold {{ (float) $item->current_net_profit >= 0 ? 'text-emerald-700' : 'text-rose-700' }}">{{ $formatMoney($item->current_net_profit) }}</p>
                                     </div>
-                                @endif
+                                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                                        <p class="text-xs text-slate-500">Toplam maliyet</p>
+                                        <p class="mt-1 font-semibold text-slate-900">{{ $formatMoney($item->totalCost()) }}</p>
+                                    </div>
+                                </div>
 
-                                <button x-on:click="$wire.updateCustomPrice({{ $item->id }}, $refs.mp{{ $item->id }}.value)"
-                                    class="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-4 py-1.5 rounded-md transition-colors shadow-sm w-full">
-                                    Fiyat Güncelle
-                                </button>
-                                @if($item->custom_price)
-                                    <span class="text-[9px] text-emerald-600 font-medium">✅</span>
-                                @endif
-                            </div>
-                        </div>
-                    @empty
-                        <div class="p-8 text-center text-gray-500">Sonuç bulunamadı</div>
-                    @endforelse
-                </div>
-            </div>
+                                <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    @foreach($tariffColumns as $idx => $column)
+                                        @php
+                                            $scenario = $scenarios[$idx] ?? null;
+                                            $isSelected = $selectedIdx === $idx;
+                                            $isBest = $scenario && ($scenario['is_best'] ?? false);
+                                            $scenarioProfit = (float) ($scenario['net_profit'] ?? 0);
+                                            $scenarioShell = $isSelected
+                                                ? 'border-slate-900 bg-slate-900 text-white'
+                                                : ($isBest ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white');
+                                        @endphp
+                                        @if($scenario)
+                                            <button type="button" wire:click="selectTariff({{ $item->id }}, {{ $idx }})" class="rounded-[8px] border p-3 text-left {{ $scenarioShell }}">
+                                                <div class="flex items-center justify-between gap-2">
+                                                    <span class="text-xs font-semibold {{ $isSelected ? 'text-slate-200' : 'text-slate-500' }}">{{ $scenario['name'] ?? $column['label'] }}</span>
+                                                    @if($isSelected)
+                                                        <span class="rounded-[6px] bg-white/15 px-1.5 py-0.5 text-[10px] text-white">Seçili</span>
+                                                    @elseif($isBest)
+                                                        <span class="rounded-[6px] bg-emerald-600 px-1.5 py-0.5 text-[10px] text-white">En iyi</span>
+                                                    @endif
+                                                </div>
+                                                <div class="mt-2 flex items-end justify-between gap-2">
+                                                    <div>
+                                                        <p class="text-sm font-bold">{{ $formatMoney($scenario['price'] ?? 0) }}</p>
+                                                        <p class="mt-1 text-xs {{ $isSelected ? 'text-slate-200' : 'text-slate-500' }}">Kom. {{ $formatPercent($scenario['commission'] ?? 0) }}</p>
+                                                    </div>
+                                                    <p class="text-sm font-bold {{ $isSelected ? 'text-white' : ($scenarioProfit >= 0 ? 'text-emerald-700' : 'text-rose-700') }}">{{ $formatMoney($scenarioProfit) }}</p>
+                                                </div>
+                                            </button>
+                                        @endif
+                                    @endforeach
+                                </div>
 
-        @endif
-
-        {{-- KATEGORİ ANALİZ TABLOSU --}}
-        @if($tabView === 'categories')
-            <div class="overflow-x-auto p-4 bg-white rounded-lg border border-gray-200">
-                <div class="mb-4 bg-indigo-50 border border-indigo-100 rounded-lg p-4 flex items-center gap-4">
-                    <div class="p-2 bg-indigo-100 rounded-lg text-indigo-600">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                                <div class="mt-3 rounded-[8px] border border-slate-200 bg-slate-50/70 p-3" x-data>
+                                    <p class="text-xs font-semibold text-slate-600">Fiyat aksiyonu</p>
+                                    <div class="mt-2 flex items-center gap-2">
+                                        <input type="number" x-ref="mobilePrice{{ $item->id }}" value="{{ number_format((float) $displayPrice, 2, '.', '') }}" step="0.01" min="0" class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-2 py-2 text-base font-semibold text-slate-900 outline-none sm:text-sm">
+                                        <button type="button" wire:click="getAiPriceSuggestion({{ $item->id }})" class="min-h-[44px] rounded-[6px] border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-700">AI</button>
+                                    </div>
+                                    <button type="button" x-on:click="$wire.updateCustomPrice({{ $item->id }}, $refs.mobilePrice{{ $item->id }}.value)" class="mt-2 min-h-[44px] w-full rounded-[6px] bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
+                                        Kaydet
+                                    </button>
+                                    @if($suggestion && !($suggestion['loading'] ?? false) && !isset($suggestion['error']))
+                                        <div class="mt-2 rounded-[6px] border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-800">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <span class="font-semibold">{{ $formatMoney($suggestion['price']) }}</span>
+                                                <button type="button" wire:click="applySuggestedPrice({{ $item->id }})" class="rounded-[6px] bg-indigo-700 px-2 py-1 text-[11px] font-semibold text-white">Uygula</button>
+                                            </div>
+                                            <p class="mt-1">{{ \Illuminate\Support\Str::limit($suggestion['reason'] ?? '', 80) }}</p>
+                                        </div>
+                                    @endif
+                                </div>
+                            </article>
+                        @empty
+                            <div class="p-8 text-center text-sm text-slate-500">Bu filtrelerle eşleşen ürün bulunamadı.</div>
+                        @endforelse
                     </div>
-                    <div>
-                        <h4 class="font-bold text-indigo-900">Kategori Performans Özeti</h4>
-                        <p class="text-xs text-indigo-700">
-                            {{ count($this->categoryReport) }} kategori analiz edildi.
-                            Ürün isimlerine göre otomatik kategorize edilmiştir. En karlı kategoriler en üstte sıralanır.
-                        </p>
-                    </div>
-                </div>
-
-                @if(count($this->categoryReport) === 0)
-                    <div class="p-8 text-center text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
-                        <p>Kategori verisi bulunamadı.</p>
-                        <p class="text-xs mt-1">Ürün isimleri ayrıştırılamadı veya rapor boş.</p>
-                    </div>
-                @else
-
-
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-gray-50 text-gray-700 font-bold uppercase text-xs">
-                        <tr>
-                            <th class="px-4 py-3 rounded-l-lg">Kategori</th>
-                            <th class="px-4 py-3 text-center">Ürün Adedi</th>
-                            <th class="px-4 py-3 text-right">Toplam Maliyet</th>
-                            <th class="px-4 py-3 text-right">Potansiyel Ciro</th>
-                            <th class="px-4 py-3 text-right">Net Kâr</th>
-                            <th class="px-4 py-3 text-center rounded-r-lg">Marj %</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        @foreach($this->categoryReport as $cat)
-                            <tr class="hover:bg-gray-50 transition">
-                                <td class="px-4 py-3 font-medium text-gray-900">{{ $cat['name'] }}</td>
-                                <td class="px-4 py-3 text-center">
-                                    <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold">{{ $cat['count'] }}</span>
-                                </td>
-                                <td class="px-4 py-3 text-right text-gray-500">{{ number_format($cat['cost'], 2) }} ₺</td>
-                                <td class="px-4 py-3 text-right font-medium">{{ number_format($cat['revenue'], 2) }} ₺</td>
-                                <td class="px-4 py-3 text-right font-bold {{ $cat['profit'] > 0 ? 'text-emerald-600' : 'text-red-600' }}">
-                                    {{ number_format($cat['profit'], 2) }} ₺
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    @php 
-                                        $margin = $cat['revenue'] > 0 ? ($cat['profit'] / $cat['revenue']) * 100 : 0;
-                                        $color = $margin >= 30 ? 'bg-emerald-100 text-emerald-700' : ($margin >= 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700');
-                                    @endphp
-                                    <span class="{{ $color }} px-2 py-1 rounded text-xs font-bold">
-                                        %{{ number_format($margin, 1) }}
-                                    </span>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
                 @endif
-            </div>
+
+                @if($tabView === 'categories')
+                    <div class="p-4 lg:p-5">
+                        <div class="mb-4 rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                            <h3 class="text-sm font-semibold text-slate-900">Kategori performansı</h3>
+                            <p class="mt-1 text-sm text-slate-500">{{ count($this->categoryReport) }} kategori ürün adlarından otomatik ayrıştırıldı.</p>
+                        </div>
+
+                        @if(count($this->categoryReport) === 0)
+                            <div class="rounded-[8px] border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+                                Kategori verisi bulunamadı.
+                            </div>
+                        @else
+                            <div class="hidden overflow-hidden rounded-[8px] border border-slate-200 md:block">
+                                <table class="w-full text-sm">
+                                    <thead class="bg-slate-50 text-xs font-semibold text-slate-600">
+                                        <tr>
+                                            <th class="px-4 py-3 text-left">Kategori</th>
+                                            <th class="px-4 py-3 text-center">Ürün</th>
+                                            <th class="px-4 py-3 text-right">Maliyet</th>
+                                            <th class="px-4 py-3 text-right">Ciro</th>
+                                            <th class="px-4 py-3 text-right">Net kâr</th>
+                                            <th class="px-4 py-3 text-right">Marj</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 bg-white">
+                                        @foreach($this->categoryReport as $cat)
+                                            @php $margin = $cat['revenue'] > 0 ? ($cat['profit'] / $cat['revenue']) * 100 : 0; @endphp
+                                            <tr class="hover:bg-slate-50">
+                                                <td class="px-4 py-3 font-semibold text-slate-900">{{ $cat['name'] }}</td>
+                                                <td class="px-4 py-3 text-center text-slate-600">{{ number_format($cat['count'], 0, ',', '.') }}</td>
+                                                <td class="px-4 py-3 text-right text-slate-600">{{ $formatMoney($cat['cost']) }}</td>
+                                                <td class="px-4 py-3 text-right text-slate-900">{{ $formatMoney($cat['revenue']) }}</td>
+                                                <td class="px-4 py-3 text-right font-semibold {{ $cat['profit'] >= 0 ? 'text-emerald-700' : 'text-rose-700' }}">{{ $formatMoney($cat['profit']) }}</td>
+                                                <td class="px-4 py-3 text-right font-semibold text-slate-900">{{ $formatPercent($margin) }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-3 md:hidden">
+                                @foreach($this->categoryReport as $cat)
+                                    @php $margin = $cat['revenue'] > 0 ? ($cat['profit'] / $cat['revenue']) * 100 : 0; @endphp
+                                    <div class="rounded-[8px] border border-slate-200 bg-white p-4">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p class="font-semibold text-slate-900">{{ $cat['name'] }}</p>
+                                                <p class="mt-1 text-xs text-slate-500">{{ number_format($cat['count'], 0, ',', '.') }} ürün</p>
+                                            </div>
+                                            <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">{{ $formatPercent($margin) }}</span>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
+                                            <div class="rounded-[6px] bg-slate-50 p-2 text-slate-600">Ciro<br><span class="font-semibold text-slate-900">{{ $formatMoney($cat['revenue']) }}</span></div>
+                                            <div class="rounded-[6px] bg-slate-50 p-2 text-slate-600">Net kâr<br><span class="font-semibold {{ $cat['profit'] >= 0 ? 'text-emerald-700' : 'text-rose-700' }}">{{ $formatMoney($cat['profit']) }}</span></div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                @endif
+            </section>
         @endif
-
     @endif
 
-    @endif
-
-
-
-    {{-- ===================================================== --}}
-    {{-- TAB 2: GEÇMİŞ RAPORLAR --}}
-    {{-- ===================================================== --}}
     @if($activeTab === 'history')
-        @if($this->reports->isEmpty())
-            <div class="text-center py-12">
-                <svg class="w-16 h-16 text-gray-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                          d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                <h3 class="mt-4 text-lg font-medium text-gray-900">Henüz rapor yok</h3>
-                <p class="mt-2 text-sm text-gray-500">İlk analizi çalıştırarak buraya rapor ekleyin.</p>
-                <button wire:click="switchTab('analyze')" class="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 min-h-[44px]">
-                    Yeni Analiz Başlat
+        <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-900">Geçmiş komisyon raporları</h2>
+                    <p class="mt-1 text-sm text-slate-500">Önceki analizleri açıp aynı AI ve export akışını kullanabilirsiniz.</p>
+                </div>
+                <button type="button" wire:click="switchTab('analyze')" class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 sm:py-2">
+                    Yeni analiz
                 </button>
             </div>
-        @else
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
-                @foreach($this->reports as $rpt)
-                    <div class="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition p-4 lg:p-5">
-                        <div class="flex items-start justify-between mb-3">
-                            <div class="flex-1 min-w-0">
-                                <h4 class="font-medium text-gray-900 truncate">{{ $rpt->name }}</h4>
-                                <p class="text-xs text-gray-400 mt-0.5">{{ $rpt->created_at->format('d.m.Y H:i') }}</p>
-                            </div>
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium {{ 
-                                $rpt->status === 'applied' ? 'bg-blue-100 text-blue-800' : 
-                                ($rpt->status === 'exported' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800') 
-                            }}">
-                                {{ $rpt->status === 'applied' ? 'Uygulandı' : ($rpt->status === 'exported' ? 'İndirildi' : 'Tamamlandı') }}
-                            </span>
-                        </div>
-                        
-                        <div class="grid grid-cols-3 gap-2 text-center bg-gray-50 rounded-lg p-3 mb-3">
-                            <div>
-                                <div class="text-xs text-gray-400">Ürün</div>
-                                <div class="text-lg font-bold text-gray-900">{{ $rpt->total_products }}</div>
-                            </div>
-                            <div>
-                                <div class="text-xs text-emerald-500">Fırsat</div>
-                                <div class="text-lg font-bold text-emerald-600">{{ $rpt->opportunity_count }}</div>
-                            </div>
-                            <div>
-                                <div class="text-xs text-green-500">Ek Kâr</div>
-                                <div class="text-sm font-bold text-green-600">+{{ number_format($rpt->total_extra_profit, 0) }} ₺</div>
-                            </div>
-                        </div>
 
-                        @if($rpt->original_filename)
-                            <p class="text-[10px] text-gray-400 truncate mb-3">📄 {{ $rpt->original_filename }}</p>
-                        @endif
-
-                        <div class="flex gap-2">
-                            <button wire:click="viewReport({{ $rpt->id }})"
-                                class="flex-1 px-3 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 min-h-[44px]">
-                                Görüntüle
-                            </button>
-                            <button wire:click="deleteReport({{ $rpt->id }})"
-                                wire:confirm="Bu raporu silmek istediğinize emin misiniz?"
-                                class="px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 min-h-[44px]">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                @endforeach
-            </div>
-        @endif
+            @if($this->reports->isEmpty())
+                <div class="mt-5 rounded-[8px] border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center">
+                    <h3 class="text-sm font-semibold text-slate-900">Henüz rapor yok</h3>
+                    <p class="mt-1 text-sm text-slate-500">İlk tarife dosyasını analiz ettiğinizde raporlar burada listelenir.</p>
+                </div>
+            @else
+                <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    @foreach($this->reports as $rpt)
+                        <article class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4 transition hover:bg-white hover:shadow-sm">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <h3 class="truncate text-sm font-semibold text-slate-900">{{ $rpt->name }}</h3>
+                                    <p class="mt-1 text-xs text-slate-500">{{ $rpt->created_at->format('d.m.Y H:i') }}</p>
+                                </div>
+                                <span class="rounded-[6px] border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600">{{ $rpt->status === 'exported' ? 'İndirildi' : ($rpt->status === 'applied' ? 'Uygulandı' : 'Tamamlandı') }}</span>
+                            </div>
+                            <div class="mt-4 grid grid-cols-3 gap-2">
+                                <div class="rounded-[6px] border border-slate-200 bg-white p-2">
+                                    <p class="text-[11px] text-slate-500">Ürün</p>
+                                    <p class="mt-1 font-semibold text-slate-900">{{ number_format($rpt->total_products, 0, ',', '.') }}</p>
+                                </div>
+                                <div class="rounded-[6px] border border-slate-200 bg-white p-2">
+                                    <p class="text-[11px] text-slate-500">Fırsat</p>
+                                    <p class="mt-1 font-semibold text-emerald-700">{{ number_format($rpt->opportunity_count, 0, ',', '.') }}</p>
+                                </div>
+                                <div class="rounded-[6px] border border-slate-200 bg-white p-2">
+                                    <p class="text-[11px] text-slate-500">Ek kâr</p>
+                                    <p class="mt-1 font-semibold text-emerald-700">{{ $formatMoneyShort($rpt->total_extra_profit) }}</p>
+                                </div>
+                            </div>
+                            @if($rpt->original_filename)
+                                <p class="mt-3 truncate text-xs text-slate-500">{{ $rpt->original_filename }}</p>
+                            @endif
+                            <div class="mt-4 flex gap-2">
+                                <button type="button" wire:click="viewReport({{ $rpt->id }})" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+                                    Görüntüle
+                                </button>
+                                <button type="button" wire:click="deleteReport({{ $rpt->id }})" wire:confirm="Bu raporu silmek istediğinize emin misiniz?" class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50">
+                                    Sil
+                                </button>
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+            @endif
+        </section>
     @endif
 
-    {{-- Yüzen AI Paneli (Ortak Partial) --}}
     @include('livewire.partials.campaign-ai-panel', ['themeColor' => 'indigo'])
 </div>
+
 @script
 <script>
     Livewire.on('chat-scroll', () => {
         const el = document.getElementById('chat-messages');
-        if(el) setTimeout(() => el.scrollTop = el.scrollHeight, 100);
+        if (el) {
+            setTimeout(() => el.scrollTop = el.scrollHeight, 100);
+        }
     });
 </script>
 @endscript
-

@@ -3,6 +3,7 @@
     $cargoCompanies = $this->cargoCompanies;
     $errorTypes = $this->errorTypes;
     $currentReport = $this->report;
+    $suratReportOptions = $this->suratReportOptions;
     $columnDefs = \App\Livewire\Cargo\CargoChecker::$allColumnDefs;
     $sortableColumns = \App\Livewire\Cargo\CargoChecker::$sortableColumns;
 
@@ -40,8 +41,8 @@
     @if(!$hasResults)
         <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 lg:gap-6">
             <div class="min-w-0 max-w-3xl">
-                <h2 class="text-xl lg:text-2xl font-bold text-gray-900">Desi ve tutar kontrolü</h2>
-                <p class="mt-1 text-sm lg:text-base text-gray-700">
+                <h2 class="text-xl lg:text-2xl font-bold text-slate-900">Desi ve tutar kontrolü</h2>
+                <p class="mt-1 text-sm lg:text-base text-slate-700">
                     Kargo Excel’ini yükleyin, sistem referanslarıyla karşılaştırın ve farkları rapor olarak kaydedin.
                 </p>
             </div>
@@ -71,16 +72,59 @@
             </x-zolm.stat-card>
         </div>
 
+        <x-zolm.section-card variant="orders" padding="p-4 lg:p-5">
+            <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                <div class="min-w-0">
+                    <h3 class="text-base lg:text-lg font-semibold text-slate-900">Kayıtlı Sürat raporundan kontrol</h3>
+                    <p class="mt-1 text-sm text-slate-500">
+                        Sürat Raporları menüsünde kaydedilen günlük raporu seçin; Excel yüklemeden desi ve tutar check çalışır.
+                    </p>
+                </div>
+
+                <div class="grid w-full grid-cols-1 gap-3 sm:grid-cols-[minmax(0,220px)_auto] xl:w-auto">
+                    <select
+                        wire:model.live="selectedSuratReportDate"
+                        class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm"
+                    >
+                        <option value="">Rapor tarihi seçin</option>
+                        @foreach($suratReportOptions as $option)
+                            <option value="{{ \Illuminate\Support\Carbon::parse($option->report_date)->toDateString() }}">
+                                {{ \Illuminate\Support\Carbon::parse($option->report_date)->format('d.m.Y') }} · {{ number_format((int) $option->row_count, 0, ',', '.') }} gönderi · {{ number_format((float) $option->total_amount, 2, ',', '.') }} TL
+                            </option>
+                        @endforeach
+                    </select>
+
+                    <button
+                        type="button"
+                        wire:click="runFromSavedSuratReport"
+                        wire:loading.attr="disabled"
+                        wire:target="runFromSavedSuratReport"
+                        class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60 sm:w-auto sm:py-2"
+                        @disabled($suratReportOptions->isEmpty())
+                    >
+                        <span wire:loading.remove wire:target="runFromSavedSuratReport">Raporla Check Yap</span>
+                        <span wire:loading wire:target="runFromSavedSuratReport">Kontrol Ediliyor...</span>
+                    </button>
+                </div>
+            </div>
+
+            @if($suratReportOptions->isEmpty())
+                <div class="mt-4 rounded-[8px] border border-dashed border-slate-300 bg-slate-50/70 px-4 py-4 text-sm text-slate-500">
+                    Henüz kayıtlı Sürat günlük raporu yok. Önce Sürat Raporları menüsünden tarih aralığı raporu çekin.
+                </div>
+            @endif
+        </x-zolm.section-card>
+
         <x-zolm.section-card variant="orders" padding="p-4 lg:p-6">
             <div class="space-y-5">
                 <div>
-                    <h3 class="text-base lg:text-lg font-semibold text-gray-900">Karşılaştırma dosyasını yükleyin</h3>
-                    <p class="mt-1 text-sm text-gray-500">
+                    <h3 class="text-base lg:text-lg font-semibold text-slate-900">Karşılaştırma dosyasını yükleyin</h3>
+                    <p class="mt-1 text-sm text-slate-500">
                         Kargo raporunu içeri alın, firma seçimini yapın ve sonucu tek adımda kaydedin.
                     </p>
                 </div>
 
-                <label class="group block cursor-pointer rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-4 transition hover:border-gray-400 hover:bg-white">
+                <label class="group block cursor-pointer rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-4 transition hover:border-slate-400 hover:bg-white">
                     <input type="file" wire:model="cargoFile" accept=".xlsx,.xls" class="hidden">
                     <div class="flex flex-col sm:flex-row sm:items-center gap-3 lg:gap-4">
                         <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
@@ -89,20 +133,20 @@
                             </svg>
                         </div>
                         <div class="min-w-0 flex-1">
-                            <p class="text-sm font-medium text-gray-900">{{ $cargoFile ? $cargoFile->getClientOriginalName() : 'Kargo Excel dosyasını seçin' }}</p>
-                            <p class="mt-1 text-xs sm:text-sm text-gray-500">`.xlsx` veya `.xls` raporunu bu alandan yükleyin.</p>
+                            <p class="text-sm font-medium text-slate-900">{{ $cargoFile ? $cargoFile->getClientOriginalName() : 'Kargo Excel dosyasını seçin' }}</p>
+                            <p class="mt-1 text-xs sm:text-sm text-slate-500">`.xlsx` veya `.xls` raporunu bu alandan yükleyin.</p>
                         </div>
                     </div>
                 </label>
                 @error('cargoFile') <p class="text-sm text-rose-600">{{ $message }}</p> @enderror
 
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                     <div>
-                        <p class="text-sm font-medium text-gray-900">Varsayılan akış aktif</p>
-                        <p class="mt-1 text-sm text-gray-500">Kargo raporu, sipariş ve ürün referanslarıyla otomatik eşleştirilir.</p>
+                        <p class="text-sm font-medium text-slate-900">Varsayılan akış aktif</p>
+                        <p class="mt-1 text-sm text-slate-500">Kargo raporu, sipariş ve ürün referanslarıyla otomatik eşleştirilir.</p>
                     </div>
-                    <label class="flex items-center gap-3 text-sm text-gray-700">
-                        <input type="checkbox" wire:model.live="useLegacyExcelReference" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                    <label class="flex items-center gap-3 text-sm text-slate-700">
+                        <input type="checkbox" wire:model.live="useLegacyExcelReference" class="rounded border-slate-300 text-indigo-600 focus:ring-slate-200">
                         Legacy Excel referansı kullan
                     </label>
                 </div>
@@ -115,8 +159,8 @@
                         </div>
                         <label class="group block cursor-pointer rounded-lg border border-dashed border-amber-300 bg-white px-4 py-4 transition hover:border-amber-400">
                             <input type="file" wire:model="orderFile" accept=".xlsx,.xls" class="hidden">
-                            <p class="text-sm font-medium text-gray-900">{{ $orderFile ? $orderFile->getClientOriginalName() : 'Sipariş Excel dosyasını seçin' }}</p>
-                            <p class="mt-1 text-xs sm:text-sm text-gray-500">Legacy modda sipariş dosyası zorunludur.</p>
+                            <p class="text-sm font-medium text-slate-900">{{ $orderFile ? $orderFile->getClientOriginalName() : 'Sipariş Excel dosyasını seçin' }}</p>
+                            <p class="mt-1 text-xs sm:text-sm text-slate-500">Legacy modda sipariş dosyası zorunludur.</p>
                         </label>
                     </div>
                     @error('orderFile') <p class="text-sm text-rose-600">{{ $message }}</p> @enderror
@@ -124,20 +168,20 @@
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
                     <div>
-                        <label class="block text-xs sm:text-sm font-medium text-gray-500">Kargo firması</label>
-                        <select wire:model="cargoCompany" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <label class="block text-xs sm:text-sm font-medium text-slate-500">Kargo firması</label>
+                        <select wire:model="cargoCompany" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                             @foreach($cargoCompanies as $name => $label)
                                 <option value="{{ $name }}">{{ $label }}</option>
                             @endforeach
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs sm:text-sm font-medium text-gray-500">Rapor adı</label>
+                        <label class="block text-xs sm:text-sm font-medium text-slate-500">Rapor adı</label>
                         <input
                             type="text"
                             wire:model="reportName"
                             placeholder="Örn: Sürat Kargo Mart 2026"
-                            class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"
                         >
                     </div>
                 </div>
@@ -147,21 +191,21 @@
                         <span wire:loading.remove wire:target="runComparison">Kontrol Et</span>
                         <span wire:loading wire:target="runComparison">Kontrol Ediliyor...</span>
                     </x-zolm.primary-button>
-                    <p class="text-sm text-gray-500">Sonuçlar yeni bir rapor olarak kaydedilir.</p>
+                    <p class="text-sm text-slate-500">Sonuçlar yeni bir rapor olarak kaydedilir.</p>
                 </div>
             </div>
         </x-zolm.section-card>
     @else
         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 lg:gap-6">
             <div>
-                <h2 class="text-xl lg:text-2xl font-bold text-gray-900">{{ $currentReport?->name ?? 'Kargo karşılaştırması' }}</h2>
-                <p class="mt-1 text-sm lg:text-base text-gray-700">
+                <h2 class="text-xl lg:text-2xl font-bold text-slate-900">{{ $currentReport?->name ?? 'Kargo karşılaştırması' }}</h2>
+                <p class="mt-1 text-sm lg:text-base text-slate-700">
                     {{ $currentReport?->cargo_company ?? $cargoCompany }} · {{ $currentReport?->report_date?->format('d.m.Y') ?? now()->format('d.m.Y') }}
                 </p>
             </div>
 
             <div class="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
-                <button wire:click="resetForm" class="min-h-[44px] w-full sm:w-auto rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                <button wire:click="resetForm" class="min-h-[44px] w-full sm:w-auto rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     Yeni Karşılaştırma
                 </button>
                 <x-zolm.primary-button color="emerald" compact wire:click="exportReport">Excel İndir</x-zolm.primary-button>
@@ -201,46 +245,46 @@
 
         <x-zolm.section-card variant="orders" eyebrow="Fark Özeti" title="Beklenen ve gerçek değerler" description="Desi, tutar ve ek uyarılar tek blokta özetlenir." padding="p-4 lg:p-6">
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
-                <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <p class="text-sm font-semibold text-gray-900">Desi özeti</p>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-sm font-semibold text-slate-900">Desi özeti</p>
                     <div class="mt-3 space-y-2">
-                        <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm">
-                            <span class="text-gray-500">Beklenen toplam</span>
-                            <span class="font-semibold text-gray-900">{{ $formatDecimal($stats['total_expected_desi'] ?? 0) }}</span>
+                        <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm">
+                            <span class="text-slate-500">Beklenen toplam</span>
+                            <span class="font-semibold text-slate-900">{{ $formatDecimal($stats['total_expected_desi'] ?? 0) }}</span>
                         </div>
-                        <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm">
-                            <span class="text-gray-500">Gerçek toplam</span>
-                            <span class="font-semibold text-gray-900">{{ $formatDecimal($stats['total_actual_desi'] ?? 0) }}</span>
+                        <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm">
+                            <span class="text-slate-500">Gerçek toplam</span>
+                            <span class="font-semibold text-slate-900">{{ $formatDecimal($stats['total_actual_desi'] ?? 0) }}</span>
                         </div>
-                        <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm">
-                            <span class="text-gray-500">Toplam fark</span>
-                            <span class="font-semibold {{ ($stats['total_desi_diff'] ?? 0) > 0 ? 'text-rose-600' : (($stats['total_desi_diff'] ?? 0) < 0 ? 'text-emerald-600' : 'text-gray-900') }}">{{ $formatDecimal($stats['total_desi_diff'] ?? 0) }}</span>
+                        <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm">
+                            <span class="text-slate-500">Toplam fark</span>
+                            <span class="font-semibold {{ ($stats['total_desi_diff'] ?? 0) > 0 ? 'text-rose-600' : (($stats['total_desi_diff'] ?? 0) < 0 ? 'text-emerald-600' : 'text-slate-900') }}">{{ $formatDecimal($stats['total_desi_diff'] ?? 0) }}</span>
                         </div>
                     </div>
                 </div>
 
-                <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <p class="text-sm font-semibold text-gray-900">Tutar ve uyarı özeti</p>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-sm font-semibold text-slate-900">Tutar ve uyarı özeti</p>
                     <div class="mt-3 space-y-2">
-                        <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm">
-                            <span class="text-gray-500">Beklenen toplam</span>
-                            <span class="font-semibold text-gray-900">{{ $formatMoney($stats['total_expected_tutar'] ?? 0) }}</span>
+                        <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm">
+                            <span class="text-slate-500">Beklenen toplam</span>
+                            <span class="font-semibold text-slate-900">{{ $formatMoney($stats['total_expected_tutar'] ?? 0) }}</span>
                         </div>
-                        <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm">
-                            <span class="text-gray-500">Gerçek toplam</span>
-                            <span class="font-semibold text-gray-900">{{ $formatMoney($stats['total_actual_tutar'] ?? 0) }}</span>
+                        <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm">
+                            <span class="text-slate-500">Gerçek toplam</span>
+                            <span class="font-semibold text-slate-900">{{ $formatMoney($stats['total_actual_tutar'] ?? 0) }}</span>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <div class="rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm">
-                                <p class="text-gray-500">Referans uyarısı</p>
-                                <p class="mt-1 font-semibold text-gray-900">{{ $formatCount($stats['reference_issue_count'] ?? 0) }}</p>
+                            <div class="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm">
+                                <p class="text-slate-500">Referans uyarısı</p>
+                                <p class="mt-1 font-semibold text-slate-900">{{ $formatCount($stats['reference_issue_count'] ?? 0) }}</p>
                             </div>
-                            <div class="rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm">
-                                <p class="text-gray-500">İade / değişim</p>
+                            <div class="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm">
+                                <p class="text-slate-500">İade / değişim</p>
                                 <p class="mt-1 font-semibold text-amber-600">{{ $formatMoney($stats['iade_tutar'] ?? 0) }}</p>
                             </div>
-                            <div class="rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm">
-                                <p class="text-gray-500">Parça gönderisi</p>
+                            <div class="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm">
+                                <p class="text-slate-500">Parça gönderisi</p>
                                 <p class="mt-1 font-semibold text-sky-600">{{ $formatMoney($stats['parca_tutar'] ?? 0) }}</p>
                             </div>
                         </div>
@@ -330,9 +374,9 @@
                         type="text"
                         wire:model.live.debounce.300ms="searchCustomer"
                         placeholder="Müşteri adı ara..."
-                        class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"
                     >
-                    <select wire:model.live="filterType" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <select wire:model.live="filterType" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                         <option value="siparis">Siparişler</option>
                         <option value="iade">İade / değişim</option>
                         <option value="parca">Parça gönderileri</option>
@@ -343,9 +387,9 @@
                     </button>
                 </div>
 
-                <div x-show="showAdvanced" x-cloak x-transition.opacity.duration.150ms class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-4">
+                <div x-show="showAdvanced" x-cloak x-transition.opacity.duration.150ms class="rounded-[8px] border border-dashed border-slate-200 bg-slate-50/80 p-4">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:gap-4">
-                        <select wire:model.live="filterErrorType" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <select wire:model.live="filterErrorType" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                             @foreach($errorTypes as $value => $label)
                                 <option value="{{ $value }}">{{ $label }}</option>
                             @endforeach
@@ -353,7 +397,7 @@
                         <select
                             wire:model.live="filterMatched"
                             @disabled(in_array($filterType, ['iade', 'parca'], true))
-                            class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                            class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                         >
                             <option value="all">Tüm eşleşmeler</option>
                             <option value="matched">Eşleşenler</option>
@@ -369,12 +413,12 @@
                     <button @click="open = !open" type="button" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                         Kolonlar
                     </button>
-                    <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                    <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-[10px] border border-slate-200 bg-white p-3 shadow-xl">
                         <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Görünür Kolonlar</p>
                         <div class="mt-3 space-y-1.5">
                             @foreach($columnDefs as $colKey => $colLabel)
                                 <label class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                    <input type="checkbox" wire:click="toggleColumn('{{ $colKey }}')" {{ in_array($colKey, $visibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                    <input type="checkbox" wire:click="toggleColumn('{{ $colKey }}')" {{ in_array($colKey, $visibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-slate-200">
                                     <span>{{ $colLabel }}</span>
                                 </label>
                             @endforeach
@@ -674,7 +718,7 @@
                     </div>
 
                     <div class="mt-6 space-y-4">
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div class="rounded-[8px] border border-slate-200 bg-slate-50 p-4">
                             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Stok kodu</p>
                             <p class="mt-2 text-lg font-semibold text-slate-900">{{ $editStokKodu }}</p>
                         </div>
@@ -682,19 +726,19 @@
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4">
                             <div>
                                 <label for="editDesi" class="text-xs sm:text-sm font-medium text-slate-700">Desi</label>
-                                <input id="editDesi" type="number" step="0.01" wire:model="editDesi" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-center font-semibold text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <input id="editDesi" type="number" step="0.01" wire:model="editDesi" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-center font-semibold text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                             </div>
                             <div>
                                 <label for="editParca" class="text-xs sm:text-sm font-medium text-slate-700">Parça</label>
-                                <input id="editParca" type="number" min="1" wire:model="editParca" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-center font-semibold text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <input id="editParca" type="number" min="1" wire:model="editParca" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-center font-semibold text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                             </div>
                             <div>
                                 <label for="editTutar" class="text-xs sm:text-sm font-medium text-slate-700">Tutar</label>
-                                <input id="editTutar" type="number" step="0.01" wire:model="editTutar" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-center font-semibold text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <input id="editTutar" type="number" step="0.01" wire:model="editTutar" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-center font-semibold text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                             </div>
                         </div>
 
-                        <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+                        <div class="rounded-[8px] border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
                             Bu güncelleme sonraki karşılaştırmalarda beklenen desi, parça ve tutar hesabında kullanılacaktır.
                         </div>
                     </div>

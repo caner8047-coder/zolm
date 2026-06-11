@@ -2,10 +2,13 @@
 
 namespace App\Services\Marketplace;
 
+use App\Models\ChannelListing;
 use App\Models\ChannelOrder;
 use App\Models\ChannelOrderItem;
 use App\Models\ChannelOrderPackage;
 use App\Models\MarketplaceStore;
+use App\Services\NotificationCenterService;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
@@ -18,9 +21,10 @@ class MarketplaceOrderSyncService
 
     /**
      * @param  array<int, array<string, mixed>>  $packages
+     * @param  array<string, mixed>  $context
      * @return array{created: int, updated: int, skipped: int, impacted_order_ids: array<int>}
      */
-    public function sync(MarketplaceStore $store, array $packages): array
+    public function sync(MarketplaceStore $store, array $packages, array $context = []): array
     {
         $created = 0;
         $updated = 0;
@@ -53,6 +57,7 @@ class MarketplaceOrderSyncService
             ]);
 
             $orderDirty = !$order->exists;
+            $previousOrderStatus = $order->exists ? (string) $order->order_status : null;
 
             $order->fill([
                 'legal_entity_id' => $store->legal_entity_id,
@@ -146,9 +151,12 @@ class MarketplaceOrderSyncService
                     $item->stock_code,
                     $item->barcode,
                 );
+                $this->syncListingCommissionFromOrderItem($item);
 
                 $touchedItem = $touchedItem || $itemChanged || $itemDirty;
             }
+
+            $this->emitOrderNotifications($store, $order, $orderDirty, $previousOrderStatus, $context);
 
             if ($orderChanged || $packageChanged || $touchedItem) {
                 if ($orderDirty || $packageDirty) {
@@ -351,6 +359,118 @@ class MarketplaceOrderSyncService
         }
 
         return $this->canonicalizeStatusLabel($fallbackStatus);
+    }
+
+    protected function syncListingCommissionFromOrderItem(ChannelOrderItem $item): void
+    {
+        $commissionRate = $this->normalizeCommissionRate($item->commission_rate);
+
+        if ($commissionRate === null || !$item->channel_listing_id) {
+            return;
+        }
+
+        ChannelListing::query()
+            ->whereKey($item->channel_listing_id)
+            ->update([
+                'commission_rate' => $commissionRate,
+                'commission_source' => 'order_item',
+                'commission_synced_at' => now(),
+            ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    protected function emitOrderNotifications(
+        MarketplaceStore $store,
+        ChannelOrder $order,
+        bool $orderDirty,
+        ?string $previousOrderStatus,
+        array $context,
+    ): void {
+        $currentStatus = $this->canonicalizeStatusLabel($order->order_status) ?: $this->normalizeStatusText($order->order_status);
+        $previousStatus = $this->canonicalizeStatusLabel($previousOrderStatus) ?: $this->normalizeStatusText($previousOrderStatus);
+        $notificationCenter = app(NotificationCenterService::class);
+
+        if ($orderDirty && !in_array($currentStatus, ['cancelled', 'returned'], true) && $this->shouldNotifyFreshOrder($order, $context)) {
+            $notificationCenter->notifyOrder($store, $order, 'created', $context);
+        }
+
+        if ($currentStatus === 'cancelled' && $previousStatus !== 'cancelled' && $this->shouldNotifyStatusTransition($order, $orderDirty, $context, 'cancelled_at')) {
+            $notificationCenter->notifyOrder($store, $order, 'cancelled', $context);
+        }
+
+        if ($currentStatus === 'returned' && $previousStatus !== 'returned' && $this->shouldNotifyStatusTransition($order, $orderDirty, $context, 'returned_at')) {
+            $notificationCenter->notifyOrder($store, $order, 'returned', $context);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    protected function shouldNotifyFreshOrder(ChannelOrder $order, array $context): bool
+    {
+        if ($this->isRealtimeTrigger($context)) {
+            return true;
+        }
+
+        return $this->isRecentOperationalDate($order->ordered_at);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    protected function shouldNotifyStatusTransition(ChannelOrder $order, bool $orderDirty, array $context, string $dateColumn): bool
+    {
+        if ($this->isRealtimeTrigger($context)) {
+            return true;
+        }
+
+        if (!$orderDirty) {
+            return true;
+        }
+
+        return $this->isRecentOperationalDate($order->{$dateColumn} ?: $order->ordered_at);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    protected function isRealtimeTrigger(array $context): bool
+    {
+        return in_array((string) ($context['trigger_type'] ?? ''), ['webhook', 'webhook_replay'], true);
+    }
+
+    protected function isRecentOperationalDate(mixed $value): bool
+    {
+        if (!$value) {
+            return false;
+        }
+
+        try {
+            $date = $value instanceof CarbonInterface
+                ? $value
+                : \Illuminate\Support\Carbon::parse($value);
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $date->greaterThanOrEqualTo(now()->subHours(12));
+    }
+
+    protected function normalizeCommissionRate(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $rate = (float) str_replace(',', '.', (string) $value);
+
+        if ($rate < 0 || $rate > 100) {
+            return null;
+        }
+
+        return round($rate, 2);
     }
 
     protected function canonicalizeStatusLabel(?string $status): ?string

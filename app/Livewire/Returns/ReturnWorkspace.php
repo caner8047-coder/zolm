@@ -3,6 +3,7 @@
 namespace App\Livewire\Returns;
 
 use App\Models\ReturnIntakeItem;
+use App\Models\ChannelClaim;
 use App\Models\ReturnWhatsappMessage;
 use App\Models\ReturnWhatsappThread;
 use Illuminate\Contracts\View\View;
@@ -47,6 +48,7 @@ class ReturnWorkspace extends Component
             'activeThreads' => ReturnWhatsappThread::query()->whereIn('status', ['collecting', 'queued'])->count(),
             'todayMessages' => ReturnWhatsappMessage::query()->where('received_at', '>=', today())->count(),
             'readyForAction' => ReturnIntakeItem::query()->where('intake_status', 'ready_for_decision')->count(),
+            'marketplaceClaimsWaiting' => ChannelClaim::query()->whereIn('status', ['pending', 'shipped', 'in_transit', 'delivered'])->count(),
         ];
     }
 
@@ -62,6 +64,7 @@ class ReturnWorkspace extends Component
         }
 
         if (auth()->user()?->canAccessReturnsReview()) {
+            $tabs[] = 'pazaryeri';
             $tabs[] = 'havuz';
             $tabs[] = 'whatsapp';
         }

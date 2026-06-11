@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 class Recipe extends Model
 {
     protected $fillable = [
-        'user_id', 'mp_product_id', 'name', 'version', 'status', 'notes',
+        'user_id', 'mp_product_id', 'stock_code', 'name', 'version', 'status', 'notes', 'image_path',
     ];
 
     public const STATUSES = [
@@ -59,9 +59,18 @@ class Recipe extends Model
     public function getTotalCostAttribute(): float
     {
         return $this->lines->sum(function ($line) {
-            $price = $line->material->unit_price ?? 0;
+            if ($line->subRecipe) {
+                $price = $line->subRecipe->total_cost;
+            } else {
+                $price = $line->material->unit_price ?? 0;
+            }
             return $line->calculated_qty * $price;
         });
+    }
+
+    public function getIdentityCodeAttribute(): string
+    {
+        return (string) ($this->stock_code ?: ($this->product?->stock_code ?? ''));
     }
 
     // ─── Scope'lar ─────────────────────────────────────────
@@ -84,11 +93,32 @@ class Recipe extends Model
     // ─── Yardımcı Metodlar ─────────────────────────────────
 
     /**
-     * Konsolide BOM: aynı malzemeler birleşik, miktarlar toplanmış
+     * Reçetenin tüm alt reçeteler dahil düzleştirilmiş (flattened) satırlarını getirir.
+     */
+    public function getFlatLines(float $multiplier = 1): \Illuminate\Support\Collection
+    {
+        $flat = collect();
+        foreach ($this->lines as $line) {
+            if ($line->subRecipe) {
+                $subMultiplier = $multiplier * $line->calculated_qty;
+                $flat = $flat->merge($line->subRecipe->getFlatLines($subMultiplier));
+            } elseif ($line->material_id) {
+                $copy = clone $line;
+                $copy->calculated_qty = $copy->calculated_qty * $multiplier;
+                $flat->push($copy);
+            }
+        }
+        return $flat;
+    }
+
+    /**
+     * Konsolide BOM: Alt reçeteleri de açarak aynı malzemeleri birleşik, miktarları toplanmış verir.
      */
     public function getConsolidatedBom(): \Illuminate\Support\Collection
     {
-        return $this->lines->groupBy('material_id')->map(function ($group) {
+        $flatLines = $this->getFlatLines();
+
+        return $flatLines->groupBy('material_id')->map(function ($group) {
             $first = $group->first();
             return [
                 'material_id'   => $first->material_id,
@@ -106,7 +136,7 @@ class Recipe extends Model
     /**
      * Reçeteyi kopyala (yeni versiyon)
      */
-    public function duplicate(string $newVersion = null): self
+    public function duplicate(?string $newVersion = null): self
     {
         $newVersion = $newVersion ?? 'v' . ((int) str_replace('v', '', $this->version) + 1);
 

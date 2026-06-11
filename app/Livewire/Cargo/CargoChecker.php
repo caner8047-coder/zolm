@@ -4,6 +4,7 @@ namespace App\Livewire\Cargo;
 
 use App\Models\CargoReport;
 use App\Models\CargoReportItem;
+use App\Models\CargoReportLine;
 use App\Models\MpOperationalOrder;
 use App\Models\MpOperationalOrderItem;
 use App\Models\MpProduct;
@@ -11,7 +12,9 @@ use App\Models\Product;
 use App\Services\CargoComparisonEngine;
 use App\Services\ExcelService;
 use App\Services\MpSettingsService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -79,6 +82,8 @@ class CargoChecker extends Component
     public $cargoFile;
     public $orderFile;
     public bool $useLegacyExcelReference = false;
+    public ?string $sourceReportDate = null;
+    public string $selectedSuratReportDate = '';
 
     // Kargo firması seçimi
     public string $cargoCompany = 'Sürat Kargo';
@@ -126,7 +131,7 @@ class CargoChecker extends Component
     public int $editParca = 1;
     public float $editTutar = 0;
 
-    public function mount(): void
+    public function mount(?string $sourceReportDate = null): void
     {
         $settings = app(MpSettingsService::class);
         $savedColumns = $settings->getArray('cargo_reports.cargo_checker.visible_columns', []);
@@ -152,6 +157,12 @@ class CargoChecker extends Component
         }
 
         $this->visibleColumns = $this->normalizeVisibleColumns($savedColumns);
+        $this->sourceReportDate = $sourceReportDate ? Carbon::parse($sourceReportDate)->toDateString() : null;
+        $this->selectedSuratReportDate = $this->sourceReportDate ?: ($this->latestSuratReportDate() ?? '');
+
+        if ($this->sourceReportDate) {
+            $this->runFromSavedSuratReport($this->sourceReportDate);
+        }
     }
 
     public function updatedFilterErrorType(): void
@@ -185,6 +196,23 @@ class CargoChecker extends Component
     public function cargoCompanies()
     {
         return collect(config('cargo.companies'))->pluck('name', 'name');
+    }
+
+    #[Computed]
+    public function suratReportOptions()
+    {
+        if (!Schema::hasTable('cargo_report_lines')) {
+            return collect();
+        }
+
+        return CargoReportLine::query()
+            ->where('user_id', auth()->id())
+            ->where('carrier_code', 'surat')
+            ->selectRaw('report_date, COUNT(*) as row_count, SUM(pieces) as pieces, SUM(desi) as desi, SUM(total_amount) as total_amount')
+            ->groupBy('report_date')
+            ->orderByDesc('report_date')
+            ->limit(30)
+            ->get();
     }
 
     /**
@@ -387,16 +415,8 @@ class CargoChecker extends Component
                 $this->showMessage('Legacy Excel modunda önce ürün listesini yüklemelisiniz. "Ürün ve Desi Bilgileri" sekmesinden ürün ekleyin.', 'warning');
                 return;
             }
-        } else {
-            $stats = $this->marketplaceStats;
-            if (($stats['products_ready'] ?? 0) < 1) {
-                $this->showMessage('Pazaryeri Ürünlerim modülünde desi, parça ve kargo fiyatı dolu en az 1 ürün bulunmalı.', 'warning');
-                return;
-            }
-            if (($stats['orders_total'] ?? 0) < 1 || ($stats['order_items_total'] ?? 0) < 1) {
-                $this->showMessage('Pazaryeri Siparişlerim modülünde içe aktarılmış sipariş verisi bulunamadı. Önce operasyonel sipariş Excelini yükleyin.', 'warning');
-                return;
-            }
+        } elseif (!$this->marketplaceReferencesReady()) {
+            return;
         }
 
         $this->isProcessing = true;
@@ -430,6 +450,73 @@ class CargoChecker extends Component
         }
 
         $this->isProcessing = false;
+    }
+
+    public function runFromSavedSuratReport(?string $date = null): void
+    {
+        $date = $date ?: $this->selectedSuratReportDate;
+
+        if (!$date) {
+            $this->showMessage('Kontrol için önce kayıtlı Sürat raporu tarihi seçin.', 'warning');
+            return;
+        }
+
+        $date = Carbon::parse($date)->toDateString();
+        $this->sourceReportDate = $date;
+        $this->selectedSuratReportDate = $date;
+
+        if (!$this->marketplaceReferencesReady()) {
+            return;
+        }
+
+        if (!Schema::hasTable('cargo_report_lines')) {
+            $this->showMessage('Kayıtlı Sürat rapor tabloları henüz hazır değil.', 'warning');
+            return;
+        }
+
+        $lines = CargoReportLine::query()
+            ->where('user_id', auth()->id())
+            ->where('carrier_code', 'surat')
+            ->whereDate('report_date', $date)
+            ->orderBy('id')
+            ->get();
+
+        if ($lines->isEmpty()) {
+            $this->showMessage(Carbon::parse($date)->format('d.m.Y') . ' için kayıtlı Sürat raporu bulunamadı.', 'warning');
+            return;
+        }
+
+        $this->isProcessing = true;
+        $this->message = '';
+
+        try {
+            $labelDate = Carbon::parse($date)->format('d.m.Y');
+            $result = app(CargoComparisonEngine::class)->compareFromCargoRows(
+                $this->cargoRowsFromReportLines($lines),
+                $this->reportName ?: 'Sürat Günlük Check - ' . $labelDate,
+                'Sürat Kargo',
+                'Kayıtlı Sürat raporu - ' . $labelDate
+            );
+
+            if ($result['success']) {
+                $result['report']->forceFill(['report_date' => $date])->save();
+                $this->currentReportId = $result['report']->id;
+                $this->hasResults = true;
+                $this->updateStats($result['report']);
+                $this->showMessage($labelDate . ' Sürat raporu check modülünde kontrol edildi. ' . $result['message'], 'success');
+            } else {
+                $this->showMessage($result['message'], 'error');
+            }
+        } catch (\Exception $e) {
+            Log::error('CargoChecker: Kayıtlı Sürat raporu karşılaştırma hatası', [
+                'date' => $date,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            $this->showMessage('Kayıtlı Sürat raporu kontrol hatası: ' . $e->getMessage(), 'error');
+        } finally {
+            $this->isProcessing = false;
+        }
     }
 
     /**
@@ -738,10 +825,12 @@ class CargoChecker extends Component
     {
         $this->reset([
             'cargoFile', 'orderFile', 'reportName', 'useLegacyExcelReference',
-            'hasResults', 'currentReportId', 'message',
+            'hasResults', 'currentReportId', 'message', 'sourceReportDate',
             'filterErrorType', 'filterMatched', 'filterType', 'searchCustomer',
             'sortField', 'sortDirection'
         ]);
+
+        $this->selectedSuratReportDate = $this->latestSuratReportDate() ?? '';
 
         $this->resetPage();
 
@@ -758,6 +847,72 @@ class CargoChecker extends Component
             'total_tutar_diff' => 0,
             'reference_issue_count' => 0,
         ];
+    }
+
+    protected function marketplaceReferencesReady(): bool
+    {
+        $stats = $this->marketplaceStats;
+
+        if (($stats['products_ready'] ?? 0) < 1) {
+            $this->showMessage('Pazaryeri Ürünlerim modülünde desi, parça ve kargo fiyatı dolu en az 1 ürün bulunmalı.', 'warning');
+            return false;
+        }
+
+        if (($stats['orders_total'] ?? 0) < 1 || ($stats['order_items_total'] ?? 0) < 1) {
+            $this->showMessage('Pazaryeri Siparişlerim modülünde içe aktarılmış sipariş verisi bulunamadı. Önce operasyonel sipariş Excelini yükleyin.', 'warning');
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function latestSuratReportDate(): ?string
+    {
+        if (!Schema::hasTable('cargo_report_lines')) {
+            return null;
+        }
+
+        $date = CargoReportLine::query()
+            ->where('user_id', auth()->id())
+            ->where('carrier_code', 'surat')
+            ->max('report_date');
+
+        return $date ? Carbon::parse($date)->toDateString() : null;
+    }
+
+    protected function cargoRowsFromReportLines($lines)
+    {
+        return $lines->values()->map(function (CargoReportLine $line, int $index) {
+            $totalAmount = (float) ($line->total_amount ?? 0);
+            if ($totalAmount <= 0) {
+                $totalAmount = (float) ($line->amount ?? 0) + (float) ($line->measurement_amount ?? 0);
+            }
+            if ($totalAmount <= 0) {
+                $totalAmount = (float) ($line->amount ?? 0);
+            }
+
+            $invoiceDate = $line->document_date ?: $line->carrier_created_at ?: $line->report_date;
+
+            return [
+                '_row_number' => $index + 2,
+                'web_siparis_kodu' => (string) ($line->web_order_code ?: $line->sales_code ?: ''),
+                'takip_no' => (string) ($line->tracking_number ?: ''),
+                'alici' => (string) ($line->customer_name ?: ''),
+                'gonderen' => (string) ($line->sender_name ?: ''),
+                'borclu_unvan' => (string) ($line->sender_name ?: ''),
+                'adet' => max(1, (int) ($line->pieces ?? 1)),
+                'desi' => (float) ($line->desi ?? 0),
+                'tutar' => $totalAmount,
+                'cikis_il' => '',
+                'teslim_tarihi' => $line->delivered_at?->toDateString(),
+                'fatura_tarihi' => $invoiceDate?->toDateString(),
+                'tesellum_fatura_no' => (string) ($line->sales_code ?: ''),
+                'barkod' => (string) ($line->tracking_number ?: ''),
+                'alici_il' => (string) ($line->destination_city ?: ''),
+                'alici_ilce' => (string) ($line->destination_district ?: ''),
+                'durum' => (string) ($line->status ?: ''),
+            ];
+        });
     }
 
     /**

@@ -87,8 +87,12 @@
                     @if($issue->match_status === 'pending' && $listing && $recommended && $this->candidateScore($recommended) > 0)
                         <button type="button"
                                 wire:click="manualMatchRecommended({{ $issue->id }})"
+                                wire:loading.attr="disabled"
+                                wire:loading.class="cursor-wait opacity-70"
+                                wire:target="manualMatchRecommended({{ $issue->id }})"
                                 class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-slate-900 px-4 py-3 sm:py-2 text-sm font-medium text-white transition hover:bg-slate-800">
-                            Önerileni bağla
+                            <span wire:loading.remove wire:target="manualMatchRecommended({{ $issue->id }})">Önerileni bağla</span>
+                            <span wire:loading wire:target="manualMatchRecommended({{ $issue->id }})">Bağlanıyor...</span>
                         </button>
                     @endif
 
@@ -148,9 +152,13 @@
                                     <div class="text-sm font-semibold text-slate-900">₺{{ number_format((float) $candidate->sale_price, 2, ',', '.') }}</div>
                                     <button type="button"
                                             wire:click="manualMatch({{ $issue->id }}, {{ $candidate->id }})"
+                                            wire:loading.attr="disabled"
+                                            wire:loading.class="cursor-wait opacity-70"
+                                            wire:target="manualMatch({{ $issue->id }}, {{ $candidate->id }})"
                                             @disabled(!$listing || $issue->match_status !== 'pending')
                                             class="inline-flex min-h-[44px] items-center justify-center rounded-lg px-4 py-3 sm:py-2 text-sm font-medium transition {{ $listing && $issue->match_status === 'pending' ? 'bg-slate-900 text-white hover:bg-slate-800' : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400' }}">
-                                        Bu ürüne bağla
+                                        <span wire:loading.remove wire:target="manualMatch({{ $issue->id }}, {{ $candidate->id }})">Bu ürüne bağla</span>
+                                        <span wire:loading wire:target="manualMatch({{ $issue->id }}, {{ $candidate->id }})">Bağlanıyor...</span>
                                     </button>
                                 </div>
                             </div>

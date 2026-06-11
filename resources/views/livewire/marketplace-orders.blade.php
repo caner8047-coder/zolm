@@ -2,6 +2,10 @@
     $formatMoney = fn ($value) => '₺' . number_format((float) $value, 2, ',', '.');
     $formatSignedMoney = fn ($value) => ((float) $value >= 0 ? '+' : '-') . '₺' . number_format(abs((float) $value), 2, ',', '.');
     $formatCount = fn ($value) => number_format((float) $value, 0, ',', '.');
+    $formatProfitabilityPercent = fn ($value) => $value !== null ? '%' . number_format((float) $value, 1, ',', '.') : '—';
+    $selectedLabelPrintSummary = $this->selectedLabelPrintSummary();
+    $selectedLabelConfirmMessage = $selectedLabelPrintSummary['confirm_message'];
+    $currentSortPreset = $this->currentSortPreset();
     $sortIcon = function (string $columnKey) use ($sortableColumns, $sortField, $sortDirection) {
         $dbColumn = $sortableColumns[$columnKey] ?? null;
         if (!$dbColumn) {
@@ -650,7 +654,7 @@
                             </svg>
                             <input type="text"
                                    wire:model.live.debounce.400ms="search"
-                                   placeholder="Sipariş / Paket No arayın..."
+                                   placeholder="Sipariş / Paket / Müşteri ara..."
                                    class="w-full rounded-[6px] border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm font-medium text-slate-900 shadow-sm transition focus:border-slate-900 focus:bg-white focus:outline-none">
                         </div>
                         <input type="text"
@@ -667,8 +671,8 @@
                         <select wire:model.live="statusFilter"
                                 class="w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
                             <option value="">Tüm Durumlar</option>
-                            @foreach($statusOptions as $status)
-                                <option value="{{ $status }}">{{ $this->humanStatus($status) }}</option>
+                            @foreach($statusOptions as $statusValue => $statusLabel)
+                                <option value="{{ $statusValue }}">{{ $statusLabel }}</option>
                             @endforeach
                         </select>
                         <select wire:model.live="marketplaceFilter"
@@ -692,6 +696,11 @@
                                 <option value="{{ $labelKey }}">{{ $label['name'] }}</option>
                             @endforeach
                         </select>
+                        <button type="button"
+                                wire:click="openOrderLabelManager"
+                                class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 xl:w-auto sm:py-2">
+                            Etiketleri Yönet
+                        </button>
                         <button type="button"
                                 @click="advancedFilters = !advancedFilters"
                                 class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-white xl:w-auto sm:py-2">
@@ -732,6 +741,22 @@
                             <option value="">Eşleşme</option>
                             <option value="full_match">Tam eşleşti</option>
                             <option value="needs_match">Kontrol gerekiyor</option>
+                        </select>
+                    </div>
+
+                    <div class="mt-3 flex flex-col gap-3 rounded-[8px] border border-slate-200 bg-slate-50/60 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="min-w-0">
+                            <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Listeleme sırası</p>
+                            <p class="mt-1 text-xs text-slate-500">Sipariş tarihi veya kargoya son teslim tarihine göre tablo sırasını değiştirin.</p>
+                        </div>
+                        <select wire:change="applySortPreset($event.target.value)"
+                                class="w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base font-medium text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:w-[320px] sm:text-sm">
+                            @foreach($sortPresets as $presetKey => $preset)
+                                <option value="{{ $presetKey }}" @selected($currentSortPreset === $presetKey)>{{ $preset['label'] }}</option>
+                            @endforeach
+                            @if($currentSortPreset === 'custom')
+                                <option value="custom" selected>Tablo kolonuna göre özel sıralama</option>
+                            @endif
                         </select>
                     </div>
 
@@ -801,9 +826,13 @@
                                             @if($this->hasDocumentSelection())
                                                 <a href="{{ $this->documentDownloadUrl('label') }}"
                                                    target="_blank"
+                                                   @click="{{ $selectedLabelConfirmMessage ? "if (!window.confirm(" . \Illuminate\Support\Js::from($selectedLabelConfirmMessage) . ")) { \$event.preventDefault(); return; }" : '' }}"
                                                    class="flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                                                     Kargo etiketi PDF indir
                                                 </a>
+                                                @if($selectedLabelPrintSummary['has_printed'])
+                                                    <p class="text-[11px] text-amber-600">{{ $selectedLabelPrintSummary['badge_label'] }}. Tekrar indirmeden önce kontrol edin.</p>
+                                                @endif
                                                 <a href="{{ $this->documentDownloadUrl('dispatch') }}"
                                                    target="_blank"
                                                    class="flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
@@ -945,9 +974,13 @@
                                         @if($this->hasDocumentSelection())
                                             <a href="{{ $this->documentDownloadUrl('label') }}"
                                                target="_blank"
+                                               @click="{{ $selectedLabelConfirmMessage ? "if (!window.confirm(" . \Illuminate\Support\Js::from($selectedLabelConfirmMessage) . ")) { \$event.preventDefault(); return; }" : '' }}"
                                                class="flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                                                 Kargo etiketi PDF indir
                                             </a>
+                                            @if($selectedLabelPrintSummary['has_printed'])
+                                                <p class="text-[11px] text-amber-600">{{ $selectedLabelPrintSummary['badge_label'] }}. Tekrar indirmeden önce kontrol edin.</p>
+                                            @endif
                                             <a href="{{ $this->documentDownloadUrl('dispatch') }}"
                                                target="_blank"
                                                class="flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
@@ -1061,16 +1094,27 @@
                             $netReceivable = $legacyHasFinancial
                                 ? (float) $legacyOrder->total_net_hakedis
                                 : (float) ($snapshot?->net_receivable ?? 0);
+                            $estimatedCogs = $legacyOrder
+                                ? (float) (($legacyOrder->estimated_cogs ?? 0) + ($legacyOrder->estimated_packaging ?? 0))
+                                : (float) (($snapshot?->cogs_cost ?? 0) + ($snapshot?->packaging_cost ?? 0));
+                            $costProfitPercent = $estimatedCogs > 0
+                                ? \App\Services\ProfitabilityMetric::profitPercent($profitValue, $estimatedCogs)
+                                : null;
+                            $labelPrintSummary = $this->orderLabelPrintSummary($order);
                             $matchRatio = (int) ($order->matched_lines_count ?? 0) . '/' . (int) ($order->item_lines_count ?? 0);
+                            $statusKey = (string) ($order->display_status_key ?? '');
+                            $statusLabel = (string) ($order->display_status_label ?? $this->humanStatus($order->order_status, $order->marketplace_alias, $package?->cargo_tracking_number, $order->delivered_at));
+                            $statusTone = (string) ($order->display_status_tone ?? $this->statusTone($order->order_status, $order->marketplace_alias, $package?->cargo_tracking_number, $order->delivered_at));
+                            $isCancelled = in_array($statusKey, ['cancelled', 'returned', 'rejected'], true);
                         @endphp
 
-                        <article class="overflow-hidden rounded-[8px] border border-slate-200 bg-white shadow-sm">
+                        <article class="overflow-hidden rounded-[8px] border border-slate-200 bg-white shadow-sm {{ $isCancelled ? 'opacity-50 grayscale hover:opacity-75' : '' }}">
                             <div class="flex items-center justify-between border-b border-slate-200 px-4 pt-4 pb-3">
                                 <label class="inline-flex items-center gap-2 text-sm text-slate-600">
                                     <input type="checkbox"
                                            wire:model.live="selectedOrderIds"
                                            value="{{ $order->id }}"
-                                           class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                           class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-slate-200">
                                     <span>Seç</span>
                                 </label>
                                 <div class="flex items-center gap-2">
@@ -1100,12 +1144,12 @@
                                             </div>
                                         @endif
                                         <p class="mt-2 text-sm font-medium text-slate-900">{{ $order->customer_name ?: 'Müşteri bilgisi yok' }}</p>
-                                        <p class="mt-1 text-xs text-slate-500">{{ $order->ordered_at?->format('d.m.Y H:i') ?: '-' }}</p>
+                                        <p class="mt-1 text-xs text-slate-500">{{ $this->displayOrderDate($order)?->format('d.m.Y H:i') ?: '-' }}</p>
                                     </div>
 
                                     <div class="text-right">
-                                        <x-zolm.status-badge size="sm" :tone="$this->statusTone($order->order_status, $order->marketplace_alias, $package?->cargo_tracking_number, $package?->delivered_at)">
-                                            {{ $this->humanStatus($order->order_status, $order->marketplace_alias, $package?->cargo_tracking_number, $package?->delivered_at) }}
+                                        <x-zolm.status-badge size="sm" :tone="$statusTone">
+                                            {{ $statusLabel }}
                                         </x-zolm.status-badge>
                                         @if($orderColorLabel)
                                             <div class="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold"
@@ -1116,6 +1160,11 @@
                                         @endif
                                         <p class="mt-3 text-base font-semibold text-slate-900">{{ $formatMoney($grossRevenue) }}</p>
                                         <p class="mt-1 text-sm font-semibold {{ $profitValue >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $formatMoney($profitValue) }}</p>
+                                        @if($costProfitPercent !== null)
+                                            <p class="mt-1 text-[11px] font-medium {{ $profitValue >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">
+                                                Maliyet {{ $formatProfitabilityPercent($costProfitPercent) }}
+                                            </p>
+                                        @endif
                                     </div>
                                 </div>
 
@@ -1131,12 +1180,46 @@
                                 </div>
 
                                 @if($package)
+                                    @php
+                                        $mobileCargoCompany = $this->displayCargoCompany(
+                                            $package->cargo_company,
+                                            $package->shipment_provider,
+                                        );
+                                        $mobileTrackingUrl = $this->trackingUrl($mobileCargoCompany, $package->cargo_tracking_number);
+                                        $mobileCargoDueDate = $this->displayCargoDueDate($order);
+                                    @endphp
                                     <p class="mt-3 text-xs text-slate-500">
-                                        {{ $package->cargo_company ?: 'Kargo yok' }}
+                                        {{ $mobileCargoCompany ?: 'Kargo yok' }}
                                         @if($package->cargo_tracking_number)
-                                            · {{ $package->cargo_tracking_number }}
+                                            ·
+                                            @if($mobileTrackingUrl)
+                                                <a href="{{ $mobileTrackingUrl }}"
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   class="font-medium text-sky-600 transition hover:text-sky-700 hover:underline">
+                                                    {{ $package->cargo_tracking_number }}
+                                                </a>
+                                            @else
+                                                {{ $package->cargo_tracking_number }}
+                                            @endif
                                         @endif
                                     </p>
+                                    @if($mobileCargoDueDate)
+                                        <p class="mt-1 text-[11px] text-slate-400">
+                                            Son teslim: {{ $mobileCargoDueDate->format('d/m H:i') }}
+                                        </p>
+                                    @endif
+                                    @if($labelPrintSummary['has_printed'])
+                                        <div class="mt-2 inline-flex items-center gap-1.5 rounded-[6px] border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+                                            <svg class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            <span>{{ $labelPrintSummary['badge_label'] }}</span>
+                                        </div>
+                                        @if($labelPrintSummary['meta_label'])
+                                            <p class="mt-1 text-[10px] text-emerald-700/80">{{ $labelPrintSummary['meta_label'] }}</p>
+                                        @endif
+                                    @endif
                                 @endif
 
                                 @if($legacyOrder?->is_corporate_invoice === 'Evet')
@@ -1166,7 +1249,7 @@
                             'lojistik' => ['label' => 'Lojistik', 'width' => '124px'],
                             'ciro' => ['label' => 'Ciro', 'width' => '90px'],
                             'muhasebe' => ['label' => 'Muhasebe', 'width' => '106px'],
-                            'kar' => ['label' => 'Kâr Oranı', 'width' => '100px'],
+                            'kar' => ['label' => 'Kârlılık', 'width' => '112px'],
                             'durum' => ['label' => 'Durum', 'width' => '92px'],
                         ];
                         $columnHelp = [
@@ -1185,11 +1268,11 @@
                                 'impact' => 'Tahsilat ve mutabakat odağını belirler.',
                             ],
                             'kar' => [
-                                'title' => 'Kâr Oranı',
-                                'summary' => 'Sipariş bazında maliyet, komisyon, kargo ve gelir birleşiminden çıkan kârlılık oranıdır.',
+                                'title' => 'Kârlılık',
+                                'summary' => 'Hakedişten kargo etkisi düşüldükten sonra kalan tutarın ürün maliyetine oranıdır.',
                                 'source' => 'Sipariş kalemleri, maliyet, kargo ve finans kesintileri.',
                                 'refresh' => 'Maliyet veya finans verisi değiştiğinde.',
-                                'impact' => 'Zararlı siparişleri ve öncelikli inceleme alanını öne çıkarır.',
+                                'impact' => 'Ürün maliyetine göre net kâr yüzdesini gösterir.',
                             ],
                         ];
                     @endphp
@@ -1232,9 +1315,13 @@
                                             @if($this->hasDocumentSelection())
                                                 <a href="{{ $this->documentDownloadUrl('label') }}"
                                                    target="_blank"
+                                                   @click="{{ $selectedLabelConfirmMessage ? "if (!window.confirm(" . \Illuminate\Support\Js::from($selectedLabelConfirmMessage) . ")) { \$event.preventDefault(); return; }" : '' }}"
                                                    class="flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                                                     Kargo etiketi PDF indir
                                                 </a>
+                                                @if($selectedLabelPrintSummary['has_printed'])
+                                                    <p class="text-[11px] text-amber-600">{{ $selectedLabelPrintSummary['badge_label'] }}. Tekrar indirmeden önce kontrol edin.</p>
+                                                @endif
                                                 <a href="{{ $this->documentDownloadUrl('dispatch') }}"
                                                    target="_blank"
                                                    class="flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
@@ -1307,7 +1394,7 @@
                                         <label class="inline-flex items-center gap-2 text-[11px] text-slate-500">
                                             <input type="checkbox"
                                                    wire:model.live="selectPage"
-                                                   class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                                   class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-slate-200">
                                             <span>Seç</span>
                                         </label>
                                     </th>
@@ -1360,15 +1447,29 @@
                                         $matchedLines = (int) ($order->matched_lines_count ?? 0);
                                         $itemLines = (int) ($order->item_lines_count ?? 0);
                                         $lineCount = $legacyOrder?->items?->count() ?: $itemLines;
+                                        $previewItems = ($order->items ?? collect())->take(3);
+                                        $remainingPreviewItemCount = max(0, $itemLines - $previewItems->count());
+                                        $matchSummaryLabel = $itemLines > 0
+                                            ? "{$matchedLines}/{$itemLines} satır eşleşti"
+                                            : 'Satır bilgisi bekleniyor';
+                                        $matchSummaryClass = $itemLines > 0 && $matchedLines === $itemLines
+                                            ? 'text-emerald-600'
+                                            : ($matchedLines > 0 ? 'text-amber-600' : 'text-rose-500');
                                         $discountTotal = $legacyOrder
                                             ? (float) ($legacyOrder->total_discount ?? ($order->total_discount_amount ?? 0))
                                             : (float) ($order->total_discount_amount ?? 0);
                                         $locationCity = $legacyOrder?->customer_city ?: $order->shipment_city;
                                         $locationDistrict = $legacyOrder?->customer_district ?: $order->shipment_district;
-                                        $cargoCompany = $legacyOrder?->cargo_company ?: ($package?->cargo_company ?: null);
-                                        $trackingNumber = $legacyOrder?->tracking_number ?: ($package?->cargo_tracking_number ?: null);
-                                        $cargoDate = $legacyOrder?->cargo_delivery_date ?: ($package ? $this->packageShipmentAt($package, $order->marketplace_alias) : null);
-                                        $cargoDateLabel = $this->shipmentDateShortLabel($order->marketplace_alias, $package?->package_status, $package?->cargo_tracking_number, $package?->delivered_at, $package?->raw_payload);
+                                        $cargoCompany = $this->displayCargoCompany(
+                                            $package?->cargo_company,
+                                            $package?->shipment_provider,
+                                            $legacyOrder?->cargo_company,
+                                        );
+                                        $trackingNumber = $package?->cargo_tracking_number ?: ($legacyOrder?->tracking_number ?: null);
+                                        $cargoTrackingUrl = $this->trackingUrl($cargoCompany, $trackingNumber);
+                                        $cargoDate = $this->packageShipmentAt($package, $order->marketplace_alias) ?: ($legacyOrder?->cargo_delivery_date ?: null);
+                                        $cargoDueDate = $this->displayCargoDueDate($order);
+                                        $labelPrintSummary = $this->orderLabelPrintSummary($order);
                                         $financialAlert = $legacyHasFinancial ? $legacyOrder->financial_alert : ['type' => null, 'label' => null, 'color' => null];
                                         $estimatedCogs = $legacyOrder
                                             ? (float) (($legacyOrder->estimated_cogs ?? 0) + ($legacyOrder->estimated_packaging ?? 0))
@@ -1414,18 +1515,24 @@
                                         $profitFormula = ($legacyHasFinancial || (int) ($order->financial_event_count ?? 0) > 0)
                                             ? 'Kâr = Net hakediş - (maliyet + ambalaj) - kargo maliyeti'
                                             : 'Kâr = Ciro - komisyon / kesinti - (maliyet + ambalaj) - kargo maliyeti';
-                                        $marginPercent = (float) ($order->margin_percent_metric ?? 0);
+                                        $costProfitPercent = $estimatedCogs > 0
+                                            ? \App\Services\ProfitabilityMetric::profitPercent($profitValue, $estimatedCogs)
+                                            : null;
                                         $latestActionRun = $order->actionRuns->sortByDesc('created_at')->first();
                                         $orderColorLabel = $orderLabelDefinitions[$order->color_label_key] ?? null;
+                                        $statusKey = (string) ($order->display_status_key ?? '');
+                                        $statusLabel = (string) ($order->display_status_label ?? $this->humanStatus($order->order_status, $order->marketplace_alias, $trackingNumber, $order->delivered_at));
+                                        $statusTone = (string) ($order->display_status_tone ?? $this->statusTone($order->order_status, $order->marketplace_alias, $trackingNumber, $order->delivered_at));
+                                        $isCancelled = in_array($statusKey, ['cancelled', 'returned', 'rejected'], true);
                                     @endphp
 
-                                    <tr class="transition hover:bg-slate-50/80">
+                                    <tr class="transition hover:bg-slate-50/80 {{ $isCancelled ? 'opacity-50 grayscale hover:opacity-75' : '' }}">
                                         <td class="px-2.5 py-3.5 align-top">
                                             <div class="flex items-center gap-2">
                                                 <input type="checkbox"
                                                        wire:model.live="selectedOrderIds"
                                                        value="{{ $order->id }}"
-                                                       class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                                       class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-slate-200">
                                                 <button type="button"
                                                         class="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
                                                         @click="expanded.includes({{ $order->id }}) ? expanded = expanded.filter(i => i !== {{ $order->id }}) : expanded.push({{ $order->id }})">
@@ -1441,7 +1548,7 @@
                                         @if(in_array('siparis', $visibleColumns, true))
                                             <td class="px-2.5 py-3.5 align-top">
                                                 <div class="font-semibold text-slate-900">{{ $order->order_number }}</div>
-                                                <div class="mt-1 text-xs text-slate-500">{{ $order->ordered_at?->format('d.m.Y H:i') ?: '-' }}</div>
+                                                <div class="mt-1 text-xs text-slate-500">{{ $this->displayOrderDate($order)?->format('d.m.Y H:i') ?: '-' }}</div>
                                                 @if($orderColorLabel)
                                                     <div class="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold"
                                                          style="background-color: {{ $orderColorLabel['bg_color'] }}; border-color: {{ $orderColorLabel['border_color'] }}; color: {{ $orderColorLabel['color'] }};">
@@ -1483,11 +1590,43 @@
                                         @if(in_array('lojistik', $visibleColumns, true))
                                             <td class="px-2.5 py-3.5 align-top">
                                                 <div class="font-medium text-slate-900">{{ $cargoCompany ?: 'Kargo bilgisi bekleniyor' }}</div>
-                                                <div class="mt-1 text-xs text-slate-500 truncate">{{ $trackingNumber ?: 'Takip no yok' }}</div>
+                                                <div class="mt-1 text-xs text-slate-500 truncate">
+                                                    @if($trackingNumber)
+                                                        @if($cargoTrackingUrl)
+                                                            <a href="{{ $cargoTrackingUrl }}"
+                                                               target="_blank"
+                                                               rel="noopener noreferrer"
+                                                               class="font-medium text-sky-600 transition hover:text-sky-700 hover:underline">
+                                                                {{ $trackingNumber }}
+                                                            </a>
+                                                        @else
+                                                            {{ $trackingNumber }}
+                                                        @endif
+                                                    @else
+                                                        Takip no yok
+                                                    @endif
+                                                </div>
                                                 @if($cargoDate)
-                                                    <div class="mt-1 text-[11px] text-slate-400">{{ $cargoDateLabel }}: {{ $cargoDate->format('d/m H:i') }}</div>
-                                                @else
-                                                    <div class="mt-1 text-[11px] text-slate-400">{{ $matchedLines }}/{{ $itemLines }} satır eşleşti</div>
+                                                    <div class="mt-1 text-[11px] text-slate-400">
+                                                        {{ $this->shipmentDateShortLabel($order->marketplace_alias, $package?->package_status, $trackingNumber, $package?->delivered_at, $package?->raw_payload) }}:
+                                                        {{ $cargoDate->format('d/m H:i') }}
+                                                    </div>
+                                                @endif
+                                                @if($cargoDueDate)
+                                                    <div class="mt-1 text-[11px] text-slate-400">
+                                                        Son teslim: {{ $cargoDueDate->format('d/m H:i') }}
+                                                    </div>
+                                                @endif
+                                                @if($labelPrintSummary['has_printed'])
+                                                    <div class="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-[6px] border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+                                                        <svg class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                        <span class="truncate">{{ $labelPrintSummary['badge_label'] }}</span>
+                                                    </div>
+                                                    @if($labelPrintSummary['meta_label'])
+                                                        <div class="mt-1 text-[10px] text-emerald-700/80">{{ $labelPrintSummary['meta_label'] }}</div>
+                                                    @endif
                                                 @endif
                                             </td>
                                         @endif
@@ -1495,7 +1634,128 @@
                                         @if(in_array('ciro', $visibleColumns, true))
                                             <td class="order-metric-cell px-2.5 py-3.5 align-top text-right">
                                                 <div class="font-semibold text-slate-900">{{ $formatMoney($grossRevenue) }}</div>
-                                                <div class="mt-1 text-xs text-indigo-600">{{ $formatCount($lineCount) }} Ürün</div>
+                                                <div
+                                                    x-data="{
+                                                        open: false,
+                                                        touchMode: window.matchMedia('(hover: none)').matches,
+                                                        show() {
+                                                            if (!this.touchMode) this.open = true;
+                                                        },
+                                                        hide() {
+                                                            if (!this.touchMode) this.open = false;
+                                                        },
+                                                        toggle() {
+                                                            this.open = !this.open;
+                                                        },
+                                                    }"
+                                                    class="relative mt-1 inline-flex items-center justify-end"
+                                                    @mouseenter="show()"
+                                                    @mouseleave="hide()"
+                                                >
+                                                    <button type="button"
+                                                            class="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 transition hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                                                            @click.prevent.stop="toggle()"
+                                                            @focus="open = true"
+                                                            @keydown.escape.stop="open = false">
+                                                        <span>{{ $formatCount($lineCount) }} Ürün</span>
+                                                        <svg class="h-3 w-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                                        </svg>
+                                                    </button>
+
+                                                    <div x-cloak
+                                                         x-show="open"
+                                                         x-transition.opacity.scale.origin.top.right
+                                                         @click.outside="open = false"
+                                                         class="absolute right-0 top-full z-[90] mt-2 w-[26rem] max-w-[min(26rem,calc(100vw-2rem))]">
+                                                        <div class="rounded-[10px] border border-slate-200 bg-white p-3 text-left shadow-xl shadow-slate-900/10">
+                                                            <div class="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                                                                <div class="min-w-0">
+                                                                    <p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Hızlı ürün özeti</p>
+                                                                    <p class="mt-1 text-sm font-semibold text-slate-900">Detay açmadan satırları hızlıca inceleyin</p>
+                                                                    <p class="mt-1 text-[11px] leading-5 {{ $matchSummaryClass }}">
+                                                                        {{ $matchedLines === $itemLines && $itemLines > 0
+                                                                            ? 'Tüm satırlar master ürüne bağlı.'
+                                                                            : ($itemLines > 0
+                                                                                ? ($itemLines - $matchedLines) . ' satır kontrol bekliyor.'
+                                                                                : 'Satır verisi gelmedi.') }}
+                                                                    </p>
+                                                                </div>
+                                                                <div class="rounded-[8px] border border-slate-200 bg-slate-50 px-2.5 py-2 text-right">
+                                                                    <p class="text-[10px] uppercase tracking-[0.16em] text-slate-400">Satır / eşleşme</p>
+                                                                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ $matchedLines }}/{{ $itemLines }}</p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="mt-3 space-y-2">
+                                                                @forelse($previewItems as $previewItem)
+                                                                    @php
+                                                                        $previewMatched = (bool) $previewItem->is_matched;
+                                                                        $previewBillable = (float) ($previewItem->billable_amount ?: $previewItem->gross_amount);
+                                                                        $previewMasterName = $previewItem->product?->product_name ?: $previewItem->product?->stock_code;
+                                                                        $previewPublicUrl = $this->marketplacePublicProductUrlForOrderItem($previewItem, $order);
+                                                                    @endphp
+                                                                    <div class="rounded-[8px] border px-3 py-2.5 {{ $previewMatched ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/70' }}">
+                                                                        <div class="flex items-start justify-between gap-3">
+                                                                            <div class="min-w-0">
+                                                                                @if($previewPublicUrl)
+                                                                                    <a href="{{ $previewPublicUrl }}"
+                                                                                       target="_blank"
+                                                                                       rel="noopener noreferrer"
+                                                                                       class="block truncate text-sm font-medium text-slate-900 underline-offset-2 transition hover:text-slate-700 hover:underline"
+                                                                                       title="Pazaryerinde aç">
+                                                                                        {{ \Illuminate\Support\Str::limit($previewItem->product_name ?: 'Ürün adı yok', 54) }}
+                                                                                    </a>
+                                                                                @else
+                                                                                    <p class="truncate text-sm font-medium text-slate-900">
+                                                                                        {{ \Illuminate\Support\Str::limit($previewItem->product_name ?: 'Ürün adı yok', 54) }}
+                                                                                    </p>
+                                                                                @endif
+                                                                                <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                                                                    <span>{{ (int) ($previewItem->quantity ?? 0) }} adet</span>
+                                                                                    <span class="text-slate-300">•</span>
+                                                                                    <span class="font-mono">{{ $previewItem->stock_code ?: ($previewItem->barcode ?: '-') }}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div class="shrink-0 text-right">
+                                                                                <p class="text-sm font-semibold text-slate-900">{{ $formatMoney($previewBillable) }}</p>
+                                                                                <span class="mt-1 inline-flex rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold {{ $previewMatched ? 'border-emerald-200 bg-white text-emerald-700' : 'border-amber-200 bg-white text-amber-700' }}">
+                                                                                    {{ $previewMatched ? 'Eşleşti' : 'Kontrol gerekli' }}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div class="mt-2 rounded-[6px] border border-white/80 bg-white/80 px-2.5 py-2 text-[11px] leading-5 text-slate-600">
+                                                                            @if($previewMatched)
+                                                                                <p class="font-medium text-emerald-700">Master ürün bağlı</p>
+                                                                                <p class="mt-0.5">
+                                                                                    {{ $previewMasterName ?: 'İç ürün kartı bağlı' }}
+                                                                                    @if(filled($previewItem->match_source))
+                                                                                        · {{ ucfirst((string) $previewItem->match_source) }}
+                                                                                    @endif
+                                                                                </p>
+                                                                            @else
+                                                                                <p class="font-medium text-amber-700">Master ürün bağlantısı bekleniyor</p>
+                                                                                <p class="mt-0.5">Bu satır eşleşmeden maliyet ve kârlılık hesabı sınırlı kalır.</p>
+                                                                            @endif
+                                                                        </div>
+                                                                    </div>
+                                                                @empty
+                                                                    <div class="rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-3 text-[11px] leading-5 text-slate-500">
+                                                                        Satır detayları henüz yüklenmedi. Siparişi açınca tam içerik görünecek.
+                                                                    </div>
+                                                                @endforelse
+                                                            </div>
+
+                                                            @if($remainingPreviewItemCount > 0)
+                                                                <div class="mt-3 rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                                                                    +{{ $remainingPreviewItemCount }} satır daha var. Tam liste için sipariş detayını açabilirsiniz.
+                                                                </div>
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="mt-1 text-[11px] {{ $matchSummaryClass }}">{{ $matchSummaryLabel }}</div>
                                                 @if($discountTotal > 0)
                                                     <div class="mt-1 text-[11px] text-rose-500">İnd. {{ $formatMoney($discountTotal) }}</div>
                                                 @endif
@@ -1519,8 +1779,8 @@
                                                             $formatMoney($netReceivable) . ' = ' . collect($receivableRows)->pluck('value')->join(' ')
                                                         ]"
                                                         :note="($legacyHasFinancial || (int) ($order->financial_event_count ?? 0) > 0)
-                                                            ? 'Kâr değeri ayrı kâr oranı kolonunda gösterilir.'
-                                                            : 'Finans olayları tamamlandığında hakediş dökümü netleşir. Kâr değeri ayrı kâr oranı kolonunda gösterilir.'"
+                                                            ? 'Kârlılık değeri ayrı kârlılık kolonunda gösterilir.'
+                                                            : 'Finans olayları tamamlandığında hakediş dökümü netleşir. Kârlılık değeri ayrı kârlılık kolonunda gösterilir.'"
                                                     >
                                                         <div class="text-xs text-slate-500">Hakediş</div>
                                                         <div class="font-semibold text-slate-900">{{ $formatMoney($netReceivable) }}</div>
@@ -1543,34 +1803,40 @@
                                         @if(in_array('kar', $visibleColumns, true))
                                             <td class="order-metric-cell px-2.5 py-3.5 align-top text-right">
                                                 <x-zolm.metric-breakdown
-                                                    title="Kâr / oran hesabı"
-                                                    subtitle="Tablodaki oran, sipariş cirosuna göre kâr yüzdesini gösterir."
+                                                    title="Kârlılık hesabı"
+                                                    subtitle="Kârlılık, hakedişten kargo etkisi çıktıktan sonra kalan net kârın ürün maliyetine oranıdır."
                                                     :rows="$profitRows"
-                                                    result-label="Kâr"
+                                                    result-label="Net kâr"
                                                     :result-value="$formatSignedMoney($profitValue)"
                                                     :result-tone="$profitValue >= 0 ? 'success' : 'danger'"
-                                                    :formulas="[
+                                                    :formulas="array_values(array_filter([
                                                         $profitFormula,
-                                                        'Oran = Kâr / Ciro × 100',
-                                                        '%' . number_format($marginPercent, 1, ',', '.') . ' = ' . $formatSignedMoney($profitValue) . ' / ' . $formatMoney($grossRevenue) . ' × 100'
-                                                    ]"
-                                                    note="Siparişteki yüzde alanı ciro bazlı kârlılık oranıdır; bu yüzden kâr oranı başlığı altında görünse de hesap ciroyu temel alır."
+                                                        $costProfitPercent !== null ? 'Kârlılık = Kâr / Maliyet' : null,
+                                                        $costProfitPercent !== null ? $formatProfitabilityPercent($costProfitPercent) . ' = ' . $formatMoney($profitValue) . ' / ' . $formatMoney($estimatedCogs) : null,
+                                                    ]))"
+                                                    note="Örnek: 218,09 / 522,09 = %41,8. Bu değer ciro marjı değil, maliyete göre net kâr oranıdır."
                                                 >
                                                     <div class="text-[10px] text-slate-500">Maliyet {{ $formatMoney($estimatedCogs) }}</div>
                                                     <div class="mt-1 text-[10px] text-rose-500">Kom. {{ $formatMoney($commissionImpact) }}</div>
                                                     @if($estimatedCargo > 0)
                                                         <div class="mt-1 text-[10px] text-amber-600">Kargo {{ $formatMoney($estimatedCargo) }}</div>
                                                     @endif
-                                                    <div class="mt-2 font-semibold {{ $profitValue >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $formatSignedMoney($profitValue) }}</div>
-                                                    <div class="mt-1 text-xs text-slate-500">%{{ number_format($marginPercent, 1, ',', '.') }}</div>
+                                                    @if($costProfitPercent !== null)
+                                                        <div class="mt-2 font-semibold {{ $profitValue >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">
+                                                            {{ $formatProfitabilityPercent($costProfitPercent) }}
+                                                        </div>
+                                                    @else
+                                                        <div class="mt-2 text-xs font-medium text-amber-600">Maliyet yok</div>
+                                                    @endif
+                                                    <div class="mt-1 text-xs {{ $profitValue >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $formatSignedMoney($profitValue) }}</div>
                                                 </x-zolm.metric-breakdown>
                                             </td>
                                         @endif
 
                                         @if(in_array('durum', $visibleColumns, true))
                                             <td class="px-2.5 py-3.5 align-top">
-                                                <x-zolm.status-badge size="xs" :tone="$this->statusTone($order->order_status, $order->marketplace_alias, $package?->cargo_tracking_number, $package?->delivered_at)">
-                                                    {{ $this->humanStatus($order->order_status, $order->marketplace_alias, $package?->cargo_tracking_number, $package?->delivered_at) }}
+                                                <x-zolm.status-badge size="xs" :tone="$statusTone">
+                                                    {{ $statusLabel }}
                                                 </x-zolm.status-badge>
                                                 @if($orderColorLabel && !in_array('siparis', $visibleColumns, true))
                                                     <div class="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold"

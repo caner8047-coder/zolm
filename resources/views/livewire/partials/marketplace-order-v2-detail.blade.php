@@ -5,25 +5,31 @@
     $legacyNetProfit = $legacyHasFinancial ? (float) $legacyOperationalOrder->total_net_profit : null;
     $profitState = $order->profit_state_metric ?? ($snapshot?->profit_state ?: 'estimated');
     $profitValue = (float) ($order->profit_value_metric ?? ($profitState === 'confirmed' ? $snapshot?->confirmed_profit : $snapshot?->estimated_profit));
+    $productCostForProfitability = \App\Services\ProfitabilityMetric::productCost(
+        (float) ($snapshot?->cogs_cost ?? 0),
+        (float) ($snapshot?->packaging_cost ?? 0),
+    );
+    $profitabilityPercent = \App\Services\ProfitabilityMetric::profitPercent($profitValue, $productCostForProfitability);
     $grossRevenue = (float) ($order->gross_revenue_metric ?? $snapshot?->gross_revenue);
     $packages = $order->packages ?? collect();
     $items = $order->items ?? collect();
     $financialEvents = $order->financialEvents ?? collect();
-    $actionRuns = ($order->actionRuns ?? collect())->sortByDesc('created_at')->values();
     $matchIssues = max(0, (int) ($order->item_lines_count ?? 0) - (int) ($order->matched_lines_count ?? 0));
     $marketplaceKey = $order->store?->marketplace ?? $order->marketplace_alias ?? null;
     $formatMoney = fn ($value) => '₺' . number_format((float) $value, 2, ',', '.');
-    $supportsPackagePicking = $this->orderSupportsCapability($order, 'package_picking');
-    $supportsPackageInvoiced = $this->orderSupportsCapability($order, 'package_invoiced');
-    $supportsCommonLabelCreate = $this->orderSupportsCapability($order, 'package_common_label_create');
-    $supportsCommonLabelGet = $this->orderSupportsCapability($order, 'package_common_label_get');
-    $supportsInvoiceLink = $this->orderSupportsCapability($order, 'package_invoice_link');
-    $supportsAnyPackageOperation = $supportsPackagePicking || $supportsPackageInvoiced || $supportsCommonLabelCreate || $supportsCommonLabelGet || $supportsInvoiceLink;
-    $supportsOrderRefresh = $this->orderSupportsAction($order, 'refresh_order');
-    $supportsCargoRefresh = $this->orderSupportsAction($order, 'refresh_cargo');
-    $supportsFinanceRefresh = $this->orderSupportsAction($order, 'refresh_finance');
-    $orderActionSupportNotice = $this->orderActionSupportNotice($order);
-    $packageActionSupportNotice = $this->packageActionSupportNotice($order->store?->marketplace);
+    $formatDate = function ($date): string {
+        if (blank($date)) {
+            return '-';
+        }
+
+        try {
+            return $date instanceof \Carbon\CarbonInterface
+                ? $date->format('d.m.Y H:i')
+                : \Carbon\Carbon::parse((string) $date)->format('d.m.Y H:i');
+        } catch (\Throwable) {
+            return '-';
+        }
+    };
 @endphp
 
 <div class="space-y-3 sm:space-y-4">
@@ -52,112 +58,165 @@
         </div>
     @endif
 
-    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
-        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-            <div class="flex-1 min-w-0">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Operasyon Aksiyonları</p>
-                <h3 class="mt-2 text-lg font-semibold text-slate-900">Sipariş bazlı kontrollü işlemler</h3>
-                <p class="mt-2 text-sm text-slate-500 line-clamp-2">
-                    Bu katman güvenli yenileme, kâr yeniden hesaplama ve kanalın desteklediği paket operasyonları için kuyruklu çalışır. Desteklenmeyen operasyonlar bu ekranda gizlenir.
-                </p>
+    <div class="rounded-[8px] border border-slate-200 bg-white p-3 sm:p-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">{{ $legacyOperationalOrder ? 'Kanal Satırları ve Eşleşme' : 'Ürün Satırları' }}</p>
+                <h3 class="mt-2 text-lg font-semibold text-slate-900">{{ $items->count() }} satır</h3>
             </div>
-
-            <div class="text-sm text-slate-500">
-                Son işlem: {{ $actionRuns->first()?->created_at?->format('d.m.Y H:i') ?: 'Henüz yok' }}
+            <div class="text-sm text-slate-500 sm:text-right">
+                Toplam indirim: <span class="font-semibold text-slate-900">{{ $formatMoney($order->total_discount_amount ?? 0) }}</span>
             </div>
         </div>
 
-        @if(config('marketplace.features.order_actions_enabled', true))
-            <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                @if($supportsOrderRefresh)
-                    <button type="button"
-                            wire:click="runOrderAction({{ $order->id }}, 'refresh_order')"
-                            wire:loading.attr="disabled"
-                            wire:target="runOrderAction"
-                            class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                        Siparişi yenile
-                    </button>
-                @endif
-                @if($supportsCargoRefresh)
-                    <button type="button"
-                            wire:click="runOrderAction({{ $order->id }}, 'refresh_cargo')"
-                            wire:loading.attr="disabled"
-                            wire:target="runOrderAction"
-                            class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                        Kargoyu yenile
-                    </button>
-                @endif
-                @if($supportsFinanceRefresh)
-                    <button type="button"
-                            wire:click="runOrderAction({{ $order->id }}, 'refresh_finance')"
-                            wire:loading.attr="disabled"
-                            wire:target="runOrderAction"
-                            class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                        Finansı yenile
-                    </button>
-                @endif
-                <button type="button"
-                        wire:click="runOrderAction({{ $order->id }}, 'recalculate_profit')"
-                        wire:loading.attr="disabled"
-                        wire:target="runOrderAction"
-                        class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 sm:py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60">
-                    Kârı hesapla
-                </button>
-            </div>
-
-            @if($orderActionSupportNotice)
-                <div class="mt-3 rounded-[6px] border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                    {{ $orderActionSupportNotice }}
-                </div>
-            @endif
-
-            <div class="mt-4 rounded-[6px] border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500" wire:loading wire:target="runOrderAction">
-                Sipariş aksiyonu kuyruğa alınıyor...
-            </div>
-        @endif
-
-        @if($actionRuns->isNotEmpty())
-            <div class="mt-4 space-y-2">
-                @foreach($actionRuns->take(6) as $actionRun)
-                    <div class="flex flex-col gap-3 rounded-[6px] border border-slate-200 bg-slate-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="mt-4 space-y-3 md:hidden">
+            @foreach($items as $item)
+                @php
+                    $listingPublicUrl = $this->marketplacePublicProductUrlForOrderItem($item, $order);
+                    $productManagerUrl = $this->productManagerUrlForOrderItem($item);
+                    $commissionRate = $this->effectiveCommissionRateForOrderItem($item);
+                @endphp
+                <article class="rounded-[6px] border border-slate-200 bg-slate-50/70 p-3">
+                    <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <p class="font-medium text-slate-900">{{ $this->orderActionLabel($actionRun->action_type) }}</p>
-                                <x-zolm.status-badge :tone="$this->orderActionStatusTone($actionRun->status)">
-                                    {{ $this->orderActionStatusLabel($actionRun->status) }}
-                                </x-zolm.status-badge>
-                            </div>
+                            @if($listingPublicUrl)
+                                <a href="{{ $listingPublicUrl }}"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   class="inline-flex max-w-full items-center gap-1 font-medium text-slate-900 underline-offset-2 transition hover:text-slate-700 hover:underline"
+                                   title="Pazaryerinde aç">
+                                    <span class="truncate">{{ $item->product_name ?: 'Ürün adı yok' }}</span>
+                                    <span class="shrink-0 text-xs text-slate-400">↗</span>
+                                </a>
+                            @else
+                                <p class="font-medium text-slate-900">{{ $item->product_name ?: 'Ürün adı yok' }}</p>
+                            @endif
                             <p class="mt-1 text-xs text-slate-500">
-                                {{ $actionRun->created_at?->format('d.m.Y H:i') ?: '-' }}
-                                @if($actionRun->triggeredBy?->name)
-                                    · {{ $actionRun->triggeredBy->name }}
+                                @if($productManagerUrl && $item->stock_code)
+                                    <a href="{{ $productManagerUrl }}"
+                                       class="font-mono font-medium text-slate-700 underline-offset-2 transition hover:text-slate-950 hover:underline"
+                                       title="ZOLM ürün kartını aç">
+                                        {{ $item->stock_code }}
+                                    </a>
+                                @else
+                                    <span>{{ $item->stock_code ?: '-' }}</span>
                                 @endif
-                                · Deneme {{ max(1, (int) $actionRun->attempt_count) }}
+                                <span> · {{ $item->barcode ?: '-' }}</span>
                             </p>
-                            @if($actionRun->error_message)
-                                <p class="mt-1 text-xs text-rose-600">{{ $actionRun->error_message }}</p>
-                            @endif
                         </div>
-                        <div class="text-right text-xs text-slate-500">
-                            @if($actionRun->package?->package_number)
-                                <p>Paket {{ $actionRun->package->package_number }}</p>
-                            @endif
-                            @if($this->actionResponseSummary($actionRun))
-                                <p>{{ $this->actionResponseSummary($actionRun) }}</p>
-                            @endif
-                            <p>{{ $actionRun->finished_at?->format('d.m.Y H:i') ?: 'Tamamlanma bekleniyor' }}</p>
-                            @if(config('marketplace.features.order_action_retry_enabled', true) && $this->actionCanRetry($actionRun->status))
-                                <button type="button"
-                                        wire:click="retryActionRun({{ $actionRun->id }})"
-                                        class="mt-2 inline-flex min-h-[36px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
-                                    Tekrar dene
-                                </button>
-                            @endif
+                        <div class="text-right">
+                            <p class="font-semibold text-slate-900">{{ $formatMoney($item->billable_amount ?: $item->gross_amount) }}</p>
+                            <p class="mt-1 text-xs text-slate-500">x{{ (int) $item->quantity }}</p>
                         </div>
                     </div>
-                @endforeach
+                    <div class="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                        <div class="rounded-[6px] border border-slate-200 bg-white px-3 py-2">
+                            <p class="text-slate-500">Komisyon</p>
+                            <p class="mt-1 font-medium text-slate-900">%{{ number_format($commissionRate, 1, ',', '.') }}</p>
+                        </div>
+                        <div class="rounded-[6px] border border-slate-200 bg-white px-3 py-2">
+                            <p class="text-slate-500">Eşleşme</p>
+                            <p class="mt-1 font-medium {{ $item->is_matched ? 'text-emerald-600' : 'text-amber-600' }}">{{ $item->is_matched ? 'Tamam' : 'Kontrol' }}</p>
+                        </div>
+                    </div>
+                </article>
+            @endforeach
+        </div>
+
+        <div class="mt-4 hidden overflow-x-auto rounded-[6px] border border-slate-200 pb-2 [scrollbar-gutter:stable] md:block">
+            <div class="mx-3 mt-3 flex items-center justify-between gap-3 rounded-[6px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-500 xl:hidden">
+                <span>Satır tablosu sığmazsa sağa kaydırabilirsiniz.</span>
+                <span class="font-medium text-slate-600">{{ $items->count() }} satır</span>
             </div>
-        @endif
+            <table class="min-w-[920px] w-full divide-y divide-slate-200">
+                <thead class="bg-slate-50 text-slate-500">
+                    <tr>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]">Ürün</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]">Kimlik</th>
+                        <th class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em]">Adet</th>
+                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-[0.16em]">Brüt</th>
+                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-[0.16em]">İndirim</th>
+                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-[0.16em]">Faturalanacak</th>
+                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-[0.16em]">Komisyon</th>
+                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-[0.16em]">Maliyet</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]">Durum</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200 bg-white text-sm text-slate-700">
+                    @foreach($items as $item)
+                        @php
+                            $listingPublicUrl = $this->marketplacePublicProductUrlForOrderItem($item, $order);
+                            $productManagerUrl = $this->productManagerUrlForOrderItem($item);
+                            $commissionRate = $this->effectiveCommissionRateForOrderItem($item);
+                            $commissionBaseAmount = (float) ($item->billable_amount ?: $item->gross_amount ?: ((float) $item->unit_price * (int) $item->quantity));
+                            $composition = $item->product
+                                ? app(\App\Services\ProductCompositionResolver::class)->resolve($item->product, max(1, (int) $item->quantity))
+                                : null;
+                            $lineCost = $composition
+                                ? ((float) $composition['cogs_cost'] + (float) $composition['packaging_cost'] + (float) $composition['own_cargo_cost'])
+                                : 0;
+                        @endphp
+                        <tr>
+                            <td class="px-3 py-3">
+                                @if($listingPublicUrl)
+                                    <a href="{{ $listingPublicUrl }}"
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       class="inline-flex max-w-full items-center gap-1 font-medium text-slate-900 underline-offset-2 transition hover:text-slate-700 hover:underline"
+                                       title="Pazaryerinde aç">
+                                        <span class="truncate">{{ $item->product_name ?: 'Ürün adı yok' }}</span>
+                                        <span class="shrink-0 text-xs text-slate-400">↗</span>
+                                    </a>
+                                @else
+                                    <div class="font-medium text-slate-900">{{ $item->product_name ?: 'Ürün adı yok' }}</div>
+                                @endif
+                                @if($item->product?->brand)
+                                    <div class="mt-1 text-xs text-slate-500">{{ $item->product->brand }}</div>
+                                @endif
+                            </td>
+                            <td class="px-3 py-3">
+                                <div class="font-mono text-xs text-slate-900">
+                                    @if($productManagerUrl && $item->stock_code)
+                                        <a href="{{ $productManagerUrl }}"
+                                           class="underline-offset-2 transition hover:text-slate-700 hover:underline"
+                                           title="ZOLM ürün kartını aç">
+                                            {{ $item->stock_code }}
+                                        </a>
+                                    @else
+                                        {{ $item->stock_code ?: '-' }}
+                                    @endif
+                                </div>
+                                <div class="mt-1 text-[11px] text-slate-500">{{ $item->barcode ?: '-' }}</div>
+                            </td>
+                            <td class="px-3 py-3 text-center">{{ (int) $item->quantity }}</td>
+                            <td class="px-3 py-3 text-right">{{ $formatMoney($item->gross_amount) }}</td>
+                            <td class="px-3 py-3 text-right text-rose-600">
+                                {{ $formatMoney(($item->discount_amount ?? 0) + ($item->marketplace_discount_amount ?? 0)) }}
+                            </td>
+                            <td class="px-3 py-3 text-right font-medium text-slate-900">{{ $formatMoney($item->billable_amount ?: $item->gross_amount) }}</td>
+                            <td class="px-3 py-3 text-right">
+                                <div class="font-medium text-slate-900">%{{ number_format($commissionRate, 1, ',', '.') }}</div>
+                                <div class="mt-1 text-[11px] text-slate-500">{{ $formatMoney(($commissionBaseAmount * $commissionRate) / 100) }}</div>
+                            </td>
+                            <td class="px-3 py-3 text-right">
+                                <div class="font-medium text-slate-900">{{ $formatMoney($lineCost) }}</div>
+                                <div class="mt-1 text-[11px] text-slate-500">
+                                    {{ $composition && $composition['is_set'] ? 'Set içeriğinden' : ($item->product ? 'Master ürün bağlı' : 'Bağlantı yok') }}
+                                </div>
+                            </td>
+                            <td class="px-3 py-3">
+                                <div class="flex flex-col gap-2">
+                                    <x-zolm.status-badge :tone="$item->is_matched ? 'success' : 'warning'">
+                                        {{ $item->is_matched ? 'Eşleşti' : 'Kontrol' }}
+                                    </x-zolm.status-badge>
+                                    <span class="text-xs text-slate-500">{{ $this->humanStatus($item->line_status) }}</span>
+                                </div>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:gap-4">
@@ -222,194 +281,147 @@
                         <dd class="text-right font-medium text-slate-900">{{ $order->shipment_city ?: '-' }}{{ $order->shipment_district ? ', ' . $order->shipment_district : '' }}</dd>
                     </div>
                 </dl>
+                @if($order->customer_note)
+                    <div class="mt-4 rounded-[6px] border border-slate-200 bg-slate-50/70 px-3 py-3">
+                        <p class="text-[10px] uppercase tracking-[0.16em] text-slate-500">Müşteri notu</p>
+                        <p class="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{{ $order->customer_note }}</p>
+                    </div>
+                @endif
             </div>
         @endunless
 
-        <div class="rounded-[8px] border border-slate-200 bg-white p-4">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kargo ve paketler</p>
+        <div class="rounded-[8px] border border-slate-200 bg-white p-3 sm:p-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kargo ve paketler</p>
+                    <p class="mt-2 text-sm font-medium text-slate-900">{{ $packages->count() }} paket</p>
+                </div>
+                <div class="flex flex-col gap-2 sm:flex-row">
+                    @if(config('marketplace.features.order_actions_enabled', true))
+                        <button type="button"
+                                wire:click="runOrderAction({{ $order->id }}, 'refresh_cargo')"
+                                wire:loading.attr="disabled"
+                                wire:target="runOrderAction"
+                                class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 sm:w-auto sm:py-2">
+                            Kargo bilgisini yenile
+                        </button>
+                    @endif
+                    <button type="button"
+                            wire:click="openEditOrder({{ $order->id }})"
+                            wire:loading.attr="disabled"
+                            wire:target="openEditOrder({{ $order->id }})"
+                            class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60 sm:w-auto sm:py-2">
+                        Manuel düzenle
+                    </button>
+                </div>
+            </div>
+
             @if($packages->isNotEmpty())
                 <div class="mt-3 space-y-3">
                     @foreach($packages as $package)
                         @php
+                            $cargoCompany = $this->displayCargoCompany($package->cargo_company, $package->shipment_provider);
+                            $trackingUrl = $this->trackingUrl($cargoCompany, $package->cargo_tracking_number);
+                            $packageReference = $package->package_number ?: ($package->external_package_id ?: '-');
+                            $orderDate = $this->displayOrderDate($order);
+                            $cargoDueAt = $this->displayCargoDueDate($order);
                             $shipmentAt = $this->packageShipmentAt($package, $marketplaceKey);
+                            $latestPackageActionRun = ($order->actionRuns ?? collect())
+                                ->where('channel_order_package_id', $package->id)
+                                ->sortByDesc('created_at')
+                                ->first();
                         @endphp
-                        <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 p-3">
+
+                        <article class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
                             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div class="min-w-0">
-                                    <p class="font-medium text-slate-900">{{ $package->cargo_company ?: 'Kargo bilgisi yok' }}</p>
-                                    <p class="mt-1 text-xs text-slate-500">{{ $package->package_number ?: 'Paket no yok' }}</p>
-                                </div>
-                                <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-                                    <label class="inline-flex w-full items-center justify-between gap-2 rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 sm:w-auto sm:justify-start">
-                                        <input type="checkbox"
-                                               wire:model.live="selectedPackageIds"
-                                               value="{{ $package->id }}"
-                                               class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
-                                        <span>Toplu seç</span>
-                                    </label>
-                                    <x-zolm.status-badge :tone="$this->statusTone($package->package_status, $marketplaceKey, $package->cargo_tracking_number, $package->delivered_at)">
-                                        {{ $this->humanStatus($package->package_status, $marketplaceKey, $package->cargo_tracking_number, $package->delivered_at) }}
-                                    </x-zolm.status-badge>
-                                </div>
-                            </div>
-                            <div class="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                                <div>
-                                    <p>Takip</p>
-                                    <p class="mt-1 font-mono text-slate-900">{{ $package->cargo_tracking_number ?: '-' }}</p>
-                                </div>
-                                <div>
-                                    <p>Desi</p>
-                                    <p class="mt-1 font-medium text-slate-900">{{ $package->cargo_desi ? number_format((float) $package->cargo_desi, 2, ',', '.') : '-' }}</p>
-                                </div>
-                                <div>
-                                    <p>{{ $this->shipmentDateLabel($marketplaceKey, $package->package_status, $package->cargo_tracking_number, $package->delivered_at, $package->raw_payload) }}</p>
-                                    <p class="mt-1 font-medium text-slate-900">{{ $shipmentAt?->format('d.m.Y H:i') ?: '-' }}</p>
-                                </div>
-                                <div>
-                                    <p>Teslim</p>
-                                    <p class="mt-1 font-medium text-slate-900">{{ $package->delivered_at?->format('d.m.Y H:i') ?: '-' }}</p>
-                                </div>
-                            </div>
-
-                            <div class="mt-4 rounded-[6px] border border-slate-200 bg-white p-3">
-                                <div class="flex items-center justify-between gap-3">
-                                    <div>
-                                        <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Paket Operasyonları</p>
-                                        <p class="mt-1 text-sm text-slate-500">Bu mağaza için aktif olan kanal operasyonları bu karttan tetiklenir.</p>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <p class="font-semibold text-slate-900">{{ $cargoCompany ?: 'Kargo bilgisi yok' }}</p>
+                                        <x-zolm.status-badge :tone="$this->statusTone($package->package_status, $marketplaceKey, $package->cargo_tracking_number, $package->delivered_at)">
+                                            {{ $this->humanStatus($package->package_status, $marketplaceKey, $package->cargo_tracking_number, $package->delivered_at) }}
+                                        </x-zolm.status-badge>
                                     </div>
-                                    <div class="text-xs text-slate-400">PKT #{{ $package->id }}</div>
-                                </div>
-
-                                @if(!config('marketplace.features.package_actions_enabled', true))
-                                    <div class="mt-3 rounded-[6px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                                        Paket aksiyonları şu anda feature flag ile kapalı.
-                                    </div>
-                                @elseif($supportsAnyPackageOperation)
-                                    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                                        @if($supportsPackageInvoiced || $supportsInvoiceLink)
-                                            <div>
-                                                <label class="block text-xs font-medium text-slate-500">Fatura no</label>
-                                                <input type="text"
-                                                       wire:model.defer="packageActionForms.{{ $package->id }}.invoice_number"
-                                                       class="mt-1 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm"
-                                                       placeholder="FTR-2026-0001">
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs font-medium text-slate-500">Fatura tarihi</label>
-                                                <input type="date"
-                                                       wire:model.defer="packageActionForms.{{ $package->id }}.invoice_date"
-                                                       class="mt-1 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm">
-                                            </div>
-                                        @endif
-
-                                        @if($supportsInvoiceLink)
-                                            <div class="{{ ($supportsCommonLabelCreate || $supportsCommonLabelGet) ? '' : 'sm:col-span-2' }}">
-                                                <label class="block text-xs font-medium text-slate-500">Fatura linki</label>
-                                                <input type="url"
-                                                       wire:model.defer="packageActionForms.{{ $package->id }}.invoice_link"
-                                                       class="mt-1 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm"
-                                                       placeholder="https://.../invoice.pdf">
-                                            </div>
-                                        @endif
-
-                                        @if($supportsCommonLabelCreate || $supportsCommonLabelGet)
-                                            <div>
-                                                <label class="block text-xs font-medium text-slate-500">Label formatı</label>
-                                                <select wire:model.defer="packageActionForms.{{ $package->id }}.label_format"
-                                                        class="mt-1 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm">
-                                                    <option value="ZPL">ZPL</option>
-                                                    <option value="PDF">PDF</option>
-                                                </select>
-                                            </div>
-                                            @if($supportsCommonLabelCreate)
-                                                <div>
-                                                    <label class="block text-xs font-medium text-slate-500">Koli adedi</label>
-                                                    <input type="number"
-                                                           min="1"
-                                                           wire:model.defer="packageActionForms.{{ $package->id }}.box_quantity"
-                                                           class="mt-1 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm"
-                                                           placeholder="1">
-                                                </div>
-                                                <div>
-                                                    <label class="block text-xs font-medium text-slate-500">Desi</label>
-                                                    <input type="number"
-                                                           step="0.01"
-                                                           min="0"
-                                                           wire:model.defer="packageActionForms.{{ $package->id }}.desi"
-                                                           class="mt-1 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm"
-                                                           placeholder="{{ $package->cargo_desi ?: '0.00' }}">
-                                                </div>
-                                                <div>
-                                                    <label class="block text-xs font-medium text-slate-500">Volümetrik ağırlık</label>
-                                                    <input type="number"
-                                                           step="0.01"
-                                                           min="0"
-                                                           wire:model.defer="packageActionForms.{{ $package->id }}.volumetric_weight"
-                                                           class="mt-1 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm"
-                                                           placeholder="Opsiyonel">
-                                                </div>
+                                    <p class="mt-2 text-sm text-slate-500">
+                                        Takip no:
+                                        @if($package->cargo_tracking_number)
+                                            @if($trackingUrl)
+                                                <a href="{{ $trackingUrl }}"
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   class="font-mono font-medium text-sky-700 underline-offset-2 transition hover:text-sky-800 hover:underline">
+                                                    {{ $package->cargo_tracking_number }}
+                                                </a>
+                                            @else
+                                                <span class="font-mono font-medium text-slate-900">{{ $package->cargo_tracking_number }}</span>
                                             @endif
+                                        @else
+                                            <span class="text-slate-400">-</span>
                                         @endif
-                                    </div>
+                                    </p>
+                                </div>
 
-                                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
-                                        @if($supportsPackagePicking)
-                                            <button type="button"
-                                                    wire:click="runPackageAction({{ $package->id }}, 'package_picking')"
-                                                    wire:loading.attr="disabled"
-                                                    wire:target="runPackageAction"
-                                                    class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                                                Picking bildir
-                                            </button>
-                                        @endif
+                                <div class="text-xs leading-5 text-slate-500 sm:text-right">
+                                    <p>Kanal paket</p>
+                                    <p class="font-mono font-medium text-slate-900">{{ $packageReference }}</p>
+                                </div>
+                            </div>
 
-                                        @if($supportsPackageInvoiced)
-                                            <button type="button"
-                                                    wire:click="runPackageAction({{ $package->id }}, 'package_invoiced')"
-                                                    wire:loading.attr="disabled"
-                                                    wire:target="runPackageAction"
-                                                    class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                                                Fatura kesildi
-                                            </button>
-                                        @endif
-
-                                        @if($supportsCommonLabelCreate)
-                                            <button type="button"
-                                                    wire:click="runPackageAction({{ $package->id }}, 'package_common_label_create')"
-                                                    wire:loading.attr="disabled"
-                                                    wire:target="runPackageAction"
-                                                    class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                                                Barkod talep et
-                                            </button>
-                                        @endif
-
-                                        @if($supportsCommonLabelGet)
-                                            <button type="button"
-                                                    wire:click="runPackageAction({{ $package->id }}, 'package_common_label_get')"
-                                                    wire:loading.attr="disabled"
-                                                    wire:target="runPackageAction"
-                                                    class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                                                Barkodu getir
-                                            </button>
-                                        @endif
-
-                                        @if($supportsInvoiceLink)
-                                            <button type="button"
-                                                    wire:click="runPackageAction({{ $package->id }}, 'package_invoice_link')"
-                                                    wire:loading.attr="disabled"
-                                                    wire:target="runPackageAction"
-                                                    class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 sm:py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60">
-                                                Fatura linki gönder
-                                            </button>
-                                        @endif
-                                    </div>
-                                @else
-                                    <div class="mt-3 rounded-[6px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                                        {{ $packageActionSupportNotice }}
+                            <dl class="mt-3 divide-y divide-slate-200 border-t border-slate-200 text-sm">
+                                <div class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <dt class="text-slate-500">Sipariş tarihi</dt>
+                                    <dd class="font-medium text-slate-900">{{ $formatDate($orderDate) }}</dd>
+                                </div>
+                                <div class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <dt class="text-slate-500">Kargoya son teslim</dt>
+                                    <dd class="font-medium text-slate-900">{{ $formatDate($cargoDueAt) }}</dd>
+                                </div>
+                                <div class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <dt class="text-slate-500">{{ $this->shipmentDateLabel($marketplaceKey, $package->package_status, $package->cargo_tracking_number, $package->delivered_at, $package->raw_payload) }}</dt>
+                                    <dd class="font-medium text-slate-900">{{ $formatDate($shipmentAt) }}</dd>
+                                </div>
+                                <div class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <dt class="text-slate-500">Teslim</dt>
+                                    <dd class="font-medium text-slate-900">{{ $formatDate($package->delivered_at) }}</dd>
+                                </div>
+                                @if($package->cargo_desi)
+                                    <div class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <dt class="text-slate-500">Desi</dt>
+                                        <dd class="font-medium text-slate-900">{{ number_format((float) $package->cargo_desi, 2, ',', '.') }}</dd>
                                     </div>
                                 @endif
-                            </div>
-                        </div>
+                                <div class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <dt class="text-slate-500">Son güncelleme</dt>
+                                    <dd class="font-medium text-slate-900">{{ $formatDate($package->last_synced_at) }}</dd>
+                                </div>
+                            </dl>
+
+                            @if($latestPackageActionRun)
+                                <div class="mt-2 flex flex-col gap-2 border-t border-slate-200 pt-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+                                    <div class="min-w-0">
+                                        <span class="text-slate-500">Son işlem:</span>
+                                        <span class="font-medium text-slate-900">{{ $this->orderActionLabel($latestPackageActionRun->action_type) }}</span>
+                                        <x-zolm.status-badge :tone="$this->orderActionStatusTone($latestPackageActionRun->status)" size="xs" class="ml-1">
+                                            {{ $this->orderActionStatusLabel($latestPackageActionRun->status) }}
+                                        </x-zolm.status-badge>
+                                        @if($latestPackageActionRun->error_message)
+                                            <p class="mt-1 truncate text-rose-600" title="{{ $latestPackageActionRun->error_message }}">{{ $latestPackageActionRun->error_message }}</p>
+                                        @endif
+                                    </div>
+                                    <div class="flex items-center gap-2 text-slate-400">
+                                        <span>{{ $formatDate($latestPackageActionRun->created_at) }}</span>
+                                        @if($this->actionCanRetry($latestPackageActionRun->status))
+                                            <button type="button"
+                                                    wire:click="retryActionRun({{ $latestPackageActionRun->id }})"
+                                                    wire:loading.attr="disabled"
+                                                    wire:target="retryActionRun"
+                                                    class="inline-flex min-h-[32px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
+                                                Tekrar dene
+                                            </button>
+                                        @endif
+                                    </div>
+                                </div>
+                            @endif
+                        </article>
                     @endforeach
                 </div>
             @else
@@ -442,7 +454,7 @@
 
             @if($snapshot)
                 <div class="mt-3 rounded-[6px] border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500">
-                    Marj: <span class="font-semibold text-slate-900">%{{ number_format((float) ($snapshot->margin_percent ?? 0), 1, ',', '.') }}</span>
+                    Kârlılık: <span class="font-semibold text-slate-900">{{ $profitabilityPercent !== null ? '%' . number_format($profitabilityPercent, 1, ',', '.') : '—' }}</span>
                     · İade etkisi: <span class="font-semibold text-slate-900">{{ $formatMoney($snapshot->return_effect ?? 0) }}</span>
                 </div>
             @else
@@ -450,108 +462,6 @@
                     Bu sipariş için henüz kâr snapshot’ı üretilmemiş.
                 </div>
             @endif
-        </div>
-    </div>
-
-    <div class="rounded-[8px] border border-slate-200 bg-white p-3 sm:p-4">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">{{ $legacyOperationalOrder ? 'Kanal Satırları ve Eşleşme' : 'Ürün Satırları' }}</p>
-                <h3 class="mt-2 text-lg font-semibold text-slate-900">{{ $items->count() }} satır</h3>
-            </div>
-            <div class="text-sm text-slate-500 sm:text-right">
-                Toplam indirim: <span class="font-semibold text-slate-900">{{ $formatMoney($order->total_discount_amount ?? 0) }}</span>
-            </div>
-        </div>
-
-        <div class="mt-4 space-y-3 md:hidden">
-            @foreach($items as $item)
-                <article class="rounded-[6px] border border-slate-200 bg-slate-50/70 p-3">
-                    <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0">
-                            <p class="font-medium text-slate-900">{{ $item->product_name ?: 'Ürün adı yok' }}</p>
-                            <p class="mt-1 text-xs text-slate-500">{{ $item->stock_code ?: '-' }} · {{ $item->barcode ?: '-' }}</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="font-semibold text-slate-900">{{ $formatMoney($item->billable_amount ?: $item->gross_amount) }}</p>
-                            <p class="mt-1 text-xs text-slate-500">x{{ (int) $item->quantity }}</p>
-                        </div>
-                    </div>
-                    <div class="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-                        <div class="rounded-[6px] border border-slate-200 bg-white px-3 py-2">
-                            <p class="text-slate-500">Komisyon</p>
-                            <p class="mt-1 font-medium text-slate-900">%{{ number_format((float) ($item->commission_rate ?? 0), 1, ',', '.') }}</p>
-                        </div>
-                        <div class="rounded-[6px] border border-slate-200 bg-white px-3 py-2">
-                            <p class="text-slate-500">Eşleşme</p>
-                            <p class="mt-1 font-medium {{ $item->is_matched ? 'text-emerald-600' : 'text-amber-600' }}">{{ $item->is_matched ? 'Tamam' : 'Kontrol' }}</p>
-                        </div>
-                    </div>
-                </article>
-            @endforeach
-        </div>
-
-        <div class="mt-4 hidden overflow-x-auto rounded-[6px] border border-slate-200 pb-2 [scrollbar-gutter:stable] md:block">
-            <div class="mx-3 mt-3 flex items-center justify-between gap-3 rounded-[6px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-500 xl:hidden">
-                <span>Satır tablosu sığmazsa sağa kaydırabilirsiniz.</span>
-                <span class="font-medium text-slate-600">{{ $items->count() }} satır</span>
-            </div>
-            <table class="min-w-[920px] w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50 text-slate-500">
-                    <tr>
-                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]">Ürün</th>
-                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]">Kimlik</th>
-                        <th class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em]">Adet</th>
-                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-[0.16em]">Brüt</th>
-                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-[0.16em]">İndirim</th>
-                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-[0.16em]">Faturalanacak</th>
-                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-[0.16em]">Komisyon</th>
-                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-[0.16em]">Maliyet</th>
-                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]">Durum</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-200 bg-white text-sm text-slate-700">
-                    @foreach($items as $item)
-                        @php
-                            $itemPackage = $packages->firstWhere('id', $item->channel_order_package_id);
-                        @endphp
-                        <tr>
-                            <td class="px-3 py-3">
-                                <div class="font-medium text-slate-900">{{ $item->product_name ?: 'Ürün adı yok' }}</div>
-                                @if($item->product?->brand)
-                                    <div class="mt-1 text-xs text-slate-500">{{ $item->product->brand }}</div>
-                                @endif
-                            </td>
-                            <td class="px-3 py-3">
-                                <div class="font-mono text-xs text-slate-900">{{ $item->stock_code ?: '-' }}</div>
-                                <div class="mt-1 text-[11px] text-slate-500">{{ $item->barcode ?: '-' }}</div>
-                            </td>
-                            <td class="px-3 py-3 text-center">{{ (int) $item->quantity }}</td>
-                            <td class="px-3 py-3 text-right">{{ $formatMoney($item->gross_amount) }}</td>
-                            <td class="px-3 py-3 text-right text-rose-600">
-                                {{ $formatMoney(($item->discount_amount ?? 0) + ($item->marketplace_discount_amount ?? 0)) }}
-                            </td>
-                            <td class="px-3 py-3 text-right font-medium text-slate-900">{{ $formatMoney($item->billable_amount ?: $item->gross_amount) }}</td>
-                            <td class="px-3 py-3 text-right">
-                                <div class="font-medium text-slate-900">%{{ number_format((float) ($item->commission_rate ?? 0), 1, ',', '.') }}</div>
-                                <div class="mt-1 text-[11px] text-slate-500">{{ $formatMoney((($item->billable_amount ?: $item->gross_amount) * ((float) ($item->commission_rate ?? 0))) / 100) }}</div>
-                            </td>
-                            <td class="px-3 py-3 text-right">
-                                <div class="font-medium text-slate-900">{{ $formatMoney(((float) ($item->product?->cogs ?? 0) + (float) ($item->product?->packaging_cost ?? 0) + (float) ($item->product?->cargo_cost ?? 0)) * (int) $item->quantity) }}</div>
-                                <div class="mt-1 text-[11px] text-slate-500">{{ $item->product ? 'Master ürün bağlı' : 'Bağlantı yok' }}</div>
-                            </td>
-                            <td class="px-3 py-3">
-                                <div class="flex flex-col gap-2">
-                                    <x-zolm.status-badge :tone="$item->is_matched ? 'success' : 'warning'">
-                                        {{ $item->is_matched ? 'Eşleşti' : 'Kontrol' }}
-                                    </x-zolm.status-badge>
-                                    <span class="text-xs text-slate-500">{{ $this->humanStatus($item->line_status, $marketplaceKey, $itemPackage?->cargo_tracking_number, $itemPackage?->delivered_at) }}</span>
-                                </div>
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
         </div>
     </div>
 

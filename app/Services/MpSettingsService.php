@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Models\MpAccountingSetting;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
@@ -258,6 +259,38 @@ class MpSettingsService
         return $this->getBool('ui.help_tips_enabled', true);
     }
 
+    public function getProductProfitDefaultMarketplace(): string
+    {
+        $value = strtolower(trim((string) $this->get('marketplace_products.profit.default_marketplace', 'average')));
+
+        if (in_array($value, ['average', 'worst'], true)) {
+            return $value;
+        }
+
+        $normalized = MarketplaceProviderRegistry::normalize($value);
+
+        return array_key_exists($normalized, MarketplaceProviderRegistry::options())
+            ? $normalized
+            : 'average';
+    }
+
+    public function getProductProfitWooCommerceCommissionRate(): float
+    {
+        return round(min(100, max(0, $this->getFloat('marketplace_products.profit.woocommerce_commission_rate', 0))), 2);
+    }
+
+    public function getProductProfitKoctasCommissionRate(): float
+    {
+        $defaultRate = (float) config('marketplace.koctas.commission_rate', 15);
+
+        return round(min(100, max(0, $this->getFloat('marketplace_products.profit.koctas_commission_rate', $defaultRate))), 2);
+    }
+
+    public function recipeCostSyncEnabled(): bool
+    {
+        return $this->getBool('marketplace_products.recipe_cost_sync_enabled', false);
+    }
+
     // ─── Audit Tolerans Kısa Yolları ────────────────────────────
 
     public function getAuditTolerance(string $key): float
@@ -371,6 +404,14 @@ class MpSettingsService
             'ui' => [
                 'visible_columns' => ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay'],
                 'help_tips_enabled' => true,
+            ],
+            'marketplace_products' => [
+                'profit' => [
+                    'default_marketplace' => 'average',
+                    'woocommerce_commission_rate' => 0.00,
+                    'koctas_commission_rate' => (float) config('marketplace.koctas.commission_rate', 15),
+                ],
+                'recipe_cost_sync_enabled' => false,
             ],
             'print' => [
                 'label' => [

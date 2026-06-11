@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\LiveNotificationController;
 use App\Http\Controllers\MarketplaceOrderDocumentController;
 use App\Livewire\AIChat;
 use App\Livewire\CustomMotor;
@@ -28,6 +29,14 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->midd
 
 // Protected routes
 Route::middleware('auth')->group(function () {
+    Route::prefix('notifications')->name('notifications.')->middleware('mp.feature:notifications_enabled')->group(function () {
+        Route::get('/feed', [LiveNotificationController::class, 'feed'])->name('feed');
+        Route::get('/stream', [LiveNotificationController::class, 'stream'])->name('stream');
+        Route::post('/read-all', [LiveNotificationController::class, 'markAllRead'])->name('read-all');
+        Route::post('/preferences', [LiveNotificationController::class, 'preferences'])->name('preferences');
+        Route::post('/{notification}/read', [LiveNotificationController::class, 'markRead'])->name('read');
+    });
+
     // Dashboard (redirect to mp.orders by default)
     Route::get('/dashboard', function () {
         $preferredRoute = match (true) {
@@ -67,6 +76,16 @@ Route::middleware('auth')->group(function () {
     // AI Chat
     Route::get('/ai-chat', AIChat::class)->name('ai-chat');
 
+    Route::get('/crm', \App\Livewire\CrmWorkspace::class)
+        ->name('crm.workspace')
+        ->middleware('mp.feature:crm_enabled')
+        ->middleware('can:accessCrm');
+
+    Route::get('/crm/customer-ledger', \App\Livewire\CrmCustomerLedger::class)
+        ->name('crm.customer-ledger')
+        ->middleware('mp.feature:crm_enabled')
+        ->middleware('can:accessCrm');
+
     // ============================================
     // COMING SOON - V0.2 Features
     // ============================================
@@ -79,6 +98,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/plus-commission', \App\Livewire\PlusCommission::class)->name('campaigns.plus-commission');
         Route::get('/badge-pricing', \App\Livewire\BadgePricing::class)->name('campaigns.badge-pricing');
         Route::get('/flash-products', \App\Livewire\FlashProducts::class)->name('campaigns.flash-products');
+        Route::get('/basket-discount', \App\Livewire\BasketDiscountCampaign::class)->name('campaigns.basket-discount');
     });
     // Backwards compat alias
     Route::get('/tariff-optimizer', fn() => redirect()->route('campaigns.product-commission'))->name('tariff-optimizer');
@@ -97,12 +117,13 @@ Route::middleware('auth')->group(function () {
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
     // Legacy aliases kept for backward compatibility.
-    // These pages were removed from the current codebase; route names remain valid.
-    Route::get('/marketplace-messages', fn () => redirect()->route('mp.orders'))
+    // Sorular ekranı yeniden aktif; diğer kaldırılan sayfalar siparişlere yönlenir.
+    Route::get('/marketplace-messages', \App\Livewire\MarketplaceQuestions::class)
         ->name('marketplace-messages')
+        ->middleware('mp.feature:questions_enabled')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
-    Route::get('/marketplace-claims', fn () => redirect()->route('mp.orders'))
+    Route::get('/marketplace-claims', fn () => redirect()->route('returns.workspace', ['tab' => 'pazaryeri']))
         ->name('marketplace-claims')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
@@ -160,6 +181,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/recipe-builder/{recipeId?}', \App\Livewire\RecipeBuilder::class)
         ->name('recipe.builder')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+    Route::get('/production-planner', \App\Livewire\ProductionPlanner::class)
+        ->name('production.planner')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
     if (
         class_exists(\App\Livewire\Returns\ReturnWorkspace::class)
@@ -183,6 +207,13 @@ Route::middleware('auth')->group(function () {
             ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
             ->middleware('can:accessReturnsReview');
 
+        Route::get('/returns/marketplace-claims', function () {
+            return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'pazaryeri']));
+        })
+            ->name('returns.marketplace-claims')
+            ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+            ->middleware('can:accessReturnsReview');
+
         Route::get('/returns/whatsapp-bridge', function () {
             return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'whatsapp']));
         })
@@ -193,12 +224,23 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/api-dev', \App\Livewire\ApiDev::class)->name('api-dev');
 
-    // Route / view / config cache temizleme
-    Route::get('/fix-routes', function () {
-        \Illuminate\Support\Facades\Artisan::call('optimize:clear');
+    if (app()->environment('local')) {
+        Route::get('/fix-routes', function () {
+            \Illuminate\Support\Facades\Artisan::call('optimize:clear');
 
-        return 'Optimize cache temizlendi. <a href="/dashboard">Dashboard\'a dön</a>';
-    });
+            return 'Optimize cache temizlendi. <a href="/dashboard">Dashboard\'a dön</a>';
+        });
+
+        Route::get('/force-migrate', function () {
+            try {
+                \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+
+                return 'Migrasyon başarıyla tamamlandı: <br><pre>' . \Illuminate\Support\Facades\Artisan::output() . '</pre>';
+            } catch (\Exception $e) {
+                return 'Hata: ' . $e->getMessage();
+            }
+        });
+    }
 
     // Profile Management
     Route::get('/profiles', ProfileManager::class)

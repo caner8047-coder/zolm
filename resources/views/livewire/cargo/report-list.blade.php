@@ -49,8 +49,8 @@
 
     <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 lg:gap-6">
         <div class="min-w-0 max-w-3xl">
-            <h2 class="text-xl lg:text-2xl font-bold text-gray-900">Geçmiş karşılaştırmalar</h2>
-            <p class="mt-1 text-sm lg:text-base text-gray-700">
+            <h2 class="text-xl lg:text-2xl font-bold text-slate-900">Geçmiş karşılaştırmalar</h2>
+            <p class="mt-1 text-sm lg:text-base text-slate-700">
                 Raporları tarih ve kanal bazında daraltın; detay, indirme ve silme işlemlerini tek akıştan yönetin.
             </p>
         </div>
@@ -91,12 +91,12 @@
         <div class="space-y-4">
             <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 lg:gap-4">
                 <div>
-                    <h3 class="text-base lg:text-lg font-semibold text-gray-900">Arşiv filtreleri</h3>
-                    <p class="mt-1 text-sm text-gray-500">
+                    <h3 class="text-base lg:text-lg font-semibold text-slate-900">Arşiv filtreleri</h3>
+                    <p class="mt-1 text-sm text-slate-500">
                         Tarih, firma ve kayıt tipine göre arşivi daraltın.
                     </p>
                 </div>
-                <p class="text-sm text-gray-500">
+                <p class="text-sm text-slate-500">
                     {{ count($activeFilters) > 0 ? implode(' · ', $activeFilters) : 'Tüm firmalar, mağazalar ve kayıt tipleri gösteriliyor.' }}
                     · {{ $filterDate ? \Carbon\Carbon::parse($filterDate)->format('d.m.Y') : '-' }} - {{ $filterDateEnd ? \Carbon\Carbon::parse($filterDateEnd)->format('d.m.Y') : '-' }}
                 </p>
@@ -105,16 +105,16 @@
             <div x-data="{ showAdvanced: @js($showAdvancedFilters) }" class="space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
                     <div>
-                        <label class="block text-xs sm:text-sm font-medium text-gray-500">Başlangıç</label>
-                        <input type="date" wire:model.live="filterDate" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <label class="block text-xs sm:text-sm font-medium text-slate-500">Başlangıç</label>
+                        <input type="date" wire:model.live="filterDate" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                     </div>
                     <div>
-                        <label class="block text-xs sm:text-sm font-medium text-gray-500">Bitiş</label>
-                        <input type="date" wire:model.live="filterDateEnd" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <label class="block text-xs sm:text-sm font-medium text-slate-500">Bitiş</label>
+                        <input type="date" wire:model.live="filterDateEnd" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                     </div>
                     <div>
-                        <label class="block text-xs sm:text-sm font-medium text-gray-500">Kargo firması</label>
-                        <select wire:model.live="filterCompany" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <label class="block text-xs sm:text-sm font-medium text-slate-500">Kargo firması</label>
+                        <select wire:model.live="filterCompany" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                             <option value="">Tümü</option>
                             @foreach($cargoCompanies as $company)
                                 <option value="{{ $company }}">{{ $company }}</option>
@@ -122,17 +122,17 @@
                         </select>
                     </div>
                     <div class="flex items-end">
-                        <button type="button" @click="showAdvanced = !showAdvanced" class="min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                        <button type="button" @click="showAdvanced = !showAdvanced" class="min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                             <span x-text="showAdvanced ? 'Gelişmiş filtreleri gizle' : 'Gelişmiş filtreler'"></span>
                         </button>
                     </div>
                 </div>
 
-                <div x-show="showAdvanced" x-cloak x-transition.opacity.duration.150ms class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div x-show="showAdvanced" x-cloak x-transition.opacity.duration.150ms class="rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
                         <div>
-                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Pazaryeri</label>
-                            <select wire:model.live="filterMarketplace" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <label class="block text-xs sm:text-sm font-medium text-slate-500">Pazaryeri</label>
+                            <select wire:model.live="filterMarketplace" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="">Tümü</option>
                                 @foreach($marketplaces as $marketplace)
                                     <option value="{{ $marketplace }}">{{ $marketplace }}</option>
@@ -140,8 +140,8 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Mağaza</label>
-                            <select wire:model.live="filterStore" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <label class="block text-xs sm:text-sm font-medium text-slate-500">Mağaza</label>
+                            <select wire:model.live="filterStore" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="">Tümü</option>
                                 @foreach($stores as $store)
                                     <option value="{{ $store }}">{{ $store }}</option>
@@ -149,8 +149,8 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Kayıt tipi</label>
-                            <select wire:model.live="filterRecordType" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <label class="block text-xs sm:text-sm font-medium text-slate-500">Kayıt tipi</label>
+                            <select wire:model.live="filterRecordType" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="all">Tümü</option>
                                 <option value="siparis">Sipariş</option>
                                 <option value="iade">İade / değişim</option>
@@ -240,12 +240,12 @@
                 <button @click="open = !open" type="button" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     Kolonlar
                 </button>
-                <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-[10px] border border-slate-200 bg-white p-3 shadow-xl">
                     <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Görünür Kolonlar</p>
                     <div class="mt-3 space-y-1.5">
                         @foreach($columnDefs as $colKey => $colLabel)
                             <label class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                <input type="checkbox" wire:click="toggleColumn('{{ $colKey }}')" {{ in_array($colKey, $visibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                <input type="checkbox" wire:click="toggleColumn('{{ $colKey }}')" {{ in_array($colKey, $visibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-slate-200">
                                 <span>{{ $colLabel }}</span>
                             </label>
                         @endforeach
@@ -447,9 +447,9 @@
                                 wire:model.live.debounce.300ms="itemSearch"
                                 type="text"
                                 placeholder="Müşteri, takip, stok veya ürün ara..."
-                                class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"
                             >
-                            <select wire:model.live="itemFilterErrorType" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <select wire:model.live="itemFilterErrorType" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="all">Tüm kayıtlar</option>
                                 <option value="errors">Sadece hatalar</option>
                                 <option value="referans_eksik">Referans eksik</option>
@@ -459,13 +459,13 @@
                                 <option value="parca_fazla">Parça fazla</option>
                                 <option value="eslesmedi">Eşleşmedi</option>
                             </select>
-                            <select wire:model.live="itemFilterType" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <select wire:model.live="itemFilterType" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="all">Tümü</option>
                                 <option value="siparis">Siparişler</option>
                                 <option value="iade">İadeler</option>
                                 <option value="parca">Parça gönderileri</option>
                             </select>
-                            <select wire:model.live="itemFilterClaim" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <select wire:model.live="itemFilterClaim" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="all">Tüm aksiyonlar</option>
                                 <option value="claimable">Sadece tazmine uygunlar</option>
                                 <option value="with_compensation">Talep açılmışlar</option>
@@ -474,19 +474,19 @@
                         </div>
 
                         <div class="mt-4 grid grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
-                            <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                            <div class="rounded-[10px] border border-slate-200 bg-white px-4 py-3">
                                 <p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Filtreli toplam</p>
                                 <p class="mt-2 text-lg font-semibold text-slate-900">{{ number_format($detailSummary['total']) }}</p>
                             </div>
-                            <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                            <div class="rounded-[10px] border border-slate-200 bg-white px-4 py-3">
                                 <p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Hatalı satır</p>
                                 <p class="mt-2 text-lg font-semibold text-rose-600">{{ number_format($detailSummary['errors']) }}</p>
                             </div>
-                            <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                            <div class="rounded-[10px] border border-slate-200 bg-white px-4 py-3">
                                 <p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Tazmine uygun</p>
                                 <p class="mt-2 text-lg font-semibold text-slate-900">{{ number_format($detailSummary['claimable']) }}</p>
                             </div>
-                            <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                            <div class="rounded-[10px] border border-slate-200 bg-white px-4 py-3">
                                 <p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Talep açılmış</p>
                                 <p class="mt-2 text-lg font-semibold text-emerald-600">{{ number_format($detailSummary['with_compensation']) }}</p>
                             </div>
@@ -635,7 +635,7 @@
                     <h3 class="mt-3 text-xl font-bold text-slate-900">Raporu kaldır</h3>
                     <p class="mt-2 text-sm text-slate-500">Silinen rapor ve ilişkili satırlar geri alınamaz.</p>
 
-                    <div class="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-center">
+                    <div class="rounded-[8px] border border-rose-200 bg-rose-50 p-4 text-center">
                         <p class="text-sm font-semibold text-rose-800">Rapor silinecek</p>
                         <p class="mt-2 text-sm text-rose-700">Bu işlem seçili raporu ve tüm detay satırlarını kalıcı olarak kaldırır.</p>
                     </div>

@@ -211,6 +211,38 @@ class MarketplaceIntegrations extends Component
         $this->loadSelectedStore();
     }
 
+    public function deleteSelectedStore(): void
+    {
+        abort_unless($this->selectedStore, 404);
+
+        $store = $this->selectedStore;
+        $storeName = $store->store_name;
+
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($store) {
+                $store->connection()->delete();
+                $store->syncProfile()->delete();
+                $store->syncRuns()->delete();
+                $store->webhookEvents()->delete();
+                $store->pushRuns()->delete();
+                $store->orderActionRuns()->delete();
+
+                $store->channelProducts()->delete();
+                $store->channelListings()->delete();
+                $store->channelOrders()->delete();
+
+                $store->delete();
+            });
+
+            $this->selectedStoreId = null;
+            $this->loadSelectedStore();
+
+            $this->notify("{$storeName} mağazası, bağlı sipariş/ürün kayıtları ve bağlantı ayarları başarıyla silindi.");
+        } catch (\Throwable $exception) {
+            $this->notify('Mağaza silinirken bir hata oluştu: ' . $exception->getMessage(), 'error');
+        }
+    }
+
     public function saveConnection(): void
     {
         abort_unless($this->selectedStore, 404);
@@ -231,12 +263,22 @@ class MarketplaceIntegrations extends Component
         $existingConnection = $store->connection;
         $existingCredentials = $existingConnection?->credentials_encrypted ?? [];
 
+        $providedSecret = $validated['connectionForm']['apiSecret'] ?? null;
+        $apiSecret = ($providedSecret && $providedSecret !== '********')
+            ? $providedSecret
+            : ($existingCredentials['api_secret'] ?? null);
+
+        $providedExtraPassword = $validated['connectionForm']['extraPassword'] ?? null;
+        $extraPassword = ($providedExtraPassword && $providedExtraPassword !== '********')
+            ? $providedExtraPassword
+            : ($existingCredentials['extra_password'] ?? null);
+
         $credentials = [
             'api_key' => $validated['connectionForm']['apiKey'] ?: null,
-            'api_secret' => $validated['connectionForm']['apiSecret'] ?: ($existingCredentials['api_secret'] ?? null),
+            'api_secret' => $apiSecret,
             'store_front_code' => $validated['connectionForm']['storeFrontCode'] ?: ($existingCredentials['store_front_code'] ?? null),
             'extra_user' => $validated['connectionForm']['extraUser'] ?: null,
-            'extra_password' => $validated['connectionForm']['extraPassword'] ?: ($existingCredentials['extra_password'] ?? null),
+            'extra_password' => $extraPassword,
             'store_url' => $validated['connectionForm']['storeUrl'] ?: null,
         ];
         $resolvedApiBaseUrl = $this->resolveConnectionApiBaseUrl(
@@ -244,6 +286,13 @@ class MarketplaceIntegrations extends Component
             explicitApiBaseUrl: $validated['connectionForm']['apiBaseUrl'] ?: null,
             storeUrl: $validated['connectionForm']['storeUrl'] ?: null,
         );
+        $readiness = $this->inspectConnectionDraft(
+            $store,
+            array_filter($credentials, fn ($value) => filled($value)),
+            $resolvedApiBaseUrl,
+        );
+        $connectionStatus = $readiness['is_ready'] ? 'configured' : 'draft';
+        $connectionError = $readiness['is_ready'] ? null : ($readiness['failures'][0] ?? null);
 
         $store->connection()->updateOrCreate(
             ['store_id' => $store->id],
@@ -254,17 +303,63 @@ class MarketplaceIntegrations extends Component
                 'webhook_secret' => $validated['connectionForm']['webhookSecret'] ?: ($existingConnection?->webhook_secret ?: Str::random(40)),
                 'webhook_url' => $this->buildWebhookUrl($store),
                 'api_base_url' => $resolvedApiBaseUrl,
-                'status' => filled($credentials['api_key']) || filled($credentials['store_url']) ? 'configured' : 'draft',
-                'last_error' => null,
+                'status' => $connectionStatus,
+                'last_verified_at' => null,
+                'last_error' => $connectionError,
             ],
         );
 
         $store->forceFill([
-            'status' => filled($credentials['api_key']) || filled($credentials['store_url']) ? 'configured' : 'draft',
+            'status' => $connectionStatus,
         ])->save();
 
         $this->loadSelectedStore();
-        $this->notify('Bağlantı bilgileri kaydedildi. Gizli alanları boş bırakırsanız mevcut değer korunur.');
+
+        if ($readiness['is_ready']) {
+            if (($readiness['warnings'] ?? []) !== []) {
+                $this->notify(
+                    'Bağlantı bilgileri kaydedildi ancak mağaza uyarılı durumda: '
+                    . ($readiness['warnings'][0] ?? 'Ek uyarılar var.'),
+                    'warning',
+                );
+
+                return;
+            }
+
+            $this->notify('Bağlantı bilgileri kaydedildi. Gizli alanları boş bırakırsanız mevcut değer korunur.');
+
+            return;
+        }
+
+        $this->notify(
+            'Bağlantı bilgileri kaydedildi ancak mağaza henüz hazır değil: ' . ($readiness['failures'][0] ?? 'Eksik zorunlu alanlar var.'),
+            'error',
+        );
+    }
+
+    protected function resolveConnectionApiBaseUrl(string $marketplace, ?string $explicitApiBaseUrl, ?string $storeUrl): ?string
+    {
+        $explicitApiBaseUrl = filled($explicitApiBaseUrl) ? rtrim(trim($explicitApiBaseUrl), '/') : null;
+        $storeUrl = filled($storeUrl) ? rtrim(trim($storeUrl), '/') : null;
+        $normalizedMarketplace = MarketplaceProviderRegistry::normalize($marketplace);
+
+        if ($normalizedMarketplace === 'pazarama' && $explicitApiBaseUrl !== null) {
+            $host = Str::lower((string) parse_url($explicitApiBaseUrl, PHP_URL_HOST));
+
+            if ($host === 'isortagimgiris.pazarama.com') {
+                return MarketplaceProviderRegistry::defaultApiBaseUrl($marketplace);
+            }
+        }
+
+        if ($explicitApiBaseUrl !== null) {
+            return $explicitApiBaseUrl;
+        }
+
+        if (in_array($normalizedMarketplace, ['woocommerce', 'shopify'], true) && $storeUrl !== null) {
+            return $storeUrl;
+        }
+
+        return MarketplaceProviderRegistry::defaultApiBaseUrl($marketplace);
     }
 
     public function saveSyncProfile(): void
@@ -278,12 +373,16 @@ class MarketplaceIntegrations extends Component
             'syncForm.ordersPollMinutes' => ['required', 'integer', 'min:5', 'max:1440'],
             'syncForm.financePollMinutes' => ['required', 'integer', 'min:5', 'max:1440'],
             'syncForm.productsPollMinutes' => ['required', 'integer', 'min:5', 'max:10080'],
+            'syncForm.claimsPollMinutes' => ['required', 'integer', 'min:5', 'max:1440'],
+            'syncForm.questionsPollMinutes' => ['required', 'integer', 'min:5', 'max:1440'],
             'syncForm.backfillMode' => ['required', Rule::in(array_keys(MarketplaceProviderRegistry::backfillOptions()))],
             'syncForm.backfillCustomFrom' => [Rule::requiredIf(($this->syncForm['backfillMode'] ?? null) === 'custom'), 'nullable', 'date'],
             'syncForm.backfillCustomTo' => [Rule::requiredIf(($this->syncForm['backfillMode'] ?? null) === 'custom'), 'nullable', 'date'],
             'syncForm.ordersEnabled' => ['boolean'],
             'syncForm.financeEnabled' => ['boolean'],
             'syncForm.productsEnabled' => ['boolean'],
+            'syncForm.claimsEnabled' => ['boolean'],
+            'syncForm.questionsEnabled' => ['boolean'],
             'syncForm.webhookEnabled' => ['boolean'],
             'syncForm.pricePushEnabled' => ['boolean'],
             'syncForm.stockPushEnabled' => ['boolean'],
@@ -339,6 +438,8 @@ class MarketplaceIntegrations extends Component
                 'orders_poll_minutes' => $validated['syncForm']['ordersPollMinutes'],
                 'finance_poll_minutes' => $validated['syncForm']['financePollMinutes'],
                 'products_poll_minutes' => $validated['syncForm']['productsPollMinutes'],
+                'claims_poll_minutes' => $validated['syncForm']['claimsPollMinutes'],
+                'questions_poll_minutes' => $validated['syncForm']['questionsPollMinutes'],
                 'backfill_mode' => $backfillMode,
                 'backfill_days' => $backfillMode === 'custom' || $backfillMode === 'max_allowed' ? null : $backfillDays,
                 'backfill_custom_from' => $backfillMode === 'custom' ? $validated['syncForm']['backfillCustomFrom'] : null,
@@ -346,6 +447,8 @@ class MarketplaceIntegrations extends Component
                 'orders_enabled' => $featureToggles['ordersEnabled'],
                 'finance_enabled' => $featureToggles['financeEnabled'],
                 'products_enabled' => $featureToggles['productsEnabled'],
+                'claims_enabled' => $featureToggles['claimsEnabled'],
+                'questions_enabled' => $featureToggles['questionsEnabled'],
                 'webhook_enabled' => $featureToggles['webhookEnabled'],
                 'price_push_enabled' => $featureToggles['pricePushEnabled'],
                 'stock_push_enabled' => $featureToggles['stockPushEnabled'],
@@ -440,12 +543,16 @@ class MarketplaceIntegrations extends Component
             'ordersPollMinutes' => $defaults['orders_poll_minutes'],
             'financePollMinutes' => $defaults['finance_poll_minutes'],
             'productsPollMinutes' => $defaults['products_poll_minutes'],
+            'claimsPollMinutes' => $defaults['claims_poll_minutes'],
+            'questionsPollMinutes' => $defaults['questions_poll_minutes'],
             'backfillMode' => $defaults['backfill_mode'],
             'backfillCustomFrom' => '',
             'backfillCustomTo' => '',
             'ordersEnabled' => (bool) $defaults['orders_enabled'],
             'financeEnabled' => (bool) $defaults['finance_enabled'],
             'productsEnabled' => (bool) $defaults['products_enabled'],
+            'claimsEnabled' => (bool) $defaults['claims_enabled'],
+            'questionsEnabled' => (bool) $defaults['questions_enabled'],
             'webhookEnabled' => (bool) $defaults['webhook_enabled'],
             'pricePushEnabled' => (bool) $defaults['price_push_enabled'],
             'stockPushEnabled' => (bool) $defaults['stock_push_enabled'],
@@ -465,13 +572,16 @@ class MarketplaceIntegrations extends Component
     {
         abort_unless($this->selectedStore, 404);
 
-        if (!$this->selectedStore->connection || $this->selectedStore->connection->status === 'draft') {
-            $this->notify('Önce bağlantı bilgilerini kaydedin. Taslak mağaza ile senkron başlatılamaz.', 'error');
+        $readiness = $this->selectedConnectionReadiness;
+
+        if (!$this->selectedStore->connection || !($readiness['is_ready'] ?? false)) {
+            $message = $readiness['failures'][0] ?? 'Önce bağlantı bilgilerini kaydedin. Taslak mağaza ile senkron başlatılamaz.';
+            $this->notify('Senkron başlatılamadı: ' . $message, 'error');
 
             return;
         }
 
-        $allowedSyncTypes = ['orders', 'products', 'finance'];
+        $allowedSyncTypes = ['orders', 'products', 'finance', 'questions', 'claims'];
 
         if (!in_array($syncType, $allowedSyncTypes, true)) {
             $this->notify('Geçersiz senkron tipi seçildi.', 'error');
@@ -479,19 +589,38 @@ class MarketplaceIntegrations extends Component
             return;
         }
 
-        $result = app(MarketplaceManualSyncDispatchService::class)->dispatch($this->selectedStore, $syncType, [
-            'options' => [],
-            'source' => 'manual_sync_button',
-            'origin_screen' => 'integrations',
-        ]);
+        try {
+            $syncOptions = [];
 
-        $feedback = app(MarketplaceManualSyncDispatchService::class)->feedback(
-            $result,
-            $this->syncTypeLabel($syncType),
-            $this->selectedStore->store_name,
-        );
+            if (
+                $syncType === 'products'
+                && MarketplaceProviderRegistry::normalize((string) $this->selectedStore->marketplace) === 'woocommerce'
+            ) {
+                $syncOptions = [
+                    'full_catalog_refresh' => true,
+                    'page_size' => 100,
+                ];
+            }
 
-        $this->notify($feedback['message'], $feedback['tone']);
+            $result = app(MarketplaceManualSyncDispatchService::class)->dispatch($this->selectedStore, $syncType, [
+                'options' => $syncOptions,
+                'bypass_recent' => (bool) ($syncOptions['full_catalog_refresh'] ?? false),
+                'force_inline' => $syncType === 'products',
+                'ignore_queued_active' => $syncType === 'products',
+                'source' => 'manual_sync_button',
+                'origin_screen' => 'integrations',
+            ]);
+
+            $feedback = app(MarketplaceManualSyncDispatchService::class)->feedback(
+                $result,
+                $this->syncTypeLabel($syncType),
+                $this->selectedStore->store_name,
+            );
+
+            $this->notify($feedback['message'], $feedback['tone']);
+        } catch (\Throwable $exception) {
+            $this->notify('Senkron kuyruğa alınamadı: ' . $exception->getMessage(), 'error');
+        }
     }
 
     public function regenerateWebhookSecret(): void
@@ -501,7 +630,10 @@ class MarketplaceIntegrations extends Component
         $this->connectionForm['webhookSecret'] = Str::random(40);
     }
 
-    public function verifyConnection(MarketplaceConnectorManager $connectorManager): void
+    public function verifyConnection(
+        MarketplaceConnectorManager $connectorManager,
+        MarketplaceConnectionReadinessService $connectionReadinessService,
+    ): void
     {
         abort_unless($this->selectedStore, 404);
 
@@ -528,23 +660,78 @@ class MarketplaceIntegrations extends Component
                 return;
             }
 
+            $verifiedAt = now();
+
             $this->selectedStore->connection?->forceFill([
                 'status' => 'configured',
-                'last_verified_at' => now(),
+                'last_verified_at' => $verifiedAt,
                 'last_error' => null,
             ])->save();
+
+            $readiness = $connectionReadinessService->inspect($this->selectedStore->fresh(['connection', 'syncProfile']));
+
+            if (!(bool) ($readiness['is_ready'] ?? false)) {
+                $this->selectedStore->connection?->forceFill([
+                    'status' => 'draft',
+                    'last_verified_at' => $verifiedAt,
+                    'last_error' => $readiness['failures'][0] ?? 'Bağlantı doğrulandı ancak mağaza henüz sync için hazır değil.',
+                ])->save();
+
+                $this->notify(
+                    'API bağlantısı doğrulandı ancak mağaza henüz sync için hazır değil: '
+                    . ($readiness['failures'][0] ?? 'Eksik zorunlu alanlar var.'),
+                    'warning'
+                );
+                $this->loadSelectedStore();
+
+                return;
+            }
+
+            $this->selectedStore->connection?->forceFill([
+                'status' => 'configured',
+                'last_verified_at' => $verifiedAt,
+                'last_error' => null,
+            ])->save();
+
+            if (($readiness['warnings'] ?? []) !== []) {
+                $this->notify(
+                    ($result['message'] ?? 'Bağlantı doğrulandı.')
+                    . ' Ancak mağaza uyarılı durumda: '
+                    . ($readiness['warnings'][0] ?? 'Ek uyarılar var.'),
+                    'warning'
+                );
+                $this->loadSelectedStore();
+
+                return;
+            }
 
             $this->notify($result['message'] ?? 'Bağlantı doğrulandı.');
             $this->loadSelectedStore();
         } catch (\Throwable $exception) {
+            $message = $this->friendlyConnectionExceptionMessage($exception);
+
             $this->selectedStore->connection?->forceFill([
                 'status' => 'error',
-                'last_error' => $exception->getMessage(),
+                'last_error' => $message,
             ])->save();
 
-            $this->notify('Bağlantı doğrulaması başarısız: '.$exception->getMessage(), 'error');
+            $this->notify('Bağlantı doğrulaması başarısız: '.$message, 'error');
             $this->loadSelectedStore();
         }
+    }
+
+    protected function friendlyConnectionExceptionMessage(\Throwable $exception): string
+    {
+        $message = $exception->getMessage();
+
+        if (
+            $this->selectedStore?->marketplace === 'hepsiburada'
+            && str_contains(Str::lower($message), 'merchant api authorization failed')
+        ) {
+            return 'Hepsiburada yetkilendirmesi reddedildi. Merchant ID ve servis anahtarı doğru görünse bile Hepsiburada bu User-Agent / entegratör kullanıcı için mağaza yetkisi istiyor. Prapazar anahtarını kullanıyorsanız Prapazar’ın Hepsiburada User-Agent adını girin; bilmiyorsanız Hepsiburada destekten ZOLM veya SelfIntegration için API yetkisi açtırın.';
+        }
+
+        return $message;
     }
 
     public function exportReadinessCsv()
@@ -769,8 +956,12 @@ class MarketplaceIntegrations extends Component
             'ordersPollMinutes' => ['label' => 'Sipariş senkronu', 'expected' => $defaults['orders_poll_minutes']],
             'financePollMinutes' => ['label' => 'Finans senkronu', 'expected' => $defaults['finance_poll_minutes']],
             'productsPollMinutes' => ['label' => 'Ürün senkronu', 'expected' => $defaults['products_poll_minutes']],
+            'claimsPollMinutes' => ['label' => 'İade senkronu', 'expected' => $defaults['claims_poll_minutes']],
+            'questionsPollMinutes' => ['label' => 'Soru senkronu', 'expected' => $defaults['questions_poll_minutes']],
             'webhookEnabled' => ['label' => 'Webhook aktif', 'expected' => (bool) $defaults['webhook_enabled']],
             'financeEnabled' => ['label' => 'Finans senkronu aktif', 'expected' => (bool) $defaults['finance_enabled']],
+            'claimsEnabled' => ['label' => 'İade senkronu aktif', 'expected' => (bool) $defaults['claims_enabled']],
+            'questionsEnabled' => ['label' => 'Soru senkronu aktif', 'expected' => (bool) $defaults['questions_enabled']],
             'pricePushEnabled' => ['label' => 'Fiyat gönderimi aktif', 'expected' => (bool) $defaults['price_push_enabled']],
             'stockPushEnabled' => ['label' => 'Stok gönderimi aktif', 'expected' => (bool) $defaults['stock_push_enabled']],
             'maxParallelJobs' => ['label' => 'Maks. paralel iş', 'expected' => $defaults['max_parallel_jobs']],
@@ -876,6 +1067,7 @@ class MarketplaceIntegrations extends Component
             'products' => 'Ürün',
             'finance' => 'Finans',
             'webhooks' => 'Webhook',
+            'questions' => 'Soru',
             'price_push' => 'Fiyat Gönderimi',
             'stock_push' => 'Stok Gönderimi',
             'package_status' => 'Paket Durumu',
@@ -1059,6 +1251,32 @@ class MarketplaceIntegrations extends Component
         $provider = MarketplaceProviderRegistry::normalize((string) ($this->selectedStore?->marketplace ?: ($this->storeForm['marketplace'] ?? 'trendyol')));
 
         return match ($provider) {
+            'trendyol' => [
+                'default_auth_type' => 'api_key_secret',
+                'seller_id_label' => 'Satıcı ID',
+                'seller_id_placeholder' => 'Trendyol supplierId',
+                'api_base_url_label' => 'Trendyol API URL',
+                'api_base_url_placeholder' => config('marketplace.trendyol.base_url'),
+                'api_key_label' => 'API Anahtarı',
+                'api_key_placeholder' => 'Trendyol API key',
+                'api_secret_label' => 'API Gizli Anahtarı',
+                'api_secret_placeholder' => 'Trendyol API secret',
+                'store_front_code_label' => 'StoreFrontCode',
+                'store_front_code_placeholder' => 'TR, SA, AE vb.',
+                'extra_user_label' => 'User-Agent firma adı',
+                'extra_user_placeholder' => 'Boşsa SelfIntegration kullanılır',
+                'extra_password_label' => 'Ek şifre',
+                'extra_password_placeholder' => 'Şimdilik kullanılmıyor',
+                'store_url_label' => 'Mağaza / panel URL',
+                'store_url_placeholder' => 'https://partner.trendyol.com',
+                'hints' => [
+                    'Seller ID, API key ve API secret değerlerini Satıcı Paneli > Hesap Bilgilerim > Entegrasyon Bilgileri ekranından alın.',
+                    'Trendyol istekleri Basic Auth ile çalışır; satıcı ID mağaza formunda, API key ve secret bağlantı formunda tutulur.',
+                    'StoreFrontCode alanı varsa Trendyol isteklerinde header olarak gönderilir; çoğu Türkiye mağazasında boş bırakılabilir.',
+                    'User-Agent başlığı otomatik gönderilir; bu alanı doldurursanız "SellerId - FirmaAdi" formatında kullanılır, boşsa SelfIntegration seçilir.',
+                    'Sipariş senkronu yeni stream endpoint ile cursor tabanlı çalışır ve sistem büyük taramalarda bunu tercih eder.',
+                ],
+            ],
             'hepsiburada' => [
                 'default_auth_type' => 'merchant_id_service_key',
                 'seller_id_label' => 'Satıcı ID',
@@ -1072,7 +1290,7 @@ class MarketplaceIntegrations extends Component
                 'store_front_code_label' => 'Ek mağaza kodu',
                 'store_front_code_placeholder' => 'Opsiyonel',
                 'extra_user_label' => 'User-Agent / entegratör kullanıcı',
-                'extra_user_placeholder' => 'ornek_dev',
+                'extra_user_placeholder' => 'SelfIntegration, ZOLM veya yetkili entegratör adı',
                 'extra_password_label' => 'Eski şifre',
                 'extra_password_placeholder' => 'Opsiyonel eski şifre',
                 'store_url_label' => 'Mağaza / panel URL',
@@ -1080,7 +1298,8 @@ class MarketplaceIntegrations extends Component
                 'hints' => [
                     'Satıcı ID alanına Hepsiburada merchantId girilir.',
                     'API anahtarı alanı servis anahtarı olarak kullanılır; kimlik doğrulama burada merchantId + serviceKey ile kurulur.',
-                    'Ek kullanıcı alanı User-Agent için kullanılır. Hepsiburada yeni kimlik doğrulama akışında bu alan önemlidir.',
+                    'User-Agent / entegratör kullanıcı alanı Hepsiburada tarafından yetki kontrolünde kullanılır.',
+                    'Prapazar gibi başka entegratörden alınan anahtarlar yalnız o entegratör User-Agent adıyla yetkili olabilir; bilmiyorsanız Hepsiburada destekten ZOLM veya SelfIntegration için yetki isteyin.',
                     'Fiyat ve stok gönderimi XML toplu paket olarak gider. Aynı anda bekleyen güncelleme sayısının 5’i geçmemesi önerilir.',
                     'Paket operasyonlarında şu an yalnız resmi ortak barkod etiket servisi aktif. Paket durumu ve fatura linki daha sonra açılacaktır.',
                 ],
@@ -1112,14 +1331,16 @@ class MarketplaceIntegrations extends Component
             ],
             'koctas' => [
                 'default_auth_type' => 'api_key_secret',
-                'seller_id_label' => 'Koçtaş shop / mağaza kodu',
-                'seller_id_placeholder' => 'Opsiyonel numerik shop ID',
+                'seller_id_label' => 'Koçtaş shop / mağaza kodu (opsiyonel)',
+                'seller_id_placeholder' => 'Boş bırakabilirsiniz',
+                'seller_id_help' => 'Koçtaş panelinde yalnız API anahtarı varsa bu alanı boş bırakın; bağlantı API key ile kurulur.',
+                'seller_id_empty_label' => 'Shop ID opsiyonel',
                 'api_base_url_label' => 'Koçtaş API URL',
                 'api_base_url_placeholder' => 'https://koctas.mirakl.net',
                 'api_key_label' => 'API Anahtarı',
                 'api_key_placeholder' => 'Koçtaş API anahtarı',
                 'api_secret_label' => 'API Gizli Anahtarı (opsiyonel)',
-                'api_secret_placeholder' => 'Opsiyonel ek credential',
+                'api_secret_placeholder' => 'Boş bırakabilirsiniz',
                 'store_front_code_label' => 'Ek mağaza kodu',
                 'store_front_code_placeholder' => 'Şimdilik kullanılmıyor',
                 'extra_user_label' => 'Ek kullanıcı',
@@ -1130,6 +1351,7 @@ class MarketplaceIntegrations extends Component
                 'store_url_placeholder' => 'https://koctas.mirakl.net',
                 'hints' => [
                     'Koçtaş satıcı paneli Mirakl tabanlı çalışır; varsayılan API URL olarak https://koctas.mirakl.net kullanılır.',
+                    'Panelde yalnız API anahtarı görünüyorsa mağaza/shop ID ve secret alanlarını boş bırakabilirsiniz.',
                     'Bağlantı doğrulama /api/account çağrısı ile yapılır ve Authorization header içinde API key kullanılır.',
                     'Bu iterasyonda sipariş, offer bazlı ürün listesi, fiyat push ve stok push akışları açıktır.',
                     'Finans ve webhook akışları Koçtaş tarafında henüz aktif değildir; bu ayarlar otomatik pasif tutulur.',
@@ -1141,10 +1363,10 @@ class MarketplaceIntegrations extends Component
                 'seller_id_placeholder' => 'Opsiyonel satıcı kodu',
                 'api_base_url_label' => 'Pazarama API URL',
                 'api_base_url_placeholder' => 'https://isortagimapi.pazarama.com',
-                'api_key_label' => 'Client ID / API Anahtarı',
-                'api_key_placeholder' => 'Pazarama client ID',
-                'api_secret_label' => 'Client Secret / API Gizli Anahtarı',
-                'api_secret_placeholder' => 'Pazarama client secret',
+                'api_key_label' => 'API Anahtarı',
+                'api_key_placeholder' => 'Pazarama API anahtarı',
+                'api_secret_label' => 'API Gizli Anahtarı',
+                'api_secret_placeholder' => 'Pazarama API gizli anahtarı',
                 'store_front_code_label' => 'Ek mağaza kodu',
                 'store_front_code_placeholder' => 'Şimdilik kullanılmıyor',
                 'extra_user_label' => 'Ek kullanıcı',
@@ -1154,10 +1376,11 @@ class MarketplaceIntegrations extends Component
                 'store_url_label' => 'Mağaza / panel URL',
                 'store_url_placeholder' => 'https://www.pazarama.com/magaza/ornek',
                 'hints' => [
-                    'Pazarama access token akışı client_credentials modeli ile çalışır; client ID ve client secret alanları zorunludur.',
-                    'Varsayılan ürün ve sipariş uç noktası https://isortagimapi.pazarama.com üzerinden çalışır.',
-                    'Sipariş ve ürün çekme akışları aktif; finans, webhook ve paket operasyonları bu iterasyonda kapalı tutulur.',
-                    'İlk backfill önerisi 7 gündür; daha geniş aralıklar Pazarama dokümanındaki tarih limiti nedeniyle parçalara bölünerek çağrılır.',
+                    'Pazarama Satıcı Paneli > Entegrasyon Bilgileri alanındaki API anahtarlarınızı kullanın.',
+                    'API Key alanına Pazarama "API Key" değerini girin.',
+                    'API Secret alanına Pazarama "API Secret" değerini girin.',
+                    'API URL alanı merchant API adresidir; token adresi olan isortagimgiris.pazarama.com/connect/token buraya yazılmamalıdır.',
+                    'Bağlantı doğrulandıktan sonra Sipariş ve Ürün akışlarını aktif edebilirsiniz.',
                 ],
             ],
             'amazon' => [
@@ -1193,21 +1416,21 @@ class MarketplaceIntegrations extends Component
                 'api_base_url_placeholder' => 'https://apis.ciceksepeti.com/api/v1',
                 'api_key_label' => 'API Anahtarı',
                 'api_key_placeholder' => 'Çiçeksepeti API anahtarı',
-                'api_secret_label' => 'API Gizli Anahtarı (opsiyonel)',
-                'api_secret_placeholder' => 'Şimdilik kullanılmıyor',
+                'api_secret_label' => 'Ek gizli alan (opsiyonel)',
+                'api_secret_placeholder' => 'Çoğu mağazada boş bırakılır',
                 'store_front_code_label' => 'Ek mağaza kodu',
                 'store_front_code_placeholder' => 'Şimdilik kullanılmıyor',
-                'extra_user_label' => 'Entegratör adı (opsiyonel)',
-                'extra_user_placeholder' => 'User-Agent için entegratör adı',
+                'extra_user_label' => 'Ek kullanıcı',
+                'extra_user_placeholder' => 'Şimdilik kullanılmıyor',
                 'extra_password_label' => 'Ek şifre',
                 'extra_password_placeholder' => 'Şimdilik kullanılmıyor',
                 'store_url_label' => 'Mağaza / panel URL',
                 'store_url_placeholder' => 'https://www.ciceksepeti.com/merchant',
                 'hints' => [
-                    'Çiçeksepeti tüm isteklerde x-api-key ve user-agent bekler; user-agent satıcıId veya satıcıId-entegratörAdı formatında gönderilir.',
-                    'Varsayılan prod endpoint https://apis.ciceksepeti.com/api/v1 adresidir; test için sandbox-apis.ciceksepeti.com/api/v1 kullanılır.',
-                    'Sipariş ve ürün çekme akışları aktif; finans, webhook ve paket operasyonları bu iterasyonda kapalı tutulur.',
-                    'Sipariş listeleme servisi 2 haftalık tarih aralığı limiti uygular; sistem uzun aralıkları otomatik parçalara böler.',
+                    'Resmi Çiçeksepeti akışında istekler x-api-key ve user-agent ile yetkilendirilir; ayrı bir API secret çoğu mağazada gerekmez.',
+                    'Satıcı panelindeki Satıcı ID bilgisi user-agent içinde kullanılır; entegratör adı panelde tanımlıysa Çiçeksepeti tarafında ayrıca görünür.',
+                    'Canlı prod URL varsayılan olarak https://apis.ciceksepeti.com/api/v1 kabul edilir; kök URL girilirse ZOLM bunu otomatik tamamlar.',
+                    'API bilgileri panelde görünmüyorsa satıcı panelinden telefon doğrulaması yapın veya Destek > Konuşma Başlat > API Entegrasyon Süreçleri üzerinden talep açın.',
                 ],
             ],
             'woocommerce' => [
@@ -1233,7 +1456,7 @@ class MarketplaceIntegrations extends Component
                     'API URL alanına site kök URL’sini veya doğrudan /wp-json/wc/v3 temel URL’ini yazabilirsiniz.',
                     'WooCommerce tarafında finans servisi yok; sipariş ve ürün senkronu ile fiyat/stok gönderimi aktiftir.',
                     'Webhook doğrulaması için mağaza tarafında tanımlanan gizli anahtar ile ZOLM webhook gizli anahtarı aynı olmalıdır.',
-                    'Düşük etkili önerilen profil: sipariş 30 dk, ürün 12 saat, finance kapalı, paralellik 1, jitter 15 sn.',
+                    'Düşük etkili önerilen profil: sipariş 15 dk, ürün 12 saat, finance kapalı, paralellik 1, jitter 15 sn.',
                     'Fiyat ve stok gönderimi küçük partiler halinde gönderilir; yine de ZOLM ana sistem değilse gönderim özelliklerini kapalı tutmanız daha güvenlidir.',
                 ],
             ],
@@ -1374,10 +1597,10 @@ class MarketplaceIntegrations extends Component
             'apiBaseUrl' => $store->connection?->api_base_url ?: MarketplaceProviderRegistry::defaultApiBaseUrl($store->marketplace),
             'webhookSecret' => $store->connection?->webhook_secret ?: Str::random(40),
             'apiKey' => $credentials['api_key'] ?? '',
-            'apiSecret' => '',
+            'apiSecret' => filled($credentials['api_secret'] ?? null) ? '********' : '',
             'storeFrontCode' => $credentials['store_front_code'] ?? '',
             'extraUser' => $credentials['extra_user'] ?? '',
-            'extraPassword' => '',
+            'extraPassword' => filled($credentials['extra_password'] ?? null) ? '********' : '',
             'storeUrl' => $credentials['store_url'] ?? '',
         ];
 
@@ -1388,12 +1611,16 @@ class MarketplaceIntegrations extends Component
             'ordersPollMinutes' => $syncProfile?->orders_poll_minutes ?? $defaults['orders_poll_minutes'],
             'financePollMinutes' => $syncProfile?->finance_poll_minutes ?? $defaults['finance_poll_minutes'],
             'productsPollMinutes' => $syncProfile?->products_poll_minutes ?? $defaults['products_poll_minutes'],
+            'claimsPollMinutes' => $syncProfile?->claims_poll_minutes ?? $defaults['claims_poll_minutes'],
+            'questionsPollMinutes' => $syncProfile?->questions_poll_minutes ?? $defaults['questions_poll_minutes'],
             'backfillMode' => $syncProfile?->backfill_mode ?? $defaults['backfill_mode'],
             'backfillCustomFrom' => optional($syncProfile?->backfill_custom_from)->format('Y-m-d\TH:i'),
             'backfillCustomTo' => optional($syncProfile?->backfill_custom_to)->format('Y-m-d\TH:i'),
             'ordersEnabled' => (bool) ($syncProfile?->orders_enabled ?? $defaults['orders_enabled']),
             'financeEnabled' => (bool) ($syncProfile?->finance_enabled ?? $defaults['finance_enabled']),
             'productsEnabled' => (bool) ($syncProfile?->products_enabled ?? $defaults['products_enabled']),
+            'claimsEnabled' => (bool) ($syncProfile?->claims_enabled ?? $defaults['claims_enabled']),
+            'questionsEnabled' => (bool) ($syncProfile?->questions_enabled ?? $defaults['questions_enabled']),
             'webhookEnabled' => (bool) ($syncProfile?->webhook_enabled ?? $defaults['webhook_enabled']),
             'pricePushEnabled' => (bool) ($syncProfile?->price_push_enabled ?? $defaults['price_push_enabled']),
             'stockPushEnabled' => (bool) ($syncProfile?->stock_push_enabled ?? $defaults['stock_push_enabled']),
@@ -1473,6 +1700,27 @@ class MarketplaceIntegrations extends Component
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $credentials
+     * @return array<string, mixed>
+     */
+    protected function inspectConnectionDraft(MarketplaceStore $store, array $credentials, ?string $apiBaseUrl): array
+    {
+        $draftStore = clone $store;
+        $draftConnection = $store->connection ? clone $store->connection : new IntegrationConnection();
+
+        $draftConnection->provider = $store->marketplace;
+        $draftConnection->auth_type = $this->connectionForm['authType'] ?? ($store->connection?->auth_type ?? 'api_key_secret');
+        $draftConnection->credentials_encrypted = $credentials;
+        $draftConnection->api_base_url = $apiBaseUrl ?: MarketplaceProviderRegistry::defaultApiBaseUrl($store->marketplace);
+        $draftConnection->last_verified_at = null;
+        $draftConnection->last_error = null;
+
+        $draftStore->setRelation('connection', $draftConnection);
+
+        return app(MarketplaceConnectionReadinessService::class)->inspect($draftStore);
+    }
+
     protected function resetSyncForm(): void
     {
         $defaults = IntegrationSyncProfile::defaultsForMarketplace($this->storeForm['marketplace'] ?? 'trendyol');
@@ -1481,12 +1729,16 @@ class MarketplaceIntegrations extends Component
             'ordersPollMinutes' => $defaults['orders_poll_minutes'],
             'financePollMinutes' => $defaults['finance_poll_minutes'],
             'productsPollMinutes' => $defaults['products_poll_minutes'],
+            'claimsPollMinutes' => $defaults['claims_poll_minutes'],
+            'questionsPollMinutes' => $defaults['questions_poll_minutes'],
             'backfillMode' => $defaults['backfill_mode'],
             'backfillCustomFrom' => '',
             'backfillCustomTo' => '',
             'ordersEnabled' => $defaults['orders_enabled'],
             'financeEnabled' => $defaults['finance_enabled'],
             'productsEnabled' => $defaults['products_enabled'],
+            'claimsEnabled' => $defaults['claims_enabled'],
+            'questionsEnabled' => $defaults['questions_enabled'],
             'webhookEnabled' => $defaults['webhook_enabled'],
             'pricePushEnabled' => $defaults['price_push_enabled'],
             'stockPushEnabled' => $defaults['stock_push_enabled'],
@@ -1517,6 +1769,8 @@ class MarketplaceIntegrations extends Component
             'ordersEnabled' => ['capability' => 'orders', 'label' => 'Sipariş sync'],
             'financeEnabled' => ['capability' => 'finance', 'label' => 'Finans sync'],
             'productsEnabled' => ['capability' => 'products', 'label' => 'Ürün sync'],
+            'claimsEnabled' => ['capability' => 'claims', 'label' => 'İade sync'],
+            'questionsEnabled' => ['capability' => 'questions', 'label' => 'Soru sync'],
             'webhookEnabled' => ['capability' => 'webhooks', 'label' => 'Webhook'],
             'pricePushEnabled' => ['capability' => 'price_push', 'label' => 'Fiyat gönderimi'],
             'stockPushEnabled' => ['capability' => 'stock_push', 'label' => 'Stok gönderimi'],
@@ -1545,6 +1799,7 @@ class MarketplaceIntegrations extends Component
             'orders' => 'Sipariş',
             'products' => 'Ürün',
             'finance' => 'Finans',
+            'claims' => 'İade',
             'webhook_refresh' => 'Webhook yenileme',
             default => Str::headline((string) $syncType),
         };
@@ -1711,8 +1966,13 @@ class MarketplaceIntegrations extends Component
 
         $store->loadMissing('connection');
 
-        if (!$store->connection || $store->connection->status === 'draft') {
-            $this->notify('Önce seçili mağazanın bağlantı bilgilerini tamamlayın.', 'warning');
+        $readiness = $this->selectedConnectionReadiness;
+
+        if (!$store->connection || !($readiness['is_ready'] ?? false)) {
+            $this->notify(
+                'Önce seçili mağazanın bağlantı bilgilerini tamamlayın: ' . ($readiness['failures'][0] ?? 'Eksik zorunlu alanlar var.'),
+                'warning',
+            );
 
             return;
         }
@@ -1725,20 +1985,24 @@ class MarketplaceIntegrations extends Component
             return;
         }
 
-        $result = app(MarketplaceManualSyncDispatchService::class)->dispatch($store, $syncType, [
-            'options' => [],
-            'source' => 'guidance_shortcut',
-            'category' => $topItem['category'] ?? null,
-            'origin_screen' => 'integrations',
-        ]);
+        try {
+            $result = app(MarketplaceManualSyncDispatchService::class)->dispatch($store, $syncType, [
+                'options' => [],
+                'source' => 'guidance_shortcut',
+                'category' => $topItem['category'] ?? null,
+                'origin_screen' => 'integrations',
+            ]);
 
-        $feedback = app(MarketplaceManualSyncDispatchService::class)->feedback(
-            $result,
-            $this->syncTypeLabel($syncType),
-            $store->store_name,
-        );
+            $feedback = app(MarketplaceManualSyncDispatchService::class)->feedback(
+                $result,
+                $this->syncTypeLabel($syncType),
+                $store->store_name,
+            );
 
-        $this->notify($feedback['message'], $feedback['tone']);
+            $this->notify($feedback['message'], $feedback['tone']);
+        } catch (\Throwable $exception) {
+            $this->notify('Senkron kuyruğa alınamadı: ' . $exception->getMessage(), 'error');
+        }
     }
 
     protected function cleanExportString(mixed $value): mixed
@@ -1765,18 +2029,5 @@ class MarketplaceIntegrations extends Component
             'provider' => $store->marketplace,
             'store' => $store->id,
         ]);
-    }
-
-    protected function resolveConnectionApiBaseUrl(string $marketplace, ?string $explicitApiBaseUrl, ?string $storeUrl): ?string
-    {
-        if (filled($explicitApiBaseUrl)) {
-            return $explicitApiBaseUrl;
-        }
-
-        if (in_array($marketplace, ['woocommerce', 'shopify'], true) && filled($storeUrl)) {
-            return $storeUrl;
-        }
-
-        return MarketplaceProviderRegistry::defaultApiBaseUrl($marketplace);
     }
 }

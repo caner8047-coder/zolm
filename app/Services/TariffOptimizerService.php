@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\OptimizationReport;
 use App\Models\OptimizationReportItem;
 use App\Models\MpProduct;
+use App\Services\ProfitabilityMetric;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -111,6 +112,7 @@ class TariffOptimizerService
                 $shippingCost = $costs['cargo_cost'];
                 $packagingCost = $costs['packaging_cost'];
                 $totalCost = $costs['total_cost'];
+                $productCost = ProfitabilityMetric::productCost($productionCost, $packagingCost);
 
                 if (!$product) {
                     $unmatchedCount++;
@@ -128,7 +130,9 @@ class TariffOptimizerService
                         'commission' => $currentCommission,
                         'revenue'    => round($currentRevenue, 2),
                         'total_cost' => $totalCost,
+                        'product_cost' => $productCost,
                         'net_profit' => $currentNetProfit,
+                        'margin_pct' => ProfitabilityMetric::multiplierOrZero($currentNetProfit, $productCost),
                         'is_best'    => false,
                     ],
                 ];
@@ -144,7 +148,9 @@ class TariffOptimizerService
                         'commission' => $scenario['commission'],
                         'revenue'    => $this->campaignService->calculateRevenue($scenario['price'], $scenario['commission']),
                         'total_cost' => $totalCost,
+                        'product_cost' => $productCost,
                         'net_profit' => $netProfit,
+                        'margin_pct' => ProfitabilityMetric::multiplierOrZero($netProfit, $productCost),
                         'is_best'    => false,
                     ];
                 }
@@ -198,10 +204,15 @@ class TariffOptimizerService
                     'suggested_net_profit'  => $suggestedNetProfit,
                     'extra_profit'          => $extraProfit,
                     'production_cost'       => $productionCost,
-                    'shipping_cost'         => $shippingCost,
+                    'shipping_cost'         => $shippingCost + $packagingCost,
                     'action'                => $action,
                     'is_selected'           => false,
                     'scenario_details'      => $allScenarios,
+                    'campaign_data'         => [
+                        'matched' => (bool) $product,
+                        'packaging_cost' => $packagingCost,
+                        'cargo_cost' => $shippingCost,
+                    ],
                 ];
             }
 
@@ -236,9 +247,13 @@ class TariffOptimizerService
                 'extra_profit' => $totalOptimizedProfit - $totalCurrentProfit,
             ]);
 
+            $message = $opportunityCount > 0
+                ? "Analiz tamamlandı! {$opportunityCount} üründe kâr artış fırsatı bulundu."
+                : 'Analiz tamamlandı. Bu dosyada mevcut fiyatlar tarife alternatiflerinden daha kârlı görünüyor; kâr artış fırsatı bulunamadı.';
+
             return [
                 'success'   => true,
-                'message'   => "Analiz tamamlandı! {$opportunityCount} üründe kâr artış fırsatı bulundu.",
+                'message'   => $message,
                 'report_id' => $report->id,
             ];
         } catch (\Exception $e) {

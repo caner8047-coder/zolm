@@ -5,6 +5,7 @@ namespace App\Services\Marketplace;
 use App\Models\ChannelOrderItem;
 use App\Models\MpProduct;
 use App\Models\ProductMatchIssue;
+use App\Services\MpProductChangeLogger;
 use Illuminate\Support\Facades\DB;
 
 class MarketplaceManualMatchService
@@ -44,12 +45,17 @@ class MarketplaceManualMatchService
 
         $updatedItems = 0;
         $impactedOrderIds = [];
+        $listing->setRelation('store', $issue->store);
+        $logger = app(MpProductChangeLogger::class);
+        $beforeListingSnapshot = $logger->listingSnapshot($listing);
 
         DB::transaction(function () use (
             $issue,
             $product,
             $resolvedBy,
             $listing,
+            $logger,
+            $beforeListingSnapshot,
             $stockCode,
             $barcode,
             &$updatedItems,
@@ -58,6 +64,13 @@ class MarketplaceManualMatchService
             $listing->forceFill([
                 'mp_product_id' => $product->id,
             ])->save();
+            $logger->logListingSnapshotChanges(
+                $listing->fresh() ?: $listing,
+                $beforeListingSnapshot,
+                'manual_match',
+                $resolvedBy,
+                'Manuel hızlı eşleştirme'
+            );
 
             $itemsQuery = ChannelOrderItem::query()
                 ->where('store_id', $issue->store_id)

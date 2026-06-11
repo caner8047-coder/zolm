@@ -62,7 +62,7 @@ class ApplyWooCommerceSafeProfileCommandTest extends TestCase
         $profile = $store->fresh()->syncProfile;
 
         $this->assertNotNull($profile);
-        $this->assertSame(30, $profile->orders_poll_minutes);
+        $this->assertSame(15, $profile->orders_poll_minutes);
         $this->assertSame(360, $profile->finance_poll_minutes);
         $this->assertSame(720, $profile->products_poll_minutes);
         $this->assertSame('7_days', $profile->backfill_mode);

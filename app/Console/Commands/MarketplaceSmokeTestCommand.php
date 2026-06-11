@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\IntegrationSyncRun;
 use App\Models\MarketplaceStore;
+use App\Services\Marketplace\Contracts\PullsClaims;
+use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
 use App\Services\Marketplace\Contracts\PullsFinancials;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
@@ -20,7 +22,7 @@ class MarketplaceSmokeTestCommand extends Command
 {
     protected $signature = 'marketplace:smoke-test
         {store : Test edilecek mağaza ID}
-        {--type=all : orders, products, finance veya all}
+        {--type=all : orders, products, finance, questions, claims veya all}
         {--hours=24 : Geriye dönük pencere (saat)}
         {--preview=2 : Her veri tipinden gösterilecek örnek kayıt sayısı}
         {--order-number= : Belirli bir sipariş numarasına odaklan}
@@ -78,8 +80,8 @@ class MarketplaceSmokeTestCommand extends Command
             ]
         );
 
-        if (trim(strtolower($requestedType)) === 'all' && count($types) < 3) {
-            $skippedTypes = array_values(array_diff(['orders', 'products', 'finance'], $types));
+        if (trim(strtolower($requestedType)) === 'all') {
+            $skippedTypes = array_values(array_diff(['orders', 'products', 'finance', 'questions', 'claims'], $types));
 
             if ($skippedTypes !== []) {
                 $this->warn('Desteklenmeyen veri tipleri atlandı: ' . implode(', ', $skippedTypes));
@@ -104,7 +106,7 @@ class MarketplaceSmokeTestCommand extends Command
         foreach ($types as $type) {
             $type = trim($type);
 
-            if (!in_array($type, ['orders', 'products', 'finance'], true)) {
+            if (!in_array($type, ['orders', 'products', 'finance', 'questions', 'claims'], true)) {
                 $this->components->error('Gecersiz type: ' . $type);
 
                 return self::FAILURE;
@@ -137,6 +139,8 @@ class MarketplaceSmokeTestCommand extends Command
             'orders' => $connector instanceof PullsOrders && (bool) ($capabilities['orders'] ?? false) ? 'orders' : null,
             'products' => $connector instanceof PullsProducts && (bool) ($capabilities['products'] ?? false) ? 'products' : null,
             'finance' => $connector instanceof PullsFinancials && (bool) ($capabilities['finance'] ?? false) ? 'finance' : null,
+            'questions' => $connector instanceof PullsCustomerQuestions && (bool) ($capabilities['questions'] ?? false) ? 'questions' : null,
+            'claims' => $connector instanceof PullsClaims && (bool) ($capabilities['claims'] ?? false) ? 'claims' : null,
         ]));
     }
 
@@ -156,7 +160,7 @@ class MarketplaceSmokeTestCommand extends Command
             return $supportedTypes;
         }
 
-        if (!in_array($normalizedType, ['orders', 'products', 'finance'], true)) {
+        if (!in_array($normalizedType, ['orders', 'products', 'finance', 'questions', 'claims'], true)) {
             throw new \RuntimeException('Gecersiz type: ' . $requestedType);
         }
 
@@ -236,6 +240,8 @@ class MarketplaceSmokeTestCommand extends Command
                 'orders' => $this->pullOrders($connector, $store, $options),
                 'products' => $this->pullProducts($connector, $store, $options),
                 'finance' => $this->pullFinancials($connector, $store, $options),
+                'questions' => $this->pullQuestions($connector, $store, $options),
+                'claims' => $this->pullClaims($connector, $store, $options),
             };
         } catch (Throwable $exception) {
             if ($persist) {
@@ -260,6 +266,8 @@ class MarketplaceSmokeTestCommand extends Command
             'orders' => $this->diagnostics->analyzeOrders($items),
             'products' => $this->diagnostics->analyzeProducts($items),
             'finance' => $this->diagnostics->analyzeFinancialEvents($items),
+            'questions' => $this->analyzeQuestionPayloads($items),
+            'claims' => $this->analyzeClaimPayloads($items),
         };
 
         $this->renderDiagnosticsTable($type, $diagnostics);
@@ -330,6 +338,112 @@ class MarketplaceSmokeTestCommand extends Command
     }
 
     /**
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    protected function pullQuestions(object $connector, MarketplaceStore $store, array $options): array
+    {
+        if (!$connector instanceof PullsCustomerQuestions) {
+            throw new \RuntimeException('Bu baglayici questions cekimini desteklemiyor.');
+        }
+
+        return $connector->pullCustomerQuestions($store, $options);
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    protected function pullClaims(object $connector, MarketplaceStore $store, array $options): array
+    {
+        if (!$connector instanceof PullsClaims) {
+            throw new \RuntimeException('Bu baglayici claims cekimini desteklemiyor.');
+        }
+
+        return $connector->pullClaims($store, $options);
+    }
+
+    /**
+     * @param  array<int, mixed>  $items
+     * @return array<string, mixed>
+     */
+    protected function analyzeQuestionPayloads(array $items): array
+    {
+        $questionCount = count($items);
+        $missingIdCount = 0;
+        $missingTextCount = 0;
+        $missingAskedAtCount = 0;
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                $missingIdCount++;
+                $missingTextCount++;
+                $missingAskedAtCount++;
+                continue;
+            }
+
+            if (blank(data_get($item, 'external_question_id') ?: data_get($item, 'questionId') ?: data_get($item, 'id') ?: data_get($item, 'question_id'))) {
+                $missingIdCount++;
+            }
+
+            if (blank(data_get($item, 'question_text') ?: data_get($item, 'questionText') ?: data_get($item, 'question') ?: data_get($item, 'text') ?: data_get($item, 'message') ?: data_get($item, 'content'))) {
+                $missingTextCount++;
+            }
+
+            if (blank(data_get($item, 'asked_at') ?: data_get($item, 'askedAt') ?: data_get($item, 'created_at') ?: data_get($item, 'createdAt') ?: data_get($item, 'createdDate') ?: data_get($item, 'date'))) {
+                $missingAskedAtCount++;
+            }
+        }
+
+        return [
+            'question_count' => $questionCount,
+            'missing_question_id_count' => $missingIdCount,
+            'missing_question_text_count' => $missingTextCount,
+            'missing_asked_at_count' => $missingAskedAtCount,
+            'warnings' => array_values(array_filter([
+                $missingIdCount > 0 ? "{$missingIdCount} soru kaydında soru ID eksik." : null,
+                $missingTextCount > 0 ? "{$missingTextCount} soru kaydında soru metni eksik." : null,
+            ])),
+        ];
+    }
+
+    /**
+     * @param  array<int, mixed>  $items
+     * @return array<string, mixed>
+     */
+    protected function analyzeClaimPayloads(array $items): array
+    {
+        $claimCount = count($items);
+        $missingIdCount = 0;
+        $missingOrderNumberCount = 0;
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                $missingIdCount++;
+                $missingOrderNumberCount++;
+                continue;
+            }
+
+            if (blank(data_get($item, 'external_claim_id') ?: data_get($item, 'claim_id') ?: data_get($item, 'return_id') ?: data_get($item, 'id'))) {
+                $missingIdCount++;
+            }
+
+            if (blank(data_get($item, 'order_number') ?: data_get($item, 'orderNumber') ?: data_get($item, 'order.id') ?: data_get($item, 'orderId'))) {
+                $missingOrderNumberCount++;
+            }
+        }
+
+        return [
+            'claim_count' => $claimCount,
+            'missing_claim_id_count' => $missingIdCount,
+            'missing_order_number_count' => $missingOrderNumberCount,
+            'warnings' => array_values(array_filter([
+                $missingIdCount > 0 ? "{$missingIdCount} iade kaydında claim/return ID eksik." : null,
+            ])),
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $diagnostics
      */
     protected function renderDiagnosticsTable(string $type, array $diagnostics): void
@@ -362,6 +476,17 @@ class MarketplaceSmokeTestCommand extends Command
                 ['Eksik line id', (string) ($diagnostics['missing_line_id_count'] ?? 0)],
                 ['Eksik tutar', (string) ($diagnostics['missing_amount_count'] ?? 0)],
                 ['Eksik odeme tarihi', (string) ($diagnostics['missing_settlement_date_count'] ?? 0)],
+            ],
+            'questions' => [
+                ['Soru', (string) ($diagnostics['question_count'] ?? 0)],
+                ['Eksik soru id', (string) ($diagnostics['missing_question_id_count'] ?? 0)],
+                ['Eksik soru metni', (string) ($diagnostics['missing_question_text_count'] ?? 0)],
+                ['Eksik soru tarihi', (string) ($diagnostics['missing_asked_at_count'] ?? 0)],
+            ],
+            'claims' => [
+                ['Iade', (string) ($diagnostics['claim_count'] ?? 0)],
+                ['Eksik claim id', (string) ($diagnostics['missing_claim_id_count'] ?? 0)],
+                ['Eksik order no', (string) ($diagnostics['missing_order_number_count'] ?? 0)],
             ],
         };
 

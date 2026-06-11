@@ -2,27 +2,32 @@
 
 namespace App\Livewire;
 
+use Illuminate\Support\Carbon;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 /**
- * Kargo Raporları Ana Bileşeni
- * 
- * 4 Tab yapısı:
- * 1. Ürün ve Desi Bilgileri (ProductManager)
- * 2. Kargo Desi ve Tutar Check (CargoChecker)
- * 3. Raporlar (ReportList)
- * 4. Tazmin (CompensationDashboard)
+ * Kargo operasyon merkezi ana bileşeni.
+ *
+ * Eski Excel karşılaştırma akışını korur; Sürat entegrasyonu, gönderi
+ * defteri ve tazmin takibini aynı operasyon yüzeyinde toplar.
  */
 class CargoReports extends Component
 {
-    public string $activeTab = 'dashboard';
+    public string $activeTab = 'shipments';
+    public ?string $sourceReportDate = null;
+    public int $checkRunKey = 0;
 
     protected $queryString = [
-        'activeTab' => ['except' => 'dashboard'],
+        'activeTab' => ['except' => 'shipments'],
     ];
 
     public function mount(): void
     {
+        if ($this->sourceReportDate) {
+            $this->activeTab = 'check';
+        }
+
         if (!array_key_exists($this->activeTab, $this->tabs)) {
             $this->activeTab = 'dashboard';
         }
@@ -31,6 +36,26 @@ class CargoReports extends Component
     public function getTabsProperty(): array
     {
         return [
+            'shipments' => [
+                'label' => 'Gönderi Defteri',
+                'summary' => 'Canlı kargo operasyonu',
+                'description' => 'Pazaryeri, iade/değişim ve tedarik gönderilerini Sürat Kargo hesabıyla tek defterde yönetin.',
+            ],
+            'delivery-lookup' => [
+                'label' => 'Teslimat Kontrol',
+                'summary' => 'Kargo konu arama',
+                'description' => 'Satıcı anlaşmalı kargo koduyla müşteri, adres, telefon ve Sürat dağıtım sinyalini tek ekranda görün.',
+            ],
+            'surat' => [
+                'label' => 'Sürat Entegrasyon',
+                'summary' => 'API hesap ve şifreleri',
+                'description' => 'Sürat eKargo müşteri kodu, gönderim ve sorgulama şifrelerini güvenli biçimde tanımlayın.',
+            ],
+            'surat-reports' => [
+                'label' => 'Sürat Raporları',
+                'summary' => 'Günlük tutar defteri',
+                'description' => 'Sürat servisinden tarih aralığı raporu çekin; müşteri, parça, desi ve tutar bilgilerini gün gün arşivleyin.',
+            ],
             'dashboard' => [
                 'label' => 'Genel Görünüm',
                 'summary' => 'Özet metrikler ve dağılım',
@@ -61,7 +86,7 @@ class CargoReports extends Component
 
     public function getActiveTabMetaProperty(): array
     {
-        return $this->tabs[$this->activeTab] ?? $this->tabs['dashboard'];
+        return $this->tabs[$this->activeTab] ?? $this->tabs['shipments'];
     }
 
     public function setTab(string $tab): void
@@ -70,7 +95,22 @@ class CargoReports extends Component
             return;
         }
 
+        if ($tab === 'check') {
+            $this->sourceReportDate = null;
+            $this->checkRunKey++;
+        } else {
+            $this->sourceReportDate = null;
+        }
+
         $this->activeTab = $tab;
+    }
+
+    #[On('cargo-check-from-surat-report')]
+    public function openCheckFromSuratReport(string $reportDate): void
+    {
+        $this->sourceReportDate = Carbon::parse($reportDate)->toDateString();
+        $this->activeTab = 'check';
+        $this->checkRunKey++;
     }
 
     public function openCreateModal(?int $errorItemId = null): void
@@ -118,6 +158,6 @@ class CargoReports extends Component
     public function render()
     {
         return view('livewire.cargo-reports')
-            ->layout('layouts.app', ['title' => 'Kargo Raporları']);
+            ->layout('layouts.app', ['title' => 'Kargo Operasyon Merkezi']);
     }
 }

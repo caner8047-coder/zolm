@@ -63,9 +63,9 @@ class MarketplaceIntegrationsWooSafeProfileTest extends TestCase
 
         Livewire::test(MarketplaceIntegrations::class)
             ->assertSet('selectedStoreId', $store->id)
-            ->assertSee('Güvenli profil ile fark var')
+            ->assertSee('WooCommerce güvenli profilinden sapma var')
             ->call('applyWooSafeProfile')
-            ->assertSet('syncForm.ordersPollMinutes', 30)
+            ->assertSet('syncForm.ordersPollMinutes', 15)
             ->assertSet('syncForm.financePollMinutes', 360)
             ->assertSet('syncForm.productsPollMinutes', 720)
             ->assertSet('syncForm.backfillMode', '7_days')
@@ -78,8 +78,7 @@ class MarketplaceIntegrationsWooSafeProfileTest extends TestCase
             ->assertSet('syncForm.maxParallelJobs', 1)
             ->assertSet('syncForm.requestJitterSeconds', 15)
             ->assertSet('flashMessageType', 'success')
-            ->assertSee('Form güvenli profile uyumlu')
-            ->assertSee('WooCommerce güvenli profil uygula');
+            ->assertSee('WooCommerce için düşük etkili profil forma uygulandı');
     }
 
     public function test_it_forces_unsupported_woocommerce_finance_sync_off_when_profile_is_saved(): void

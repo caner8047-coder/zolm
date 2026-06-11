@@ -29,7 +29,7 @@ class SyncMarketplaceDataJob implements ShouldQueue
 
     public function __construct(public int $syncRunId)
     {
-        $this->onQueue('marketplace-sync');
+        $this->onQueue((string) config('marketplace.queues.sync', 'default'));
     }
 
     /**
@@ -48,7 +48,6 @@ class SyncMarketplaceDataJob implements ShouldQueue
         return [
             (new WithoutOverlapping("marketplace-sync:{$run->store_id}:{$run->sync_type}"))
                 ->releaseAfter(600)           // 10 dakika sonra lock serbest bırakılır
-                ->dontRelease()               // Lock alınamazsa job drop edilir (retry değil)
                 ->expireAfter($this->timeout) // Lock timeout'u job timeout'una eşit
         ];
     }
@@ -60,6 +59,15 @@ class SyncMarketplaceDataJob implements ShouldQueue
         if (!$run) {
             Log::warning('[SyncMarketplaceDataJob] Sync run bulunamadı, job atlanıyor.', [
                 'sync_run_id' => $this->syncRunId,
+            ]);
+
+            return;
+        }
+
+        if (!in_array($run->status, ['queued', 'processing'], true)) {
+            Log::info('[SyncMarketplaceDataJob] Sync run aktif değil, job atlanıyor.', [
+                'sync_run_id' => $this->syncRunId,
+                'status' => $run->status,
             ]);
 
             return;

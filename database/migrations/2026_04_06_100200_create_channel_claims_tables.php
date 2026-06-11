@@ -48,19 +48,10 @@ return new class extends Migration
 
             $table->unique(['claim_id', 'external_item_id'], 'channel_claim_items_item_unique');
         });
-
-        Schema::table('integration_sync_profiles', function (Blueprint $table) {
-            $table->unsignedInteger('claims_poll_minutes')->default(30)->after('questions_poll_minutes');
-            $table->boolean('claims_enabled')->default(false)->after('questions_enabled');
-        });
     }
 
     public function down(): void
     {
-        Schema::table('integration_sync_profiles', function (Blueprint $table) {
-            $table->dropColumn(['claims_poll_minutes', 'claims_enabled']);
-        });
-        
         Schema::dropIfExists('channel_claim_items');
         Schema::dropIfExists('channel_claims');
     }

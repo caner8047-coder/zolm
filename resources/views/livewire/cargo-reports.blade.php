@@ -7,32 +7,32 @@
 <div class="space-y-4 lg:space-y-6">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-            <h1 class="text-xl lg:text-2xl font-bold text-gray-900">Kargo Raporları</h1>
-            <p class="mt-1 text-sm lg:text-base text-gray-700">
-                Referans ürünleri yönetin, kargo farklarını kontrol edin, rapor arşivini inceleyin ve tazmin sürecini tek modülde takip edin.
+            <h1 class="text-xl lg:text-2xl font-bold text-slate-900">Kargo Operasyon Merkezi</h1>
+            <p class="mt-1 text-sm lg:text-base text-slate-700">
+                Sürat Kargo gönderilerini, pazaryeri paketlerini, iade/değişim akışlarını, masraf mutabakatını ve eski Excel kontrollerini tek modülde yönetin.
             </p>
         </div>
 
         <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <button
                 type="button"
-                wire:click="setTab('check')"
-                class="min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+                wire:click="setTab('shipments')"
+                class="min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-slate-900 hover:bg-slate-800 transition-colors"
             >
-                Yeni Karşılaştırma
+                Gönderi Defteri
             </button>
             <button
                 type="button"
-                wire:click="setTab('reports')"
-                class="min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                wire:click="setTab('check')"
+                class="min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 border border-slate-300 shadow-sm text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 transition-colors"
             >
-                Rapor Arşivi
+                Yeni Karşılaştırma
             </button>
         </div>
     </div>
 
-    <div class="bg-white shadow rounded-lg border border-gray-200 p-2">
-        <nav class="grid grid-cols-2 lg:grid-cols-5 gap-2" aria-label="Kargo raporları sekmeleri">
+    <div class="bg-white shadow rounded-lg border border-slate-200 p-2">
+        <nav class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-9 gap-2" aria-label="Kargo operasyon sekmeleri">
             @foreach($tabs as $tabKey => $tab)
                 @php
                     $isActive = $activeTab === $tabKey;
@@ -42,10 +42,10 @@
                 <button
                     type="button"
                     wire:click="setTab('{{ $tabKey }}')"
-                    class="min-h-[44px] inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap {{ $isActive ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50' }}"
+                    class="min-h-[44px] inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap {{ $isActive ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50' }}"
                 >
                     <span>{{ $tab['label'] }}</span>
-                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs {{ $isActive ? 'bg-white/15 text-white' : 'bg-gray-100 text-gray-500' }}">
+                    <span class="inline-flex items-center rounded-[6px] px-2 py-0.5 text-xs {{ $isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500' }}">
                         {{ $tabStep }}
                     </span>
                 </button>
@@ -53,12 +53,20 @@
         </nav>
     </div>
 
-    @if($activeTab === 'dashboard')
+    @if($activeTab === 'shipments')
+        @livewire('cargo.shipment-ledger', key('cargo-shipment-ledger'))
+    @elseif($activeTab === 'delivery-lookup')
+        @livewire('cargo.delivery-lookup', key('cargo-delivery-lookup'))
+    @elseif($activeTab === 'surat')
+        @livewire('cargo.surat-integration-settings', key('cargo-surat-integration'))
+    @elseif($activeTab === 'surat-reports')
+        @livewire('cargo.surat-report-archive', key('cargo-surat-report-archive'))
+    @elseif($activeTab === 'dashboard')
         @livewire('cargo.cargo-dashboard', key('cargo-dashboard'))
     @elseif($activeTab === 'products')
         @livewire('cargo.product-manager', key('cargo-products'))
     @elseif($activeTab === 'check')
-        @livewire('cargo.cargo-checker', key('cargo-check'))
+        @livewire('cargo.cargo-checker', ['sourceReportDate' => $sourceReportDate], key('cargo-check-' . ($sourceReportDate ?: 'manual') . '-' . $checkRunKey))
     @elseif($activeTab === 'reports')
         @livewire('cargo.report-list', key('cargo-reports-list'))
     @elseif($activeTab === 'compensation')

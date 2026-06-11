@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\OptimizationReport;
 use App\Models\OptimizationReportItem;
+use App\Services\ProfitabilityMetric;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 
@@ -91,23 +92,24 @@ class FlashProductsService
                 $product = $this->campaignService->matchProduct($barcode, $stockCode, $modelCode, $productName);
                 $costs = $this->campaignService->getProductCosts($product);
                 $totalCost = $costs['total_cost'];
+                $productCost = ProfitabilityMetric::productCost($costs['cogs'], $costs['packaging_cost']);
                 if (!$product) $unmatchedCount++;
 
                 // Mevcut kâr
                 $currentNetProfit = $this->campaignService->calculateNetProfit($currentPrice, $currentCommission, $totalCost);
-                $currentMargin = $totalCost > 0 ? round(($currentNetProfit / $totalCost) * 100, 1) : 0;
+                $currentMargin = ProfitabilityMetric::multiplierOrZero($currentNetProfit, $productCost);
 
                 // 24h Flaş kâr
                 $flash24hProfit = $flash24hPrice > 0
                     ? $this->campaignService->calculateNetProfit($flash24hPrice, $flashCommission, $totalCost)
                     : $currentNetProfit;
-                $flash24hMargin = $totalCost > 0 ? round(($flash24hProfit / $totalCost) * 100, 1) : 0;
+                $flash24hMargin = ProfitabilityMetric::multiplierOrZero($flash24hProfit, $productCost);
 
                 // 3h Flaş kâr
                 $flash3hProfit = $flash3hPrice > 0
                     ? $this->campaignService->calculateNetProfit($flash3hPrice, $flashCommission, $totalCost)
                     : $currentNetProfit;
-                $flash3hMargin = $totalCost > 0 ? round(($flash3hProfit / $totalCost) * 100, 1) : 0;
+                $flash3hMargin = ProfitabilityMetric::multiplierOrZero($flash3hProfit, $productCost);
 
                 $scenarios = [
                     [
@@ -176,6 +178,7 @@ class FlashProductsService
                         'matched' => (bool) $product,
                         'category' => trim($row[$columnMap['category'] ?? ''] ?? ''),
                         'brand' => trim($row[$columnMap['brand'] ?? ''] ?? ''),
+                        'packaging_cost' => $costs['packaging_cost'],
                     ],
                 ]);
 

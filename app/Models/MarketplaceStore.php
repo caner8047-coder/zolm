@@ -90,4 +90,9 @@ class MarketplaceStore extends Model
     {
         return $this->hasMany(ChannelOrder::class, 'store_id');
     }
+
+    public function marketplaceQuestions(): HasMany
+    {
+        return $this->hasMany(MarketplaceQuestion::class, 'store_id');
+    }
 }

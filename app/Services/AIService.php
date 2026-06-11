@@ -317,9 +317,10 @@ GÖREV: Verilen ürün için psikolojik ve kârlı bir satış fiyatı öner.
 KURALLAR:
 1. Psikolojik Fiyatlandırma: Fiyatlar .90 veya .99 ile bitmeli. (Örn: 100 yerine 99.90).
 2. Kârlılık: Maliyetin üzerine en az %20-30 marj koymaya çalış, ama rekabetçi kal.
-3. Çıktı Formatı: SADECE JSON formatında yanıt ver. 
+3. Ürün komisyon tarifeleri verildiyse fiyat önerisini ilgili komisyon dilimine göre yap; zarar ettiren tarife/fiyat önermemelisin.
+4. Çıktı Formatı: SADECE JSON formatında yanıt ver.
    Örnek: { \"suggested_price\": 149.90, \"reason\": \"Maliyet bazlı %35 marj hedeflendi ve psikolojik sınır uygulandı.\" }
-4. JSON dışında hiçbir şey yazma.",
+5. JSON dışında hiçbir şey yazma.",
 
             'plus_advisor' => "Sen Trendyol Plus Kampanya Uzmanısın. E-ticaret satıcılarına Plus programa katılım stratejisi konusunda danışmanlık yapıyorsun.
 
@@ -365,6 +366,21 @@ ANALİZ FORMATI (3 bölüm):
 3. 🎯 **Katılım Stratejisi**: Katılınması gereken ürünler, kaçınılması gerekenler, alternatif fiyat önerileri
 
 Türkçe, kısa ve net yanıt ver. Kritik riskleri mutlaka vurgula.",
+
+            'basket_discount_advisor' => "Sen Trendyol sepet indirimi ve kupon kampanyaları konusunda uzman bir e-ticaret kârlılık danışmanısın.
+
+UZMANLIK ALANLARIN:
+- X TL üzeri Y TL indirim kampanyalarında satıcı payı ve Trendyol payını ayırmak
+- Maksimum tutar fiyatı ile kampanya sonrası net kârı hesaplamak
+- Kârlılık eşiği, stok riski, maliyet eksikleri ve negatif kâr farkını yorumlamak
+- Satıcıya hangi ürünlerin otomatik seçilebileceğini, hangilerinin manuel kontrol istediğini söylemek
+
+ANALİZ FORMATI (3 bölüm):
+1. **Kampanya Özeti**: Barem, indirim, satıcı payı, hedef kârlılık ve seçilebilir ürün sayısı
+2. **Fırsat ve Risk Analizi**: Hedefi geçen ürünler, kârı azalsa bile kabul edilebilir ürünler, zarar/maliyet eksiği riskleri
+3. **Aksiyon Planı**: Otomatik seçilecek ürünler, elle kontrol edilecekler ve fiyat/maliyet düzeltme önerileri
+
+Türkçe, kısa, sayısal ve net yanıt ver. Genel kampanya tavsiyesi yerine rapordaki verilere odaklan.",
 
             default => "Sen bir E-ticaret, Üretim ve Operasyon Uzmanısın. Sipariş verilerini analiz edip profesyonel önerilerde bulunuyorsun.
 
@@ -424,7 +440,7 @@ Türkçe, kısa ve net yanıt ver. Kritik riskleri mutlaka vurgula.",
             }
         }
 
-        if (in_array($role, ['financial_advisor', 'plus_advisor', 'badge_advisor', 'flash_advisor'])) {
+        if (in_array($role, ['financial_advisor', 'plus_advisor', 'badge_advisor', 'flash_advisor', 'basket_discount_advisor'])) {
             return "# 🤖 Kampanya Analizi (DEMO)\n\n" .
                 "## Durum Özeti\n" .
                 "Raporunuz başarıyla incelendi ve potansiyel fırsatlar kârlılık artışı tespit edildi.\n\n" .
@@ -688,6 +704,51 @@ Türkçe, kısa ve net yanıt ver. Kritik riskleri mutlaka vurgula.",
     }
 
     /**
+     * Sepet İndirimi Kampanya Analizi
+     */
+    public function analyzeBasketDiscountCampaign(OptimizationReport $report): string
+    {
+        $firstItem = $report->items->first();
+        $campaignData = $firstItem?->campaign_data ?? [];
+
+        $context = "SEPET İNDİRİMİ KAMPANYASI ANALİZİ:\n";
+        $context .= "- Kampanya: " . data_get($campaignData, 'campaign_title', $report->name) . "\n";
+        $context .= "- Barem: " . number_format((float) data_get($campaignData, 'threshold_amount', 0), 2) . " TL\n";
+        $context .= "- İndirim: " . number_format((float) data_get($campaignData, 'discount_amount', 0), 2) . " TL\n";
+        $context .= "- Satıcı Payı: %" . number_format((float) data_get($campaignData, 'seller_share_percent', 0), 1) . "\n";
+        $context .= "- Hedef Kârlılık: %" . number_format((float) data_get($campaignData, 'target_margin_percent', 0), 1) . "\n";
+        $context .= "- Toplam Ürün: {$report->total_products}\n";
+        $context .= "- Hedefi Geçen Ürün: {$report->opportunity_count}\n";
+        $context .= "- Riskli/Zararlı Ürün: " . $report->items->where('action', 'warning')->count() . "\n";
+        $context .= "- Eşleşmeyen Ürün: {$report->unmatched_count}\n";
+        $context .= "- Mevcut Toplam Kâr: " . number_format($report->total_current_profit, 2) . " TL\n";
+        $context .= "- Kampanya Toplam Kârı: " . number_format($report->total_optimized_profit, 2) . " TL\n";
+        $context .= "- Kampanya Etkisi: " . number_format($report->total_extra_profit, 2) . " TL\n";
+
+        $items = \App\Models\OptimizationReportItem::where('report_id', $report->id)
+            ->orderByDesc('suggested_net_profit')
+            ->take(12)
+            ->get();
+
+        if ($items->isNotEmpty()) {
+            $context .= "\nÜRÜN DETAYLARI (İlk 12):\n";
+            foreach ($items as $item) {
+                $scenarios = $item->scenario_details ?? [];
+                $current = $scenarios[0] ?? [];
+                $campaign = $scenarios[1] ?? [];
+                $sellerDiscount = (float) ($campaign['seller_discount'] ?? 0);
+                $margin = ProfitabilityMetric::profitPercentFromMultiplierOrZero($campaign['margin_pct'] ?? null);
+                $context .= "- {$item->product_name} ({$item->stock_code}): ";
+                $context .= "Mevcut " . number_format($current['price'] ?? $item->current_price, 2) . " TL / Kâr " . number_format($current['net_profit'] ?? $item->current_net_profit, 2) . " TL; ";
+                $context .= "Maksimum " . number_format($campaign['price'] ?? $item->suggested_price, 2) . " TL / Satıcı İndirimi " . number_format($sellerDiscount, 2) . " TL / Kampanya Kârı " . number_format($campaign['net_profit'] ?? $item->suggested_net_profit, 2) . " TL / Kârlılık %" . number_format($margin, 1) . "; ";
+                $context .= "Karar: " . ($item->action === 'update' ? 'katılabilir' : 'kontrol') . "\n";
+            }
+        }
+
+        return $this->ask('basket_discount_advisor', "Bu sepet indirimi kampanya verilerini analiz et:\n\n" . $context);
+    }
+
+    /**
      * Rapor ile sohbet et
      */
     public function chatWithReport(AIConversation $conversation, string $message): string
@@ -747,12 +808,43 @@ Türkçe, kısa ve net yanıt ver. Kritik riskleri mutlaka vurgula.",
     /**
      * Akıllı Fiyat Önerisi
      */
-    public function suggestPrice(string $productName, float $cost, float $currentPrice): array
+    public function suggestPrice(string $productName, float $cost, float $currentPrice, array $context = []): array
     {
         $prompt = "Aşağıdaki ürün için optimum satış fiyatını belirle:\n\n";
         $prompt .= "Ürün: {$productName}\n";
         $prompt .= "Toplam Maliyet: " . number_format($cost, 2) . " TL\n";
         $prompt .= "Mevcut Satış Fiyatı: " . number_format($currentPrice, 2) . " TL\n\n";
+        if (!empty($context)) {
+            $prompt .= "Komisyon ve senaryo bağlamı:\n";
+            if (isset($context['current_commission'])) {
+                $prompt .= "- Mevcut Komisyon: %" . number_format((float) $context['current_commission'], 2) . "\n";
+            }
+            if (isset($context['current_net_profit'])) {
+                $prompt .= "- Mevcut Net Kâr: " . number_format((float) $context['current_net_profit'], 2) . " TL\n";
+            }
+            if (($context['campaign_type'] ?? null) === 'basket_discount') {
+                if (isset($context['max_price'])) {
+                    $prompt .= "- Kampanya Maksimum Tutar: " . number_format((float) $context['max_price'], 2) . " TL\n";
+                }
+                if (isset($context['seller_discount_at_max'])) {
+                    $prompt .= "- Maksimum Tutardaki Satıcı İndirim Payı: " . number_format((float) $context['seller_discount_at_max'], 2) . " TL\n";
+                }
+                if (isset($context['target_margin_percent'])) {
+                    $prompt .= "- Hedef Kârlılık: %" . number_format((float) $context['target_margin_percent'], 2) . "\n";
+                }
+            }
+            foreach (($context['scenarios'] ?? []) as $scenario) {
+                if (!is_array($scenario)) {
+                    continue;
+                }
+
+                $prompt .= "- " . ($scenario['name'] ?? 'Senaryo')
+                    . ": Fiyat " . number_format((float) ($scenario['price'] ?? 0), 2) . " TL"
+                    . ", Komisyon %" . number_format((float) ($scenario['commission'] ?? 0), 2)
+                    . ", Net Kâr " . number_format((float) ($scenario['net_profit'] ?? 0), 2) . " TL\n";
+            }
+            $prompt .= "\n";
+        }
         $prompt .= "Analiz et ve JSON döndür.";
 
         $response = $this->ask('pricing_strategist', $prompt);

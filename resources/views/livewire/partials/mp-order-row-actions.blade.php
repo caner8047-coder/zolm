@@ -3,9 +3,10 @@
     $actionPackage = $actionPackage ?? $order->packages->first();
     $latestActionRun = $latestActionRun ?? $order->actionRuns->sortByDesc('created_at')->first();
     $summary = $latestActionRun ? $this->actionResponseSummary($latestActionRun) : null;
-    $menuPositionClass = $align === 'left' ? 'left-0 origin-top-left' : 'right-0 origin-top-right';
     $orderLabelDefinitions = $orderLabelDefinitions ?? $this->orderLabelDefinitions();
     $orderColorLabel = $orderLabelDefinitions[$order->color_label_key] ?? null;
+    $crmLinks = app(\App\Services\Crm\CrmSourceLinkService::class);
+    $crmSnapshot = app(\App\Services\Crm\CrmCustomerSnapshotService::class)->forSubject(auth()->user(), 'order', $order);
 
     $orderActions = [
         [
@@ -44,11 +45,31 @@
 
     $packageActions = [];
 
+    if ($actionPackage && $this->packageSupportsAction($actionPackage, 'cargo_create_surat_shipment')) {
+        $packageActions[] = [
+            'type' => 'cargo_create_surat_shipment',
+            'title' => 'Sürat gönderisi oluştur',
+            'description' => 'Paket için Sürat Kargo gönderi/barkod kaydını oluştur.',
+            'icon_class' => 'text-slate-600',
+            'hover_class' => 'hover:bg-slate-50',
+            'path' => 'M8 17h8m-8 0a2 2 0 11-4 0m4 0a2 2 0 104 0m4 0a2 2 0 114 0m-4 0H8m8-5V9a1 1 0 00-1-1h-4V5H7a1 1 0 00-1 1v6m10 0h2l1.5-2.5A1 1 0 0018.64 8H16',
+        ];
+
+        $packageActions[] = [
+            'type' => 'cargo_refresh_surat_tracking',
+            'title' => 'Sürat takibini yenile',
+            'description' => 'Sürat Kargo takip hareketlerini ve teslim durumunu güncelle.',
+            'icon_class' => 'text-cyan-600',
+            'hover_class' => 'hover:bg-cyan-50',
+            'path' => 'M4 4v5h.582m14.356 2A8 8 0 106.582 9m0 0H9m11 2h-2m2 4h-4',
+        ];
+    }
+
     if ($actionPackage && $this->orderSupportsCapability($order, 'package_picking')) {
         $packageActions[] = [
             'type' => 'package_picking',
-            'title' => 'Picking bildir',
-            'description' => 'Paket toplama bilgisini pazaryerine ilet.',
+            'title' => 'Kargola',
+            'description' => 'Paket hazırlama/kargolama bilgisini pazaryerine ilet.',
             'icon_class' => 'text-emerald-500',
             'hover_class' => 'hover:bg-emerald-50',
             'path' => 'M5 13l4 4L19 7',
@@ -70,27 +91,71 @@
 <div x-data="{
         actionMenuOpen: false,
         labelSectionOpen: false,
+        menuPlacement: 'down',
+        menuStyles: 'position: fixed; top: 0; left: 0; max-height: calc(100vh - 1rem);',
+        init() {
+            this.$watch('labelSectionOpen', () => {
+                this.$nextTick(() => this.positionActionMenu());
+            });
+        },
         toggleActionMenu() {
-            this.actionMenuOpen = !this.actionMenuOpen;
-
-            if (!this.actionMenuOpen) {
-                this.labelSectionOpen = false;
-            }
+            this.actionMenuOpen ? this.closeActionMenu() : this.openActionMenu();
+        },
+        openActionMenu() {
+            this.actionMenuOpen = true;
+            this.$nextTick(() => this.positionActionMenu());
         },
         closeActionMenu() {
             this.actionMenuOpen = false;
             this.labelSectionOpen = false;
         },
+        positionActionMenu() {
+            const trigger = this.$refs.actionMenuButton;
+            const menu = this.$refs.actionMenu;
+
+            if (!trigger || !menu) {
+                return;
+            }
+
+            const margin = 8;
+            const rect = trigger.getBoundingClientRect();
+            const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+            const menuWidth = menu.offsetWidth || 240;
+            const menuHeight = menu.scrollHeight || menu.offsetHeight || 320;
+            const availableBelow = Math.max(0, viewportHeight - rect.bottom - margin);
+            const availableAbove = Math.max(0, rect.top - margin);
+            const shouldOpenUp = menuHeight > availableBelow && availableAbove > availableBelow;
+            const availableSpace = shouldOpenUp ? availableAbove : availableBelow;
+            const viewportMaxHeight = Math.max(160, viewportHeight - (margin * 2));
+            const maxHeight = Math.min(viewportMaxHeight, Math.max(160, availableSpace - margin));
+            const renderedHeight = Math.min(menuHeight, maxHeight);
+            const preferredLeft = '{{ $align }}' === 'left' ? rect.left : rect.right - menuWidth;
+            const maxLeft = Math.max(margin, viewportWidth - menuWidth - margin);
+            const left = Math.min(
+                maxLeft,
+                Math.max(margin, preferredLeft)
+            );
+            const top = shouldOpenUp
+                ? Math.max(margin, rect.top - renderedHeight - margin)
+                : Math.min(rect.bottom + margin, viewportHeight - renderedHeight - margin);
+
+            this.menuPlacement = shouldOpenUp ? 'up' : 'down';
+            this.menuStyles = `position: fixed; top: ${Math.round(top)}px; left: ${Math.round(left)}px; max-height: ${Math.round(maxHeight)}px;`;
+        },
      }"
      @keydown.escape.window="closeActionMenu()"
+     @resize.window="actionMenuOpen && positionActionMenu()"
+     @scroll.window="actionMenuOpen && positionActionMenu()"
      :class="{ 'z-[90]': actionMenuOpen }"
      class="relative flex items-start justify-end">
     <button type="button"
+            x-ref="actionMenuButton"
             @click.stop="toggleActionMenu()"
             :aria-expanded="actionMenuOpen.toString()"
             aria-haspopup="menu"
             class="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700">
-        <span class="sr-only">Sipariş işlem menüsünü aç</span>
+        <span class="sr-only">Sipariş işlemleri</span>
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5h.01M12 12h.01M12 19h.01" />
         </svg>
@@ -98,9 +163,14 @@
 
     <div x-show="actionMenuOpen"
          x-cloak
+         x-ref="actionMenu"
          x-transition
          @click.outside="closeActionMenu()"
-         class="absolute {{ $menuPositionClass }} top-10 z-40 w-60 rounded-[8px] border border-slate-200 bg-white p-2 shadow-xl">
+         :style="menuStyles"
+         :class="menuPlacement === 'up'
+            ? ('{{ $align }}' === 'left' ? 'origin-bottom-left' : 'origin-bottom-right')
+            : ('{{ $align }}' === 'left' ? 'origin-top-left' : 'origin-top-right')"
+         class="z-[120] w-60 overflow-y-auto overscroll-contain rounded-[8px] border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10">
         <div>
             <button type="button"
                     @click="labelSectionOpen = !labelSectionOpen"
@@ -205,6 +275,19 @@
 
         <div class="mt-2 space-y-1">
             <p class="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Genel işlemler</p>
+            <x-zolm.crm-snapshot :snapshot="$crmSnapshot" variant="menu" class="mb-2" />
+            <a href="{{ $crmLinks->urlFor('order', $order) }}"
+               @click="closeActionMenu()"
+               title="Bu siparişin müşterisini CRM 360 görünümünde aç."
+               class="flex w-full items-center gap-2.5 rounded-[6px] px-3 py-2 text-left transition hover:bg-slate-50">
+                <span class="text-slate-500">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m8-4a4 4 0 10-8 0 4 4 0 008 0zm-8 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                </span>
+                <span class="min-w-0 truncate text-xs font-medium text-slate-700">CRM 360 aç</span>
+            </a>
+
             <button type="button"
                     @click="closeActionMenu()"
                     wire:click="openEditOrder({{ $order->id }})"

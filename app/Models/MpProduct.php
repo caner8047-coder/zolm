@@ -2,13 +2,26 @@
 
 namespace App\Models;
 
+use App\Services\ProductCompositionResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Models\User;
 
 class MpProduct extends Model
 {
+    protected static bool $refreshingSetParents = false;
+
+    protected const SET_PARENT_REFRESH_FIELDS = [
+        'cogs',
+        'packaging_cost',
+        'cargo_cost',
+        'desi',
+        'pieces',
+        'stock_quantity',
+    ];
+
     protected $fillable = [
         'user_id',
         // Tanımlayıcılar
@@ -29,18 +42,32 @@ class MpProduct extends Model
         'cogs',
         'packaging_cost',
         'vat_rate',
+        'cost_vat_rate',
         'market_price',
         'sale_price',
         'buybox_price',
         'commission_rate',
+        'profit_commission_override_enabled',
         // Stok & Lojistik
         'stock_quantity',
+        'critical_stock_threshold',
+        'return_rate',
+        'return_rate_source',
+        'return_rate_calculated_at',
+        'last_stock_alert_level',
+        'last_stock_alert_quantity',
+        'last_stock_alerted_at',
         'cargo_cost',
+        'extra_cost_fixed',
+        'extra_cost_percentage',
         'pieces',
         'desi',
         'otv_rate',
         // Durum
         'status',
+        'product_type',
+        'cost_source',
+        'logistics_source',
         'variant',
         'platforms',
         'category_id',
@@ -49,6 +76,7 @@ class MpProduct extends Model
         'image_urls',
         'shipping_days',
         'shipping_type',
+        'fast_delivery_type',
         'trendyol_link',
         'status_description',
         // Meta
@@ -60,19 +88,45 @@ class MpProduct extends Model
         'cogs'            => 'decimal:2',
         'packaging_cost'  => 'decimal:2',
         'vat_rate'        => 'decimal:2',
+        'cost_vat_rate'   => 'decimal:2',
         'market_price'    => 'decimal:2',
         'sale_price'      => 'decimal:2',
         'buybox_price'    => 'decimal:2',
         'commission_rate' => 'decimal:2',
+        'profit_commission_override_enabled' => 'boolean',
         'cargo_cost'      => 'decimal:2',
+        'extra_cost_fixed' => 'decimal:2',
+        'extra_cost_percentage' => 'decimal:2',
         'desi'            => 'decimal:2',
         'otv_rate'        => 'decimal:2',
         'stock_quantity'  => 'integer',
+        'critical_stock_threshold' => 'integer',
+        'return_rate'     => 'decimal:2',
+        'return_rate_calculated_at' => 'datetime',
+        'last_stock_alert_quantity' => 'integer',
+        'last_stock_alerted_at' => 'datetime',
         'pieces'          => 'integer',
         'shipping_days'   => 'integer',
         'image_urls'      => 'array',
         'last_synced_at'  => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(function (MpProduct $product): void {
+            if (static::$refreshingSetParents || !$product->wasChanged(static::SET_PARENT_REFRESH_FIELDS)) {
+                return;
+            }
+
+            static::$refreshingSetParents = true;
+
+            try {
+                app(ProductCompositionResolver::class)->refreshParentSetsForComponent($product);
+            } finally {
+                static::$refreshingSetParents = false;
+            }
+        });
+    }
 
     // ─── İlişkiler ──────────────────────────────────────────
 
@@ -95,6 +149,27 @@ class MpProduct extends Model
     public function channelListings(): HasMany
     {
         return $this->hasMany(ChannelListing::class, 'mp_product_id');
+    }
+
+    public function changeLogs(): HasMany
+    {
+        return $this->hasMany(MpProductChangeLog::class, 'mp_product_id')->latest('changed_at');
+    }
+
+    /**
+     * Ürünün set/takım bileşen tanımı.
+     */
+    public function productSet(): HasOne
+    {
+        return $this->hasOne(ProductSet::class, 'parent_mp_product_id');
+    }
+
+    /**
+     * Bu ürünün başka setlerde bileşen olarak kullanıldığı satırlar.
+     */
+    public function setMemberships(): HasMany
+    {
+        return $this->hasMany(ProductSetItem::class, 'component_mp_product_id');
     }
 
     /**
@@ -131,6 +206,20 @@ class MpProduct extends Model
         };
     }
 
+    public function getProductTypeLabelAttribute(): string
+    {
+        return match ($this->product_type) {
+            'set' => 'Set / Takım',
+            'bundle' => 'Kombin',
+            default => 'Tekil Ürün',
+        };
+    }
+
+    public function getIsSetProductAttribute(): bool
+    {
+        return in_array((string) $this->product_type, ['set', 'bundle'], true);
+    }
+
     /**
      * Durum rengi (Tailwind badge sınıfları)
      */
@@ -150,22 +239,28 @@ class MpProduct extends Model
      */
     public function getTotalCostAttribute(): float
     {
-        return (float) $this->cogs + (float) $this->packaging_cost + (float) $this->cargo_cost;
+        $salePrice = (float) $this->sale_price;
+        $extraPercentCost = $salePrice * ((float) $this->extra_cost_percentage / 100);
+
+        return (float) $this->cogs
+            + (float) $this->packaging_cost
+            + (float) $this->cargo_cost
+            + (float) $this->extra_cost_fixed
+            + $extraPercentCost;
     }
 
     /**
-     * ROI (%) = (Net Kâr / COGS) * 100
+     * Ciro bazlı kâr oranı (%) = (Net Kâr / Satış Fiyatı) * 100
      */
     public function getProfitMarginAttribute(): ?float
     {
-        $cogs = (float) $this->cogs;
-        if ($cogs <= 0) return null;
-
         $salePrice = (float) $this->sale_price;
+        if ($salePrice <= 0) return null;
+
         $commissionAmount = $salePrice * ((float) $this->commission_rate / 100);
         $profit = $salePrice - $this->total_cost - $commissionAmount;
 
-        return round(($profit / $cogs) * 100, 1);
+        return round(($profit / $salePrice) * 100, 1);
     }
 
     /**
@@ -185,8 +280,10 @@ class MpProduct extends Model
     public function getStockLevelAttribute(): string
     {
         $qty = (int) $this->stock_quantity;
+        $threshold = $this->critical_stock_threshold;
+
         if ($qty <= 0) return 'out_of_stock';
-        if ($qty <= 10) return 'critical';
+        if ($threshold !== null && $qty <= (int) $threshold) return 'critical';
         return 'in_stock';
     }
 
@@ -220,10 +317,10 @@ class MpProduct extends Model
         if (empty($term)) return $query;
 
         return $query->where(function ($q) use ($term) {
-            $q->where('product_name', 'like', "%{$term}%")
-              ->orWhere('barcode', 'like', "%{$term}%")
-              ->orWhere('stock_code', 'like', "%{$term}%")
-              ->orWhere('model_code', 'like', "%{$term}%");
+            $q->where('mp_products.product_name', 'like', "%{$term}%")
+              ->orWhere('mp_products.barcode', 'like', "%{$term}%")
+              ->orWhere('mp_products.stock_code', 'like', "%{$term}%")
+              ->orWhere('mp_products.model_code', 'like', "%{$term}%");
         });
     }
 
@@ -233,7 +330,7 @@ class MpProduct extends Model
     public function scopeByStatus(Builder $query, ?string $status): Builder
     {
         if (empty($status) || $status === 'all') return $query;
-        return $query->where('status', $status);
+        return $query->where('mp_products.status', $status);
     }
 
     /**
@@ -242,7 +339,7 @@ class MpProduct extends Model
     public function scopeByCategory(Builder $query, ?string $category): Builder
     {
         if (empty($category) || $category === 'all') return $query;
-        return $query->where('category_name', $category);
+        return $query->where('mp_products.category_name', $category);
     }
 
     /**
@@ -251,7 +348,7 @@ class MpProduct extends Model
     public function scopeByBrand(Builder $query, ?string $brand): Builder
     {
         if (empty($brand) || $brand === 'all') return $query;
-        return $query->where('brand', $brand);
+        return $query->where('mp_products.brand', $brand);
     }
 
     /**
@@ -262,9 +359,15 @@ class MpProduct extends Model
         if (empty($level) || $level === 'all') return $query;
 
         return match ($level) {
-            'out_of_stock' => $query->where('stock_quantity', '<=', 0),
-            'critical'     => $query->whereBetween('stock_quantity', [1, 10]),
-            'in_stock'     => $query->where('stock_quantity', '>', 10),
+            'out_of_stock' => $query->where('mp_products.stock_quantity', '<=', 0),
+            'critical'     => $query->whereNotNull('mp_products.critical_stock_threshold')
+                ->whereColumn('mp_products.stock_quantity', '<=', 'mp_products.critical_stock_threshold')
+                ->where('mp_products.stock_quantity', '>', 0),
+            'in_stock'     => $query->where('mp_products.stock_quantity', '>', 0)
+                ->where(function (Builder $query) {
+                    $query->whereNull('mp_products.critical_stock_threshold')
+                        ->orWhereColumn('mp_products.stock_quantity', '>', 'mp_products.critical_stock_threshold');
+                }),
             default        => $query,
         };
     }
@@ -274,8 +377,8 @@ class MpProduct extends Model
      */
     public function scopeByPriceRange(Builder $query, ?float $min, ?float $max): Builder
     {
-        if ($min !== null) $query->where('sale_price', '>=', $min);
-        if ($max !== null) $query->where('sale_price', '<=', $max);
+        if ($min !== null) $query->where('mp_products.sale_price', '>=', $min);
+        if ($max !== null) $query->where('mp_products.sale_price', '<=', $max);
         return $query;
     }
 
@@ -284,7 +387,7 @@ class MpProduct extends Model
      */
     public function scopeWithCost(Builder $query): Builder
     {
-        return $query->where('cogs', '>', 0);
+        return $query->where('mp_products.cogs', '>', 0);
     }
 
     /**
@@ -293,7 +396,7 @@ class MpProduct extends Model
     public function scopeWithoutCost(Builder $query): Builder
     {
         return $query->where(function ($q) {
-            $q->where('cogs', '<=', 0)->orWhereNull('cogs');
+            $q->where('mp_products.cogs', '<=', 0)->orWhereNull('mp_products.cogs');
         });
     }
 }

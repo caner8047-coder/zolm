@@ -69,6 +69,8 @@ class MarketplaceFinancialSyncService
             $eventChanged = $eventDirty || $event->isDirty();
             $event->save();
 
+            $this->syncListingCommissionFromFinancialEvent($item, $eventData['event_type'] ?? null, $eventData['amount'] ?? null);
+
             if ($eventChanged) {
                 if ($eventDirty) {
                     $created++;
@@ -153,5 +155,41 @@ class MarketplaceFinancialSyncService
         }
 
         return null;
+    }
+
+    protected function syncListingCommissionFromFinancialEvent(?ChannelOrderItem $item, mixed $eventType, mixed $amount): void
+    {
+        if (!$item || !$item->channel_listing_id || (string) $eventType !== 'commission') {
+            return;
+        }
+
+        $amount = abs((float) str_replace(',', '.', (string) $amount));
+        $baseAmount = (float) (
+            $item->billable_amount
+            ?: $item->gross_amount
+            ?: ((float) $item->unit_price * max(1, (int) $item->quantity))
+        );
+
+        if ($amount <= 0 || $baseAmount <= 0) {
+            return;
+        }
+
+        $commissionRate = round(($amount / $baseAmount) * 100, 2);
+
+        if ($commissionRate < 0 || $commissionRate > 100) {
+            return;
+        }
+
+        if ($item->commission_rate === null || abs((float) $item->commission_rate - $commissionRate) > 0.009) {
+            $item->forceFill([
+                'commission_rate' => $commissionRate,
+            ])->save();
+        }
+
+        $item->listing()->update([
+            'commission_rate' => $commissionRate,
+            'commission_source' => 'financial_event',
+            'commission_synced_at' => now(),
+        ]);
     }
 }

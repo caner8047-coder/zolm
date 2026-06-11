@@ -15,15 +15,16 @@ tek tek degil, kontrollu sekilde birlikte devreye alinsin.
 
 - `APP_ENV=production`
 - `APP_DEBUG=false`
-- `APP_URL=https://ai.zemuretim.online`
+- `APP_URL=https://m.zolm.com.tr`
 - SSL sertifikasi aktif ve webhook URL disaridan erisilebilir olmali
 - server saati ve timezone `Europe/Istanbul` ile uyumlu olmali
 - queue driver production icin `database`, `redis` veya kullanilan kalici driver olmali
 - cache, session ve queue ayarlari production ortamina uygun olmali
 
 Kontrol:
-- `https://ai.zemuretim.online/login` aciliyor mu
-- `https://ai.zemuretim.online/api/webhooks/trendyol` route'u 405/419 benzeri beklendik response veriyor mu
+- `https://m.zolm.com.tr/login` aciliyor mu
+- `https://m.zolm.com.tr/api/webhooks/marketplaces/trendyol/{store_id}` route'u POST icin imza dogrulama response'u veriyor mu
+- WooCommerce/Shopify webhook URL'leri production domain ile disaridan HTTPS erisimi aliyor mu
 - `php artisan marketplace:health-check` temel ortam problemlerini temiz veriyor mu
 
 ## 2. Migration ve Kod Deploy
@@ -101,25 +102,23 @@ Hepsiburada icin:
 - mevcut Hepsiburada magazalari icin dusuk etkili profil gerekiyorsa `php artisan marketplace:apply-hepsiburada-safe-profile --store={id} --dry-run` ile once onizleme alinmali, sonra ayni komut dry-run olmadan uygulanmalidir
 
 N11 icin:
-- su anda guvenli skeleton asamasindadir
-- `api_key` ve `api_secret` alanlari saklanabilir
-- resmi endpoint ve auth modeli dogrulanmadan `Bağlantıyı doğrula` bilerek basarisiz donecektir
-- readiness ekraninda warning gorulmesi beklenir; bu durum bilincli tasarimdir
-- canlı smoke test ve sync capability'leri resmi dokuman netlestikten sonra acilacaktir
+- varsayilan REST base URL `https://api.n11.com`
+- varsayilan SOAP soru/urun endpointi `https://api.n11.com/ws/productService/`
+- siparis, urun, soru ve iade cekimi desteklenir; finans sync kapali kalir
+- `api_key` ve `api_secret` zorunludur
+- ilk canli kontrolde once `questions` smoke testi kisa tarih penceresiyle calistirilmalidir
 
 Koctas icin:
-- su anda guvenli skeleton asamasindadir
-- `api_key` ve `api_secret` alanlari saklanabilir
-- resmi endpoint ve auth modeli dogrulanmadan `Bağlantıyı doğrula` bilerek basarisiz donecektir
-- readiness ekraninda warning gorulmesi beklenir; bu durum bilincli tasarimdir
-- canlı smoke test ve sync capability'leri resmi dokuman netlestikten sonra acilacaktir
+- varsayilan Mirakl base URL `https://koctas.mirakl.net`
+- siparis, urun, soru ve iade cekimi desteklenir; finans sync kapali kalir
+- `api_key` zorunludur; shop secimi gerekiyorsa baglanti ekstra ayarlari kontrol edilmelidir
+- fiyat/stok push capability vardir ama ilk rollout'ta kapali tutulmalidir
 
 Pazarama icin:
-- su anda guvenli skeleton asamasindadir
-- `api_key` ve `api_secret` alanlari saklanabilir
-- resmi endpoint ve auth modeli dogrulanmadan `Bağlantıyı doğrula` bilerek basarisiz donecektir
-- readiness ekraninda warning gorulmesi beklenir; bu durum bilincli tasarimdir
-- canlı smoke test ve sync capability'leri resmi dokuman netlestikten sonra acilacaktir
+- varsayilan API base URL `https://isortagimapi.pazarama.com`
+- token URL `https://isortagimgiris.pazarama.com/connect/token`
+- siparis, urun, soru ve iade cekimi desteklenir; finans sync kapali kalir
+- `api_key` ve `api_secret` ile token alinabildigi `Bağlantıyı doğrula` ekraninda kontrol edilmelidir
 
 Amazon icin:
 - su anda guvenli skeleton asamasindadir
@@ -129,11 +128,10 @@ Amazon icin:
 - canlı smoke test ve sync capability'leri resmi dokuman netlestikten sonra acilacaktir
 
 Ciceksepeti icin:
-- su anda guvenli skeleton asamasindadir
-- `api_key` ve `api_secret` alanlari saklanabilir
-- resmi endpoint ve auth modeli dogrulanmadan `Bağlantıyı doğrula` bilerek basarisiz donecektir
-- readiness ekraninda warning gorulmesi beklenir; bu durum bilincli tasarimdir
-- canlı smoke test ve sync capability'leri resmi dokuman netlestikten sonra acilacaktir
+- varsayilan API base URL `https://apis.ciceksepeti.com/api/v1`
+- siparis, urun, soru ve iade cekimi desteklenir; finans sync kapali kalir
+- `api_key` zorunludur
+- soru endpointi varsayilan olarak `sellerquestions` kabul edilir; canli hesap farkli endpoint istiyorsa env ile ezilmelidir
 
 WooCommerce icin:
 - `api_key` alani `consumer key`
@@ -184,6 +182,7 @@ Kontrol listesi:
 - siparis capability
 - urun capability
 - finans capability
+- soru capability
 - webhook capability
 - fiyat push capability
 - stok push capability
@@ -199,6 +198,7 @@ Kontrol listesi:
 Onerilen baslangic ayari:
 
 - Siparis polling: `15 dk`
+- Soru polling: `15 dk`
 - Finans polling: `30-60 dk`
 - Urun polling: `360 dk`
 - Nightly repair sync: acik
@@ -223,7 +223,7 @@ Trendyol icin daha guvenli baslangic:
 
 Hepsiburada icin daha guvenli baslangic:
 
-- Siparis polling: `20 dk`
+- Siparis polling: `15 dk`
 - Finans polling: `120 dk`
 - Urun polling: `720 dk`
 - Webhook: kapali
@@ -237,7 +237,7 @@ Manuel sync korumasi icin:
 
 - `MARKETPLACE_MANUAL_SYNC_DEBOUNCE_SECONDS=30`
 - `MARKETPLACE_MANUAL_SYNC_ACTIVE_RUN_BLOCK_SECONDS=900`
-- panelden ayni magazada ayni `Siparis cek / Urun cek / Finans cek` aksiyonu art arda tiklansa bile ikinci queue kaydi acilmamasi beklenir
+- panelden ayni magazada ayni `Siparis cek / Soru cek / Urun cek / Finans cek` aksiyonu art arda tiklansa bile ikinci queue kaydi acilmamasi beklenir
 - aktif bir sync run varsa UI yeni is acmak yerine mevcut calismanin zaten sirada oldugunu bildirmelidir
 
 Listing push korumasi icin:
@@ -257,7 +257,7 @@ Order/package action korumasi icin:
 
 WooCommerce icin daha guvenli baslangic:
 
-- Siparis polling: `30 dk`
+- Siparis polling: `15 dk`
 - Finans polling: `360 dk` ve kapalidir
 - Urun polling: `720 dk`
 - Max parallel jobs: `1`
@@ -268,7 +268,7 @@ WooCommerce icin daha guvenli baslangic:
 
 Shopify icin daha guvenli baslangic:
 
-- Siparis polling: `20 dk`
+- Siparis polling: `15 dk`
 - Finans polling: `240 dk`
 - Urun polling: `720 dk`
 - Max parallel jobs: `1`
@@ -306,16 +306,21 @@ Her yeni magaza icin:
 
 1. `Ürün çek`
 2. `Sipariş çek`
-3. `Finans çek`
-4. `php artisan marketplace:smoke-test {store_id} --type=all --hours=24 --preview=2`
-5. `Siparişler V2` ekranı kontrol edilir
-6. `Ürünler V2` ekranı kontrol edilir
-7. `Finans V2` ekranı kontrol edilir
-8. `Özet` ekranı kontrol edilir
-9. `Eşleştirme Merkezi` kontrol edilir
+3. `Soru çek`
+4. Finans destekleyen kanallarda `Finans çek`
+5. `php artisan marketplace:smoke-test {store_id} --type=orders --hours=24 --preview=2`
+6. `php artisan marketplace:smoke-test {store_id} --type=questions --hours=168 --preview=2`
+7. `php artisan marketplace:smoke-test {store_id} --type=all --hours=24 --preview=2`
+8. `Siparişler V2` ekranı kontrol edilir
+9. `Sorular` ekranı kontrol edilir
+10. `Ürünler V2` ekranı kontrol edilir
+11. Finans destekleyen kanallarda `Finans V2` ekranı kontrol edilir
+12. `Özet` ekranı kontrol edilir
+13. `Eşleştirme Merkezi` kontrol edilir
 
 Kontrol sorulari:
 - siparisler geliyor mu
+- sorular geliyor mu
 - paketler geliyor mu
 - urun satirlari geliyor mu
 - finans event kayitlari geliyor mu
@@ -375,6 +380,7 @@ Canliya alimin ilk gunlerinde su ekranlar aktif izlenmeli:
 - `Pazaryeri > Özet`
 - `Pazaryeri > Entegrasyonlar`
 - `Pazaryeri > Siparişler`
+- `Pazaryeri > Sorular`
 - `Pazaryeri > Finans`
 - `Pazaryeri > Eşleştirme`
 
@@ -432,7 +438,8 @@ Geri donus senaryosu:
 - webhook URL dogru
 - webhook secret dogru
 - `php artisan marketplace:health-check --fail-on-warning` temiz donuyor
-- bir test magazada siparis/urun/finans sync gecti
+- bir test magazada siparis/urun/soru sync gecti
+- finans destekleyen kanallarda finans sync gecti
 - bir test siparisinde order action gecti
 - bir test listinginde push gecti
 

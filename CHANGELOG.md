@@ -1,5 +1,20 @@
 # ZOLM - Changelog
 
+## V0.7 - 2026-05-08 (Marketplace Live)
+
+### Yeni Özellikler
+- Trendyol, Hepsiburada, N11, Pazarama, Çiçeksepeti, Koçtaş ve WooCommerce için sipariş/soru otomatik sync kapsamı canlıya alma notlarıyla netleştirildi.
+- Smoke test ve manuel dispatch komutları `questions` ve `claims` tiplerini destekler hale getirildi.
+
+### Canlıya Alma
+- `m.zolm.com.tr` production env örneği güncellendi.
+- v0.6 SQL dump geçişi için kayıpsız preflight SQL eklendi.
+
+### Düzeltmeler
+- Production revenue migration'ı v0.6 dump'ında tablo mevcutsa çakışmadan geçecek şekilde idempotent hale getirildi.
+
+---
+
 ## V0.2 - 2026-01-20 (Responsive)
 
 ### ✨ Yeni Özellikler

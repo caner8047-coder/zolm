@@ -14,6 +14,7 @@ use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Services\Marketplace\MarketplaceReconciliationQueryService;
 use App\Services\MpSettingsService;
+use App\Services\ProfitabilityMetric;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -481,7 +482,7 @@ class MarketplaceFinance extends Component
                 'Kâr Farkı',
                 'Kesinti Farkı',
                 'Mutabakat Durumu',
-                'Marj %',
+                'Kârlılık %',
                 'Finans Olayı',
                 'Son Finans Tarihi',
             ], ';');
@@ -509,7 +510,7 @@ class MarketplaceFinance extends Component
                     (float) ($row->profit_delta_metric ?? 0),
                     (float) ($row->deduction_delta_metric ?? 0),
                     $this->cleanExportString($this->reconciliationStateLabel($row->reconciliation_state_metric)),
-                    (float) ($row->margin_percent_metric ?? 0),
+                    ProfitabilityMetric::profitPercentFromMultiplier($row->margin_percent_metric ?? null),
                     (int) ($row->financial_event_count ?? 0),
                     $row->last_financial_event_at ? \Illuminate\Support\Carbon::parse($row->last_financial_event_at)->format('d/m/Y H:i') : '',
                 ], ';');
@@ -1056,7 +1057,7 @@ class MarketplaceFinance extends Component
                 DB::raw("{$expr['profit_state']} as profit_state_metric"),
                 DB::raw('COALESCE(order_snapshot.estimated_profit, 0) as estimated_profit_metric'),
                 DB::raw('COALESCE(order_snapshot.confirmed_profit, 0) as confirmed_profit_metric'),
-                DB::raw('COALESCE(order_snapshot.margin_percent, 0) as margin_percent_metric'),
+                DB::raw("{$expr['profitability_ratio']} as margin_percent_metric"),
                 DB::raw("{$expr['profit_value']} as profit_value_metric"),
                 DB::raw("{$expr['profit_delta']} as profit_delta_metric"),
                 DB::raw("{$expr['deduction_delta']} as deduction_delta_metric"),

@@ -92,6 +92,7 @@ class WooCommerceConnectorTest extends TestCase
                 [
                     'id' => 101,
                     'name' => 'ZEM Koltuk',
+                    'permalink' => 'https://shop.example.com/magaza/zem-koltuk/',
                     'sku' => 'WC-STK-1',
                     'status' => 'publish',
                     'price' => '1499.90',
@@ -116,12 +117,143 @@ class WooCommerceConnectorTest extends TestCase
         $this->assertSame('101', data_get($result, 'items.0.listing.listing_id'));
         $this->assertSame(1499.90, data_get($result, 'items.0.listing.sale_price'));
         $this->assertSame(8, data_get($result, 'items.0.listing.stock_quantity'));
+        $this->assertSame('https://shop.example.com/magaza/zem-koltuk/', data_get($result, 'items.0.product.raw_payload.permalink'));
 
         Http::assertSent(function ($request) {
-            return str_contains($request->url(), 'per_page=25')
-                && str_contains($request->url(), '_fields=')
-                && str_contains($request->url(), 'after=');
+            $query = $this->queryForUrl($request->url());
+
+            return ($query['per_page'] ?? null) === '25'
+                && filled($query['_fields'] ?? null)
+                && str_contains((string) $query['_fields'], 'permalink')
+                && ($query['orderby'] ?? null) === 'modified'
+                && ($query['dates_are_gmt'] ?? null) === '1'
+                && filled($query['modified_after'] ?? null)
+                && !array_key_exists('after', $query);
         });
+    }
+
+    public function test_it_can_pull_full_woocommerce_catalog_without_modified_window(): void
+    {
+        Http::fake([
+            'https://shop.example.com/wp-json/wc/v3/products*' => Http::response([
+                [
+                    'id' => 101,
+                    'name' => 'ZEM Koltuk',
+                    'sku' => 'WC-STK-1',
+                    'status' => 'publish',
+                    'price' => '1499.90',
+                    'regular_price' => '1699.90',
+                    'manage_stock' => true,
+                    'stock_quantity' => 8,
+                    'date_created_gmt' => '2026-03-20T10:00:00',
+                ],
+            ], 200, ['X-WP-TotalPages' => '1']),
+        ]);
+
+        $store = $this->makeStore();
+
+        $result = app(WooCommerceConnector::class)->pullProducts($store, [
+            'full_catalog_refresh' => true,
+            'page_size' => 100,
+            'start_date' => '2026-03-20T00:00:00+03:00',
+        ]);
+
+        $this->assertCount(1, $result['items']);
+        $this->assertSame('full_catalog_refresh', data_get($result, 'meta.date_filter'));
+
+        Http::assertSent(function ($request) {
+            $query = $this->queryForUrl($request->url());
+
+            return ($query['per_page'] ?? null) === '100'
+                && ($query['orderby'] ?? null) === 'modified'
+                && ($query['dates_are_gmt'] ?? null) === '1'
+                && !array_key_exists('modified_after', $query)
+                && !array_key_exists('after', $query);
+        });
+    }
+
+    public function test_it_pulls_woocommerce_variation_skus_for_variable_products(): void
+    {
+        Http::fake([
+            'https://shop.example.com/wp-json/wc/v3/products/13511/variations*' => Http::response([
+                [
+                    'id' => 24680,
+                    'sku' => '1PUFZEM00614',
+                    'status' => 'publish',
+                    'price' => '1359.90',
+                    'regular_price' => '1459.90',
+                    'manage_stock' => true,
+                    'stock_quantity' => 12,
+                    'date_created_gmt' => '2026-03-21T10:00:00',
+                    'attributes' => [
+                        ['name' => 'Renk', 'option' => 'Gri'],
+                    ],
+                ],
+            ], 200, ['X-WP-TotalPages' => '1']),
+            'https://shop.example.com/wp-json/wc/v3/products*' => Http::response([
+                [
+                    'id' => 13511,
+                    'name' => 'Zem Liva Sandıklı Bohem Puf',
+                    'type' => 'variable',
+                    'permalink' => 'https://shop.example.com/magaza/zem-liva-sandikli-bohem-puf/',
+                    'sku' => '',
+                    'status' => 'publish',
+                    'price' => '1359.90',
+                    'regular_price' => '1459.90',
+                    'manage_stock' => false,
+                    'stock_quantity' => null,
+                    'date_created_gmt' => '2026-03-20T10:00:00',
+                    'categories' => [
+                        ['name' => 'Puf/Bench'],
+                    ],
+                ],
+            ], 200, ['X-WP-TotalPages' => '1']),
+        ]);
+
+        $store = $this->makeStore();
+
+        $result = app(WooCommerceConnector::class)->pullProducts($store, [
+            'full_catalog_refresh' => true,
+            'page_size' => 100,
+        ]);
+
+        $this->assertCount(2, $result['items']);
+        $this->assertSame(1, data_get($result, 'meta.variation_items_received'));
+        $this->assertNull(data_get($result, 'items.0.product.stock_code'));
+        $this->assertSame('1PUFZEM00614', data_get($result, 'items.1.product.stock_code'));
+        $this->assertSame('24680', data_get($result, 'items.1.product.external_product_id'));
+        $this->assertSame('https://shop.example.com/magaza/zem-liva-sandikli-bohem-puf/', data_get($result, 'items.1.product.raw_payload.parent.permalink'));
+        $this->assertSame('13511', data_get($result, 'items.1.product.external_parent_id'));
+        $this->assertSame('24680', data_get($result, 'items.1.listing.listing_id'));
+        $this->assertSame('Zem Liva Sandıklı Bohem Puf - Gri', data_get($result, 'items.1.product.title'));
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/products/13511/variations?'));
+    }
+
+    public function test_it_keeps_blank_woocommerce_sku_as_missing_stock_code(): void
+    {
+        Http::fake([
+            'https://shop.example.com/wp-json/wc/v3/products*' => Http::response([
+                [
+                    'id' => 101,
+                    'name' => 'ZEM Koltuk',
+                    'sku' => '',
+                    'status' => 'publish',
+                    'price' => '1499.90',
+                    'regular_price' => '1699.90',
+                    'manage_stock' => true,
+                    'stock_quantity' => 8,
+                    'date_created_gmt' => '2026-03-20T10:00:00',
+                ],
+            ], 200, ['X-WP-TotalPages' => '1']),
+        ]);
+
+        $store = $this->makeStore();
+
+        $result = app(WooCommerceConnector::class)->pullProducts($store);
+
+        $this->assertNull(data_get($result, 'items.0.product.stock_code'));
+        $this->assertSame('101', data_get($result, 'items.0.product.external_product_id'));
     }
 
     public function test_it_normalizes_woocommerce_orders(): void
@@ -212,6 +344,33 @@ class WooCommerceConnectorTest extends TestCase
             $body = $request->data();
 
             return $request->url() === 'https://shop.example.com/wp-json/wc/v3/products/101'
+                && $request->method() === 'PUT'
+                && (($body['regular_price'] ?? null) === '1599.90'
+                    || ($body['stock_quantity'] ?? null) === 11);
+        });
+    }
+
+    public function test_it_pushes_price_and_stock_to_variation_endpoint(): void
+    {
+        Http::fake([
+            'https://shop.example.com/wp-json/wc/v3/products/13511/variations/14114' => Http::response([
+                'id' => 14114,
+                'regular_price' => '1599.90',
+                'stock_quantity' => 11,
+            ], 200),
+        ]);
+
+        $listing = $this->makeListing(14114, 13511);
+        $connector = app(WooCommerceConnector::class);
+
+        $connector->pushPrice($listing, 1599.90);
+        $connector->pushStock($listing, 11);
+
+        Http::assertSentCount(2);
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+
+            return $request->url() === 'https://shop.example.com/wp-json/wc/v3/products/13511/variations/14114'
                 && $request->method() === 'PUT'
                 && (($body['regular_price'] ?? null) === '1599.90'
                     || ($body['stock_quantity'] ?? null) === 11);
@@ -354,13 +513,14 @@ class WooCommerceConnectorTest extends TestCase
         return $store;
     }
 
-    protected function makeListing(int $listingId = 101): ChannelListing
+    protected function makeListing(int $listingId = 101, ?int $parentId = null): ChannelListing
     {
         $store = $this->makeStore();
 
         $channelProduct = new ChannelProduct([
             'store_id' => 1,
             'external_product_id' => (string) $listingId,
+            'external_parent_id' => $parentId ? (string) $parentId : null,
             'stock_code' => 'WC-STK-'.$listingId,
             'title' => 'ZEM Koltuk',
             'raw_payload' => [
@@ -382,5 +542,16 @@ class WooCommerceConnectorTest extends TestCase
         $listing->setRelation('channelProduct', $channelProduct);
 
         return $listing;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function queryForUrl(string $url): array
+    {
+        $query = [];
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+        return $query;
     }
 }

@@ -4,7 +4,12 @@ namespace App\Services\Marketplace\Connectors;
 
 use App\Models\ChannelListing;
 use App\Models\IntegrationPushRun;
+use App\Models\MarketplaceQuestion;
 use App\Models\MarketplaceStore;
+use App\Services\Marketplace\Connectors\Concerns\NormalizesCustomerQuestions;
+use App\Services\Marketplace\Contracts\AnswersCustomerQuestions;
+use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
+use App\Services\Marketplace\Contracts\PullsClaims;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
 use App\Services\Marketplace\Contracts\PushesPrice;
@@ -16,8 +21,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class WooCommerceConnector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PushesPrice, PushesStock, TestsConnection
+class WooCommerceConnector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PullsCustomerQuestions, PullsClaims, AnswersCustomerQuestions, PushesPrice, PushesStock, TestsConnection
 {
+    use NormalizesCustomerQuestions;
+
     public function providerKey(): string
     {
         return 'woocommerce';
@@ -53,6 +60,11 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
             'package_common_label_get' => false,
             'invoice_link' => false,
             'package_invoice_link' => false,
+            'questions' => true,
+            'question_answer' => true,
+            'claims' => true,
+            'claim_approve' => false,
+            'claim_reject' => false,
         ];
     }
 
@@ -85,28 +97,156 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
 
     public function pullProducts(MarketplaceStore $store, array $options = []): array
     {
-        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('Europe/Istanbul');
+        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('UTC');
+        $fullCatalogRefresh = (bool) ($options['full_catalog_refresh'] ?? false);
+        $query = [
+            'orderby' => 'modified',
+            'order' => 'desc',
+            'dates_are_gmt' => true,
+            '_fields' => $this->resourceFields('product_fields'),
+        ];
+
+        if (!$fullCatalogRefresh) {
+            $query['modified_after'] = $startDate->toIso8601String();
+        }
+
         $rows = $this->fetchPaginated(
             $store,
             'products',
-            [
-                'orderby' => 'date',
-                'order' => 'desc',
-                'after' => $startDate->toIso8601String(),
-                '_fields' => $this->resourceFields('product_fields'),
-            ],
+            $query,
             min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.woocommerce.product_page_size', 25))))
         );
+        $variationRows = $this->fetchVariationsForProducts($store, $rows, $query, $options);
 
         return [
             'items' => collect($rows)
                 ->map(fn (array $payload) => $this->normalizeProduct($payload))
+                ->merge(collect($variationRows)->map(
+                    fn (array $row) => $this->normalizeVariation($row['variation'], $row['parent'])
+                ))
+                ->values()
+                ->all(),
+            'meta' => [
+                'items_received' => count($rows) + count($variationRows),
+                'parent_items_received' => count($rows),
+                'variation_items_received' => count($variationRows),
+                'cursor_after' => now()->toIso8601String(),
+                'date_filter' => $fullCatalogRefresh ? 'full_catalog_refresh' : 'modified_after',
+            ],
+        ];
+    }
+
+    public function pullCustomerQuestions(MarketplaceStore $store, array $options = []): array
+    {
+        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('UTC');
+        $endDate = CarbonImmutable::parse($options['end_date'] ?? now())->setTimezone('UTC');
+        $rows = $this->fetchPaginated(
+            $store,
+            'products/reviews',
+            [
+                'orderby' => 'date',
+                'order' => 'desc',
+                'after' => $startDate->toIso8601String(),
+                'before' => $endDate->toIso8601String(),
+            ],
+            min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.woocommerce.question_page_size', 50))))
+        );
+
+        return [
+            'items' => collect($rows)
+                ->map(fn (array $payload) => $this->normalizeWooCommerceQuestion($payload))
                 ->values()
                 ->all(),
             'meta' => [
                 'items_received' => count($rows),
-                'cursor_after' => now()->toIso8601String(),
+                'cursor_after' => $endDate->toIso8601String(),
+                'source' => 'product_reviews',
             ],
+        ];
+    }
+
+    public function pullClaims(MarketplaceStore $store, array $options = []): array
+    {
+        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('UTC');
+        $endDate = CarbonImmutable::parse($options['end_date'] ?? now())->setTimezone('UTC');
+        $pageSize = min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.woocommerce.claim_page_size', 25))));
+        $orders = $this->fetchPaginated(
+            $store,
+            'orders',
+            [
+                'status' => 'refunded',
+                'orderby' => 'modified',
+                'order' => 'desc',
+                'after' => $startDate->toIso8601String(),
+                'before' => $endDate->toIso8601String(),
+                '_fields' => $this->resourceFields('order_fields'),
+            ],
+            $pageSize
+        );
+
+        $items = [];
+
+        foreach ($orders as $orderPayload) {
+            $orderId = (string) data_get($orderPayload, 'id');
+
+            if ($orderId === '') {
+                continue;
+            }
+
+            $refunds = $this->fetchPaginated($store, 'orders/'.$orderId.'/refunds', [], $pageSize);
+
+            if ($refunds === []) {
+                $items[] = $this->normalizeRefundClaim($orderPayload, []);
+                continue;
+            }
+
+            foreach ($refunds as $refundPayload) {
+                $items[] = $this->normalizeRefundClaim($orderPayload, $refundPayload);
+            }
+        }
+
+        return [
+            'items' => $items,
+            'meta' => [
+                'items_received' => count($items),
+                'cursor_after' => $endDate->toIso8601String(),
+                'source' => 'order_refunds',
+            ],
+        ];
+    }
+
+    public function answerCustomerQuestion(MarketplaceQuestion $question, string $answer): array
+    {
+        $question->loadMissing('store.connection');
+
+        $productId = (string) (
+            data_get($question->raw_payload, 'product_id')
+            ?: data_get($question->raw_payload, 'post')
+            ?: data_get($question->raw_payload, 'external_product_id')
+        );
+
+        if ($productId === '') {
+            throw new \RuntimeException('WooCommerce yorum cevabı için ürün ID bulunamadı.');
+        }
+
+        $response = $this->wordpressRequest($question->store)
+            ->post('comments', [
+                'post' => (int) $productId,
+                'parent' => (int) $question->external_question_id,
+                'content' => $answer,
+            ])
+            ->throw();
+
+        $payload = $response->json();
+        $payload = is_array($payload) ? $payload : [];
+
+        return [
+            'external_answer_id' => (string) (
+                data_get($payload, 'id')
+                ?: $question->external_question_id
+            ),
+            'response_status' => $response->status(),
+            'response' => $payload,
         ];
     }
 
@@ -115,9 +255,10 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
         $listing->loadMissing('store');
 
         $productId = $this->productId($listing);
+        $endpoint = $this->productEndpoint($listing);
 
         $response = $this->request($listing->store)
-            ->put('products/'.$productId, array_filter([
+            ->put($endpoint, array_filter([
                 'regular_price' => $this->decimalString($price),
                 'sale_price' => isset($context['sale_price']) ? $this->decimalString((float) $context['sale_price']) : null,
             ], fn ($value) => $value !== null && $value !== ''))
@@ -140,9 +281,10 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
         $listing->loadMissing('store');
 
         $productId = $this->productId($listing);
+        $endpoint = $this->productEndpoint($listing);
 
         $response = $this->request($listing->store)
-            ->put('products/'.$productId, [
+            ->put($endpoint, [
                 'manage_stock' => true,
                 'stock_quantity' => $quantity,
                 'stock_status' => $quantity > 0 ? 'instock' : 'outofstock',
@@ -331,6 +473,17 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
             ->withBasicAuth($consumerKey, $consumerSecret);
     }
 
+    protected function wordpressRequest(MarketplaceStore $store): PendingRequest
+    {
+        [$username, $applicationPassword] = $this->resolveWordPressAuth($store);
+
+        return Http::baseUrl($this->wordpressBaseUrlFor($store))
+            ->timeout((int) config('marketplace.woocommerce.request_timeout', 45))
+            ->acceptJson()
+            ->asJson()
+            ->withBasicAuth($username, $applicationPassword);
+    }
+
     protected function baseUrlFor(MarketplaceStore $store): string
     {
         $credentials = $store->connection?->credentials_encrypted ?? [];
@@ -364,6 +517,17 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
         return $base.'/wp-json/'.$version.'/';
     }
 
+    protected function wordpressBaseUrlFor(MarketplaceStore $store): string
+    {
+        $base = $this->baseUrlFor($store);
+
+        if (Str::contains($base, '/wp-json/')) {
+            $base = Str::before($base, '/wp-json/');
+        }
+
+        return rtrim($base, '/').'/wp-json/wp/v2/';
+    }
+
     protected function looksLikePlaceholderUrl(string $url): bool
     {
         $host = (string) parse_url($url, PHP_URL_HOST);
@@ -390,6 +554,32 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
         }
 
         return [$consumerKey, $consumerSecret];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    protected function resolveWordPressAuth(MarketplaceStore $store): array
+    {
+        $credentials = $store->connection?->credentials_encrypted ?? [];
+        $username = trim((string) (
+            $credentials['wp_username']
+            ?? $credentials['wordpress_username']
+            ?? $credentials['extra_user']
+            ?? ''
+        ));
+        $applicationPassword = trim((string) (
+            $credentials['wp_application_password']
+            ?? $credentials['wordpress_application_password']
+            ?? $credentials['extra_password']
+            ?? ''
+        ));
+
+        if ($username === '' || $applicationPassword === '') {
+            throw new \RuntimeException('WooCommerce soru cevabı için WordPress kullanıcı adı ve uygulama şifresi zorunludur.');
+        }
+
+        return [$username, $applicationPassword];
     }
 
     /**
@@ -426,6 +616,43 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
         } while ($hasMore);
 
         return $items;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $products
+     * @param  array<string, mixed>  $baseQuery
+     * @param  array<string, mixed>  $options
+     * @return array<int, array{parent: array<string, mixed>, variation: array<string, mixed>}>
+     */
+    protected function fetchVariationsForProducts(MarketplaceStore $store, array $products, array $baseQuery, array $options): array
+    {
+        $pageSize = min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.woocommerce.product_page_size', 25))));
+        $query = array_replace($baseQuery, [
+            '_fields' => $this->resourceFields('variation_fields'),
+        ]);
+
+        $rows = [];
+
+        foreach ($products as $product) {
+            if ((string) data_get($product, 'type') !== 'variable') {
+                continue;
+            }
+
+            $parentId = trim((string) data_get($product, 'id'));
+
+            if ($parentId === '') {
+                continue;
+            }
+
+            foreach ($this->fetchPaginated($store, 'products/'.$parentId.'/variations', $query, $pageSize) as $variation) {
+                $rows[] = [
+                    'parent' => $product,
+                    'variation' => $variation,
+                ];
+            }
+        }
+
+        return $rows;
     }
 
     protected function resourceFields(string $configKey): ?string
@@ -516,10 +743,11 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
         $subtotal = $this->toDecimal(data_get($payload, 'subtotal')) ?: $total;
         $grossAmount = $subtotal !== null ? round($subtotal, 2) : null;
         $discountAmount = $grossAmount !== null && $total !== null ? round(max(0, $grossAmount - $total), 2) : null;
+        $stockCode = trim((string) data_get($payload, 'sku'));
 
         return [
             'external_line_id' => (string) (data_get($payload, 'id') ?: sha1($orderId.'|'.$index)),
-            'stock_code' => (string) (data_get($payload, 'sku') ?: data_get($payload, 'product_id') ?: ''),
+            'stock_code' => $stockCode !== '' ? $stockCode : null,
             'barcode' => null,
             'product_name' => data_get($payload, 'name'),
             'quantity' => $quantity,
@@ -542,14 +770,14 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
     protected function normalizeProduct(array $payload): array
     {
         $productId = (string) data_get($payload, 'id');
-        $stockCode = (string) (data_get($payload, 'sku') ?: $productId);
+        $stockCode = trim((string) data_get($payload, 'sku'));
         $manageStock = (bool) data_get($payload, 'manage_stock');
 
         return [
             'product' => [
                 'external_product_id' => $productId,
                 'external_parent_id' => (string) (data_get($payload, 'parent_id') ?: ''),
-                'stock_code' => $stockCode,
+                'stock_code' => $stockCode !== '' ? $stockCode : null,
                 'barcode' => null,
                 'title' => data_get($payload, 'name'),
                 'brand' => $this->extractBrand($payload),
@@ -561,14 +789,131 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
                 'vat_rate' => null,
                 'raw_payload' => $payload,
             ],
-            'listing' => [
+            'listing' => array_merge([
                 'listing_id' => $productId,
                 'listing_status' => data_get($payload, 'status') ?: 'draft',
                 'sale_price' => $this->toDecimal(data_get($payload, 'price') ?: data_get($payload, 'regular_price')),
                 'list_price' => $this->toDecimal(data_get($payload, 'regular_price')),
+                'commission_rate' => 0,
+                'commission_source' => 'marketplace_default',
                 'currency' => data_get($payload, 'currency') ?: 'TRY',
                 'stock_quantity' => $manageStock ? (int) (data_get($payload, 'stock_quantity') ?: 0) : 0,
                 'published_at' => $this->normalizeDate(data_get($payload, 'date_created_gmt') ?: data_get($payload, 'date_created')),
+            ], $this->catalogDeliveryTermData($payload)),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $parentPayload
+     * @return array<string, mixed>
+     */
+    protected function normalizeVariation(array $payload, array $parentPayload): array
+    {
+        $variationId = (string) data_get($payload, 'id');
+        $parentId = (string) data_get($parentPayload, 'id');
+        $stockCode = trim((string) data_get($payload, 'sku'));
+        $manageStock = (bool) (data_get($payload, 'manage_stock') ?? data_get($parentPayload, 'manage_stock'));
+        $variantLabel = collect(data_get($payload, 'attributes', []))
+            ->filter(fn ($row) => is_array($row))
+            ->map(fn (array $row) => (string) (($row['option'] ?? '') ?: ($row['name'] ?? '')))
+            ->filter()
+            ->implode(' / ');
+        $parentTitle = trim((string) data_get($parentPayload, 'name'));
+
+        return [
+            'product' => [
+                'external_product_id' => $variationId,
+                'external_parent_id' => $parentId,
+                'stock_code' => $stockCode !== '' ? $stockCode : null,
+                'barcode' => null,
+                'title' => trim($parentTitle . ($variantLabel !== '' ? ' - ' . $variantLabel : '')),
+                'brand' => $this->extractBrand($parentPayload),
+                'category_name' => collect(data_get($parentPayload, 'categories', []))
+                    ->filter(fn ($row) => is_array($row))
+                    ->map(fn (array $row) => (string) ($row['name'] ?? ''))
+                    ->filter()
+                    ->implode(' / '),
+                'vat_rate' => null,
+                'raw_payload' => array_replace($payload, [
+                    'parent' => $parentPayload,
+                    'type' => 'variation',
+                ]),
+            ],
+            'listing' => array_merge([
+                'listing_id' => $variationId,
+                'listing_status' => data_get($payload, 'status') ?: data_get($parentPayload, 'status') ?: 'draft',
+                'sale_price' => $this->toDecimal(data_get($payload, 'price') ?: data_get($parentPayload, 'price')),
+                'list_price' => $this->toDecimal(data_get($payload, 'regular_price') ?: data_get($parentPayload, 'regular_price')),
+                'commission_rate' => 0,
+                'commission_source' => 'marketplace_default',
+                'currency' => data_get($parentPayload, 'currency') ?: 'TRY',
+                'stock_quantity' => $manageStock ? (int) (data_get($payload, 'stock_quantity') ?? data_get($parentPayload, 'stock_quantity') ?? 0) : 0,
+                'published_at' => $this->normalizeDate(
+                    data_get($payload, 'date_created_gmt')
+                    ?: data_get($payload, 'date_created')
+                    ?: data_get($parentPayload, 'date_created_gmt')
+                    ?: data_get($parentPayload, 'date_created')
+                ),
+            ], $this->catalogDeliveryTermData($payload, $parentPayload)),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function normalizeWooCommerceQuestion(array $payload): array
+    {
+        return $this->normalizeQuestionPayload($payload, [
+            'external_question_id' => (string) data_get($payload, 'id'),
+            'question_type' => 'review',
+            'status' => (string) data_get($payload, 'status') === 'approved' ? 'open' : 'draft',
+            'customer_name' => data_get($payload, 'reviewer'),
+            'customer_external_id' => data_get($payload, 'reviewer_email'),
+            'product_name' => data_get($payload, 'product_name'),
+            'external_product_id' => data_get($payload, 'product_id'),
+            'question_text' => $this->questionTextValue(data_get($payload, 'review')),
+            'asked_at' => $this->questionDate(
+                data_get($payload, 'date_created_gmt')
+                ?: data_get($payload, 'date_created')
+            ),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $orderPayload
+     * @param  array<string, mixed>  $refundPayload
+     * @return array<string, mixed>
+     */
+    protected function normalizeRefundClaim(array $orderPayload, array $refundPayload): array
+    {
+        $orderId = (string) data_get($orderPayload, 'id');
+        $refundId = (string) (data_get($refundPayload, 'id') ?: 'order-'.$orderId);
+        $billing = data_get($orderPayload, 'billing', []);
+
+        return [
+            'external_claim_id' => 'woo-'.$orderId.'-'.$refundId,
+            'order_number' => (string) (data_get($orderPayload, 'number') ?: $orderId),
+            'status' => 'approved',
+            'type' => 'return',
+            'reason' => data_get($refundPayload, 'reason'),
+            'reason_detail' => data_get($refundPayload, 'reason'),
+            'customer_name' => trim((string) collect([
+                data_get($billing, 'first_name'),
+                data_get($billing, 'last_name'),
+            ])->filter()->implode(' ')),
+            'created_date' => data_get($refundPayload, 'date_created_gmt')
+                ?: data_get($refundPayload, 'date_created')
+                ?: data_get($orderPayload, 'date_modified_gmt')
+                ?: data_get($orderPayload, 'date_modified'),
+            'items' => collect(data_get($refundPayload, 'line_items', data_get($orderPayload, 'line_items', [])))
+                ->filter(fn ($row) => is_array($row))
+                ->values()
+                ->all(),
+            'raw_payload' => [
+                'order' => $orderPayload,
+                'refund' => $refundPayload,
             ],
         ];
     }
@@ -587,6 +932,20 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
         }
 
         return $productId;
+    }
+
+    protected function productEndpoint(ChannelListing $listing): string
+    {
+        $listing->loadMissing('channelProduct');
+
+        $productId = $this->productId($listing);
+        $parentId = trim((string) $listing->channelProduct?->external_parent_id);
+
+        if ($parentId !== '' && $parentId !== $productId) {
+            return 'products/'.$parentId.'/variations/'.$productId;
+        }
+
+        return 'products/'.$productId;
     }
 
     protected function decimalString(float $value): string

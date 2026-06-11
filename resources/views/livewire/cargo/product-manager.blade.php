@@ -41,14 +41,14 @@
 
     <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 lg:gap-6">
         <div class="min-w-0 max-w-3xl">
-            <h2 class="text-xl lg:text-2xl font-bold text-gray-900">Referans ürün kartları</h2>
-            <p class="mt-1 text-sm lg:text-base text-gray-700">
+            <h2 class="text-xl lg:text-2xl font-bold text-slate-900">Referans ürün kartları</h2>
+            <p class="mt-1 text-sm lg:text-base text-slate-700">
                 Karşılaştırmada kullanılacak stok, desi ve tutar referanslarını tek listede yönetin.
             </p>
         </div>
 
         <div class="flex w-full xl:w-auto flex-col sm:flex-row gap-2 sm:gap-3">
-            <button wire:click="openImportModal" class="min-h-[44px] w-full sm:w-auto rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">İçeri Aktar</button>
+            <button wire:click="openImportModal" class="min-h-[44px] w-full sm:w-auto rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">İçeri Aktar</button>
             <button wire:click="exportToExcel" class="min-h-[44px] w-full sm:w-auto rounded-md border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50">Excel Dışa Aktar</button>
             <x-zolm.primary-button color="emerald" compact wire:click="$set('showAddForm', true)">Yeni Ürün</x-zolm.primary-button>
         </div>
@@ -83,24 +83,24 @@
             <form wire:submit="addProduct" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3 lg:gap-4">
                 <div>
                     <label class="text-xs sm:text-sm font-medium text-slate-700">Stok kodu</label>
-                    <input type="text" wire:model="newProduct.stok_kodu" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 @error('newProduct.stok_kodu') border-rose-400 @enderror" placeholder="1BRJZEM00001">
+                    <input type="text" wire:model="newProduct.stok_kodu" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 @error('newProduct.stok_kodu') border-rose-400 @enderror" placeholder="1BRJZEM00001">
                     @error('newProduct.stok_kodu') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
                 </div>
                 <div class="sm:col-span-2 xl:col-span-2">
                     <label class="text-xs sm:text-sm font-medium text-slate-700">Ürün adı</label>
-                    <input type="text" wire:model="newProduct.urun_adi" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 @error('newProduct.urun_adi') border-rose-400 @enderror" placeholder="Ürün adını girin">
+                    <input type="text" wire:model="newProduct.urun_adi" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 @error('newProduct.urun_adi') border-rose-400 @enderror" placeholder="Ürün adını girin">
                 </div>
                 <div>
                     <label class="text-xs sm:text-sm font-medium text-slate-700">Parça</label>
-                    <input type="number" min="1" max="20" wire:model="newProduct.parca" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <input type="number" min="1" max="20" wire:model="newProduct.parca" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                 </div>
                 <div>
                     <label class="text-xs sm:text-sm font-medium text-slate-700">Desi</label>
-                    <input type="number" step="0.01" min="0" wire:model="newProduct.desi" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <input type="number" step="0.01" min="0" wire:model="newProduct.desi" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                 </div>
                 <div>
                     <label class="text-xs sm:text-sm font-medium text-slate-700">Tutar</label>
-                    <input type="number" step="0.01" min="0" wire:model="newProduct.tutar" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <input type="number" step="0.01" min="0" wire:model="newProduct.tutar" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                 </div>
                 <div class="sm:col-span-2 xl:col-span-6 flex flex-col sm:flex-row justify-end gap-3 pt-2">
                     <button type="button" wire:click="$set('showAddForm', false)" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">İptal</button>
@@ -202,12 +202,12 @@
                                 <button @click="open = !open" type="button" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                                     Kolonlar
                                 </button>
-                                <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                                <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-[10px] border border-slate-200 bg-white p-3 shadow-xl">
                                     <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Görünür Kolonlar</p>
                                     <div class="mt-3 space-y-1.5">
                                         @foreach($columnDefs as $colKey => $colLabel)
                                             <label class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                                <input type="checkbox" wire:click="toggleColumn('{{ $colKey }}')" {{ in_array($colKey, $visibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                                <input type="checkbox" wire:click="toggleColumn('{{ $colKey }}')" {{ in_array($colKey, $visibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-slate-200">
                                                 <span>{{ $colLabel }}</span>
                                             </label>
                                         @endforeach
@@ -224,12 +224,12 @@
                             type="text"
                             wire:model.live.debounce.300ms="search"
                             placeholder="Stok kodu, ürün adı veya kategori kodu ara..."
-                            class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"
                         >
                     </div>
                     <div class="xl:col-span-3">
                         <label class="block text-xs sm:text-sm font-medium text-slate-500">Kategori</label>
-                        <select wire:model.live="filterCategory" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <select wire:model.live="filterCategory" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                             <option value="">Tüm kategoriler</option>
                             @foreach($categories as $cat)
                                 <option value="{{ $cat }}">{{ \App\Models\Product::getCategoryName($cat) }} ({{ $cat }})</option>
@@ -267,19 +267,19 @@
                                 <tr class="bg-white hover:bg-slate-50 transition">
                                     @if($editingId === $product->id)
                                         @if(in_array('stok_kodu', $visibleColumns, true))
-                                            <td class="px-2 py-2"><input type="text" wire:model="editingProduct.stok_kodu" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                                            <td class="px-2 py-2"><input type="text" wire:model="editingProduct.stok_kodu" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"></td>
                                         @endif
                                         @if(in_array('urun_adi', $visibleColumns, true))
-                                            <td class="px-2 py-2"><input type="text" wire:model="editingProduct.urun_adi" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                                            <td class="px-2 py-2"><input type="text" wire:model="editingProduct.urun_adi" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"></td>
                                         @endif
                                         @if(in_array('parca', $visibleColumns, true))
-                                            <td class="px-2 py-2 text-center"><input type="number" min="1" wire:model="editingProduct.parca" class="w-14 rounded-xl border border-slate-200 px-2 py-2 text-center text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                                            <td class="px-2 py-2 text-center"><input type="number" min="1" wire:model="editingProduct.parca" class="w-14 rounded-xl border border-slate-200 px-2 py-2 text-center text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"></td>
                                         @endif
                                         @if(in_array('desi', $visibleColumns, true))
-                                            <td class="px-2 py-2 text-center"><input type="number" step="0.01" wire:model="editingProduct.desi" class="w-20 rounded-xl border border-slate-200 px-2 py-2 text-center text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                                            <td class="px-2 py-2 text-center"><input type="number" step="0.01" wire:model="editingProduct.desi" class="w-20 rounded-xl border border-slate-200 px-2 py-2 text-center text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"></td>
                                         @endif
                                         @if(in_array('tutar', $visibleColumns, true))
-                                            <td class="px-2 py-2 text-center"><input type="number" step="0.01" wire:model="editingProduct.tutar" class="w-20 rounded-xl border border-slate-200 px-2 py-2 text-center text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                                            <td class="px-2 py-2 text-center"><input type="number" step="0.01" wire:model="editingProduct.tutar" class="w-20 rounded-xl border border-slate-200 px-2 py-2 text-center text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"></td>
                                         @endif
                                         @if(in_array('kategori', $visibleColumns, true))
                                             <td class="px-2 py-2 text-center text-sm text-slate-400">{{ $product->kategori ?? '-' }}</td>
@@ -340,20 +340,20 @@
                             @if($editingId === $product->id)
                                 <div class="space-y-3">
                                     @if(in_array('stok_kodu', $visibleColumns, true))
-                                        <input type="text" wire:model="editingProduct.stok_kodu" placeholder="Stok kodu" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-base sm:text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                        <input type="text" wire:model="editingProduct.stok_kodu" placeholder="Stok kodu" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                     @endif
                                     @if(in_array('urun_adi', $visibleColumns, true))
-                                        <input type="text" wire:model="editingProduct.urun_adi" placeholder="Ürün adı" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-base sm:text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                        <input type="text" wire:model="editingProduct.urun_adi" placeholder="Ürün adı" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                     @endif
                                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                         @if(in_array('parca', $visibleColumns, true))
-                                            <input type="number" min="1" wire:model="editingProduct.parca" placeholder="Parça" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-center text-base sm:text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <input type="number" min="1" wire:model="editingProduct.parca" placeholder="Parça" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-center text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                         @endif
                                         @if(in_array('desi', $visibleColumns, true))
-                                            <input type="number" step="0.01" wire:model="editingProduct.desi" placeholder="Desi" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-center text-base sm:text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <input type="number" step="0.01" wire:model="editingProduct.desi" placeholder="Desi" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-center text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                         @endif
                                         @if(in_array('tutar', $visibleColumns, true))
-                                            <input type="number" step="0.01" wire:model="editingProduct.tutar" placeholder="Tutar" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-center text-base sm:text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <input type="number" step="0.01" wire:model="editingProduct.tutar" placeholder="Tutar" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-center text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                         @endif
                                     </div>
                                     <div class="flex flex-col sm:flex-row gap-2">
@@ -520,7 +520,7 @@
                     <h3 class="mt-3 text-xl font-bold text-slate-900">Ürünü kaldır</h3>
                     <p class="mt-2 text-sm text-slate-500">Silinen ürün referans listeden çıkar ve sonraki kontrolleri etkiler.</p>
 
-                    <div class="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-center">
+                    <div class="rounded-[8px] border border-rose-200 bg-rose-50 p-4 text-center">
                         <p class="text-sm font-semibold text-rose-800">Ürün kaydı silinecek</p>
                         <p class="mt-2 text-sm text-rose-700">Bu işlem seçili ürünü kalıcı olarak kaldırır.</p>
                     </div>

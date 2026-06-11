@@ -7,6 +7,8 @@ use App\Models\ChannelOrder;
 use App\Models\ChannelOrderPackage;
 use App\Models\IntegrationOrderActionRun;
 use App\Models\IntegrationSyncRun;
+use App\Models\Shipment;
+use App\Services\Cargo\CargoShipmentService;
 use App\Services\Marketplace\Contracts\ManagesCommonLabels;
 use App\Services\Marketplace\Contracts\SendsInvoiceLinks;
 use App\Services\Marketplace\Contracts\UpdatesPackageStatus;
@@ -24,17 +26,20 @@ class MarketplaceOrderActionService
         'refresh_cargo' => 'Kargo bilgisini yenile',
         'refresh_finance' => 'Finansı yenile',
         'recalculate_profit' => 'Kârı yeniden hesapla',
-        'package_picking' => 'Picking bildir',
+        'package_picking' => 'Kargola',
         'package_invoiced' => 'Fatura kesildi bildir',
         'package_common_label_create' => 'Ortak barkod talep et',
         'package_common_label_get' => 'Ortak barkod getir',
         'package_invoice_link' => 'Fatura linki gönder',
+        'cargo_create_surat_shipment' => 'Sürat gönderisi oluştur',
+        'cargo_refresh_surat_tracking' => 'Sürat takibini yenile',
     ];
 
     public function __construct(
         protected MarketplaceConnectorManager $connectorManager,
         protected MarketplaceProfitSnapshotService $profitSnapshotService,
         protected MarketplaceSyncService $syncService,
+        protected CargoShipmentService $cargoShipmentService,
     ) {
     }
 
@@ -235,6 +240,8 @@ class MarketplaceOrderActionService
                 'package_common_label_create' => $this->createCommonLabel($actionRun),
                 'package_common_label_get' => $this->getCommonLabel($actionRun),
                 'package_invoice_link' => $this->sendInvoiceLink($actionRun),
+                'cargo_create_surat_shipment' => $this->createSuratShipment($actionRun),
+                'cargo_refresh_surat_tracking' => $this->refreshSuratTracking($actionRun),
                 default => throw new \RuntimeException('Desteklenmeyen sipariş aksiyonu: ' . $actionRun->action_type),
             };
 
@@ -420,6 +427,77 @@ class MarketplaceOrderActionService
         }
 
         return $connector->sendInvoiceLink($package, $invoiceLink, $context);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function createSuratShipment(IntegrationOrderActionRun $actionRun): array
+    {
+        $package = $this->ensurePackage($actionRun);
+        $shipment = $this->cargoShipmentService->createOrUpdateFromPackage($package);
+        $shipment = $this->cargoShipmentService->pushToCarrier($shipment);
+
+        return $this->shipmentActionResponse($shipment, [
+            'external_action_id' => $shipment->external_shipment_id ?: $shipment->tracking_number ?: $shipment->barcode,
+            'action' => 'create_shipment',
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function refreshSuratTracking(IntegrationOrderActionRun $actionRun): array
+    {
+        $package = $this->ensurePackage($actionRun);
+        $shipment = Shipment::query()
+            ->where('channel_order_package_id', $package->id)
+            ->where('carrier_code', 'surat')
+            ->latest('id')
+            ->first();
+
+        if (!$shipment) {
+            $shipment = $this->cargoShipmentService->createOrUpdateFromPackage($package);
+        }
+
+        if (blank($shipment->tracking_number) && blank($shipment->barcode) && blank($shipment->external_shipment_id)) {
+            return $this->shipmentActionResponse($shipment, [
+                'action' => 'refresh_tracking',
+                'tracking_ready' => false,
+                'message' => 'Bu paket için takip numarası oluşmadı. Önce Sürat gönderisi oluşturun.',
+            ]);
+        }
+
+        $shipment = $this->cargoShipmentService->refreshTracking($shipment);
+
+        return $this->shipmentActionResponse($shipment, [
+            'external_action_id' => $shipment->tracking_number ?: $shipment->barcode ?: $shipment->external_shipment_id,
+            'action' => 'refresh_tracking',
+            'tracking_ready' => true,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $extra
+     * @return array<string, mixed>
+     */
+    protected function shipmentActionResponse(Shipment $shipment, array $extra = []): array
+    {
+        return array_merge([
+            'shipment_id' => $shipment->id,
+            'shipment_no' => $shipment->shipment_no,
+            'status' => $shipment->status,
+            'status_label' => $shipment->status_label,
+            'external_shipment_id' => $shipment->external_shipment_id,
+            'tracking_number' => $shipment->tracking_number,
+            'barcode' => $shipment->barcode,
+            'expected_cost' => (float) $shipment->expected_cost,
+            'actual_cost' => (float) $shipment->actual_cost,
+            'invoice_cost' => (float) $shipment->invoice_cost,
+            'cost_delta' => (float) $shipment->cost_delta,
+            'last_tracked_at' => optional($shipment->last_tracked_at)?->toIso8601String(),
+            'delivered_at' => optional($shipment->delivered_at)?->toIso8601String(),
+        ], $extra);
     }
 
     /**

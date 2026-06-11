@@ -99,6 +99,8 @@ class HepsiburadaConnectorTest extends TestCase
                         'currency' => 'TRY',
                     ],
                     'availableStock' => 12,
+                    'dispatchTime' => '2 gün',
+                    'deliveryType' => 'Standart',
                     'isActive' => true,
                     'createdAt' => '2026-03-20T10:00:00+03:00',
                 ]],
@@ -118,6 +120,8 @@ class HepsiburadaConnectorTest extends TestCase
         $this->assertSame('HB-LST-1', data_get($result, 'items.0.listing.listing_id'));
         $this->assertSame(1299.90, data_get($result, 'items.0.listing.sale_price'));
         $this->assertSame(12, data_get($result, 'items.0.listing.stock_quantity'));
+        $this->assertSame(2, data_get($result, 'items.0.listing.shipping_days'));
+        $this->assertSame('Standart', data_get($result, 'items.0.listing.shipping_type'));
         $this->assertSame('active', data_get($result, 'items.0.listing.listing_status'));
     }
 

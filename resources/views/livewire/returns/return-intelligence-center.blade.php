@@ -1,3 +1,8 @@
+@php
+    $crmLinks = app(\App\Services\Crm\CrmSourceLinkService::class);
+    $crmSnapshots = app(\App\Services\Crm\CrmCustomerSnapshotService::class);
+@endphp
+
 <div class="{{ $embedded ? 'space-y-4 lg:space-y-6' : 'space-y-4 lg:space-y-6 p-4 lg:p-6' }}">
     {{-- Sayfa Başlığı --}}
     @unless($embedded)
@@ -375,10 +380,15 @@
         <aside class="min-w-0 w-full lg:w-[360px] xl:w-[400px] lg:flex-shrink-0">
             <div class="rounded-[10px] border border-slate-200 bg-white shadow-sm lg:sticky lg:top-20 lg:max-h-[calc(100vh-6.5rem)] lg:overflow-y-auto">
                 @if($selectedItem)
+                    @php($selectedItemCrmSnapshot = $crmSnapshots->forSubject(auth()->user(), 'return', $selectedItem))
                     <div class="p-4 border-b border-slate-200">
                         <div class="flex items-center justify-between">
                             <h3 class="text-sm font-semibold text-slate-900">İade Detayı</h3>
                             <div class="flex items-center gap-2">
+                                <a href="{{ $crmLinks->urlFor('return', $selectedItem) }}"
+                                   class="inline-flex items-center gap-1 rounded-[6px] border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50">
+                                    CRM 360
+                                </a>
                                 <button wire:click="reanalyzeSelectedItem" wire:loading.attr="disabled" wire:target="reanalyzeSelectedItem"
                                         class="text-xs text-slate-500 hover:text-slate-700 transition-colors flex items-center gap-1">
                                     <svg wire:loading.remove wire:target="reanalyzeSelectedItem" class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -387,6 +397,7 @@
                                 </button>
                             </div>
                         </div>
+                        <x-zolm.crm-snapshot :snapshot="$selectedItemCrmSnapshot" variant="panel" class="mt-4" />
                     </div>
 
                     {{-- Durum Kartları --}}

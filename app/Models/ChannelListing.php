@@ -19,8 +19,17 @@ class ChannelListing extends Model
         'listing_status',
         'sale_price',
         'list_price',
+        'commission_rate',
+        'commission_source',
+        'commission_synced_at',
         'currency',
         'stock_quantity',
+        'last_stock_alert_level',
+        'last_stock_alert_quantity',
+        'last_stock_alerted_at',
+        'shipping_days',
+        'shipping_type',
+        'fast_delivery_type',
         'published_at',
         'last_price_sync_at',
         'last_stock_sync_at',
@@ -32,6 +41,11 @@ class ChannelListing extends Model
         return [
             'sale_price' => 'decimal:2',
             'list_price' => 'decimal:2',
+            'commission_rate' => 'decimal:2',
+            'commission_synced_at' => 'datetime',
+            'last_stock_alert_quantity' => 'integer',
+            'last_stock_alerted_at' => 'datetime',
+            'shipping_days' => 'integer',
             'published_at' => 'datetime',
             'last_price_sync_at' => 'datetime',
             'last_stock_sync_at' => 'datetime',
@@ -62,5 +76,10 @@ class ChannelListing extends Model
     public function pushRuns(): HasMany
     {
         return $this->hasMany(IntegrationPushRun::class, 'channel_listing_id');
+    }
+
+    public function changeLogs(): HasMany
+    {
+        return $this->hasMany(MpProductChangeLog::class, 'channel_listing_id')->latest('changed_at');
     }
 }

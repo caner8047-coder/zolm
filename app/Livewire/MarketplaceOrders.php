@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Jobs\SyncOperationalToFinancialJob;
+use App\Models\ChannelListing;
 use App\Models\ChannelOrder;
 use App\Models\ChannelOrderItem;
 use App\Models\ChannelOrderPackage;
@@ -23,9 +24,14 @@ use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceHealthRetryService;
 use App\Services\Marketplace\MarketplaceOrderActionService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
+use App\Services\ProfitabilityMetric;
+use App\Services\ProductCompositionResolver;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Component;
@@ -37,17 +43,43 @@ class MarketplaceOrders extends Component
     use WithFileUploads;
     use WithPagination;
 
+    protected const TRENDYOL_LOCAL_TIMESTAMP_OFFSET_SECONDS = 10800;
+
     public array $visibleColumns = ['siparis', 'musteri', 'lojistik', 'ciro', 'muhasebe', 'kar', 'durum'];
 
     public static array $sortableColumns = [
-        'siparis' => 'order_number',
+        'siparis' => 'source_ordered_at_metric',
         'magaza' => 'store_name_alias',
         'musteri' => 'customer_name',
-        'tarih' => 'ordered_at',
+        'lojistik' => 'cargo_due_at_metric',
+        'tarih' => 'source_ordered_at_metric',
         'ciro' => 'gross_revenue_metric',
         'muhasebe' => 'net_receivable_metric',
         'kar' => 'profit_value_metric',
-        'durum' => 'order_status',
+        'durum' => 'display_status_sort_key',
+    ];
+
+    public static array $sortPresets = [
+        'order_date_desc' => [
+            'label' => 'Sipariş tarihi: yeni tarih önce',
+            'field' => 'source_ordered_at_metric',
+            'direction' => 'desc',
+        ],
+        'order_date_asc' => [
+            'label' => 'Sipariş tarihi: eski tarih önce',
+            'field' => 'source_ordered_at_metric',
+            'direction' => 'asc',
+        ],
+        'cargo_due_asc' => [
+            'label' => 'Kargoya son teslim: yakın tarih önce',
+            'field' => 'cargo_due_at_metric',
+            'direction' => 'asc',
+        ],
+        'cargo_due_desc' => [
+            'label' => 'Kargoya son teslim: uzak tarih önce',
+            'field' => 'cargo_due_at_metric',
+            'direction' => 'desc',
+        ],
     ];
 
     public static array $allColumnDefs = [
@@ -57,7 +89,7 @@ class MarketplaceOrders extends Component
         'lojistik' => 'Lojistik',
         'ciro' => 'Ciro',
         'muhasebe' => 'Muhasebe',
-        'kar' => 'Kâr Oranı',
+        'kar' => 'Kârlılık',
         'durum' => 'Durum',
     ];
 
@@ -78,7 +110,7 @@ class MarketplaceOrders extends Component
     public string $cityFilter = '';
     public string $brandFilter = '';
     public string $corporateFilter = '';
-    public string $sortField = 'ordered_at';
+    public string $sortField = 'source_ordered_at_metric';
     public string $sortDirection = 'desc';
 
     public $file;
@@ -103,6 +135,7 @@ class MarketplaceOrders extends Component
         'customer_name' => '',
         'customer_email' => '',
         'customer_phone' => '',
+        'customer_note' => '',
         'commercial_type' => '',
         'billing_name' => '',
         'billing_tax_number' => '',
@@ -110,6 +143,7 @@ class MarketplaceOrders extends Component
         'shipment_district' => '',
         'ordered_at' => '',
     ];
+    public array $orderPackagesForm = [];
     public array $orderItemsForm = [];
     public array $orderLabelForm = [];
     protected array $connectorCapabilitiesCache = [];
@@ -129,10 +163,15 @@ class MarketplaceOrders extends Component
         'dateFrom' => ['except' => ''],
         'dateTo' => ['except' => ''],
         'searchBarcode' => ['except' => ''],
+        'sortField' => ['except' => 'source_ordered_at_metric'],
+        'sortDirection' => ['except' => 'desc'],
     ];
 
     public function mount(): void
     {
+        $this->sortField = $this->normalizeSortField($this->sortField);
+        $this->sortDirection = $this->normalizeSortDirection($this->sortDirection);
+
         if ($this->searchProduct === '' && $this->searchBarcode !== '') {
             $this->searchProduct = $this->searchBarcode;
         }
@@ -172,9 +211,19 @@ class MarketplaceOrders extends Component
             'cityFilter',
             'brandFilter',
             'corporateFilter',
+            'sortField',
+            'sortDirection',
         ], true)) {
             if ($property === 'searchProduct') {
                 $this->searchBarcode = $this->searchProduct;
+            }
+
+            if ($property === 'sortField') {
+                $this->sortField = $this->normalizeSortField($this->sortField);
+            }
+
+            if ($property === 'sortDirection') {
+                $this->sortDirection = $this->normalizeSortDirection($this->sortDirection);
             }
 
             if ($property === 'storeFilter') {
@@ -182,6 +231,14 @@ class MarketplaceOrders extends Component
             }
 
             $this->resetPage();
+        }
+
+        if (
+            $this->showEditOrderModal
+            && str_starts_with($property, 'orderPackagesForm.')
+            && preg_match('/^orderPackagesForm\.\d+\.(package_status|cargo_tracking_number|shipped_at|delivered_at)$/', $property)
+        ) {
+            $this->syncEditOrderDerivedStatuses();
         }
     }
 
@@ -196,10 +253,74 @@ class MarketplaceOrders extends Component
             $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
         } else {
             $this->sortField = $field;
-            $this->sortDirection = $field === 'ordered_at' ? 'desc' : 'asc';
+            $this->sortDirection = $this->defaultSortDirectionFor($field);
         }
 
         $this->resetPage();
+    }
+
+    public function applySortPreset(string $preset): void
+    {
+        $definition = static::$sortPresets[$preset] ?? null;
+
+        if (!$definition) {
+            return;
+        }
+
+        $this->sortField = $this->normalizeSortField((string) $definition['field']);
+        $this->sortDirection = $this->normalizeSortDirection((string) $definition['direction']);
+        $this->resetPage();
+    }
+
+    public function currentSortPreset(): string
+    {
+        $sortField = $this->normalizeSortField($this->sortField);
+        $sortDirection = $this->normalizeSortDirection($this->sortDirection);
+
+        foreach (static::$sortPresets as $key => $definition) {
+            if (
+                ($definition['field'] ?? null) === $sortField
+                && ($definition['direction'] ?? null) === $sortDirection
+            ) {
+                return $key;
+            }
+        }
+
+        return 'custom';
+    }
+
+    public function currentSortLabel(): string
+    {
+        $preset = $this->currentSortPreset();
+
+        if ($preset !== 'custom') {
+            return (string) static::$sortPresets[$preset]['label'];
+        }
+
+        return 'Tablo kolonuna göre özel sıralama';
+    }
+
+    public function displayOrderDate(ChannelOrder $order): ?Carbon
+    {
+        return $this->parseMetricDate($order->getAttribute('source_ordered_at_metric'))
+            ?: $this->rawPayloadOrderDate($order, ['orderDate', 'createdDate', 'createDate', 'orderCreatedDate'])
+            ?: $this->rawPayloadOrderHistoryDate($order, 'Created')
+            ?: $this->parseMetricDate($order->ordered_at);
+    }
+
+    public function displayCargoDueDate(ChannelOrder $order): ?Carbon
+    {
+        return $this->parseMetricDate($order->getAttribute('cargo_due_at_metric'))
+            ?: $this->rawPayloadDate($order, [
+                'estimatedShippingDate',
+                'cargoDueDate',
+                'cargo_due_at',
+                'latestShipDate',
+                'shipment.latestShipDate',
+                'shipping.latestShipDate',
+            ])
+            ?: $this->rawPayloadHistoryDate($order, 'Picking')
+            ?: $this->rawPayloadDate($order, ['agreedDeliveryDate']);
     }
 
     public function updatedSelectPage(bool $value): void
@@ -231,6 +352,13 @@ class MarketplaceOrders extends Component
             ->unique()
             ->values()
             ->all();
+
+        if (
+            $this->bulkPackageActionType !== ''
+            && !array_key_exists($this->bulkPackageActionType, $this->bulkPackageActionOptions())
+        ) {
+            $this->bulkPackageActionType = '';
+        }
     }
 
     public function clearSelection(): void
@@ -247,7 +375,7 @@ class MarketplaceOrders extends Component
         $order = ChannelOrder::query()
             ->with([
                 'items:id,store_id,channel_order_id,channel_order_package_id,external_line_id,stock_code,barcode,product_name,quantity,unit_price,gross_amount,discount_amount,billable_amount,line_status',
-                'packages:id,channel_order_id,package_number',
+                'packages:id,store_id,channel_order_id,package_number,package_status,cargo_company,cargo_tracking_number,cargo_barcode,cargo_desi,shipment_provider,shipped_at,delivered_at',
             ])
             ->whereKey($orderId)
             ->whereHas('store', fn (Builder $query) => $query->where('user_id', auth()->id()))
@@ -260,6 +388,7 @@ class MarketplaceOrders extends Component
             'customer_name' => (string) ($order->customer_name ?? ''),
             'customer_email' => (string) ($order->customer_email ?? ''),
             'customer_phone' => (string) ($order->customer_phone ?? ''),
+            'customer_note' => (string) ($order->customer_note ?? ''),
             'commercial_type' => (string) ($order->commercial_type ?? ''),
             'billing_name' => (string) ($order->billing_name ?? ''),
             'billing_tax_number' => (string) ($order->billing_tax_number ?? ''),
@@ -270,6 +399,38 @@ class MarketplaceOrders extends Component
         $packageNumbers = $order->packages
             ->pluck('package_number', 'id')
             ->map(fn ($value) => filled($value) ? (string) $value : null);
+        $this->orderPackagesForm = $order->packages
+            ->sortBy('id')
+            ->map(function (ChannelOrderPackage $package): array {
+                $resolvedCargoCompany = $this->displayCargoCompany(
+                    $package->cargo_company,
+                    $package->shipment_provider,
+                );
+                $shipmentProvider = (string) ($package->shipment_provider ?? '');
+
+                if (
+                    filled($resolvedCargoCompany)
+                    && $this->cargoCompanyDefinitionFromValue($shipmentProvider) !== null
+                    && $this->normalizeCargoCompany($shipmentProvider) === $resolvedCargoCompany
+                ) {
+                    $shipmentProvider = '';
+                }
+
+                return [
+                    'id' => $package->id,
+                    'package_number' => (string) ($package->package_number ?? ''),
+                    'package_status' => $this->canonicalStatusValue($package->package_status, 'New'),
+                    'cargo_company' => (string) ($resolvedCargoCompany ?? ''),
+                    'shipment_provider' => $shipmentProvider,
+                    'cargo_tracking_number' => (string) ($package->cargo_tracking_number ?? ''),
+                    'cargo_barcode' => (string) ($package->cargo_barcode ?? ''),
+                    'cargo_desi' => $package->cargo_desi !== null ? number_format((float) $package->cargo_desi, 2, '.', '') : '',
+                    'shipped_at' => $package->shipped_at?->format('Y-m-d\TH:i') ?? '',
+                    'delivered_at' => $package->delivered_at?->format('Y-m-d\TH:i') ?? '',
+                ];
+            })
+            ->values()
+            ->all();
         $this->orderItemsForm = $order->items
             ->sortBy('id')
             ->map(fn (ChannelOrderItem $item) => [
@@ -287,6 +448,7 @@ class MarketplaceOrders extends Component
             ])
             ->values()
             ->all();
+        $this->syncEditOrderDerivedStatuses();
         $this->showEditOrderModal = true;
         $this->resetErrorBag();
     }
@@ -296,6 +458,7 @@ class MarketplaceOrders extends Component
         $this->showEditOrderModal = false;
         $this->editingOrderId = null;
         $this->orderForm = $this->emptyOrderForm();
+        $this->orderPackagesForm = [];
         $this->orderItemsForm = [];
         $this->resetErrorBag();
     }
@@ -312,12 +475,24 @@ class MarketplaceOrders extends Component
             'orderForm.customer_name' => ['nullable', 'string', 'max:150'],
             'orderForm.customer_email' => ['nullable', 'email', 'max:150'],
             'orderForm.customer_phone' => ['nullable', 'string', 'max:32'],
+            'orderForm.customer_note' => ['nullable', 'string', 'max:2000'],
             'orderForm.commercial_type' => ['nullable', 'string', 'max:50'],
             'orderForm.billing_name' => ['nullable', 'string', 'max:150'],
             'orderForm.billing_tax_number' => ['nullable', 'string', 'max:32'],
             'orderForm.shipment_city' => ['nullable', 'string', 'max:120'],
             'orderForm.shipment_district' => ['nullable', 'string', 'max:120'],
             'orderForm.ordered_at' => ['nullable', 'date'],
+            'orderPackagesForm' => ['array'],
+            'orderPackagesForm.*.id' => ['required', 'integer'],
+            'orderPackagesForm.*.package_number' => ['nullable', 'string', 'max:120'],
+            'orderPackagesForm.*.package_status' => ['nullable', 'string', 'max:50'],
+            'orderPackagesForm.*.cargo_company' => ['nullable', 'string', 'max:120'],
+            'orderPackagesForm.*.shipment_provider' => ['nullable', 'string', 'max:120'],
+            'orderPackagesForm.*.cargo_tracking_number' => ['nullable', 'string', 'max:120'],
+            'orderPackagesForm.*.cargo_barcode' => ['nullable', 'string', 'max:120'],
+            'orderPackagesForm.*.cargo_desi' => ['nullable', 'numeric', 'min:0'],
+            'orderPackagesForm.*.shipped_at' => ['nullable', 'date'],
+            'orderPackagesForm.*.delivered_at' => ['nullable', 'date'],
             'orderItemsForm' => ['array'],
             'orderItemsForm.*.id' => ['required', 'integer'],
             'orderItemsForm.*.product_name' => ['nullable', 'string', 'max:255'],
@@ -332,55 +507,127 @@ class MarketplaceOrders extends Component
         ]);
 
         $order = ChannelOrder::query()
-            ->with('items:id,channel_order_id')
+            ->with([
+                'packages:id,channel_order_id',
+                'items:id,channel_order_id',
+            ])
             ->whereKey($this->editingOrderId)
             ->whereHas('store', fn (Builder $query) => $query->where('user_id', auth()->id()))
             ->firstOrFail();
 
         $form = $validated['orderForm'];
+        $packages = collect($validated['orderPackagesForm'] ?? []);
         $items = collect($validated['orderItemsForm'] ?? []);
+        $orderPackages = $order->packages->keyBy('id');
         $orderItems = $order->items->keyBy('id');
 
-        DB::transaction(function () use ($order, $form, $items, $orderItems): void {
-            $order->fill([
-                'order_number' => trim((string) $form['order_number']),
-                'order_status' => trim((string) $form['order_status']),
-                'customer_name' => $this->nullableTrim($form['customer_name'] ?? null),
-                'customer_email' => $this->nullableTrim($form['customer_email'] ?? null),
-                'customer_phone' => $this->nullableTrim($form['customer_phone'] ?? null),
-                'commercial_type' => $this->nullableTrim($form['commercial_type'] ?? null),
-                'billing_name' => $this->nullableTrim($form['billing_name'] ?? null),
-                'billing_tax_number' => $this->nullableTrim($form['billing_tax_number'] ?? null),
-                'shipment_city' => $this->nullableTrim($form['shipment_city'] ?? null),
-                'shipment_district' => $this->nullableTrim($form['shipment_district'] ?? null),
-                'ordered_at' => filled($form['ordered_at'] ?? null) ? Carbon::parse((string) $form['ordered_at']) : null,
-            ]);
-            $order->save();
+        DB::transaction(function () use ($order, $form, $packages, $items, $orderPackages, $orderItems): void {
+                $order->fill([
+                    'order_number' => trim((string) $form['order_number']),
+                    'order_status' => $this->nullableTrim($form['order_status'] ?? null) ?? 'New',
+                    'customer_name' => $this->nullableTrim($form['customer_name'] ?? null),
+                    'customer_email' => $this->nullableTrim($form['customer_email'] ?? null),
+                    'customer_phone' => $this->nullableTrim($form['customer_phone'] ?? null),
+                    'customer_note' => $this->nullableTrim($form['customer_note'] ?? null),
+                    'commercial_type' => $this->nullableTrim($form['commercial_type'] ?? null),
+                    'billing_name' => $this->nullableTrim($form['billing_name'] ?? null),
+                    'billing_tax_number' => $this->nullableTrim($form['billing_tax_number'] ?? null),
+                    'shipment_city' => $this->nullableTrim($form['shipment_city'] ?? null),
+                    'shipment_district' => $this->nullableTrim($form['shipment_district'] ?? null),
+                    'ordered_at' => filled($form['ordered_at'] ?? null) ? Carbon::parse((string) $form['ordered_at']) : null,
+                ]);
+                $order->save();
 
-            foreach ($items as $itemForm) {
-                /** @var ChannelOrderItem|null $item */
-                $item = $orderItems->get((int) $itemForm['id']);
+                $derivedOrderStatus = null;
 
-                if (!$item) {
-                    continue;
+                foreach ($packages as $packageForm) {
+                    /** @var ChannelOrderPackage|null $package */
+                    $package = $orderPackages->get((int) $packageForm['id']);
+
+                    if (!$package) {
+                        continue;
+                    }
+
+                    $cargoCompany = $this->resolveManualCargoCompany(
+                        $packageForm['cargo_company'] ?? null,
+                        $packageForm['shipment_provider'] ?? null,
+                    );
+                    $shipmentProvider = $this->normalizeShipmentProvider(
+                        $packageForm['shipment_provider'] ?? null,
+                        $cargoCompany,
+                    );
+                    $trackingNumber = $this->nullableTrim($packageForm['cargo_tracking_number'] ?? null);
+                    $packageStatus = $this->resolveManualPackageStatus(
+                        $packageForm['package_status'] ?? null,
+                        $trackingNumber,
+                        $packageForm['shipped_at'] ?? null,
+                        $packageForm['delivered_at'] ?? null,
+                    );
+
+                    $package->fill([
+                        'package_number' => $this->nullableTrim($packageForm['package_number'] ?? null),
+                        'package_status' => $packageStatus,
+                        'cargo_company' => $cargoCompany,
+                        'shipment_provider' => $shipmentProvider,
+                        'cargo_tracking_number' => $trackingNumber,
+                        'cargo_barcode' => $this->nullableTrim($packageForm['cargo_barcode'] ?? null),
+                        'cargo_desi' => $this->nullableDecimal($packageForm['cargo_desi'] ?? null),
+                        'shipped_at' => filled($packageForm['shipped_at'] ?? null) ? Carbon::parse((string) $packageForm['shipped_at']) : null,
+                        'delivered_at' => filled($packageForm['delivered_at'] ?? null) ? Carbon::parse((string) $packageForm['delivered_at']) : null,
+                    ]);
+                    $package->save();
+
+                    $packageStatusKey = $this->normalizeStatusKey($packageStatus);
+
+                    if (in_array($packageStatusKey, ['delivered', 'completed'], true)) {
+                        $derivedOrderStatus = 'Delivered';
+                        continue;
+                    }
+
+                    if ($packageStatusKey === 'shipped' && $derivedOrderStatus === null) {
+                        $derivedOrderStatus = 'Shipped';
+                    }
+
+                    if ($packageStatusKey === 'shipping' && $derivedOrderStatus === null) {
+                        $derivedOrderStatus = 'Shipping';
+                    }
                 }
 
-                $item->fill([
-                    'product_name' => $this->nullableTrim($itemForm['product_name'] ?? null),
-                    'barcode' => $this->nullableTrim($itemForm['barcode'] ?? null),
-                    'stock_code' => $this->nullableTrim($itemForm['stock_code'] ?? null),
-                    'quantity' => (int) ($itemForm['quantity'] ?? 1),
-                    'unit_price' => $this->nullableDecimal($itemForm['unit_price'] ?? null),
-                    'gross_amount' => $this->nullableDecimal($itemForm['gross_amount'] ?? null),
-                    'discount_amount' => $this->nullableDecimal($itemForm['discount_amount'] ?? null) ?? 0,
-                    'billable_amount' => $this->nullableDecimal($itemForm['billable_amount'] ?? null),
-                    'line_status' => $this->nullableTrim($itemForm['line_status'] ?? null) ?? 'new',
-                ]);
-                $item->save();
-            }
+                foreach ($items as $itemForm) {
+                    /** @var ChannelOrderItem|null $item */
+                    $item = $orderItems->get((int) $itemForm['id']);
+
+                    if (!$item) {
+                        continue;
+                    }
+
+                    $item->fill([
+                        'product_name' => $this->nullableTrim($itemForm['product_name'] ?? null),
+                        'barcode' => $this->nullableTrim($itemForm['barcode'] ?? null),
+                        'stock_code' => $this->nullableTrim($itemForm['stock_code'] ?? null),
+                        'quantity' => (int) ($itemForm['quantity'] ?? 1),
+                        'unit_price' => $this->nullableDecimal($itemForm['unit_price'] ?? null),
+                        'gross_amount' => $this->nullableDecimal($itemForm['gross_amount'] ?? null),
+                        'discount_amount' => $this->nullableDecimal($itemForm['discount_amount'] ?? null) ?? 0,
+                        'billable_amount' => $this->nullableDecimal($itemForm['billable_amount'] ?? null),
+                        'line_status' => $this->nullableTrim($itemForm['line_status'] ?? null) ?? 'new',
+                    ]);
+                    $item->save();
+                }
+
+                $currentOrderStatusKey = $this->normalizeStatusKey($order->order_status);
+
+                if (
+                    $derivedOrderStatus !== null
+                    && !in_array($currentOrderStatusKey, ['delivered', 'completed', 'cancelled', 'returned', 'rejected'], true)
+                ) {
+                    $order->forceFill([
+                        'order_status' => $derivedOrderStatus,
+                    ])->save();
+                }
         });
 
-        $this->actionMessage = 'Sipariş ve ürün satırları güncellendi.';
+        $this->actionMessage = 'Sipariş, paket ve ürün satırları güncellendi.';
         $this->actionMessageTone = 'success';
         $this->closeEditOrderModal();
     }
@@ -749,7 +996,7 @@ class MarketplaceOrders extends Component
             'corporateFilter',
         ]);
 
-        $this->sortField = 'ordered_at';
+        $this->sortField = 'source_ordered_at_metric';
         $this->sortDirection = 'desc';
         $this->clearSelection();
         $this->resetPage();
@@ -773,13 +1020,6 @@ class MarketplaceOrders extends Component
             ->whereKey($orderId)
             ->whereHas('store', fn (Builder $query) => $query->where('user_id', auth()->id()))
             ->firstOrFail();
-
-        if (!$this->orderSupportsAction($order, $actionType)) {
-            $this->actionMessage = $this->orderActionSupportNotice($order) ?? 'Bu sipariş için seçilen kanal aksiyonu desteklenmiyor.';
-            $this->actionMessageTone = 'warning';
-
-            return;
-        }
 
         $result = app(MarketplaceOrderActionService::class)->dispatch(
             $order,
@@ -818,8 +1058,10 @@ class MarketplaceOrders extends Component
 
         if (!$this->packageSupportsAction($package, $actionType)) {
             $marketplace = (string) ($package->store?->marketplace ?? $package->order?->store?->marketplace ?? '');
-            $this->actionMessage = $this->packageActionSupportNotice($marketplace);
-            $this->actionMessageTone = 'warning';
+            $this->actionMessage = $this->humanMarketplace($marketplace)
+                . ' için "' . $this->orderActionLabel($actionType)
+                . '" paket aksiyonu desteklenmiyor. Paket verisi takip edilir; bu işlem kanal panelinden yapılmalıdır.';
+            $this->actionMessageTone = 'info';
 
             return;
         }
@@ -889,15 +1131,8 @@ class MarketplaceOrders extends Component
         $coalescedCount = 0;
         $busyCount = 0;
         $recentCount = 0;
-        $unsupportedCount = 0;
 
         foreach ($orders as $order) {
-            if (!$this->orderSupportsAction($order, $this->bulkActionType)) {
-                $unsupportedCount++;
-
-                continue;
-            }
-
             $result = app(MarketplaceOrderActionService::class)->dispatch(
                 $order,
                 $this->bulkActionType,
@@ -926,10 +1161,6 @@ class MarketplaceOrders extends Component
 
         if ($recentCount > 0) {
             $messageParts[] = $recentCount . ' siparişte çok yeni tamamlanan aksiyon debounce edildi';
-        }
-
-        if ($unsupportedCount > 0) {
-            $messageParts[] = $unsupportedCount . ' siparişte kanal desteği olmadığı için işlem açılmadı';
         }
 
         $this->actionMessage = implode('. ', $messageParts) . '.';
@@ -1071,19 +1302,20 @@ class MarketplaceOrders extends Component
 
     protected function exportChannelCsv()
     {
-        $orders = $this->buildChannelOrdersQuery()
+        $orders = $this->applyOrderSorting($this->buildChannelOrdersQuery()
             ->with([
-                'store:id,legal_entity_id,marketplace,store_name,store_code,status,is_active',
+                'store:id,legal_entity_id,marketplace,store_name,store_code,seller_id,status,is_active',
                 'legalEntity:id,name,tax_number',
-                'packages:id,channel_order_id,package_number,package_status,cargo_company,cargo_tracking_number,cargo_barcode,cargo_desi,shipped_at,delivered_at,raw_payload',
-                'items:id,channel_order_id,channel_order_package_id,mp_product_id,stock_code,barcode,product_name,quantity,unit_price,gross_amount,discount_amount,marketplace_discount_amount,billable_amount,commission_rate,vat_rate,line_status,is_matched,match_source',
+                'packages:id,store_id,channel_order_id,external_package_id,package_number,package_status,cargo_company,cargo_tracking_number,cargo_barcode,cargo_desi,shipment_provider,shipped_at,delivered_at,label_printed_at,label_print_count,last_synced_at,raw_payload',
+                'items:id,store_id,channel_order_id,channel_order_package_id,channel_listing_id,mp_product_id,stock_code,barcode,product_name,quantity,unit_price,gross_amount,discount_amount,marketplace_discount_amount,billable_amount,commission_rate,vat_rate,line_status,is_matched,match_source',
+                'items.product:id,commission_rate',
+                'items.listing:id,store_id,commission_rate',
+                'items.listing.store:id,marketplace',
                 'profitSnapshots' => fn ($snapshotQuery) => $snapshotQuery
                     ->whereNull('channel_order_item_id')
                     ->orderByDesc('calculated_at'),
             ])
-            ->reorder($this->sortField, $this->sortDirection)
-            ->orderByDesc('channel_orders.ordered_at')
-            ->get();
+        )->get();
         $filename = 'pazaryeri_siparisleri_v2_' . now()->format('Ymd_His') . '.csv';
 
         $headers = [
@@ -1122,7 +1354,7 @@ class MarketplaceOrders extends Component
                 'Kâr Durumu',
                 'Tahmini Kâr',
                 'Kesin Kâr',
-                'Marj %',
+                'Kârlılık %',
                 'Finans Event',
             ], ';');
 
@@ -1130,16 +1362,25 @@ class MarketplaceOrders extends Component
                 $snapshot = $order->profitSnapshots->first();
                 $packageNumbers = $order->packages->pluck('package_number')->filter()->implode(', ');
                 $trackingNumbers = $order->packages->pluck('cargo_tracking_number')->filter()->implode(', ');
+                $displayStatus = $this->resolveOrderDisplayStatus($order);
 
                 foreach ($order->items as $item) {
+                    $snapshotProfit = $snapshot?->profit_state === 'confirmed'
+                        ? (float) ($snapshot?->confirmed_profit ?? 0)
+                        : (float) ($snapshot?->estimated_profit ?? 0);
+                    $snapshotProductCost = ProfitabilityMetric::productCost(
+                        (float) ($snapshot?->cogs_cost ?? 0),
+                        (float) ($snapshot?->packaging_cost ?? 0),
+                    );
+
                     fputcsv($file, [
                         $this->safeExcelString($order->marketplace_alias ?? $order->store?->marketplace),
                         $this->safeExcelString($order->store_name_alias ?? $order->store?->store_name),
                         $this->safeExcelString($order->legal_entity_name_alias ?? $order->legalEntity?->name),
                         $this->safeExcelString($order->order_number),
                         $this->safeExcelString($order->external_order_id),
-                        $order->ordered_at?->format('d/m/Y H:i'),
-                        $this->safeExcelString($order->order_status),
+                        $this->displayOrderDate($order)?->format('d/m/Y H:i'),
+                        $this->safeExcelString($displayStatus['label']),
                         $this->safeExcelString($order->customer_name),
                         $this->safeExcelString($order->customer_phone),
                         $this->safeExcelString($order->customer_email),
@@ -1155,11 +1396,11 @@ class MarketplaceOrders extends Component
                         (float) $item->discount_amount,
                         (float) $item->marketplace_discount_amount,
                         (float) $item->billable_amount,
-                        (float) $item->commission_rate,
+                        $this->effectiveCommissionRateForOrderItem($item),
                         $this->safeExcelString($snapshot?->profit_state),
                         (float) ($snapshot?->estimated_profit ?? 0),
                         (float) ($snapshot?->confirmed_profit ?? 0),
-                        (float) ($snapshot?->margin_percent ?? 0),
+                        ProfitabilityMetric::profitPercent($snapshotProfit, $snapshotProductCost),
                         (int) ($order->financial_event_count ?? 0),
                     ], ';');
                 }
@@ -1236,15 +1477,305 @@ class MarketplaceOrders extends Component
         return preg_replace('/[\x00-\x1F\x7F]/u', '', (string) $value);
     }
 
+    protected function applyOrderSorting(Builder $query): Builder
+    {
+        $field = $this->normalizeSortField($this->sortField);
+        $direction = $this->normalizeSortDirection($this->sortDirection);
+
+        $query->reorder();
+
+        if ($field === 'source_ordered_at_metric') {
+            $orderDateSql = $this->channelOrderDateMetricSql();
+            $query
+                ->orderByRaw("CASE WHEN {$orderDateSql} IS NULL THEN 1 ELSE 0 END")
+                ->orderByRaw("{$orderDateSql} {$direction}");
+        } elseif ($field === 'cargo_due_at_metric') {
+            $query
+                ->orderByRaw('CASE WHEN package_agg.cargo_due_at_metric IS NULL THEN 1 ELSE 0 END')
+                ->orderBy('package_agg.cargo_due_at_metric', $direction);
+        } else {
+            $query->orderBy($field, $direction);
+        }
+
+        return $query
+            ->orderByDesc('channel_orders.ordered_at')
+            ->orderByDesc('channel_orders.id');
+    }
+
+    protected function normalizeSortField(string $field): string
+    {
+        if ($field === 'ordered_at') {
+            return 'source_ordered_at_metric';
+        }
+
+        $allowedFields = array_values(array_unique(array_merge(
+            array_values(static::$sortableColumns),
+            array_map(fn (array $definition) => (string) $definition['field'], static::$sortPresets),
+            ['order_number']
+        )));
+
+        return in_array($field, $allowedFields, true) ? $field : 'source_ordered_at_metric';
+    }
+
+    protected function normalizeSortDirection(string $direction): string
+    {
+        return $direction === 'asc' ? 'asc' : 'desc';
+    }
+
+    protected function parseMetricDate(mixed $value): ?Carbon
+    {
+        if ($value instanceof Carbon) {
+            return $value;
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return Carbon::instance($value);
+        }
+
+        if (!filled($value)) {
+            return null;
+        }
+
+        try {
+            if (is_numeric($value)) {
+                $timestamp = (int) $value;
+
+                if (abs($timestamp) > 9999999999) {
+                    $timestamp = (int) floor($timestamp / 1000);
+                }
+
+                return Carbon::createFromTimestampUTC($timestamp);
+            }
+
+            return Carbon::parse((string) $value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    protected function parseOrderMetricDate(ChannelOrder $order, mixed $value): ?Carbon
+    {
+        if ($this->isTrendyolOrder($order) && is_numeric($value)) {
+            $timestamp = (int) $value;
+
+            if (abs($timestamp) > 9999999999) {
+                $timestamp = (int) floor($timestamp / 1000);
+            }
+
+            return Carbon::createFromTimestampUTC($timestamp)
+                ->subSeconds(self::TRENDYOL_LOCAL_TIMESTAMP_OFFSET_SECONDS)
+                ->setTimezone(config('app.timezone', 'Europe/Istanbul'));
+        }
+
+        return $this->parseMetricDate($value);
+    }
+
+    protected function isTrendyolOrder(ChannelOrder $order): bool
+    {
+        $marketplace = $order->getAttribute('marketplace_alias')
+            ?: $order->store?->marketplace;
+
+        return Str::lower((string) $marketplace) === 'trendyol';
+    }
+
+    /**
+     * @param  array<int, string>  $paths
+     */
+    protected function rawPayloadOrderDate(ChannelOrder $order, array $paths): ?Carbon
+    {
+        $payload = $order->raw_payload;
+
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        foreach ($paths as $path) {
+            $date = $this->parseOrderMetricDate($order, data_get($payload, $path));
+
+            if ($date) {
+                return $date;
+            }
+        }
+
+        return null;
+    }
+
+    protected function rawPayloadOrderHistoryDate(ChannelOrder $order, string $status): ?Carbon
+    {
+        $payload = $order->raw_payload;
+
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        $status = Str::lower($status);
+
+        foreach (Arr::wrap(data_get($payload, 'packageHistories', [])) as $history) {
+            if (!is_array($history)) {
+                continue;
+            }
+
+            if (Str::lower(trim((string) data_get($history, 'status'))) !== $status) {
+                continue;
+            }
+
+            return $this->parseOrderMetricDate($order, data_get($history, 'createdDate'));
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, string>  $paths
+     */
+    protected function rawPayloadDate(ChannelOrder $order, array $paths): ?Carbon
+    {
+        $payload = $order->raw_payload;
+
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        foreach ($paths as $path) {
+            $date = $this->parseMetricDate(data_get($payload, $path));
+
+            if ($date) {
+                return $date;
+            }
+        }
+
+        return null;
+    }
+
+    protected function rawPayloadHistoryDate(ChannelOrder $order, string $status): ?Carbon
+    {
+        $payload = $order->raw_payload;
+
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        $status = Str::lower($status);
+
+        foreach (Arr::wrap(data_get($payload, 'packageHistories', [])) as $history) {
+            if (!is_array($history)) {
+                continue;
+            }
+
+            if (Str::lower(trim((string) data_get($history, 'status'))) !== $status) {
+                continue;
+            }
+
+            return $this->parseMetricDate(data_get($history, 'createdDate'));
+        }
+
+        return null;
+    }
+
+    protected function defaultSortDirectionFor(string $field): string
+    {
+        return match ($field) {
+            'order_number',
+            'store_name_alias',
+            'customer_name',
+            'display_status_sort_key',
+            'cargo_due_at_metric' => 'asc',
+            default => 'desc',
+        };
+    }
+
+    protected function channelOrderDateMetricSql(): string
+    {
+        $marketplaceColumn = 'marketplace_stores.marketplace';
+        $orderDate = $this->jsonDateValueSql('channel_orders.raw_payload', '$.orderDate', $marketplaceColumn);
+        $createdDate = $this->jsonDateValueSql('channel_orders.raw_payload', '$.createdDate', $marketplaceColumn);
+        $createDate = $this->jsonDateValueSql('channel_orders.raw_payload', '$.createDate', $marketplaceColumn);
+        $orderCreatedDate = $this->jsonDateValueSql('channel_orders.raw_payload', '$.orderCreatedDate', $marketplaceColumn);
+        $createdHistoryDate = $this->jsonHistoryDateSql('channel_orders.raw_payload', 'Created', $marketplaceColumn);
+
+        return "COALESCE({$orderDate}, {$createdDate}, {$createDate}, {$orderCreatedDate}, {$createdHistoryDate}, channel_orders.ordered_at)";
+    }
+
+    protected function jsonHistoryDateSql(string $column, string $status, ?string $marketplaceColumn = null): string
+    {
+        $status = Str::lower($status);
+        $expressions = [];
+
+        for ($index = 0; $index < 8; $index++) {
+            $statusSql = $this->jsonStringValueSql($column, '$.packageHistories[' . $index . '].status');
+            $dateSql = $this->jsonDateValueSql($column, '$.packageHistories[' . $index . '].createdDate', $marketplaceColumn);
+            $expressions[] = "CASE WHEN LOWER({$statusSql}) = '{$status}' THEN {$dateSql} END";
+        }
+
+        return 'COALESCE(' . implode(', ', $expressions) . ')';
+    }
+
+    protected function jsonDateValueSql(string $column, string $path, ?string $marketplaceColumn = null): string
+    {
+        $valueSql = $this->jsonStringValueSql($column, $path);
+        $timestampOffsetSql = $marketplaceColumn
+            ? " - CASE WHEN LOWER({$marketplaceColumn}) = 'trendyol' THEN " . self::TRENDYOL_LOCAL_TIMESTAMP_OFFSET_SECONDS . ' ELSE 0 END'
+            : '';
+
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return "
+                CASE
+                    WHEN {$valueSql} GLOB '[0-9]*'
+                    THEN datetime(
+                        (
+                        CASE
+                            WHEN ABS(CAST({$valueSql} AS INTEGER)) > 9999999999
+                            THEN CAST({$valueSql} AS INTEGER) / 1000
+                            ELSE CAST({$valueSql} AS INTEGER)
+                        END{$timestampOffsetSql}
+                        ),
+                        'unixepoch'
+                    )
+                    ELSE {$valueSql}
+                END
+            ";
+        }
+
+        return "
+            CASE
+                WHEN {$valueSql} REGEXP '^-?[0-9]+$'
+                THEN FROM_UNIXTIME(
+                    (
+                    CASE
+                        WHEN ABS(CAST({$valueSql} AS SIGNED)) > 9999999999
+                        THEN CAST({$valueSql} AS DECIMAL(20, 3)) / 1000
+                        ELSE CAST({$valueSql} AS DECIMAL(20, 3))
+                    END{$timestampOffsetSql}
+                    )
+                )
+                ELSE {$valueSql}
+            END
+        ";
+    }
+
+    protected function jsonStringValueSql(string $column, string $path): string
+    {
+        $path = str_replace("'", "''", $path);
+
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return "NULLIF(json_extract({$column}, '{$path}'), '')";
+        }
+
+        return "NULLIF(JSON_UNQUOTE(JSON_EXTRACT({$column}, '{$path}')), '')";
+    }
+
     protected function buildChannelOrdersQuery(): Builder
     {
         return $this->buildChannelBaseQuery()
             ->with([
-                'store:id,legal_entity_id,marketplace,store_name,store_code,status,is_active',
+                'store:id,legal_entity_id,marketplace,store_name,store_code,seller_id,status,is_active',
                 'legalEntity:id,name,tax_number',
-                'packages:id,channel_order_id,package_number,package_status,cargo_company,cargo_tracking_number,cargo_barcode,cargo_desi,shipped_at,delivered_at,raw_payload',
-                'items:id,channel_order_id,channel_order_package_id,mp_product_id,stock_code,barcode,product_name,quantity,unit_price,gross_amount,discount_amount,marketplace_discount_amount,billable_amount,commission_rate,vat_rate,line_status,is_matched,match_source',
-                'items.product:id,stock_code,barcode,product_name,brand,cogs,packaging_cost,cargo_cost,vat_rate',
+                'packages:id,store_id,channel_order_id,external_package_id,package_number,package_status,cargo_company,cargo_tracking_number,cargo_barcode,cargo_desi,shipment_provider,shipped_at,delivered_at,label_printed_at,label_print_count,last_synced_at,raw_payload',
+                'items:id,store_id,channel_order_id,channel_order_package_id,channel_listing_id,mp_product_id,stock_code,barcode,product_name,quantity,unit_price,gross_amount,discount_amount,marketplace_discount_amount,billable_amount,commission_rate,vat_rate,line_status,is_matched,match_source,raw_payload',
+                'items.product:id,stock_code,barcode,product_name,brand,cogs,packaging_cost,cargo_cost,commission_rate,vat_rate',
+                'items.listing:id,store_id,channel_product_id,mp_product_id,listing_id,listing_status,sale_price,commission_rate,stock_quantity,last_synced_at',
+                'items.listing.store:id,marketplace,store_name,seller_id',
+                'items.listing.channelProduct:id,store_id,external_product_id,external_parent_id,stock_code,barcode,title,brand,category_name,raw_payload',
                 'actionRuns:id,channel_order_id,channel_order_package_id,triggered_by,action_type,status,attempt_count,external_action_id,request_context_json,response_json,error_message,started_at,finished_at,created_at',
                 'actionRuns.triggeredBy:id,name',
                 'actionRuns.package:id,package_number,external_package_id',
@@ -1258,6 +1789,15 @@ class MarketplaceOrders extends Component
 
     protected function buildChannelBaseQuery(): Builder
     {
+        $displayStatusSql = $this->channelDisplayStatusSql();
+        $orderDateSql = $this->channelOrderDateMetricSql();
+        $estimatedShippingDateSql = 'COALESCE('
+            . $this->jsonDateValueSql('channel_order_packages.raw_payload', '$.estimatedShippingDate') . ', '
+            . $this->jsonDateValueSql('channel_order_packages.raw_payload', '$.items[0].estimatedShippingDate') . ', '
+            . $this->jsonDateValueSql('channel_order_packages.raw_payload', '$.itemList[0].estimatedShippingDate')
+            . ')';
+        $pickingHistoryDateSql = $this->jsonHistoryDateSql('channel_order_packages.raw_payload', 'Picking');
+        $agreedDeliveryDateSql = $this->jsonDateValueSql('channel_order_packages.raw_payload', '$.agreedDeliveryDate');
         $itemAggregate = ChannelOrderItem::query()
             ->selectRaw('
                 channel_order_id,
@@ -1282,26 +1822,42 @@ class MarketplaceOrders extends Component
             ")
             ->groupBy('channel_order_id');
 
+        $latestSnapshotVersion = OrderProfitSnapshot::query()
+            ->selectRaw('channel_order_id, MAX(version) as latest_version')
+            ->whereNull('channel_order_item_id')
+            ->groupBy('channel_order_id');
+
         $snapshotAggregate = OrderProfitSnapshot::query()
+            ->joinSub($latestSnapshotVersion, 'latest_snapshot_version', function ($join) {
+                $join->on('latest_snapshot_version.channel_order_id', '=', 'order_profit_snapshots.channel_order_id')
+                    ->on('latest_snapshot_version.latest_version', '=', 'order_profit_snapshots.version');
+            })
             ->select([
-                'channel_order_id',
-                'profit_state',
-                'gross_revenue',
-                'estimated_profit',
-                'confirmed_profit',
-                'margin_percent',
-                'net_receivable',
-                'commission_total',
-                'cargo_total',
-                'service_fee_total',
-                'withholding_total',
-                'packaging_cost',
-                'own_cargo_cost',
-                'cogs_cost',
-                'return_effect',
-                'calculated_at',
+                'order_profit_snapshots.channel_order_id',
+                'order_profit_snapshots.profit_state',
+                'order_profit_snapshots.gross_revenue',
+                'order_profit_snapshots.estimated_profit',
+                'order_profit_snapshots.confirmed_profit',
+                'order_profit_snapshots.margin_percent',
+                'order_profit_snapshots.net_receivable',
+                'order_profit_snapshots.commission_total',
+                'order_profit_snapshots.cargo_total',
+                'order_profit_snapshots.service_fee_total',
+                'order_profit_snapshots.withholding_total',
+                'order_profit_snapshots.packaging_cost',
+                'order_profit_snapshots.own_cargo_cost',
+                'order_profit_snapshots.cogs_cost',
+                'order_profit_snapshots.return_effect',
+                'order_profit_snapshots.calculated_at',
             ])
-            ->whereNull('channel_order_item_id');
+            ->whereNull('order_profit_snapshots.channel_order_item_id');
+
+        $packageAggregate = ChannelOrderPackage::query()
+            ->selectRaw("
+                channel_order_id,
+                MIN(COALESCE({$estimatedShippingDateSql}, {$pickingHistoryDateSql}, {$agreedDeliveryDateSql})) as cargo_due_at_metric
+            ")
+            ->groupBy('channel_order_id');
 
         $query = ChannelOrder::query()
             ->select([
@@ -1309,6 +1865,9 @@ class MarketplaceOrders extends Component
                 'marketplace_stores.marketplace as marketplace_alias',
                 'marketplace_stores.store_name as store_name_alias',
                 'legal_entities.name as legal_entity_name_alias',
+                DB::raw("{$displayStatusSql} as display_status_sort_key"),
+                DB::raw("{$orderDateSql} as source_ordered_at_metric"),
+                DB::raw('package_agg.cargo_due_at_metric as cargo_due_at_metric'),
                 DB::raw('COALESCE(item_agg.item_lines_count, 0) as item_lines_count'),
                 DB::raw('COALESCE(item_agg.total_quantity, 0) as total_quantity'),
                 DB::raw('COALESCE(item_agg.matched_lines_count, 0) as matched_lines_count'),
@@ -1349,6 +1908,9 @@ class MarketplaceOrders extends Component
             ->leftJoinSub($snapshotAggregate, 'order_snapshot', function ($join) {
                 $join->on('order_snapshot.channel_order_id', '=', 'channel_orders.id');
             })
+            ->leftJoinSub($packageAggregate, 'package_agg', function ($join) {
+                $join->on('package_agg.channel_order_id', '=', 'channel_orders.id');
+            })
             ->where('marketplace_stores.user_id', auth()->id());
 
         if ($this->search !== '') {
@@ -1356,6 +1918,9 @@ class MarketplaceOrders extends Component
             $query->where(function (Builder $builder) use ($searchTerm) {
                 $builder->where('channel_orders.order_number', 'like', '%' . $searchTerm . '%')
                     ->orWhere('channel_orders.external_order_id', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('channel_orders.customer_name', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('channel_orders.customer_phone', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('channel_orders.customer_email', 'like', '%' . $searchTerm . '%')
                     ->orWhereHas('packages', function (Builder $packageQuery) use ($searchTerm) {
                         $packageQuery->where('package_number', 'like', '%' . $searchTerm . '%')
                             ->orWhere('cargo_tracking_number', 'like', '%' . $searchTerm . '%')
@@ -1382,9 +1947,7 @@ class MarketplaceOrders extends Component
             });
         }
 
-        if ($this->statusFilter !== '') {
-            $query->where('channel_orders.order_status', $this->statusFilter);
-        }
+        $this->applyChannelStatusFilter($query, $displayStatusSql);
 
         if ($this->marketplaceFilter !== '') {
             $query->where('marketplace_stores.marketplace', $this->marketplaceFilter);
@@ -1403,11 +1966,11 @@ class MarketplaceOrders extends Component
         }
 
         if ($this->dateFrom !== '') {
-            $query->whereDate('channel_orders.ordered_at', '>=', $this->dateFrom);
+            $query->whereDate(DB::raw($orderDateSql), '>=', $this->dateFrom);
         }
 
         if ($this->dateTo !== '') {
-            $query->whereDate('channel_orders.ordered_at', '<=', $this->dateTo);
+            $query->whereDate(DB::raw($orderDateSql), '<=', $this->dateTo);
         }
 
         if ($this->profitStateFilter === 'confirmed') {
@@ -1455,7 +2018,10 @@ class MarketplaceOrders extends Component
         if ($this->search !== '') {
             $query->where(function (Builder $builder) {
                 $builder->where('order_number', 'like', '%' . $this->search . '%')
-                    ->orWhere('package_number', 'like', '%' . $this->search . '%');
+                    ->orWhere('package_number', 'like', '%' . $this->search . '%')
+                    ->orWhere('customer_name', 'like', '%' . $this->search . '%')
+                    ->orWhere('customer_phone', 'like', '%' . $this->search . '%')
+                    ->orWhere('email', 'like', '%' . $this->search . '%');
             });
         }
 
@@ -1467,9 +2033,7 @@ class MarketplaceOrders extends Component
             });
         }
 
-        if ($this->statusFilter !== '') {
-            $query->where('status', $this->statusFilter);
-        }
+        $this->applyTextStatusFilter($query, 'status');
 
         if ($this->cityFilter !== '') {
             $query->where('customer_city', $this->cityFilter);
@@ -1688,7 +2252,7 @@ class MarketplaceOrders extends Component
             'scope_count' => $rows->count(),
             'state' => $top['pending_rows'] > 0 ? 'warning' : ($top['confirmed_orders'] > 0 ? 'success' : 'default'),
             'title' => $top['pending_rows'] > 0
-                ? 'Eski veri finans kuyruğu mağaza bazında görünüyor'
+                ? 'Legacy finans backlogu mağaza bazında görünüyor'
                 : 'Eski veri yansıtması sonrası kesin etkisi görünüyor',
             'description' => $top['pending_rows'] > 0
                 ? 'Yansıtma mağazasını hazırla ve bekleyen eski veri finans satırlarını bu mağaza üzerinden V2 kayıt defterine taşı.'
@@ -1719,13 +2283,7 @@ class MarketplaceOrders extends Component
 
     protected function getStatusOptions()
     {
-        return ChannelOrder::query()
-            ->join('marketplace_stores', 'marketplace_stores.id', '=', 'channel_orders.store_id')
-            ->where('marketplace_stores.user_id', auth()->id())
-            ->whereNotNull('channel_orders.order_status')
-            ->distinct()
-            ->orderBy('channel_orders.order_status')
-            ->pluck('channel_orders.order_status');
+        return $this->filterStatusOptions();
     }
 
     protected function getMarketplaceOptions()
@@ -1788,10 +2346,20 @@ class MarketplaceOrders extends Component
 
     protected function syncLegacyProjectionStoreFromFilter(): void
     {
-        if ($this->legacyProjectionStoreId === '' && $this->storeFilter !== '') {
-            $this->legacyProjectionStoreId = $this->storeFilter;
-            $this->previewLegacyFinancials();
+        $nextStoreId = $this->nullableTrim($this->storeFilter);
+
+        if (!filled($nextStoreId)) {
+            $this->legacyProjectionStoreId = '';
+            $this->legacyProjectionResult = [];
+
+            return;
         }
+
+        if ($this->legacyProjectionStoreId !== $nextStoreId) {
+            $this->legacyProjectionStoreId = $nextStoreId;
+        }
+
+        $this->previewLegacyFinancials();
     }
 
     public function getLegacyProjectionDryRunCommandProperty(): ?string
@@ -1905,6 +2473,983 @@ class MarketplaceOrders extends Component
         );
     }
 
+    public function humanMarketplace(?string $marketplace): string
+    {
+        return (string) (MarketplaceProviderRegistry::get((string) $marketplace)['label'] ?? Str::headline((string) $marketplace));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function orderStatusOptions(): array
+    {
+        return $this->editableStatusOptions();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function packageStatusOptions(): array
+    {
+        return $this->editableStatusOptions();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function cargoCompanyOptions(): array
+    {
+        return collect($this->cargoCompanyDefinitions())
+            ->mapWithKeys(fn (array $definition) => [$definition['label'] => $definition['label']])
+            ->all();
+    }
+
+    public function displayCargoCompany(
+        ?string $cargoCompany,
+        ?string $shipmentProvider = null,
+        ?string $fallbackCargoCompany = null,
+    ): ?string {
+        $resolved = $this->resolveManualCargoCompany($cargoCompany, $shipmentProvider);
+
+        if (filled($resolved)) {
+            return $resolved;
+        }
+
+        return $this->normalizeCargoCompany($fallbackCargoCompany);
+    }
+
+    public function trackingUrl(?string $cargoCompany, ?string $trackingNumber): ?string
+    {
+        $trackingNumber = $this->nullableTrim($trackingNumber);
+
+        if (!filled($trackingNumber)) {
+            return null;
+        }
+
+        $definition = $this->cargoCompanyDefinitionFromValue($cargoCompany);
+        $trackingUrl = $definition['tracking_url'] ?? null;
+
+        if (!filled($trackingUrl)) {
+            return null;
+        }
+
+        return str_replace('{tracking}', rawurlencode($trackingNumber), $trackingUrl);
+    }
+
+    public function productManagerUrlForOrderItem(ChannelOrderItem $item): ?string
+    {
+        if ($item->product) {
+            return route('mp.products', ['edit' => $item->product->id, 'tab' => 'basic']);
+        }
+
+        $stockCode = $this->nullableTrim($item->stock_code);
+
+        if (filled($stockCode)) {
+            return route('mp.products', ['search' => $stockCode]);
+        }
+
+        $barcode = $this->nullableTrim($item->barcode);
+
+        if (filled($barcode)) {
+            return route('mp.products', ['search' => $barcode]);
+        }
+
+        return null;
+    }
+
+    public function marketplacePublicProductUrl(?ChannelListing $listing): ?string
+    {
+        if (!$listing) {
+            return null;
+        }
+
+        $store = $listing->store;
+        $channelProduct = $listing->channelProduct;
+        $marketplace = strtolower((string) data_get($store, 'marketplace'));
+        $rawPayload = $channelProduct?->raw_payload ?? [];
+
+        if ($marketplace === 'trendyol') {
+            $contentId = data_get($rawPayload, 'content.contentId')
+                ?: data_get($channelProduct, 'external_parent_id');
+            $merchantId = data_get($store, 'seller_id');
+
+            if ($contentId && $merchantId) {
+                $brandSlug = Str::slug((string) (data_get($channelProduct, 'brand') ?: 'urun'));
+                $titleSlug = Str::slug((string) (data_get($channelProduct, 'title') ?: 'urun'));
+
+                return "https://www.trendyol.com/{$brandSlug}/{$titleSlug}-p-{$contentId}?boutiqueId=61&merchantId={$merchantId}&filterOverPriceListings=false&sav=true";
+            }
+        }
+
+        if ($marketplace === 'pazarama') {
+            $productCode = (string) (
+                data_get($rawPayload, 'code')
+                ?: data_get($channelProduct, 'external_product_id')
+                ?: data_get($listing, 'listing_id')
+            );
+
+            if ($productCode !== '') {
+                $titleSlug = Str::slug((string) (
+                    data_get($channelProduct, 'title')
+                    ?: data_get($rawPayload, 'displayName')
+                    ?: data_get($rawPayload, 'name')
+                    ?: 'urun'
+                ));
+
+                return "https://www.pazarama.com/{$titleSlug}-p-{$productCode}";
+            }
+        }
+
+        if ($marketplace === 'n11') {
+            $productId = (string) (
+                data_get($listing, 'listing_id')
+                ?: data_get($channelProduct, 'external_product_id')
+            );
+
+            if ($productId !== '') {
+                return 'https://urun.n11.com/prapazar-P' . ltrim($productId, 'Pp');
+            }
+        }
+
+        if ($marketplace === 'hepsiburada') {
+            $sku = collect([
+                data_get($listing, 'listing_id'),
+                data_get($rawPayload, 'hepsiburadaSku'),
+                data_get($rawPayload, 'hbSku'),
+                data_get($rawPayload, 'sku'),
+                data_get($channelProduct, 'external_product_id'),
+            ])
+                ->map(fn ($value) => strtoupper(trim((string) $value)))
+                ->first(fn ($value) => str_starts_with($value, 'HB'));
+
+            if (is_string($sku) && $sku !== '') {
+                $titleSlug = Str::slug((string) (
+                    data_get($channelProduct, 'title')
+                    ?: data_get($rawPayload, 'productName')
+                    ?: data_get($rawPayload, 'name')
+                    ?: 'urun'
+                ));
+
+                return "https://www.hepsiburada.com/{$titleSlug}-p-{$sku}";
+            }
+        }
+
+        if ($marketplace === 'woocommerce') {
+            return $this->wooCommercePublicProductUrl($listing, $channelProduct, $rawPayload);
+        }
+
+        $directUrl = collect([
+            data_get($rawPayload, 'variant.productUrl'),
+            data_get($rawPayload, 'content.variants.0.productUrl'),
+            data_get($rawPayload, 'product.url'),
+            data_get($rawPayload, 'merchantVariantUrl'),
+            data_get($rawPayload, 'link'),
+            data_get($rawPayload, 'url'),
+            data_get($rawPayload, 'productUrl'),
+            data_get($rawPayload, 'product_url'),
+            data_get($rawPayload, 'productLink'),
+            data_get($rawPayload, 'productPageUrl'),
+            data_get($rawPayload, 'webUrl'),
+            data_get($rawPayload, 'permalink'),
+        ])->first(fn ($url) => is_string($url) && trim($url) !== '');
+
+        if (!is_string($directUrl) || trim($directUrl) === '') {
+            if ($marketplace === 'koctas') {
+                return $this->koctasPublicProductUrl($listing, $channelProduct, $rawPayload);
+            }
+
+            return null;
+        }
+
+        if (str_starts_with($directUrl, 'http')) {
+            return $directUrl;
+        }
+
+        return match ($marketplace) {
+            'ciceksepeti' => 'https://www.ciceksepeti.com/' . ltrim($directUrl, '/'),
+            'hepsiburada' => 'https://www.hepsiburada.com/' . ltrim($directUrl, '/'),
+            'koctas' => 'https://www.koctas.com.tr/' . ltrim($directUrl, '/'),
+            'pazarama' => 'https://www.pazarama.com/' . ltrim($directUrl, '/'),
+            default => null,
+        };
+    }
+
+    public function marketplacePublicProductUrlForOrderItem(ChannelOrderItem $item, ?ChannelOrder $order = null): ?string
+    {
+        $listingUrl = $this->marketplacePublicProductUrl($item->listing);
+
+        if ($listingUrl !== null) {
+            return $listingUrl;
+        }
+
+        $marketplace = MarketplaceProviderRegistry::normalize((string) (
+            $item->listing?->store?->marketplace
+            ?: $order?->store?->marketplace
+            ?: $item->store?->marketplace
+        ));
+        $rawPayload = $item->raw_payload ?? [];
+        $directUrl = collect([
+            data_get($rawPayload, 'variant.productUrl'),
+            data_get($rawPayload, 'product.url'),
+            data_get($rawPayload, 'merchantVariantUrl'),
+            data_get($rawPayload, 'link'),
+            data_get($rawPayload, 'url'),
+            data_get($rawPayload, 'productUrl'),
+            data_get($rawPayload, 'product_url'),
+            data_get($rawPayload, 'productLink'),
+            data_get($rawPayload, 'productPageUrl'),
+            data_get($rawPayload, 'webUrl'),
+            data_get($rawPayload, 'permalink'),
+        ])->first(fn ($url) => is_string($url) && trim($url) !== '');
+
+        if (is_string($directUrl) && trim($directUrl) !== '') {
+            return str_starts_with($directUrl, 'http')
+                ? $directUrl
+                : match ($marketplace) {
+                    'ciceksepeti' => 'https://www.ciceksepeti.com/' . ltrim($directUrl, '/'),
+                    'hepsiburada' => 'https://www.hepsiburada.com/' . ltrim($directUrl, '/'),
+                    'koctas' => 'https://www.koctas.com.tr/' . ltrim($directUrl, '/'),
+                    'pazarama' => 'https://www.pazarama.com/' . ltrim($directUrl, '/'),
+                    default => null,
+                };
+        }
+
+        if ($marketplace === 'woocommerce') {
+            $baseUrl = $this->wooCommerceStorefrontBaseUrl($order?->store ?: $item->store);
+            $title = trim((string) (
+                data_get($rawPayload, 'parent.name')
+                ?: data_get($rawPayload, 'name')
+                ?: $item->product_name
+                ?: $item->product?->product_name
+            ));
+
+            if ($baseUrl !== null && $title !== '') {
+                $path = trim((string) config('marketplace.woocommerce.public_product_path', 'magaza'), '/');
+
+                return $baseUrl . '/' . ($path !== '' ? $path . '/' : '') . $this->wooCommerceProductSlug($title) . '/';
+            }
+        }
+
+        if ($marketplace !== 'koctas') {
+            return null;
+        }
+
+        $title = trim((string) (
+            $item->product_name
+            ?: $item->product?->product_name
+            ?: data_get($rawPayload, 'product_title')
+            ?: data_get($rawPayload, 'title')
+            ?: data_get($rawPayload, 'description')
+        ));
+        $barcode = trim((string) ($item->barcode ?? ''));
+        $productCode = collect([
+            data_get($rawPayload, 'product_code'),
+            data_get($rawPayload, 'productCode'),
+            data_get($rawPayload, 'product.code'),
+            data_get($rawPayload, 'product.id'),
+            data_get($rawPayload, 'product_sku'),
+            data_get($rawPayload, 'productSku'),
+            data_get($rawPayload, 'product_id'),
+            data_get($rawPayload, 'productId'),
+            data_get($rawPayload, 'code'),
+        ])
+            ->map(fn ($value) => preg_replace('/\s+/', '', trim((string) $value)) ?: '')
+            ->first(fn ($value) => ctype_digit($value)
+                && strlen($value) >= 7
+                && strlen($value) <= 11
+                && $value !== $barcode);
+
+        if ($productCode) {
+            $url = 'https://www.koctas.com.tr/' . Str::slug($title ?: 'urun') . '/p/' . $productCode;
+            $shopId = trim((string) ($order?->store?->seller_id ?? $item->listing?->store?->seller_id ?? $item->store?->seller_id ?? ''));
+
+            return $shopId !== '' && ctype_digit($shopId)
+                ? $url . '?shop=' . $shopId
+                : $url;
+        }
+
+        $searchTerm = collect([
+            $title,
+            $item->stock_code,
+            $item->barcode,
+        ])
+            ->map(fn ($value) => trim((string) $value))
+            ->first(fn ($value) => $value !== '');
+
+        return $searchTerm
+            ? 'https://www.koctas.com.tr/search?text=' . rawurlencode($searchTerm)
+            : null;
+    }
+
+    protected function wooCommercePublicProductUrl(ChannelListing $listing, mixed $channelProduct, array $rawPayload): ?string
+    {
+        $directUrl = collect([
+            data_get($rawPayload, 'permalink'),
+            data_get($rawPayload, 'parent.permalink'),
+            data_get($rawPayload, 'product.url'),
+            data_get($rawPayload, 'productUrl'),
+            data_get($rawPayload, 'product_url'),
+            data_get($rawPayload, 'url'),
+            data_get($rawPayload, 'link'),
+        ])->first(fn ($url) => is_string($url) && trim($url) !== '');
+
+        if (is_string($directUrl) && trim($directUrl) !== '') {
+            return str_starts_with($directUrl, 'http')
+                ? $directUrl
+                : $this->wooCommerceAbsoluteUrl($listing->store, $directUrl);
+        }
+
+        $baseUrl = $this->wooCommerceStorefrontBaseUrl($listing->store);
+
+        if ($baseUrl === null) {
+            return null;
+        }
+
+        $title = trim((string) (
+            data_get($rawPayload, 'parent.name')
+            ?: data_get($rawPayload, 'name')
+            ?: data_get($channelProduct, 'title')
+        ));
+
+        if ($title === '') {
+            return null;
+        }
+
+        $path = trim((string) config('marketplace.woocommerce.public_product_path', 'magaza'), '/');
+
+        return $baseUrl . '/' . ($path !== '' ? $path . '/' : '') . $this->wooCommerceProductSlug($title) . '/';
+    }
+
+    protected function wooCommerceProductSlug(string $title): string
+    {
+        return Str::slug(str_replace(['/', '\\'], ' ', $title));
+    }
+
+    protected function wooCommerceAbsoluteUrl(?MarketplaceStore $store, string $path): ?string
+    {
+        $baseUrl = $this->wooCommerceStorefrontBaseUrl($store);
+
+        return $baseUrl ? $baseUrl . '/' . ltrim($path, '/') : null;
+    }
+
+    protected function wooCommerceStorefrontBaseUrl(?MarketplaceStore $store): ?string
+    {
+        $credentials = $store?->connection?->credentials_encrypted ?? [];
+        $sellerId = trim((string) ($store?->seller_id ?? ''));
+        $legacyStoreUrl = filter_var($sellerId, FILTER_VALIDATE_URL) ? $sellerId : '';
+
+        $baseUrl = collect([
+            data_get($credentials, 'store_url'),
+            $store?->connection?->api_base_url,
+            data_get($store, 'store_url'),
+            $legacyStoreUrl,
+            config('marketplace.woocommerce.base_url'),
+        ])
+            ->map(fn ($value) => trim((string) $value))
+            ->first(fn ($value) => $value !== '');
+
+        if (!is_string($baseUrl) || $baseUrl === '') {
+            return null;
+        }
+
+        if (Str::contains($baseUrl, '/wp-json/')) {
+            $baseUrl = Str::before($baseUrl, '/wp-json/');
+        }
+
+        return rtrim($baseUrl, '/');
+    }
+
+    protected function koctasPublicProductUrl(ChannelListing $listing, mixed $channelProduct, array $rawPayload): ?string
+    {
+        $title = trim((string) (
+            data_get($channelProduct, 'title')
+            ?: data_get($rawPayload, 'product_title')
+            ?: data_get($rawPayload, 'title')
+            ?: data_get($rawPayload, 'description')
+        ));
+
+        $productCode = $this->koctasProductCode($listing, $channelProduct, $rawPayload);
+
+        if ($productCode !== null) {
+            $url = 'https://www.koctas.com.tr/' . Str::slug($title ?: 'urun') . '/p/' . $productCode;
+            $shopId = trim((string) data_get($listing->store, 'seller_id'));
+
+            return $shopId !== '' && ctype_digit($shopId)
+                ? $url . '?shop=' . $shopId
+                : $url;
+        }
+
+        $searchTerm = collect([
+            $title,
+            data_get($channelProduct, 'stock_code'),
+            data_get($listing, 'listing_id'),
+        ])
+            ->map(fn ($value) => trim((string) $value))
+            ->first(fn ($value) => $value !== '');
+
+        return $searchTerm
+            ? 'https://www.koctas.com.tr/search?text=' . rawurlencode($searchTerm)
+            : null;
+    }
+
+    protected function koctasProductCode(ChannelListing $listing, mixed $channelProduct, array $rawPayload): ?string
+    {
+        $barcode = trim((string) data_get($channelProduct, 'barcode'));
+
+        return collect([
+            data_get($rawPayload, 'product_code'),
+            data_get($rawPayload, 'productCode'),
+            data_get($rawPayload, 'product.code'),
+            data_get($rawPayload, 'product.id'),
+            data_get($rawPayload, 'product_sku'),
+            data_get($rawPayload, 'productSku'),
+            data_get($rawPayload, 'product_id'),
+            data_get($rawPayload, 'productId'),
+            data_get($rawPayload, 'code'),
+            data_get($channelProduct, 'external_product_id'),
+            data_get($listing, 'listing_id'),
+        ])
+            ->map(fn ($value) => preg_replace('/\s+/', '', trim((string) $value)) ?: '')
+            ->first(fn ($value) => ctype_digit($value)
+                && strlen($value) >= 7
+                && strlen($value) <= 11
+                && $value !== $barcode);
+    }
+
+    protected function applyDisplayProfitMetrics(ChannelOrder $order, ?OrderProfitSnapshot $snapshot = null): OrderProfitSnapshot
+    {
+        $items = collect($order->items ?? [])
+            ->filter(fn ($item) => $item instanceof ChannelOrderItem)
+            ->values();
+
+        $grossRevenue = round((float) ($order->gross_revenue_metric ?? $snapshot?->gross_revenue ?? 0), 2);
+        if ($grossRevenue <= 0) {
+            $grossRevenue = round((float) $items->sum(function (ChannelOrderItem $item) {
+                return (float) ($item->billable_amount ?: $item->gross_amount ?: ((float) $item->unit_price * (int) $item->quantity));
+            }), 2);
+        }
+
+        $estimatedCommission = round((float) $items->sum(function (ChannelOrderItem $item) {
+            $baseAmount = (float) ($item->billable_amount ?: $item->gross_amount ?: ((float) $item->unit_price * (int) $item->quantity));
+            $rate = $this->effectiveCommissionRateForOrderItem($item);
+
+            return $baseAmount * $rate / 100;
+        }), 2);
+
+        $compositionTotals = app(ProductCompositionResolver::class)->totalsForOrderItems($items);
+        $liveCogsCost = (float) $compositionTotals['cogs_cost'];
+        $livePackagingCost = (float) $compositionTotals['packaging_cost'];
+        $liveOwnCargoCost = (float) $compositionTotals['own_cargo_cost'];
+
+        $snapshotCogsCost = round((float) ($snapshot?->cogs_cost ?? 0), 2);
+        $snapshotPackagingCost = round((float) ($snapshot?->packaging_cost ?? 0), 2);
+        $snapshotOwnCargoCost = round((float) ($snapshot?->own_cargo_cost ?? 0), 2);
+
+        $hasLiveProductCosts = $items->contains(fn (ChannelOrderItem $item) => $item->product !== null);
+        $liveCostTotal = round($liveCogsCost + $livePackagingCost + $liveOwnCargoCost, 2);
+        $snapshotCostTotal = round($snapshotCogsCost + $snapshotPackagingCost + $snapshotOwnCargoCost, 2);
+        $useLiveCosts = $hasLiveProductCosts && ($liveCostTotal > 0 || $snapshotCostTotal <= 0);
+
+        $displayCogsCost = $useLiveCosts ? $liveCogsCost : $snapshotCogsCost;
+        $displayPackagingCost = $useLiveCosts ? $livePackagingCost : $snapshotPackagingCost;
+        $displayOwnCargoCost = $useLiveCosts ? $liveOwnCargoCost : $snapshotOwnCargoCost;
+
+        $marketplaceCargoTotal = round((float) ($snapshot?->cargo_total ?? $order->cargo_total_metric ?? 0), 2);
+        $serviceFeeTotal = round((float) ($snapshot?->service_fee_total ?? $order->service_fee_total_metric ?? 0), 2);
+        $withholdingTotal = round((float) ($snapshot?->withholding_total ?? $order->withholding_total_metric ?? 0), 2);
+
+        $hasFinancials = (int) ($order->financial_event_count ?? 0) > 0
+            || ($snapshot?->profit_state === 'confirmed');
+        $profitState = (string) ($order->profit_state_metric ?? ($hasFinancials ? 'confirmed' : 'estimated'));
+
+        $displayCommissionTotal = $hasFinancials
+            ? round((float) ($snapshot?->commission_total ?? $order->commission_total_metric ?? $estimatedCommission), 2)
+            : $estimatedCommission;
+        $estimatedNetReceivable = round(
+            $grossRevenue - $displayCommissionTotal - $marketplaceCargoTotal - $serviceFeeTotal - $withholdingTotal,
+            2
+        );
+        $netReceivable = $hasFinancials
+            ? round((float) ($order->net_receivable_metric ?? $snapshot?->net_receivable ?? 0), 2)
+            : $estimatedNetReceivable;
+
+        $estimatedProfit = round($estimatedNetReceivable - $displayCogsCost - $displayPackagingCost - $displayOwnCargoCost, 2);
+        $confirmedProfit = $hasFinancials
+            ? round($netReceivable - $displayCogsCost - $displayPackagingCost - $displayOwnCargoCost, 2)
+            : $estimatedProfit;
+
+        $profitValue = $profitState === 'confirmed' ? $confirmedProfit : $estimatedProfit;
+        $marginPercent = ProfitabilityMetric::multiplierOrZero(
+            $profitValue,
+            ProfitabilityMetric::productCost($displayCogsCost, $displayPackagingCost),
+        );
+
+        $resolvedSnapshot = $snapshot ?: new OrderProfitSnapshot([
+            'store_id' => $order->store_id,
+            'channel_order_id' => $order->id,
+            'channel_order_item_id' => null,
+        ]);
+
+        $resolvedSnapshot->forceFill([
+            'profit_state' => $profitState,
+            'gross_revenue' => $grossRevenue,
+            'net_receivable' => $netReceivable,
+            'commission_total' => $displayCommissionTotal,
+            'cargo_total' => $marketplaceCargoTotal,
+            'service_fee_total' => $serviceFeeTotal,
+            'withholding_total' => $withholdingTotal,
+            'packaging_cost' => $displayPackagingCost,
+            'own_cargo_cost' => $displayOwnCargoCost,
+            'cogs_cost' => $displayCogsCost,
+            'estimated_profit' => $estimatedProfit,
+            'confirmed_profit' => $confirmedProfit,
+            'margin_percent' => $marginPercent,
+        ]);
+
+        $order->setAttribute('gross_revenue_metric', $grossRevenue);
+        $order->setAttribute('net_receivable_metric', $netReceivable);
+        $order->setAttribute('commission_total_metric', $displayCommissionTotal);
+        $order->setAttribute('cargo_total_metric', $marketplaceCargoTotal);
+        $order->setAttribute('service_fee_total_metric', $serviceFeeTotal);
+        $order->setAttribute('withholding_total_metric', $withholdingTotal);
+        $order->setAttribute('estimated_profit_metric', $estimatedProfit);
+        $order->setAttribute('confirmed_profit_metric', $confirmedProfit);
+        $order->setAttribute('profit_value_metric', $profitValue);
+        $order->setAttribute('margin_percent_metric', $marginPercent);
+        $order->setAttribute('display_cogs_cost_metric', $displayCogsCost);
+        $order->setAttribute('display_packaging_cost_metric', $displayPackagingCost);
+        $order->setAttribute('display_own_cargo_cost_metric', $displayOwnCargoCost);
+        $order->setAttribute('display_cargo_effect_metric', round($marketplaceCargoTotal + $displayOwnCargoCost, 2));
+        $order->setAttribute('display_profit_cost_source', $useLiveCosts ? 'live' : 'snapshot');
+
+        return $resolvedSnapshot;
+    }
+
+    public function effectiveCommissionRateForOrderItem(ChannelOrderItem $item): float
+    {
+        $marketplace = MarketplaceProviderRegistry::normalize((string) (
+            $item->store?->marketplace
+            ?: $item->listing?->store?->marketplace
+            ?: ''
+        ));
+
+        if ($marketplace === 'koctas') {
+            return $this->koctasCommissionRate();
+        }
+
+        foreach ([
+            $item->commission_rate,
+            $item->listing?->commission_rate,
+            $item->product?->commission_rate,
+        ] as $rate) {
+            if ($rate !== null && $rate !== '') {
+                return round((float) $rate, 2);
+            }
+        }
+
+        return 0.0;
+    }
+
+    protected function koctasCommissionRate(): float
+    {
+        if (! auth()->check()) {
+            return round((float) config('marketplace.koctas.commission_rate', 15), 2);
+        }
+
+        return app(MpSettingsService::class)->getProductProfitKoctasCommissionRate();
+    }
+
+    /**
+     * @return array{
+     *     total_packages:int,
+     *     printed_packages:int,
+     *     total_print_count:int,
+     *     has_printed:bool,
+     *     all_printed:bool,
+     *     has_reprint:bool,
+     *     badge_label:?string,
+     *     meta_label:?string,
+     *     confirm_message:?string,
+     *     last_printed_at:?Carbon
+     * }
+     */
+    public function orderLabelPrintSummary(ChannelOrder $order): array
+    {
+        $packages = collect($order->packages ?? [])
+            ->filter(fn ($package) => $package instanceof ChannelOrderPackage)
+            ->values();
+
+        return $this->labelPrintSummaryFromPackages($packages, 'Bu siparişin');
+    }
+
+    /**
+     * @return array{
+     *     total_packages:int,
+     *     printed_packages:int,
+     *     total_print_count:int,
+     *     has_printed:bool,
+     *     all_printed:bool,
+     *     has_reprint:bool,
+     *     badge_label:?string,
+     *     meta_label:?string,
+     *     confirm_message:?string,
+     *     last_printed_at:?Carbon
+     * }
+     */
+    public function selectedLabelPrintSummary(): array
+    {
+        $selectedOrderIds = collect($this->selectedOrderIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        $selectedPackageIds = collect($this->selectedPackageIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($selectedOrderIds->isEmpty() && $selectedPackageIds->isEmpty()) {
+            return $this->emptyLabelPrintSummary();
+        }
+
+        $packages = ChannelOrderPackage::query()
+            ->whereHas('store', fn (Builder $query) => $query->where('user_id', auth()->id()))
+            ->where(function (Builder $query) use ($selectedOrderIds, $selectedPackageIds) {
+                if ($selectedOrderIds->isNotEmpty()) {
+                    $query->whereIn('channel_order_id', $selectedOrderIds->all());
+                }
+
+                if ($selectedPackageIds->isNotEmpty()) {
+                    $method = $selectedOrderIds->isNotEmpty() ? 'orWhereIn' : 'whereIn';
+                    $query->{$method}('id', $selectedPackageIds->all());
+                }
+            })
+            ->get(['id', 'channel_order_id', 'label_printed_at', 'label_print_count']);
+
+        return $this->labelPrintSummaryFromPackages($packages, 'Bu seçimdeki');
+    }
+
+    /**
+     * @param  Collection<int, ChannelOrderPackage>  $packages
+     * @return array{
+     *     total_packages:int,
+     *     printed_packages:int,
+     *     total_print_count:int,
+     *     has_printed:bool,
+     *     all_printed:bool,
+     *     has_reprint:bool,
+     *     badge_label:?string,
+     *     meta_label:?string,
+     *     confirm_message:?string,
+     *     last_printed_at:?Carbon
+     * }
+     */
+    protected function labelPrintSummaryFromPackages(Collection $packages, string $subjectPrefix): array
+    {
+        $packages = $packages
+            ->filter(fn ($package) => $package instanceof ChannelOrderPackage)
+            ->values();
+
+        if ($packages->isEmpty()) {
+            return $this->emptyLabelPrintSummary();
+        }
+
+        $printedPackages = $packages
+            ->filter(fn (ChannelOrderPackage $package) => filled($package->label_printed_at) || (int) ($package->label_print_count ?? 0) > 0)
+            ->values();
+
+        $totalPackages = $packages->count();
+        $printedPackagesCount = $printedPackages->count();
+        $totalPrintCount = (int) $printedPackages->sum(fn (ChannelOrderPackage $package) => max(1, (int) ($package->label_print_count ?? 0)));
+        $lastPrintedAt = $printedPackages
+            ->map(fn (ChannelOrderPackage $package) => [
+                'package' => $package,
+                'printed_at' => $this->resolvePackageLabelPrintedAt($package),
+            ])
+            ->sortByDesc(fn (array $row) => $row['printed_at']?->getTimestamp() ?? 0)
+            ->first()['printed_at'] ?? null;
+        $hasPrinted = $printedPackagesCount > 0;
+        $allPrinted = $hasPrinted && $printedPackagesCount === $totalPackages;
+        $hasReprint = $printedPackages->contains(fn (ChannelOrderPackage $package) => (int) ($package->label_print_count ?? 0) > 1);
+
+        $badgeLabel = match (true) {
+            !$hasPrinted => null,
+            $totalPackages <= 1 => 'Etiket yazdırıldı',
+            $allPrinted => $printedPackagesCount . ' etiket yazdırıldı',
+            default => $printedPackagesCount . '/' . $totalPackages . ' etiket yazdırıldı',
+        };
+
+        $metaLabel = match (true) {
+            !$hasPrinted => null,
+            $hasReprint => 'Toplam ' . $totalPrintCount . ' çıktı alındı',
+            $lastPrintedAt instanceof Carbon => 'Son çıktı ' . $lastPrintedAt->format('d.m.Y H:i'),
+            default => null,
+        };
+
+        $confirmMessage = match (true) {
+            !$hasPrinted => null,
+            $totalPackages <= 1 => $subjectPrefix . ' kargo etiketi daha önce yazdırıldı. Tekrar indirmek istiyor musunuz?',
+            $allPrinted => $subjectPrefix . ' tüm kargo etiketleri daha önce yazdırıldı. Tekrar indirmek istiyor musunuz?',
+            default => $subjectPrefix . ' ' . $printedPackagesCount . '/' . $totalPackages . ' kargo etiketi daha önce yazdırıldı. Tekrar indirmek istiyor musunuz?',
+        };
+
+        return [
+            'total_packages' => $totalPackages,
+            'printed_packages' => $printedPackagesCount,
+            'total_print_count' => $totalPrintCount,
+            'has_printed' => $hasPrinted,
+            'all_printed' => $allPrinted,
+            'has_reprint' => $hasReprint,
+            'badge_label' => $badgeLabel,
+            'meta_label' => $metaLabel,
+            'confirm_message' => $confirmMessage,
+            'last_printed_at' => $lastPrintedAt,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     total_packages:int,
+     *     printed_packages:int,
+     *     total_print_count:int,
+     *     has_printed:bool,
+     *     all_printed:bool,
+     *     has_reprint:bool,
+     *     badge_label:?string,
+     *     meta_label:?string,
+     *     confirm_message:?string,
+     *     last_printed_at:?Carbon
+     * }
+     */
+    protected function emptyLabelPrintSummary(): array
+    {
+        return [
+            'total_packages' => 0,
+            'printed_packages' => 0,
+            'total_print_count' => 0,
+            'has_printed' => false,
+            'all_printed' => false,
+            'has_reprint' => false,
+            'badge_label' => null,
+            'meta_label' => null,
+            'confirm_message' => null,
+            'last_printed_at' => null,
+        ];
+    }
+
+    protected function resolvePackageLabelPrintedAt(ChannelOrderPackage $package): ?Carbon
+    {
+        $printedAt = $package->label_printed_at;
+
+        if ($printedAt instanceof Carbon) {
+            return $printedAt;
+        }
+
+        if (!filled($printedAt)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse((string) $printedAt);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array{key:string,label:string,tone:string}
+     */
+    protected function resolveOrderDisplayStatus(ChannelOrder $order): array
+    {
+        $packages = $order->packages ?? collect();
+        $marketplace = (string) ($order->store?->marketplace ?? $order->marketplace_alias ?? '');
+        $firstPackage = $packages->first();
+        $orderKey = $this->normalizeStatusKey(
+            $order->order_status,
+            $marketplace,
+            $firstPackage?->cargo_tracking_number,
+            $firstPackage?->delivered_at,
+        );
+        $packageKeys = $packages
+            ->map(fn (ChannelOrderPackage $package) => $this->normalizeStatusKey(
+                $package->package_status,
+                $marketplace,
+                $package->cargo_tracking_number,
+                $package->delivered_at,
+            ))
+            ->filter(fn (string $key) => $key !== 'missing')
+            ->values();
+        $hasActuallyShippedPackage = $packages->contains(fn (ChannelOrderPackage $package) => filled($package->shipped_at)
+            && !$this->shouldUsePazaramaPlannedShipmentDate(
+                $marketplace,
+                $package->package_status,
+                $package->cargo_tracking_number,
+                $package->delivered_at,
+                $package->raw_payload,
+            ));
+
+        $resolvedKey = match (true) {
+            filled($order->returned_at)
+                || $orderKey === 'returned'
+                || $packageKeys->contains('returned') => 'returned',
+            $orderKey === 'rejected'
+                || $packageKeys->contains('rejected') => 'rejected',
+            filled($order->cancelled_at)
+                || $orderKey === 'cancelled'
+                || $packageKeys->contains('cancelled') => 'cancelled',
+            filled($order->delivered_at)
+                || $packageKeys->contains('delivered')
+                || $packageKeys->contains('completed')
+                || in_array($orderKey, ['delivered', 'completed'], true) => $orderKey === 'completed' ? 'completed' : 'delivered',
+            $packageKeys->contains('out_for_delivery')
+                || $orderKey === 'out_for_delivery' => 'out_for_delivery',
+            $packageKeys->contains('in_transit')
+                || $orderKey === 'in_transit' => 'in_transit',
+            $hasActuallyShippedPackage
+                || $packageKeys->contains('shipped')
+                || $orderKey === 'shipped' => 'shipped',
+            $packageKeys->contains('shipping')
+                || $orderKey === 'shipping' => 'shipping',
+            $packageKeys->contains('processing')
+                || $orderKey === 'processing' => 'processing',
+            filled($order->approved_at)
+                || $packageKeys->contains('approved')
+                || $orderKey === 'approved' => 'approved',
+            $orderKey === 'received' || $packageKeys->contains('received') => 'received',
+            $orderKey === 'pending' || $packageKeys->contains('pending') => 'pending',
+            $orderKey === 'new' || $packageKeys->contains('new') => 'new',
+            default => $orderKey,
+        };
+
+        return [
+            'key' => $resolvedKey,
+            'label' => $this->statusLabelFromKey($resolvedKey, $order->order_status),
+            'tone' => $this->statusToneFromKey($resolvedKey),
+        ];
+    }
+
+    protected function normalizeStatusKey(
+        ?string $status,
+        ?string $marketplace = null,
+        ?string $trackingNumber = null,
+        mixed $deliveredAt = null,
+    ): string
+    {
+        if ($this->shouldTreatPazaramaCargoAsApproved($status, $marketplace, $trackingNumber, $deliveredAt)) {
+            return 'approved';
+        }
+
+        $normalized = Str::of((string) $status)
+            ->trim()
+            ->lower()
+            ->ascii()
+            ->replaceMatches('/[^a-z0-9]+/', ' ')
+            ->value();
+
+        return match (true) {
+            $normalized === '' => 'missing',
+            $this->statusContains($normalized, ['return', 'refund', 'iade']) => 'returned',
+            $this->statusContains($normalized, ['reject', 'redd']) => 'rejected',
+            $this->statusContains($normalized, ['cancel', 'iptal', 'refus']) => 'cancelled',
+            $this->statusContains($normalized, ['completed', 'tamamlan']) => 'completed',
+            $this->statusContains($normalized, ['delivered', 'teslim']) => 'delivered',
+            $this->statusContains($normalized, ['out for delivery', 'dagitim', 'dağıtım']) => 'out_for_delivery',
+            $this->statusContains($normalized, ['in transit', 'transit', 'yolda', 'tasima', 'taşıma', 'aktarma']) => 'in_transit',
+            $this->statusContains($normalized, ['shipping', 'shipment', 'kargolaniyor', 'kargolanıyor']) => 'shipping',
+            $this->statusContains($normalized, ['shipped', 'kargo', 'transit', 'dispatch']) => 'shipped',
+            $this->statusContains($normalized, ['processing', 'process', 'picking', 'packing', 'hazir', 'prepared', 'invoiced', 'invoice', 'fatura']) => 'processing',
+            $this->statusContains($normalized, ['received', 'siparis alindi', 'sipariş alındı']) => 'received',
+            $this->statusContains($normalized, ['pending', 'bekliyor', 'awaiting']) => 'pending',
+            $this->statusContains($normalized, ['approved', 'onay', 'open', 'confirmed', 'accept']) => 'approved',
+            $this->statusContains($normalized, ['created', 'new', 'yeni']) => 'new',
+            default => 'unknown',
+        };
+    }
+
+    /**
+     * @param  array<int, string>  $needles
+     */
+    protected function statusContains(string $haystack, array $needles): bool
+    {
+        foreach ($needles as $needle) {
+            if (str_contains($haystack, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function statusLabelFromKey(string $key, ?string $fallback = null): string
+    {
+        return match ($key) {
+            'missing' => 'Durum yok',
+            'new' => 'Yeni',
+            'received' => 'Sipariş alındı',
+            'pending' => 'Bekliyor',
+            'approved' => 'Onaylandı',
+            'processing' => 'Hazırlanıyor',
+            'shipping' => 'Kargolanıyor',
+            'shipped' => 'Kargolandı',
+            'in_transit' => 'Yolda',
+            'out_for_delivery' => 'Dağıtımda',
+            'delivered' => 'Teslim edildi',
+            'completed' => 'Tamamlandı',
+            'cancelled' => 'İptal edildi',
+            'returned' => 'İade edildi',
+            'rejected' => 'Reddedildi',
+            default => $this->fallbackStatusLabel($fallback),
+        };
+    }
+
+    protected function fallbackStatusLabel(?string $status): string
+    {
+        $normalized = $this->normalizeLookupValue($status);
+
+        if ($normalized === '') {
+            return 'Durum yok';
+        }
+
+        $knownLabels = [
+            'awaiting payment' => 'Ödeme bekliyor',
+            'waiting payment' => 'Ödeme bekliyor',
+            'waiting for payment' => 'Ödeme bekliyor',
+            'payment pending' => 'Ödeme bekliyor',
+            'payment received' => 'Ödeme alındı',
+            'paid' => 'Ödeme alındı',
+            'ready to ship' => 'Kargoya hazır',
+            'ready for shipment' => 'Kargoya hazır',
+            'out for delivery' => 'Dağıtımda',
+            'undelivered' => 'Teslim edilemedi',
+            'delivery failed' => 'Teslim edilemedi',
+            'missing invoice' => 'Fatura eksik',
+            'invoice missing' => 'Fatura eksik',
+            'on hold' => 'Beklemeye alındı',
+            'failed' => 'Hata',
+        ];
+
+        if (array_key_exists($normalized, $knownLabels)) {
+            return $knownLabels[$normalized];
+        }
+
+        return Str::of($normalized)
+            ->title()
+            ->value();
+    }
+
+    protected function statusToneFromKey(string $key): string
+    {
+        return match ($key) {
+            'delivered', 'completed' => 'success',
+            'cancelled', 'returned', 'rejected' => 'danger',
+            'processing', 'pending', 'shipping' => 'warning',
+            'received', 'approved', 'shipped', 'in_transit', 'out_for_delivery' => 'info',
+            default => 'default',
+        };
+    }
+
     protected function shouldTreatPazaramaCargoAsApproved(
         ?string $status,
         ?string $marketplace = null,
@@ -1937,11 +3482,6 @@ class MarketplaceOrders extends Component
         return !filled($deliveredAt);
     }
 
-    public function humanMarketplace(?string $marketplace): string
-    {
-        return (string) (MarketplaceProviderRegistry::get((string) $marketplace)['label'] ?? Str::headline((string) $marketplace));
-    }
-
     public function humanStatus(
         ?string $status,
         ?string $marketplace = null,
@@ -1949,32 +3489,10 @@ class MarketplaceOrders extends Component
         mixed $deliveredAt = null,
     ): string
     {
-        $normalized = Str::lower(trim((string) $status));
-
-        if ($this->shouldTreatPazaramaCargoAsApproved($status, $marketplace, $trackingNumber, $deliveredAt)) {
-            return 'Onaylandı';
-        }
-
-        return match (true) {
-            $normalized === '' => 'Durum yok',
-            str_contains($normalized, 'created'),
-            str_contains($normalized, 'new') => 'Yeni',
-            str_contains($normalized, 'approved'),
-            str_contains($normalized, 'onay') => 'Onaylandı',
-            str_contains($normalized, 'picking'),
-            str_contains($normalized, 'packing') => 'Hazırlanıyor',
-            str_contains($normalized, 'shipped'),
-            str_contains($normalized, 'kargo') => 'Kargoda',
-            str_contains($normalized, 'delivered'),
-            str_contains($normalized, 'teslim') => 'Teslim edildi',
-            str_contains($normalized, 'cancel'),
-            str_contains($normalized, 'iptal') => 'İptal',
-            str_contains($normalized, 'return'),
-            str_contains($normalized, 'iade') => 'İade',
-            str_contains($normalized, 'reject'),
-            str_contains($normalized, 'redd') => 'Reddedildi',
-            default => Str::headline((string) $status),
-        };
+        return $this->statusLabelFromKey(
+            $this->normalizeStatusKey($status, $marketplace, $trackingNumber, $deliveredAt),
+            $status
+        );
     }
 
     public function statusTone(
@@ -1984,28 +3502,9 @@ class MarketplaceOrders extends Component
         mixed $deliveredAt = null,
     ): string
     {
-        $normalized = Str::lower(trim((string) $status));
-
-        if ($this->shouldTreatPazaramaCargoAsApproved($status, $marketplace, $trackingNumber, $deliveredAt)) {
-            return 'info';
-        }
-
-        return match (true) {
-            $normalized === '' => 'default',
-            str_contains($normalized, 'delivered'),
-            str_contains($normalized, 'teslim') => 'success',
-            str_contains($normalized, 'cancel'),
-            str_contains($normalized, 'iptal'),
-            str_contains($normalized, 'return'),
-            str_contains($normalized, 'iade'),
-            str_contains($normalized, 'reject'),
-            str_contains($normalized, 'redd') => 'danger',
-            str_contains($normalized, 'picking'),
-            str_contains($normalized, 'packing'),
-            str_contains($normalized, 'shipped'),
-            str_contains($normalized, 'kargo') => 'warning',
-            default => 'info',
-        };
+        return $this->statusToneFromKey(
+            $this->normalizeStatusKey($status, $marketplace, $trackingNumber, $deliveredAt)
+        );
     }
 
     public function shipmentDateLabel(
@@ -2014,8 +3513,7 @@ class MarketplaceOrders extends Component
         ?string $trackingNumber = null,
         mixed $deliveredAt = null,
         mixed $rawPayload = null,
-    ): string
-    {
+    ): string {
         if ($this->shouldUsePazaramaPlannedShipmentDate($marketplace, $status, $trackingNumber, $deliveredAt, $rawPayload)) {
             return 'Kargolama tarihi';
         }
@@ -2029,8 +3527,7 @@ class MarketplaceOrders extends Component
         ?string $trackingNumber = null,
         mixed $deliveredAt = null,
         mixed $rawPayload = null,
-    ): string
-    {
+    ): string {
         if ($this->shouldUsePazaramaPlannedShipmentDate($marketplace, $status, $trackingNumber, $deliveredAt, $rawPayload)) {
             return 'Kargolama';
         }
@@ -2046,31 +3543,25 @@ class MarketplaceOrders extends Component
             return null;
         }
 
-        if ($package->shipped_at instanceof Carbon) {
-            return $package->shipped_at;
-        }
-
-        if (!$this->shouldUsePazaramaPlannedShipmentDate(
+        if ($this->shouldUsePazaramaPlannedShipmentDate(
             $marketplace,
             $package->package_status,
             $package->cargo_tracking_number,
             $package->delivered_at,
             $package->raw_payload,
         )) {
-            return null;
+            $estimatedShippingDate = data_get($package->raw_payload ?? [], 'estimatedShippingDate');
+
+            if (filled($estimatedShippingDate)) {
+                try {
+                    return Carbon::parse((string) $estimatedShippingDate);
+                } catch (\Throwable) {
+                    return null;
+                }
+            }
         }
 
-        $estimatedShippingDate = data_get($package->raw_payload ?? [], 'estimatedShippingDate');
-
-        if (!filled($estimatedShippingDate)) {
-            return null;
-        }
-
-        try {
-            return Carbon::parse((string) $estimatedShippingDate);
-        } catch (\Throwable) {
-            return null;
-        }
+        return $package->shipped_at instanceof Carbon ? $package->shipped_at : null;
     }
 
     protected function shouldUsePazaramaPlannedShipmentDate(
@@ -2378,6 +3869,45 @@ class MarketplaceOrders extends Component
         };
     }
 
+    /**
+     * @return array<string, array{label: string, short: string, description: string, requires: string}>
+     */
+    public function packageOperationDefinitions(): array
+    {
+        return [
+            'package_picking' => [
+                'label' => 'Kargola',
+                'short' => 'Statü',
+                'description' => 'Paketi pazaryerinde kargolama/hazırlık aşamasına taşır.',
+                'requires' => 'Harici paket ID ve satır ID',
+            ],
+            'package_invoiced' => [
+                'label' => 'Fatura kesildi',
+                'short' => 'Fatura',
+                'description' => 'Fatura numarasını pazaryerine bildirir.',
+                'requires' => 'Fatura no ve fatura tarihi',
+            ],
+            'package_common_label_create' => [
+                'label' => 'Barkod talep et',
+                'short' => 'Barkod',
+                'description' => 'Ortak kargo barkodu/etiketi için kanal servisine talep gönderir.',
+                'requires' => 'Takip numarası veya kanal paket no',
+            ],
+            'package_common_label_get' => [
+                'label' => 'Barkodu getir',
+                'short' => 'Etiket',
+                'description' => 'Hazır barkod/etiket bilgisini kanal servisinden çeker.',
+                'requires' => 'Takip numarası veya kanal paket no',
+            ],
+            'package_invoice_link' => [
+                'label' => 'Fatura linki gönder',
+                'short' => 'Link',
+                'description' => 'PDF fatura linkini pazaryerindeki pakete bağlar.',
+                'requires' => 'Fatura linki',
+            ],
+        ];
+    }
+
     public function actionCanRetry(?string $status): bool
     {
         return in_array((string) $status, ['failed', 'retrying'], true);
@@ -2387,10 +3917,11 @@ class MarketplaceOrders extends Component
     {
         return [
             'order_number' => '',
-            'order_status' => '',
+            'order_status' => 'New',
             'customer_name' => '',
             'customer_email' => '',
             'customer_phone' => '',
+            'customer_note' => '',
             'commercial_type' => '',
             'billing_name' => '',
             'billing_tax_number' => '',
@@ -2400,11 +3931,470 @@ class MarketplaceOrders extends Component
         ];
     }
 
+    protected function syncEditOrderDerivedStatuses(): void
+    {
+        foreach ($this->orderPackagesForm as $index => $packageForm) {
+            $resolvedPackageStatus = $this->canonicalStatusValue($this->resolveManualPackageStatus(
+                $packageForm['package_status'] ?? null,
+                $this->nullableTrim($packageForm['cargo_tracking_number'] ?? null),
+                $packageForm['shipped_at'] ?? null,
+                $packageForm['delivered_at'] ?? null,
+            ), 'New');
+
+            if (($this->orderPackagesForm[$index]['package_status'] ?? null) !== $resolvedPackageStatus) {
+                $this->orderPackagesForm[$index]['package_status'] = $resolvedPackageStatus;
+            }
+        }
+
+        $this->orderForm['order_status'] = $this->resolveEditOrderStatus(
+            $this->orderForm['order_status'] ?? null,
+            $this->orderPackagesForm,
+        );
+    }
+
     protected function nullableTrim(mixed $value): ?string
     {
         $trimmed = trim((string) $value);
 
         return $trimmed === '' ? null : $trimmed;
+    }
+
+    /**
+     * @return array<string, array{label:string, aliases:array<int, string>, tracking_url?:string}>
+     */
+    protected function cargoCompanyDefinitions(): array
+    {
+        return [
+            'aras_kargo' => [
+                'label' => 'Aras Kargo',
+                'aliases' => ['aras', 'aras kargo'],
+            ],
+            'dhl_express' => [
+                'label' => 'DHL Express',
+                'aliases' => ['dhl', 'dhl express'],
+            ],
+            'hepsijet' => [
+                'label' => 'HepsiJET',
+                'aliases' => ['hepsijet', 'hepsi jet'],
+            ],
+            'kolay_gelsin' => [
+                'label' => 'Kolay Gelsin',
+                'aliases' => ['kolay gelsin'],
+            ],
+            'mng_kargo' => [
+                'label' => 'MNG Kargo',
+                'aliases' => ['mng', 'mng kargo'],
+            ],
+            'ptt_kargo' => [
+                'label' => 'PTT Kargo',
+                'aliases' => ['ptt', 'ptt kargo'],
+            ],
+            'sendeo' => [
+                'label' => 'Sendeo',
+                'aliases' => ['sendeo'],
+            ],
+            'surat_kargo' => [
+                'label' => 'Sürat Kargo',
+                'aliases' => ['surat', 'surat kargo', 'surat kargo marketplace', 'surat cargo', 's rat kargo', '341'],
+                'tracking_url' => 'https://suratkargo.com.tr/Default/_KargoTakip?kargotakipno={tracking}',
+            ],
+            'trendyol_express' => [
+                'label' => 'Trendyol Express',
+                'aliases' => ['trendyol express'],
+            ],
+            'ups_kargo' => [
+                'label' => 'UPS Kargo',
+                'aliases' => ['ups', 'ups kargo'],
+            ],
+            'yurtici_kargo' => [
+                'label' => 'Yurtiçi Kargo',
+                'aliases' => ['yurtici', 'yurtici kargo', 'yurt ici kargo'],
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function editableStatusOptions(): array
+    {
+        return [
+            'New' => 'Yeni',
+            'Received' => 'Sipariş alındı',
+            'Pending' => 'Bekliyor',
+            'Approved' => 'Onaylandı',
+            'Processing' => 'Hazırlanıyor',
+            'Shipping' => 'Kargolanıyor',
+            'Shipped' => 'Kargolandı',
+            'In transit' => 'Yolda',
+            'Out for delivery' => 'Dağıtımda',
+            'Delivered' => 'Teslim edildi',
+            'Completed' => 'Tamamlandı',
+            'Cancelled' => 'İptal edildi',
+            'Returned' => 'İade edildi',
+            'Rejected' => 'Reddedildi',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function filterStatusOptions(): array
+    {
+        return [
+            'new' => 'Yeni',
+            'received' => 'Sipariş alındı',
+            'pending' => 'Bekliyor',
+            'approved' => 'Onaylandı',
+            'processing' => 'Hazırlanıyor',
+            'shipping' => 'Kargolanıyor',
+            'shipped' => 'Kargolandı',
+            'in_transit' => 'Yolda',
+            'out_for_delivery' => 'Dağıtımda',
+            'delivered' => 'Teslim edildi',
+            'completed' => 'Tamamlandı',
+            'cancelled' => 'İptal edildi',
+            'returned' => 'İade edildi',
+            'rejected' => 'Reddedildi',
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, string>>
+     */
+    protected function statusSqlNeedles(): array
+    {
+        return [
+            'new' => ['created', 'new', 'yeni'],
+            'received' => ['received', 'siparis alindi', 'sipariş alındı'],
+            'pending' => ['pending', 'bekliyor', 'awaiting'],
+            'approved' => ['approved', 'onay', 'open', 'confirmed', 'accept'],
+            'processing' => ['processing', 'process', 'picking', 'packing', 'hazir', 'hazır', 'prepared', 'invoiced', 'invoice', 'fatura'],
+            'shipping' => ['shipping', 'shipment', 'kargolaniyor', 'kargolanıyor'],
+            'in_transit' => ['in transit', 'transit', 'yolda', 'tasima', 'taşıma', 'aktarma'],
+            'out_for_delivery' => ['out for delivery', 'dagitim', 'dağıtım'],
+            'shipped' => ['shipped', 'kargo', 'dispatch'],
+            'delivered' => ['delivered', 'teslim'],
+            'completed' => ['completed', 'tamamlan'],
+            'cancelled' => ['cancel', 'iptal', 'refus'],
+            'returned' => ['return', 'refund', 'iade'],
+            'rejected' => ['reject', 'redd'],
+        ];
+    }
+
+    protected function applyChannelStatusFilter(Builder $query, string $displayStatusSql): void
+    {
+        if ($this->statusFilter === '') {
+            return;
+        }
+
+        $statusKey = $this->normalizeStatusKey($this->statusFilter);
+
+        if (!array_key_exists($statusKey, $this->filterStatusOptions())) {
+            $query->where('channel_orders.order_status', $this->statusFilter);
+
+            return;
+        }
+
+        $query->whereRaw("{$displayStatusSql} = ?", [$statusKey]);
+    }
+
+    protected function applyTextStatusFilter(Builder $query, string $column): void
+    {
+        if ($this->statusFilter === '') {
+            return;
+        }
+
+        $statusKey = $this->normalizeStatusKey($this->statusFilter);
+
+        if (!array_key_exists($statusKey, $this->filterStatusOptions())) {
+            $query->where($column, $this->statusFilter);
+
+            return;
+        }
+
+        $query->whereRaw($this->statusSqlCondition($column, $statusKey));
+    }
+
+    protected function channelDisplayStatusSql(): string
+    {
+        $orderStatusColumn = 'channel_orders.order_status';
+        $orderIdColumn = 'channel_orders.id';
+
+        $orderReturned = $this->statusSqlCondition($orderStatusColumn, 'returned');
+        $orderRejected = $this->statusSqlCondition($orderStatusColumn, 'rejected');
+        $orderCancelled = $this->statusSqlCondition($orderStatusColumn, 'cancelled');
+        $orderDelivered = $this->statusSqlCondition($orderStatusColumn, ['delivered', 'completed']);
+        $orderCompleted = $this->statusSqlCondition($orderStatusColumn, 'completed');
+        $orderOutForDelivery = $this->statusSqlCondition($orderStatusColumn, 'out_for_delivery');
+        $orderInTransit = $this->statusSqlCondition($orderStatusColumn, 'in_transit');
+        $orderShipped = $this->statusSqlCondition($orderStatusColumn, 'shipped');
+        $orderShipping = $this->statusSqlCondition($orderStatusColumn, 'shipping');
+        $orderProcessing = $this->statusSqlCondition($orderStatusColumn, 'processing');
+        $orderApproved = $this->statusSqlCondition($orderStatusColumn, 'approved');
+        $orderReceived = $this->statusSqlCondition($orderStatusColumn, 'received');
+        $orderPending = $this->statusSqlCondition($orderStatusColumn, 'pending');
+        $orderNew = $this->statusSqlCondition($orderStatusColumn, 'new');
+
+        $packageReturned = $this->packageStatusExistsSql($orderIdColumn, 'returned');
+        $packageRejected = $this->packageStatusExistsSql($orderIdColumn, 'rejected');
+        $packageCancelled = $this->packageStatusExistsSql($orderIdColumn, 'cancelled');
+        $packageDelivered = $this->packageStatusExistsSql($orderIdColumn, ['delivered', 'completed']);
+        $packageOutForDelivery = $this->packageStatusExistsSql($orderIdColumn, 'out_for_delivery');
+        $packageInTransit = $this->packageStatusExistsSql($orderIdColumn, 'in_transit');
+        $packageShipped = $this->packageShippedExistsSql($orderIdColumn);
+        $packageShipping = $this->packageStatusExistsSql($orderIdColumn, 'shipping');
+        $packageProcessing = $this->packageStatusExistsSql($orderIdColumn, 'processing');
+        $packageApproved = $this->packageStatusExistsSql($orderIdColumn, 'approved');
+        $packageReceived = $this->packageStatusExistsSql($orderIdColumn, 'received');
+        $packagePending = $this->packageStatusExistsSql($orderIdColumn, 'pending');
+        $packageNew = $this->packageStatusExistsSql($orderIdColumn, 'new');
+
+        return <<<SQL
+CASE
+    WHEN channel_orders.returned_at IS NOT NULL OR {$orderReturned} OR {$packageReturned} THEN 'returned'
+    WHEN {$orderRejected} OR {$packageRejected} THEN 'rejected'
+    WHEN channel_orders.cancelled_at IS NOT NULL OR {$orderCancelled} OR {$packageCancelled} THEN 'cancelled'
+    WHEN channel_orders.delivered_at IS NOT NULL OR {$orderDelivered} OR {$packageDelivered}
+        THEN CASE WHEN {$orderCompleted} THEN 'completed' ELSE 'delivered' END
+    WHEN {$packageOutForDelivery} OR {$orderOutForDelivery} THEN 'out_for_delivery'
+    WHEN {$packageInTransit} OR {$orderInTransit} THEN 'in_transit'
+    WHEN {$packageShipped} OR {$orderShipped} THEN 'shipped'
+    WHEN {$packageShipping} OR {$orderShipping} THEN 'shipping'
+    WHEN {$packageProcessing} OR {$orderProcessing} THEN 'processing'
+    WHEN channel_orders.approved_at IS NOT NULL OR {$packageApproved} OR {$orderApproved} THEN 'approved'
+    WHEN {$orderReceived} OR {$packageReceived} THEN 'received'
+    WHEN {$orderPending} OR {$packagePending} THEN 'pending'
+    WHEN {$orderNew} OR {$packageNew} THEN 'new'
+    ELSE CASE
+        WHEN TRIM(COALESCE({$orderStatusColumn}, '')) = '' THEN 'missing'
+        ELSE 'unknown'
+    END
+END
+SQL;
+    }
+
+    protected function packageStatusExistsSql(string $orderIdColumn, string|array $statusKeys): string
+    {
+        $statusCondition = $this->statusSqlCondition('status_packages.package_status', $statusKeys);
+
+        return "EXISTS (
+            SELECT 1
+            FROM channel_order_packages AS status_packages
+            WHERE status_packages.channel_order_id = {$orderIdColumn}
+              AND {$statusCondition}
+        )";
+    }
+
+    protected function packageShippedExistsSql(string $orderIdColumn): string
+    {
+        $statusCondition = $this->statusSqlCondition('shipped_packages.package_status', 'shipped');
+
+        return "EXISTS (
+            SELECT 1
+            FROM channel_order_packages AS shipped_packages
+            WHERE shipped_packages.channel_order_id = {$orderIdColumn}
+              AND (shipped_packages.shipped_at IS NOT NULL OR {$statusCondition})
+        )";
+    }
+
+    protected function statusSqlCondition(string $column, string|array $statusKeys): string
+    {
+        $needles = collect((array) $statusKeys)
+            ->flatMap(fn (string $key) => $this->statusSqlNeedles()[$key] ?? [])
+            ->map(fn (string $needle) => mb_strtolower($needle))
+            ->unique()
+            ->values();
+
+        if ($needles->isEmpty()) {
+            return '0 = 1';
+        }
+
+        $conditions = $needles
+            ->map(function (string $needle) use ($column): string {
+                $escapedNeedle = str_replace("'", "''", $needle);
+
+                return "LOWER(COALESCE({$column}, '')) LIKE '%{$escapedNeedle}%'";
+            })
+            ->implode(' OR ');
+
+        return '(' . $conditions . ')';
+    }
+
+    protected function canonicalStatusValue(?string $status, string $default = 'New'): string
+    {
+        return match ($this->normalizeStatusKey($status)) {
+            'new' => 'New',
+            'received' => 'Received',
+            'pending' => 'Pending',
+            'approved' => 'Approved',
+            'processing' => 'Processing',
+            'shipping' => 'Shipping',
+            'shipped' => 'Shipped',
+            'in_transit' => 'In transit',
+            'out_for_delivery' => 'Out for delivery',
+            'delivered' => 'Delivered',
+            'completed' => 'Completed',
+            'cancelled' => 'Cancelled',
+            'returned' => 'Returned',
+            'rejected' => 'Rejected',
+            'missing' => $default,
+            default => $this->nullableTrim($status) ?? $default,
+        };
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $packages
+     */
+    protected function resolveEditOrderStatus(?string $fallbackStatus, array $packages): string
+    {
+        $packageKeys = collect($packages)
+            ->map(function (array $package): string {
+                $resolvedPackageStatus = $this->resolveManualPackageStatus(
+                    $package['package_status'] ?? null,
+                    $this->nullableTrim($package['cargo_tracking_number'] ?? null),
+                    $package['shipped_at'] ?? null,
+                    $package['delivered_at'] ?? null,
+                );
+
+                return $this->normalizeStatusKey($resolvedPackageStatus);
+            })
+            ->filter(fn (string $key) => $key !== 'missing')
+            ->values();
+
+        $fallbackKey = $this->normalizeStatusKey($fallbackStatus);
+
+        $resolvedKey = match (true) {
+            $packageKeys->contains('returned') => 'returned',
+            $packageKeys->contains('rejected') => 'rejected',
+            $packageKeys->contains('cancelled') => 'cancelled',
+            $packageKeys->contains('delivered') || $packageKeys->contains('completed') => $fallbackKey === 'completed' ? 'completed' : 'delivered',
+            $packageKeys->contains('out_for_delivery') => 'out_for_delivery',
+            $packageKeys->contains('in_transit') => 'in_transit',
+            $packageKeys->contains('shipped') => 'shipped',
+            $packageKeys->contains('shipping') => 'shipping',
+            $packageKeys->contains('processing') => 'processing',
+            $packageKeys->contains('approved') => 'approved',
+            $packageKeys->contains('received') => 'received',
+            $packageKeys->contains('pending') => 'pending',
+            $packageKeys->contains('new') => 'new',
+            default => $fallbackKey,
+        };
+
+        return $this->canonicalStatusValue($resolvedKey, 'New');
+    }
+
+    protected function cargoCompanyDefinitionFromValue(?string $value): ?array
+    {
+        $needle = $this->normalizeLookupValue($value);
+
+        if ($needle === '') {
+            return null;
+        }
+
+        foreach ($this->cargoCompanyDefinitions() as $definition) {
+            foreach ($definition['aliases'] as $alias) {
+                if ($needle === $this->normalizeLookupValue($alias)) {
+                    return $definition;
+                }
+            }
+
+            if ($needle === $this->normalizeLookupValue($definition['label'])) {
+                return $definition;
+            }
+        }
+
+        return null;
+    }
+
+    protected function normalizeCargoCompany(?string $value): ?string
+    {
+        $trimmed = $this->nullableTrim($value);
+
+        if (!filled($trimmed)) {
+            return null;
+        }
+
+        $definition = $this->cargoCompanyDefinitionFromValue($trimmed);
+
+        return $definition['label'] ?? $trimmed;
+    }
+
+    protected function resolveManualCargoCompany(?string $cargoCompany, ?string $shipmentProvider): ?string
+    {
+        $normalizedCargoCompany = $this->normalizeCargoCompany($cargoCompany);
+        $normalizedShipmentProvider = $this->normalizeCargoCompany($shipmentProvider);
+        $providerIsKnownCarrier = $this->cargoCompanyDefinitionFromValue($shipmentProvider) !== null;
+
+        if (
+            (!filled($normalizedCargoCompany) || $this->isGenericCargoCompany($normalizedCargoCompany))
+            && $providerIsKnownCarrier
+            && filled($normalizedShipmentProvider)
+        ) {
+            return $normalizedShipmentProvider;
+        }
+
+        return $normalizedCargoCompany;
+    }
+
+    protected function normalizeShipmentProvider(?string $shipmentProvider, ?string $cargoCompany): ?string
+    {
+        $shipmentProvider = $this->nullableTrim($shipmentProvider);
+
+        if (!filled($shipmentProvider)) {
+            return null;
+        }
+
+        return $this->normalizeCargoCompany($shipmentProvider) ?? $shipmentProvider;
+    }
+
+    protected function resolveManualPackageStatus(
+        mixed $packageStatus,
+        ?string $trackingNumber,
+        mixed $shippedAt,
+        mixed $deliveredAt,
+    ): string {
+        $packageStatus = $this->nullableTrim($packageStatus);
+        $statusKey = $this->normalizeStatusKey($packageStatus);
+
+        if (filled($deliveredAt)) {
+            return 'Delivered';
+        }
+
+        if (
+            (filled($trackingNumber) || filled($shippedAt))
+            && !in_array($statusKey, ['shipped', 'in_transit', 'out_for_delivery', 'delivered', 'completed', 'cancelled', 'returned', 'rejected'], true)
+        ) {
+            return 'Shipped';
+        }
+
+        return $packageStatus ?? 'new';
+    }
+
+    protected function isGenericCargoCompany(?string $value): bool
+    {
+        $normalized = $this->normalizeLookupValue($value);
+
+        return in_array($normalized, [
+            'ucretsiz gonderim',
+            'free shipping',
+            'standart teslimat',
+            'standart gonderim',
+            'standard shipping',
+            'shipping',
+            'manual',
+        ], true);
+    }
+
+    protected function normalizeLookupValue(?string $value): string
+    {
+        return Str::of((string) $value)
+            ->trim()
+            ->ascii()
+            ->lower()
+            ->replaceMatches('/[^a-z0-9]+/', ' ')
+            ->trim()
+            ->value();
     }
 
     protected function nullableDecimal(mixed $value): ?float
@@ -2443,8 +4433,53 @@ class MarketplaceOrders extends Component
      */
     public function bulkPackageActionOptions(): array
     {
+        $allOptions = $this->allBulkPackageActionOptions();
+        $selectedIds = collect($this->selectedPackageIds)
+            ->filter(fn ($id) => filled($id))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($selectedIds->isEmpty()) {
+            return $allOptions;
+        }
+
+        $packages = ChannelOrderPackage::query()
+            ->with(['order:id,store_id', 'store:id,marketplace'])
+            ->whereIn('id', $selectedIds->all())
+            ->whereHas('store', fn (Builder $query) => $query->where('user_id', auth()->id()))
+            ->get();
+
+        if ($packages->isEmpty()) {
+            return [];
+        }
+
+        $supportedActions = collect(array_keys($allOptions));
+
+        foreach ($packages as $package) {
+            $supportedActions = $supportedActions
+                ->filter(fn (string $action) => $this->packageSupportsAction($package, $action))
+                ->values();
+
+            if ($supportedActions->isEmpty()) {
+                return [];
+            }
+        }
+
+        return $supportedActions
+            ->mapWithKeys(fn (string $action) => [$action => $allOptions[$action]])
+            ->all();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function allBulkPackageActionOptions(): array
+    {
         return [
-            'package_picking' => 'Toplama bildir',
+            'cargo_create_surat_shipment' => 'Sürat gönderisi oluştur',
+            'cargo_refresh_surat_tracking' => 'Sürat takibini yenile',
+            'package_picking' => 'Kargola',
             'package_invoiced' => 'Fatura kesildi bildir',
             'package_common_label_create' => 'Ortak barkod talep et',
             'package_common_label_get' => 'Ortak barkod getir',
@@ -2524,6 +4559,15 @@ class MarketplaceOrders extends Component
             return 'HTTP ' . data_get($actionRun, 'response_json.response_status');
         }
 
+        if (filled(data_get($actionRun, 'response_json.shipment_no'))) {
+            $trackingNumber = data_get($actionRun, 'response_json.tracking_number')
+                ?: data_get($actionRun, 'response_json.barcode');
+
+            return filled($trackingNumber)
+                ? 'Gönderi ' . data_get($actionRun, 'response_json.shipment_no') . ' / Takip: ' . $trackingNumber
+                : 'Gönderi ' . data_get($actionRun, 'response_json.shipment_no');
+        }
+
         if (filled(data_get($actionRun, 'request_context_json.invoice_link'))) {
             return 'Fatura linki payload içinde gönderildi';
         }
@@ -2542,50 +4586,12 @@ class MarketplaceOrders extends Component
         return $this->marketplaceSupportsCapability($marketplace, $capability);
     }
 
-    public function orderSupportsSync(ChannelOrder $order, string $syncType): bool
-    {
-        $marketplace = (string) ($order->store?->marketplace ?? '');
-
-        if ($marketplace === '') {
-            return false;
-        }
-
-        return (bool) ($this->marketplaceCapabilities($marketplace)[$syncType] ?? false);
-    }
-
-    public function orderSupportsAction(ChannelOrder $order, string $actionType): bool
-    {
-        return match ($actionType) {
-            'refresh_order', 'refresh_cargo' => $this->orderSupportsSync($order, 'orders'),
-            'refresh_finance' => $this->orderSupportsSync($order, 'finance'),
-            'recalculate_profit' => true,
-            default => false,
-        };
-    }
-
-    public function orderActionSupportNotice(ChannelOrder $order): ?string
-    {
-        $supportsOrderSync = $this->orderSupportsSync($order, 'orders');
-        $supportsFinanceSync = $this->orderSupportsSync($order, 'finance');
-
-        if ($supportsOrderSync && $supportsFinanceSync) {
-            return null;
-        }
-
-        $marketplace = (string) ($order->store?->marketplace ?? '');
-        if (!$supportsOrderSync && !$supportsFinanceSync) {
-            return $this->humanMarketplace($marketplace) . ' bağlayıcısında sipariş, kargo ve finans yenileme aksiyonları henüz aktif değil.';
-        }
-
-        if (!$supportsOrderSync) {
-            return $this->humanMarketplace($marketplace) . ' bağlayıcısında sipariş ve kargo yenileme aksiyonları henüz aktif değil.';
-        }
-
-        return $this->humanMarketplace($marketplace) . ' bağlayıcısında finans yenileme aksiyonu henüz aktif değil.';
-    }
-
     public function packageSupportsAction(ChannelOrderPackage $package, string $actionType): bool
     {
+        if ($this->isSuratCargoPackageAction($actionType)) {
+            return Schema::hasTable('shipments');
+        }
+
         $capability = $this->packageActionCapability($actionType);
 
         if ($capability === null) {
@@ -2606,6 +4612,10 @@ class MarketplaceOrders extends Component
         $form = $this->packageActionForms[$packageId] ?? [];
 
         return match ($actionType) {
+            'cargo_create_surat_shipment', 'cargo_refresh_surat_tracking' => [
+                'carrier' => 'surat',
+                'source' => 'marketplace_orders',
+            ],
             'package_invoiced' => [
                 'invoice_number' => trim((string) ($form['invoice_number'] ?? '')),
                 'invoice_date' => trim((string) ($form['invoice_date'] ?? now()->toDateString())),
@@ -2631,6 +4641,7 @@ class MarketplaceOrders extends Component
     protected function packageActionCapability(string $actionType): ?string
     {
         return match ($actionType) {
+            'cargo_create_surat_shipment', 'cargo_refresh_surat_tracking' => 'cargo_surat',
             'package_picking' => 'package_picking',
             'package_invoiced' => 'package_invoiced',
             'package_common_label_create' => 'package_common_label_create',
@@ -2638,6 +4649,14 @@ class MarketplaceOrders extends Component
             'package_invoice_link' => 'package_invoice_link',
             default => null,
         };
+    }
+
+    protected function isSuratCargoPackageAction(string $actionType): bool
+    {
+        return in_array($actionType, [
+            'cargo_create_surat_shipment',
+            'cargo_refresh_surat_tracking',
+        ], true);
     }
 
     protected function marketplaceSupportsCapability(string $marketplace, string $capability): bool
@@ -2656,13 +4675,6 @@ class MarketplaceOrders extends Component
         };
 
         return $fallback !== null && (($capabilities[$fallback] ?? false) === true);
-    }
-
-    public function packageActionSupportNotice(?string $marketplace): string
-    {
-        return ($marketplace !== null && $marketplace !== '')
-            ? $this->humanMarketplace($marketplace) . ' bağlayıcısında paket operasyonları henüz aktif değil.'
-            : 'Bu mağazanın bağlayıcısında paket operasyonları henüz aktif değil.';
     }
 
     /**
@@ -2684,9 +4696,7 @@ class MarketplaceOrders extends Component
      */
     protected function currentPageOrderIds(): array
     {
-        return $this->buildChannelOrdersQuery()
-            ->reorder($this->sortField, $this->sortDirection)
-            ->orderByDesc('channel_orders.ordered_at')
+        return $this->applyOrderSorting($this->buildChannelOrdersQuery())
             ->forPage($this->getPage(), 20)
             ->pluck('channel_orders.id')
             ->map(fn ($id) => (string) $id)
@@ -2695,9 +4705,7 @@ class MarketplaceOrders extends Component
 
     public function render()
     {
-        $ordersPaginator = $this->buildChannelOrdersQuery()
-            ->reorder($this->sortField, $this->sortDirection)
-            ->orderByDesc('channel_orders.ordered_at')
+        $ordersPaginator = $this->applyOrderSorting($this->buildChannelOrdersQuery())
             ->paginate(20);
 
         $pageOrders = $ordersPaginator->getCollection();
@@ -2714,12 +4722,18 @@ class MarketplaceOrders extends Component
 
         $orders = $ordersPaginator->through(function (ChannelOrder $order) use ($legacyOperationalOrders) {
             $snapshot = $order->profitSnapshots->first();
+            $displayStatus = $this->resolveOrderDisplayStatus($order);
+            $snapshot = $this->applyDisplayProfitMetrics($order, $snapshot);
+
             $order->setAttribute('order_snapshot', $snapshot);
             $order->setAttribute('package_summary', $order->packages->first());
             $order->setAttribute(
                 'legacy_operational_order',
                 $legacyOperationalOrders->get($order->store_id . '|' . $order->order_number)
             );
+            $order->setAttribute('display_status_key', $displayStatus['key']);
+            $order->setAttribute('display_status_label', $displayStatus['label']);
+            $order->setAttribute('display_status_tone', $displayStatus['tone']);
 
             return $order;
         });
@@ -2745,6 +4759,7 @@ class MarketplaceOrders extends Component
             'orderLabelDefinitions' => $this->orderLabelDefinitions(),
             'columnDefs' => static::$allColumnDefs,
             'sortableColumns' => static::$sortableColumns,
+            'sortPresets' => static::$sortPresets,
             'hasConfiguredStores' => MarketplaceStore::query()->where('user_id', auth()->id())->exists(),
             'hasChannelData' => $this->hasChannelData(),
         ])->layout('layouts.app', ['title' => 'Pazaryeri Siparişleri']);

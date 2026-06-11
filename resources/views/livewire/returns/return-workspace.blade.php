@@ -9,6 +9,14 @@
             'icon' => '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>'
         ] : null,
         $canAccessReview ? [
+            'id' => 'pazaryeri',
+            'eyebrow' => 'Pazaryeri',
+            'title' => 'Pazaryeri İadeleri',
+            'description' => 'Gelen claim ve refund talepleri',
+            'tone' => 'border-indigo-200 bg-indigo-50/70 text-indigo-700',
+            'icon' => '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l2 2 4-4M7 7h10M7 11h4m-6 9h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>'
+        ] : null,
+        $canAccessReview ? [
             'id' => 'havuz',
             'eyebrow' => 'Karar',
             'title' => 'Akıllı İade Merkezi',
@@ -29,7 +37,7 @@
     $statCards = [
         ['label' => 'Bugün gelen', 'value' => $workspaceStats['todayArrivals'], 'tone' => 'text-slate-900', 'bg' => 'bg-slate-50/70'],
         ['label' => 'Karar bekleyen', 'value' => $workspaceStats['awaitingDecision'], 'tone' => 'text-amber-700', 'bg' => 'bg-amber-50/50'],
-        ['label' => 'Hazır kayıt', 'value' => $workspaceStats['readyForAction'], 'tone' => 'text-emerald-700', 'bg' => 'bg-emerald-50/50'],
+        ['label' => 'Pazaryeri iade', 'value' => $workspaceStats['marketplaceClaimsWaiting'], 'tone' => 'text-indigo-700', 'bg' => 'bg-indigo-50/50'],
         ['label' => 'Açık WhatsApp', 'value' => $workspaceStats['activeThreads'], 'tone' => 'text-sky-700', 'bg' => 'bg-sky-50/50'],
     ];
 
@@ -122,6 +130,10 @@
         @if($activeTab === 'kabul' && $canAccessIntake)
             <div class="w-full">
                 <livewire:returns.return-intake :embedded="true" :key="'returns-intake-embedded'" />
+            </div>
+        @elseif($activeTab === 'pazaryeri' && $canAccessReview)
+            <div class="w-full">
+                <livewire:returns.marketplace-claims-center :embedded="true" :key="'returns-marketplace-claims-embedded'" />
             </div>
         @elseif($activeTab === 'havuz' && $canAccessReview)
             <div class="w-full">

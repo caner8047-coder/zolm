@@ -769,7 +769,7 @@
                                             @if(in_array('kar', $visibleColumns, true))
                                                 <td class="px-2 py-3 align-top text-right">
                                                     <div class="font-semibold {{ $profitValue >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $formatMoney($profitValue) }}</div>
-                                                    <div class="mt-1 text-[11px] text-slate-500">%{{ number_format((float) ($row->margin_percent_metric ?? 0), 1, ',', '.') }}</div>
+                                                    <div class="mt-1 text-[11px] text-slate-500">%{{ number_format(\App\Services\ProfitabilityMetric::profitPercentFromMultiplierOrZero($row->margin_percent_metric ?? null), 1, ',', '.') }}</div>
                                                 </td>
                                             @endif
 

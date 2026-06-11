@@ -8,6 +8,7 @@ use App\Services\Marketplace\Connectors\WooCommerceConnector;
 use App\Services\Marketplace\Contracts\PushesPrice;
 use App\Services\Marketplace\Contracts\PushesStock;
 use App\Services\Marketplace\MarketplaceConnectorManager;
+use App\Services\MpProductChangeLogger;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -33,13 +34,13 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
 
     public function __construct(public int $pushRunId)
     {
-        $this->onQueue('marketplace-push');
+        $this->onQueue((string) config('marketplace.queues.listing_push', 'default'));
     }
 
     public function handle(MarketplaceConnectorManager $connectorManager): void
     {
         $pushRun = IntegrationPushRun::query()
-            ->with(['store.connection', 'store.syncProfile', 'listing.channelProduct', 'listing.product'])
+            ->with(['store.connection', 'store.syncProfile', 'listing.store', 'listing.channelProduct', 'listing.product'])
             ->findOrFail($this->pushRunId);
 
         if (in_array($pushRun->status, ['completed', 'failed'], true)) {
@@ -73,6 +74,9 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
 
             $capabilities = $connector->capabilities();
             $response = [];
+            $listing->loadMissing('store');
+            $logger = app(MpProductChangeLogger::class);
+            $beforeListingSnapshot = $logger->listingSnapshot($listing);
 
             if ($pushRun->push_type === 'price') {
                 if (!($connector instanceof PushesPrice) || !($capabilities['price_push'] ?? false)) {
@@ -91,6 +95,15 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                     'last_price_sync_at' => now(),
                     'last_synced_at' => now(),
                 ]);
+                $logger->logListingSnapshotChanges(
+                    $listing->fresh() ?: $listing,
+                    $beforeListingSnapshot,
+                    'price_push',
+                    $pushRun->triggered_by,
+                    'Pazaryerine fiyat gönderimi tamamlandı',
+                    $pushRun->external_batch_id ?: null,
+                    ['push_run_id' => $pushRun->id]
+                );
             } elseif ($pushRun->push_type === 'stock') {
                 if (!($connector instanceof PushesStock) || !($capabilities['stock_push'] ?? false)) {
                     throw new \RuntimeException('Bu kanal için stok push desteklenmiyor.');
@@ -107,6 +120,21 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                     'last_stock_sync_at' => now(),
                     'last_synced_at' => now(),
                 ]);
+                $logger->logListingSnapshotChanges(
+                    $listing->fresh() ?: $listing,
+                    $beforeListingSnapshot,
+                    'stock_push',
+                    $pushRun->triggered_by,
+                    'Pazaryerine stok gönderimi tamamlandı',
+                    $pushRun->external_batch_id ?: null,
+                    ['push_run_id' => $pushRun->id]
+                );
+
+                $freshListing = $listing->fresh();
+
+                if ($freshListing) {
+                    app(\App\Services\NotificationCenterService::class)->syncListingStockAlert($freshListing);
+                }
             } else {
                 throw new \RuntimeException('Desteklenmeyen push tipi: ' . $pushRun->push_type);
             }
@@ -124,12 +152,25 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                 'finished_at' => $this->attempts() >= $this->tries ? now() : null,
             ]);
 
+            if ($this->attempts() >= $this->tries) {
+                $freshRun = $pushRun->fresh();
+
+                if ($freshRun) {
+                    app(\App\Services\NotificationCenterService::class)->notifyPushFailure($freshRun, $exception);
+                }
+            }
+
             throw $exception;
         }
     }
 
     public function failed(Throwable $exception): void
     {
+        $pushRun = IntegrationPushRun::query()
+            ->with(['store', 'listing.channelProduct', 'listing.product'])
+            ->whereKey($this->pushRunId)
+            ->first();
+
         IntegrationPushRun::query()
             ->whereKey($this->pushRunId)
             ->update([
@@ -137,6 +178,10 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                 'error_message' => $exception->getMessage(),
                 'finished_at' => now(),
             ]);
+
+        if ($pushRun) {
+            app(\App\Services\NotificationCenterService::class)->notifyPushFailure($pushRun, $exception);
+        }
     }
 
     protected function shouldUseWooBatch(IntegrationPushRun $pushRun, object $connector): bool
@@ -168,6 +213,10 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                 $listing = $run->listing;
 
                 if ($listing instanceof ChannelListing) {
+                    $listing->loadMissing('store');
+                    $logger = app(MpProductChangeLogger::class);
+                    $beforeListingSnapshot = $logger->listingSnapshot($listing);
+
                     if ($run->push_type === 'price') {
                         $listing->update([
                             'sale_price' => (float) $run->target_price,
@@ -175,12 +224,36 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                             'last_price_sync_at' => now(),
                             'last_synced_at' => now(),
                         ]);
+                        $logger->logListingSnapshotChanges(
+                            $listing->fresh() ?: $listing,
+                            $beforeListingSnapshot,
+                            'price_push',
+                            $run->triggered_by,
+                            'WooCommerce toplu fiyat gönderimi tamamlandı',
+                            $batchId,
+                            ['push_run_id' => $run->id]
+                        );
                     } else {
                         $listing->update([
                             'stock_quantity' => (int) $run->target_quantity,
                             'last_stock_sync_at' => now(),
                             'last_synced_at' => now(),
                         ]);
+                        $logger->logListingSnapshotChanges(
+                            $listing->fresh() ?: $listing,
+                            $beforeListingSnapshot,
+                            'stock_push',
+                            $run->triggered_by,
+                            'WooCommerce toplu stok gönderimi tamamlandı',
+                            $batchId,
+                            ['push_run_id' => $run->id]
+                        );
+
+                        $freshListing = $listing->fresh();
+
+                        if ($freshListing) {
+                            app(\App\Services\NotificationCenterService::class)->syncListingStockAlert($freshListing);
+                        }
                     }
                 }
 
@@ -207,6 +280,12 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                     'error_message' => $exception->getMessage(),
                     'finished_at' => $status === 'failed' ? now() : null,
                 ]);
+
+            if ($status === 'failed') {
+                foreach ($runs as $run) {
+                    app(\App\Services\NotificationCenterService::class)->notifyPushFailure($run, $exception);
+                }
+            }
 
             throw $exception;
         }
@@ -243,7 +322,7 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                 ]);
 
             return IntegrationPushRun::query()
-                ->with(['store.connection', 'store.syncProfile', 'listing.channelProduct', 'listing.product'])
+                ->with(['store.connection', 'store.syncProfile', 'listing.store', 'listing.channelProduct', 'listing.product'])
                 ->whereIn('id', $selectedIds)
                 ->orderBy('id')
                 ->get();

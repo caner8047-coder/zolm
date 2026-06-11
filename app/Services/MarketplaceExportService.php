@@ -48,7 +48,7 @@ class MarketplaceExportService
             'Adet', 'Brüt Tutar (TL)', 'Komisyon (TL)', 'Kargo (TL)',
             'Stopaj (TL)', 'Hizmet Bedeli (TL)', 'Net Hakediş (TL)',
             'KDV Oranı (%)', 'Kargo Firması', 'Desi', 'COGS (TL)',
-            'Ambalaj (TL)', 'Gerçek Net Kâr (TL)', 'Margin (%)',
+            'Ambalaj (TL)', 'Gerçek Net Kâr (TL)', 'Kârlılık (%)',
             'Flagli', 'Komisyon Oranı (%)',
         ];
 
@@ -86,7 +86,7 @@ class MarketplaceExportService
             $this->writeCell($sheet, $row, $col++, $order->cogs_at_time, DataType::TYPE_NUMERIC);
             $this->writeCell($sheet, $row, $col++, $order->packaging_cost_at_time, DataType::TYPE_NUMERIC);
             $this->writeCell($sheet, $row, $col++, $econ ? $econ['real_net_profit'] : null, DataType::TYPE_NUMERIC);
-            $this->writeCell($sheet, $row, $col++, $econ ? $econ['margin_percent'] : null, DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet, $row, $col++, $econ ? ProfitabilityMetric::profitPercentFromMultiplier($econ['margin_percent']) : null, DataType::TYPE_NUMERIC);
             $this->writeCell($sheet, $row, $col++, $order->is_flagged ? 'EVET' : '', DataType::TYPE_STRING);
             $this->writeCell($sheet, $row, $col++, $order->commission_rate, DataType::TYPE_NUMERIC);
 
@@ -373,7 +373,7 @@ class MarketplaceExportService
             'Sipariş No', 'Barkod', 'Stok Kodu', 'Ürün Adı', 'Adet',
             'Brüt Tutar (TL)', 'Hakediş (TL)', 'Komisyon (TL)', 'Kargo (TL)',
             'COGS (TL)', 'Ambalaj (TL)', 'Satış KDV (TL)', 'Gider KDV (TL)',
-            'Net KDV (TL)', 'Gerçek Net Kâr (TL)', 'Margin (%)', 'Kanayan',
+            'Net KDV (TL)', 'Gerçek Net Kâr (TL)', 'Kârlılık (%)', 'Kanayan',
         ];
         $this->writeHeaderRow($sheet1, $headers1, 1);
 
@@ -397,7 +397,7 @@ class MarketplaceExportService
             $this->writeCell($sheet1, $row, $col++, $item['expense_vat'], DataType::TYPE_NUMERIC);
             $this->writeCell($sheet1, $row, $col++, $item['net_vat'], DataType::TYPE_NUMERIC);
             $this->writeCell($sheet1, $row, $col++, $item['real_net_profit'], DataType::TYPE_NUMERIC);
-            $this->writeCell($sheet1, $row, $col++, $item['margin_percent'], DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet1, $row, $col++, ProfitabilityMetric::profitPercentFromMultiplier($item['margin_percent']), DataType::TYPE_NUMERIC);
             $this->writeCell($sheet1, $row, $col++, $item['is_bleeding'] ? 'EVET' : '', DataType::TYPE_STRING);
 
             if ($item['is_bleeding']) {
@@ -417,7 +417,7 @@ class MarketplaceExportService
         $headers2 = [
             'Barkod', 'Stok Kodu', 'Ürün Adı', 'Sipariş Sayısı', 'Toplam Adet',
             'Toplam Ciro (TL)', 'Toplam Hakediş (TL)', 'Toplam COGS (TL)',
-            'Toplam Ambalaj (TL)', 'Toplam Net Kâr (TL)', 'Ortalama Margin (%)',
+            'Toplam Ambalaj (TL)', 'Toplam Net Kâr (TL)', 'Ortalama Kârlılık (%)',
             'Zararlı Sipariş', 'Kanayan',
         ];
         $this->writeHeaderRow($sheet2, $headers2, 1);
@@ -437,7 +437,7 @@ class MarketplaceExportService
             $this->writeCell($sheet2, $row, $col++, $item['total_cogs'], DataType::TYPE_NUMERIC);
             $this->writeCell($sheet2, $row, $col++, $item['total_packaging'], DataType::TYPE_NUMERIC);
             $this->writeCell($sheet2, $row, $col++, $item['total_net_profit'], DataType::TYPE_NUMERIC);
-            $this->writeCell($sheet2, $row, $col++, $item['avg_margin'], DataType::TYPE_NUMERIC);
+            $this->writeCell($sheet2, $row, $col++, ProfitabilityMetric::profitPercentFromMultiplier($item['avg_margin']), DataType::TYPE_NUMERIC);
             $this->writeCell($sheet2, $row, $col++, $item['bleeding_count'], DataType::TYPE_NUMERIC);
             $this->writeCell($sheet2, $row, $col++, $item['is_bleeding'] ? 'EVET' : '', DataType::TYPE_STRING);
 

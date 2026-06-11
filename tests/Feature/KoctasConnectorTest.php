@@ -119,6 +119,7 @@ class KoctasConnectorTest extends TestCase
                     'description' => 'Koçtaş Masa',
                     'quantity' => 7,
                     'price' => 999.90,
+                    'commission' => 21,
                     'currency_iso_code' => 'TRY',
                     'active' => true,
                     'product_references' => [[
@@ -145,6 +146,9 @@ class KoctasConnectorTest extends TestCase
         $this->assertSame('OFF-1', data_get($result, 'items.0.listing.listing_id'));
         $this->assertSame('active', data_get($result, 'items.0.listing.listing_status'));
         $this->assertSame(999.90, data_get($result, 'items.0.listing.sale_price'));
+        $this->assertNull(data_get($result, 'items.0.listing.commission_rate'));
+        $this->assertSame('product_fallback', data_get($result, 'items.0.listing.commission_source'));
+        $this->assertSame('product', data_get($result, 'items.0.listing.commission_authority'));
     }
 
     public function test_it_pushes_koctas_price_via_price_import(): void

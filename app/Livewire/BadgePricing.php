@@ -7,6 +7,8 @@ use App\Models\OptimizationReport;
 use App\Models\OptimizationReportItem;
 use App\Services\BadgePricingService;
 use App\Services\CampaignAnalysisService;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -34,6 +36,28 @@ class BadgePricing extends Component
     public string $chatMessage = '';
     public bool $isChatting = false;
 
+    // Filters
+    public string $searchQuery = '';
+    public string $statusFilter = 'all';
+    public string $sortField = 'extra_profit';
+    public string $sortDirection = 'desc';
+    public array $visibleColumns = [
+        'costs' => true,
+        'current' => true,
+        'star1' => true,
+        'star2' => true,
+        'star3' => true,
+        'price_action' => true,
+    ];
+    public array $sortableColumns = [
+        'product_name' => 'Ürün',
+        'current_price' => 'Mevcut fiyat',
+        'current_net_profit' => 'Mevcut kâr',
+        'extra_profit' => 'Ek kâr',
+        'total_cost' => 'Toplam maliyet',
+        'suggested_net_profit' => 'Yıldız kârı',
+    ];
+
     public function mount()
     {
         if (request()->has('report')) {
@@ -60,7 +84,10 @@ class BadgePricing extends Component
     public function activeReport()
     {
         if (!$this->activeReportId) return null;
-        return OptimizationReport::with('items')->find($this->activeReportId);
+        return OptimizationReport::with('items')
+            ->where('user_id', auth()->id())
+            ->ofType('badge')
+            ->find($this->activeReportId);
     }
 
     #[Computed]
@@ -70,6 +97,99 @@ class BadgePricing extends Component
             ->ofType('badge')
             ->orderByDesc('created_at')
             ->get();
+    }
+
+    #[Computed]
+    public function filteredItems(): Collection
+    {
+        $report = $this->activeReport;
+        if (!$report) {
+            return collect();
+        }
+
+        $query = trim(Str::lower($this->searchQuery));
+        $items = $report->items;
+
+        if ($query !== '') {
+            $items = $items->filter(function ($item) use ($query) {
+                return Str::contains(Str::lower((string) $item->product_name), $query)
+                    || Str::contains(Str::lower((string) $item->stock_code), $query)
+                    || Str::contains(Str::lower((string) $item->barcode), $query);
+            });
+        }
+
+        $items = $items->filter(function ($item) {
+            return match ($this->statusFilter) {
+                'opportunity' => $item->action === 'update',
+                'risk' => $item->action === 'warning' || (float) $item->current_net_profit < 0,
+                'selected' => in_array($item->id, $this->selectedItems, true) || $item->selected_tariff_index !== null || $item->custom_price !== null,
+                'missing_cost' => $item->totalCost() <= 0,
+                'unmatched' => !((bool) data_get($item->campaign_data, 'matched', true)),
+                'kept' => $item->action === 'keep',
+                'star1', 'star2', 'star3' => $this->bestScenarioIndex($item) === (int) Str::after($this->statusFilter, 'star'),
+                default => true,
+            };
+        });
+
+        $sorter = function ($item) {
+            return match ($this->sortField) {
+                'product_name' => Str::lower((string) ($item->product_name ?: $item->stock_code)),
+                'current_price' => (float) $item->current_price,
+                'current_net_profit' => (float) $item->current_net_profit,
+                'total_cost' => $item->totalCost(),
+                'suggested_net_profit' => (float) ($item->suggested_net_profit ?? $item->current_net_profit),
+                default => (float) $item->extra_profit,
+            };
+        };
+
+        return ($this->sortDirection === 'asc'
+            ? $items->sortBy($sorter, SORT_REGULAR)
+            : $items->sortByDesc($sorter, SORT_REGULAR))
+            ->values();
+    }
+
+    #[Computed]
+    public function reportMetrics(): array
+    {
+        $report = $this->activeReport;
+        if (!$report) {
+            return [
+                'filtered_count' => 0,
+                'risk_count' => 0,
+                'selected_count' => 0,
+                'selected_impact' => 0,
+                'cost_coverage' => 0,
+                'unmatched_count' => 0,
+                'top_opportunity' => null,
+                'worst_loss' => null,
+                'visible_extra_profit' => 0,
+                'star_counts' => [0 => 0, 1 => 0, 2 => 0, 3 => 0],
+            ];
+        }
+
+        $items = $report->items;
+        $selectedItems = $items->filter(fn ($item) => in_array($item->id, $this->selectedItems, true));
+        $selectedImpact = $selectedItems->sum(fn ($item) => $this->projectedNetProfit($item) - (float) $item->current_net_profit);
+        $costReadyCount = $items->filter(fn ($item) => $item->totalCost() > 0)->count();
+        $totalCount = max(1, $items->count());
+        $starCounts = [0 => 0, 1 => 0, 2 => 0, 3 => 0];
+
+        foreach ($items as $item) {
+            $starCounts[$this->bestScenarioIndex($item)]++;
+        }
+
+        return [
+            'filtered_count' => $this->filteredItems->count(),
+            'risk_count' => $items->filter(fn ($item) => $item->action === 'warning' || (float) $item->current_net_profit < 0)->count(),
+            'selected_count' => $selectedItems->count(),
+            'selected_impact' => round($selectedImpact, 2),
+            'cost_coverage' => round(($costReadyCount / $totalCount) * 100, 1),
+            'unmatched_count' => $items->filter(fn ($item) => !((bool) data_get($item->campaign_data, 'matched', true)))->count(),
+            'top_opportunity' => $items->where('action', 'update')->sortByDesc('extra_profit')->first(),
+            'worst_loss' => $items->filter(fn ($item) => (float) $item->current_net_profit < 0)->sortBy('current_net_profit')->first(),
+            'visible_extra_profit' => round($this->filteredItems->sum(fn ($item) => max(0, (float) $item->extra_profit)), 2),
+            'star_counts' => $starCounts,
+        ];
     }
 
     public function analyze()
@@ -168,9 +288,77 @@ class BadgePricing extends Component
             ->pluck('id')->toArray();
     }
 
+    public function selectFilteredOpportunities()
+    {
+        $this->selectedItems = $this->filteredItems
+            ->filter(fn ($item) => $item->action === 'update' || $item->selected_tariff_index !== null || $item->custom_price !== null)
+            ->pluck('id')
+            ->values()
+            ->toArray();
+
+        if (empty($this->selectedItems)) {
+            $this->message = 'Görünen ürünler içinde seçilecek yıldız fırsatı bulunamadı.';
+            $this->messageType = 'info';
+        }
+    }
+
     public function deselectAll()
     {
         $this->selectedItems = [];
+    }
+
+    public function toggleItem(int $itemId)
+    {
+        if (in_array($itemId, $this->selectedItems, true)) {
+            $this->selectedItems = array_values(array_diff($this->selectedItems, [$itemId]));
+            return;
+        }
+
+        $this->selectedItems[] = $itemId;
+    }
+
+    public function setStatusFilter(string $filter)
+    {
+        if (!in_array($filter, ['all', 'opportunity', 'risk', 'selected', 'missing_cost', 'unmatched', 'kept', 'star1', 'star2', 'star3'], true)) {
+            return;
+        }
+
+        $this->statusFilter = $filter;
+    }
+
+    public function sortTable(string $field)
+    {
+        if (!array_key_exists($field, $this->sortableColumns)) {
+            return;
+        }
+
+        if ($this->sortField === $field) {
+            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
+            return;
+        }
+
+        $this->sortField = $field;
+        $this->sortDirection = $field === 'product_name' ? 'asc' : 'desc';
+    }
+
+    public function toggleColumn(string $column)
+    {
+        if (!array_key_exists($column, $this->visibleColumns)) {
+            return;
+        }
+
+        $this->visibleColumns[$column] = !$this->visibleColumns[$column];
+    }
+
+    public function showColumn(string $column): bool
+    {
+        return (bool) ($this->visibleColumns[$column] ?? false);
+    }
+
+    public function clearTableFilters()
+    {
+        $this->searchQuery = '';
+        $this->statusFilter = 'all';
     }
 
     public function exportSelected()
@@ -212,6 +400,10 @@ class BadgePricing extends Component
         $this->activeTab = 'analyze';
         $this->step = 3;
         $this->selectedItems = [];
+        $this->searchQuery = '';
+        $this->statusFilter = 'all';
+        $this->sortField = 'extra_profit';
+        $this->sortDirection = 'desc';
         $this->message = '';
     }
 
@@ -232,7 +424,7 @@ class BadgePricing extends Component
 
     public function resetAnalysis()
     {
-        $this->reset(['activeReportId', 'selectedItems', 'message', 'messageType']);
+        $this->reset(['activeReportId', 'selectedItems', 'message', 'messageType', 'searchQuery', 'statusFilter']);
         $this->step = 1;
     }
 
@@ -309,6 +501,11 @@ class BadgePricing extends Component
     public function sendMessage()
     {
         $this->validate(['chatMessage' => 'required|string|max:1000']);
+
+        if (!$this->chatConversationId && $this->activeReportId) {
+            $this->toggleChat();
+        }
+
         if (!$this->chatConversationId) return;
         $conversation = AIConversation::find($this->chatConversationId);
         if (!$conversation) return;
@@ -334,11 +531,40 @@ class BadgePricing extends Component
         try {
             $service = app(\App\Services\AIService::class);
             $totalCost = $item->totalCost();
-            $suggestion = $service->suggestPrice($item->product_name, $totalCost, $item->current_price);
+            $suggestion = $service->suggestPrice($item->product_name, $totalCost, $item->current_price, [
+                'current_commission' => (float) $item->current_commission,
+                'current_net_profit' => (float) $item->current_net_profit,
+                'scenarios' => $item->scenario_details ?? [],
+            ]);
             $this->suggestedPrices[$itemId] = ['price' => $suggestion['suggested_price'], 'reason' => $suggestion['reason'], 'loading' => false];
         } catch (\Exception $e) {
             $this->suggestedPrices[$itemId] = ['error' => $e->getMessage(), 'loading' => false];
         }
+    }
+
+    protected function projectedNetProfit(OptimizationReportItem $item): float
+    {
+        $price = (float) ($item->custom_price ?: $item->suggested_price ?: $item->current_price);
+        $commission = (float) ($item->suggested_commission ?: $item->current_commission);
+
+        if ($item->selected_tariff_index !== null && isset($item->scenario_details[$item->selected_tariff_index])) {
+            $scenario = $item->scenario_details[$item->selected_tariff_index];
+            $price = (float) ($item->custom_price ?: ($scenario['price'] ?? $price));
+            $commission = (float) ($scenario['commission'] ?? $commission);
+        }
+
+        return round(($price * (1 - ($commission / 100))) - $item->totalCost(), 2);
+    }
+
+    protected function bestScenarioIndex(OptimizationReportItem $item): int
+    {
+        foreach (($item->scenario_details ?? []) as $index => $scenario) {
+            if ($scenario['is_best'] ?? false) {
+                return (int) $index;
+            }
+        }
+
+        return 0;
     }
 
     public function applySuggestedPrice($itemId)

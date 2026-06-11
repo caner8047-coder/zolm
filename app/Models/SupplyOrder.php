@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SupplyOrder extends Model
 {
@@ -35,6 +36,11 @@ class SupplyOrder extends Model
         'gonderim_tarihi' => 'date',
         'adet' => 'integer',
     ];
+
+    public function shipments(): HasMany
+    {
+        return $this->hasMany(Shipment::class);
+    }
 
     /**
      * Durum seçenekleri

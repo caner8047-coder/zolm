@@ -48,15 +48,52 @@
 @endonce
 
 <div class="mp-matching-page w-full space-y-5 overflow-hidden" x-data="{ expanded: [], prioritiesOpen: false, advancedFilters: false }">
-    @if(session()->has('success'))
-        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 shadow-sm">
-            {{ session('success') }}
-        </div>
-    @endif
-
-    @if(session()->has('warning'))
-        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
-            {{ session('warning') }}
+    @if(session()->has('success') || session()->has('warning'))
+        @php
+            $toastTone = session()->has('success') ? 'success' : 'warning';
+            $toastMessage = session('success') ?: session('warning');
+        @endphp
+        <div x-data="{ show: true }"
+             x-init="window.setTimeout(() => show = false, 4200)"
+             x-show="show"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 translate-y-2 scale-95"
+             x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+             x-transition:leave-end="opacity-0 translate-y-2 scale-95"
+             class="fixed right-4 top-24 z-50 w-[calc(100vw-2rem)] max-w-sm rounded-[10px] border bg-white p-4 shadow-lg sm:right-6 {{ $toastTone === 'success' ? 'border-emerald-200' : 'border-amber-200' }}"
+             role="status">
+            <div class="flex items-start gap-3">
+                <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] {{ $toastTone === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600' }}">
+                    @if($toastTone === 'success')
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                    @else
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        </svg>
+                    @endif
+                </div>
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold text-slate-900">{{ $toastTone === 'success' ? 'İşlem tamam' : 'Kontrol gerekli' }}</p>
+                    <p class="mt-1 text-sm leading-5 text-slate-600">{{ $toastMessage }}</p>
+                </div>
+                <button type="button"
+                        @click="show = false"
+                        class="rounded-[6px] p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                        aria-label="Bildirimi kapat">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="mt-3 h-1 overflow-hidden rounded-full bg-slate-100">
+                <div class="h-full rounded-full {{ $toastTone === 'success' ? 'bg-emerald-500' : 'bg-amber-500' }}"
+                     x-data
+                     x-init="$el.animate([{ width: '100%' }, { width: '0%' }], { duration: 4200, easing: 'linear', fill: 'forwards' })"></div>
+            </div>
         </div>
     @endif
 
@@ -699,7 +736,9 @@
                     </div>
                 </div>
                 @if(($diagnosticsGuidance['items'][0] ?? null) !== null)
-                    @php($topGuidance = $diagnosticsGuidance['items'][0])
+                    @php
+                        $topGuidance = $diagnosticsGuidance['items'][0];
+                    @endphp
                     <a href="{{ $this->guidanceRoute($topGuidance) }}" class="block rounded-lg border border-slate-200 bg-slate-50/60 p-3 transition hover:border-slate-300 hover:bg-white">
                         <div class="flex flex-wrap items-center gap-2">
                             <x-zolm.status-badge :tone="$this->guidanceSeverityTone($topGuidance['severity'])">{{ $this->guidanceSeverityLabel($topGuidance['severity']) }}</x-zolm.status-badge>

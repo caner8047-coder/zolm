@@ -6,6 +6,11 @@
     $formatMoney = fn ($value) => '₺' . number_format((float) $value, 2, ',', '.');
     $formatCount = fn ($value) => number_format((float) $value, 0, ',', '.');
     $profitValue = (float) ($order->profit_value_metric ?? ($snapshot?->profit_state === 'confirmed' ? $snapshot?->confirmed_profit : $snapshot?->estimated_profit));
+    $productCostForProfitability = \App\Services\ProfitabilityMetric::productCost(
+        (float) ($snapshot?->cogs_cost ?? 0),
+        (float) ($snapshot?->packaging_cost ?? 0),
+    );
+    $profitabilityPercent = \App\Services\ProfitabilityMetric::profitPercent($profitValue, $productCostForProfitability);
     $profitDelta = (float) ($order->profit_delta_metric ?? 0);
     $deductionDelta = (float) ($order->deduction_delta_metric ?? 0);
     $reconciliationState = $order->reconciliation_state_metric ?? 'waiting';
@@ -102,8 +107,8 @@
                     <p class="mt-2 text-sm font-semibold {{ $deductionDelta <= 0 ? 'text-emerald-600' : 'text-amber-600' }}">{{ $formatMoney($deductionDelta) }}</p>
                 </div>
                 <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                    <p class="text-[10px] uppercase tracking-[0.16em] text-slate-500">Marj</p>
-                    <p class="mt-2 text-sm font-semibold text-slate-900">%{{ number_format((float) ($snapshot?->margin_percent ?? $order->margin_percent_metric ?? 0), 1, ',', '.') }}</p>
+                    <p class="text-[10px] uppercase tracking-[0.16em] text-slate-500">Kârlılık</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-900">{{ $profitabilityPercent !== null ? '%' . number_format($profitabilityPercent, 1, ',', '.') : '—' }}</p>
                 </div>
             </div>
         </div>

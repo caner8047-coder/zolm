@@ -3,9 +3,15 @@
 namespace App\Services\Marketplace\Connectors;
 
 use App\Models\ChannelOrderPackage;
+use App\Models\MarketplaceQuestion;
 use App\Models\MarketplaceStore;
+use App\Services\Marketplace\Connectors\Concerns\NormalizesCustomerQuestions;
+use App\Services\Marketplace\Contracts\AnswersCustomerQuestions;
+use App\Services\Marketplace\Contracts\ManagesClaims;
 use App\Services\Marketplace\Contracts\ManagesCommonLabels;
 use App\Services\Marketplace\Contracts\PullsFinancials;
+use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
+use App\Services\Marketplace\Contracts\PullsClaims;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
 use App\Services\Marketplace\Contracts\PushesPrice;
@@ -18,8 +24,10 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class HepsiburadaConnector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PullsFinancials, PushesPrice, PushesStock, ManagesCommonLabels, TestsConnection
+class HepsiburadaConnector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PullsFinancials, PullsCustomerQuestions, PullsClaims, ManagesClaims, AnswersCustomerQuestions, PushesPrice, PushesStock, ManagesCommonLabels, TestsConnection
 {
+    use NormalizesCustomerQuestions;
+
     public function providerKey(): string
     {
         return 'hepsiburada';
@@ -55,6 +63,11 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements Pulls
             'package_common_label_get' => true,
             'invoice_link' => false,
             'package_invoice_link' => false,
+            'questions' => true,
+            'question_answer' => true,
+            'claims' => true,
+            'claim_approve' => true,
+            'claim_reject' => true,
         ];
     }
 
@@ -242,6 +255,136 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements Pulls
         ];
     }
 
+    public function pullCustomerQuestions(MarketplaceStore $store, array $options = []): array
+    {
+        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('UTC');
+        $endDate = CarbonImmutable::parse($options['end_date'] ?? now())->setTimezone('UTC');
+        $limit = min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.hepsiburada.question_page_size', 100))));
+        $maxPages = max(1, (int) config('marketplace.hepsiburada.max_question_pages_per_sync', 10));
+        $offset = 0;
+        $page = 0;
+        $items = [];
+
+        do {
+            $response = $this->request($store, 'questions')
+                ->get('issues', array_filter([
+                    'minModifiedAt' => $startDate->toIso8601String(),
+                    'maxModifiedAt' => $endDate->toIso8601String(),
+                    'status' => $options['status'] ?? null,
+                    'limit' => $limit,
+                    'offset' => $offset,
+                ], fn ($value) => $value !== null && $value !== ''))
+                ->throw();
+
+            $payload = $this->decodeResponse($response);
+            $batch = $this->questionRowsFromPayload($payload, ['issues', 'items', 'data', 'content']);
+
+            foreach ($batch as $row) {
+                $items[] = $this->normalizeHepsiburadaQuestion($row);
+            }
+
+            $offset += $limit;
+            $page++;
+            $totalCount = $this->extractTotalCount($payload);
+            $hasMore = $totalCount !== null
+                ? $offset < $totalCount
+                : count($batch) === $limit;
+        } while ($hasMore && $page < $maxPages);
+
+        return [
+            'items' => $items,
+            'meta' => [
+                'items_received' => count($items),
+                'cursor_after' => $endDate->toIso8601String(),
+                'pages_processed' => $page,
+                'more_pages_available' => $hasMore ?? false,
+            ],
+        ];
+    }
+
+    public function pullClaims(MarketplaceStore $store, array $options = []): array
+    {
+        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('Europe/Istanbul');
+        $endDate = CarbonImmutable::parse($options['end_date'] ?? now())->setTimezone('Europe/Istanbul');
+        $path = str_replace('{merchantId}', $this->merchantId($store), trim((string) config('marketplace.hepsiburada.claim_list_path', 'claims/merchantid/{merchantId}'), '/'));
+
+        $rows = $this->fetchPaginated(
+            store: $store,
+            service: 'claims',
+            path: $path,
+            query: $this->dateWindowQuery($startDate, $endDate) + array_filter([
+                'status' => $options['status'] ?? null,
+                'orderNumber' => $options['order_number'] ?? null,
+            ], fn ($value) => $value !== null && $value !== ''),
+            pageSize: (int) config('marketplace.hepsiburada.claim_page_size', 50),
+        );
+
+        return [
+            'items' => collect($rows)
+                ->map(fn (array $payload) => $this->normalizeClaim($payload))
+                ->values()
+                ->all(),
+            'meta' => [
+                'items_received' => count($rows),
+                'cursor_after' => $endDate->toIso8601String(),
+                'endpoint' => $path,
+            ],
+        ];
+    }
+
+    public function approveClaim(MarketplaceStore $store, string $externalClaimId, array $context = []): array
+    {
+        $path = $this->claimActionPath('claim_accept_path', 'claims/number/{claimNumber}/accept', $externalClaimId);
+        $response = $this->request($store, 'claims')
+            ->post($path, $context['payload'] ?? [])
+            ->throw();
+
+        return [
+            'status' => 'approved',
+            'message' => 'Hepsiburada iade onayı gönderildi.',
+            'response_status' => $response->status(),
+            'response' => $this->decodeResponse($response),
+        ];
+    }
+
+    public function rejectClaim(MarketplaceStore $store, string $externalClaimId, string $reason, array $context = []): array
+    {
+        $path = $this->claimActionPath('claim_reject_path', 'claims/number/{claimNumber}/reject', $externalClaimId);
+        $response = $this->request($store, 'claims')
+            ->post($path, array_replace([
+                'reason' => $reason,
+                'description' => $reason,
+            ], $context['payload'] ?? []))
+            ->throw();
+
+        return [
+            'status' => 'rejected',
+            'message' => 'Hepsiburada iade reddi gönderildi.',
+            'response_status' => $response->status(),
+            'response' => $this->decodeResponse($response),
+        ];
+    }
+
+    public function answerCustomerQuestion(MarketplaceQuestion $question, string $answer): array
+    {
+        $question->loadMissing('store.connection');
+
+        $response = $this->request($question->store, 'questions')
+            ->asMultipart()
+            ->post('issues/'.$question->external_question_id.'/answer', [
+                ['name' => 'Answer', 'contents' => $answer],
+            ])
+            ->throw();
+
+        $payload = $this->decodeResponse($response);
+
+        return [
+            'external_answer_id' => (string) (data_get($payload, 'id') ?: data_get($payload, 'answerId') ?: $question->external_question_id),
+            'response_status' => $response->status(),
+            'response' => $payload,
+        ];
+    }
+
     public function testConnection(MarketplaceStore $store): array
     {
         $response = $this->request($store, 'listing')
@@ -356,6 +499,8 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements Pulls
             'listing' => config('marketplace.hepsiburada.listing_base_url'),
             'finance' => config('marketplace.hepsiburada.finance_base_url'),
             'product' => config('marketplace.hepsiburada.product_base_url'),
+            'questions' => config('marketplace.hepsiburada.question_base_url'),
+            'claims' => config('marketplace.hepsiburada.claim_base_url'),
             default => config('marketplace.hepsiburada.oms_base_url'),
         };
 
@@ -605,15 +750,17 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements Pulls
                 'vat_rate' => $this->toDecimal(data_get($payload, 'vatRate') ?: data_get($payload, 'taxRate')),
                 'raw_payload' => $payload,
             ],
-            'listing' => [
+            'listing' => array_merge([
                 'listing_id' => $listingId,
                 'listing_status' => $status,
                 'sale_price' => $this->toDecimal(data_get($payload, 'price.finalPrice') ?: data_get($payload, 'finalPrice') ?: data_get($payload, 'salePrice') ?: data_get($payload, 'price')),
                 'list_price' => $this->toDecimal(data_get($payload, 'price.listPrice') ?: data_get($payload, 'listPrice')),
+                'commission_rate' => $this->toDecimal(data_get($payload, 'commissionRate') ?: data_get($payload, 'commission.rate') ?: data_get($payload, 'commission')),
+                'commission_source' => 'catalog',
                 'currency' => data_get($payload, 'price.currency') ?: data_get($payload, 'currency') ?: 'TRY',
                 'stock_quantity' => (int) (data_get($payload, 'availableStock') ?: data_get($payload, 'stock') ?: 0),
                 'published_at' => $this->normalizeDate(data_get($payload, 'createdAt') ?: data_get($payload, 'creationDate') ?: data_get($payload, 'lastModifiedDate')),
-            ],
+            ], $this->catalogDeliveryTermData($payload)),
         ];
     }
 
@@ -676,6 +823,124 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements Pulls
             'notes' => $eventTypeRaw,
             'raw_payload' => $payload,
         ]];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function normalizeHepsiburadaQuestion(array $payload): array
+    {
+        return $this->normalizeQuestionPayload($payload, [
+            'external_question_id' => (string) (
+                data_get($payload, 'issueNumber')
+                ?: data_get($payload, 'id')
+                ?: data_get($payload, 'questionId')
+            ),
+            'question_type' => $this->hepsiburadaQuestionType($payload),
+            'question_text' => $this->questionTextValue(
+                data_get($payload, 'question')
+                ?: data_get($payload, 'message')
+                ?: data_get($payload, 'description')
+                ?: data_get($payload, 'subject')
+            ),
+            'product_name' => data_get($payload, 'product.name')
+                ?: data_get($payload, 'productName')
+                ?: data_get($payload, 'productTitle'),
+            'product_sku' => data_get($payload, 'merchantSku')
+                ?: data_get($payload, 'sku')
+                ?: data_get($payload, 'product.sku'),
+            'product_url' => data_get($payload, 'product.url')
+                ?: data_get($payload, 'productUrl'),
+            'order_number' => data_get($payload, 'orderNumber')
+                ?: data_get($payload, 'merchantOrderNumber')
+                ?: data_get($payload, 'order.number')
+                ?: data_get($payload, 'packageNumber')
+                ?: data_get($payload, 'orderId'),
+            'asked_at' => $this->questionDate(
+                data_get($payload, 'createdAt')
+                ?: data_get($payload, 'creationDate')
+                ?: data_get($payload, 'createdDate')
+            ),
+            'expires_at' => $this->questionDate(data_get($payload, 'expireDate')),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function hepsiburadaQuestionType(array $payload): string
+    {
+        if (filled(
+            data_get($payload, 'orderNumber')
+            ?: data_get($payload, 'merchantOrderNumber')
+            ?: data_get($payload, 'order.number')
+            ?: data_get($payload, 'packageNumber')
+            ?: data_get($payload, 'orderId')
+        )) {
+            return 'order';
+        }
+
+        $type = Str::lower((string) (
+            data_get($payload, 'issueType')
+            ?: data_get($payload, 'type')
+            ?: data_get($payload, 'category')
+        ));
+
+        return Str::contains($type, ['order', 'sipariş', 'shipment', 'delivery', 'cargo', 'kargo'])
+            ? 'order'
+            : 'product';
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function normalizeClaim(array $payload): array
+    {
+        $claimNumber = (string) (
+            data_get($payload, 'claimNumber')
+            ?: data_get($payload, 'number')
+            ?: data_get($payload, 'id')
+            ?: data_get($payload, 'claimId')
+            ?: ''
+        );
+
+        return [
+            'external_claim_id' => $claimNumber,
+            'claimNumber' => $claimNumber,
+            'order_number' => data_get($payload, 'orderNumber') ?: data_get($payload, 'merchantOrderNumber'),
+            'cargo_tracking_number' => data_get($payload, 'trackingNumber') ?: data_get($payload, 'cargoTrackingNumber'),
+            'cargo_provider' => data_get($payload, 'cargoCompany') ?: data_get($payload, 'cargoProviderName'),
+            'status' => data_get($payload, 'status') ?: data_get($payload, 'claimStatus') ?: data_get($payload, 'state'),
+            'type' => data_get($payload, 'claimType') ?: data_get($payload, 'type') ?: 'return',
+            'reason' => data_get($payload, 'reason') ?: data_get($payload, 'claimReason'),
+            'reason_detail' => data_get($payload, 'reasonDetail') ?: data_get($payload, 'description'),
+            'customer_note' => data_get($payload, 'customerNote') ?: data_get($payload, 'description'),
+            'customer_name' => data_get($payload, 'customerName') ?: data_get($payload, 'customer.fullName'),
+            'created_date' => data_get($payload, 'createdAt') ?: data_get($payload, 'createdDate') ?: data_get($payload, 'claimDate'),
+            'items' => collect(Arr::wrap(
+                data_get($payload, 'items')
+                ?: data_get($payload, 'claimItems')
+                ?: data_get($payload, 'products')
+                ?: []
+            ))
+                ->filter(fn ($row) => is_array($row))
+                ->values()
+                ->all(),
+            'raw_payload' => $payload,
+        ];
+    }
+
+    protected function claimActionPath(string $configKey, string $defaultPath, string $claimNumber): string
+    {
+        $path = trim((string) config('marketplace.hepsiburada.'.$configKey, $defaultPath), '/');
+
+        return str_replace(
+            ['{claimNumber}', '{claim_number}', '{number}', '{id}'],
+            $claimNumber,
+            $path
+        );
     }
 
     protected function normalizeFinancialType(string $type): string
@@ -754,7 +1019,7 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements Pulls
      */
     protected function extractItems(array $payload): array
     {
-        foreach (['items', 'data', 'content', 'listings', 'transactions', 'packages', 'orders'] as $key) {
+        foreach (['items', 'data', 'content', 'listings', 'transactions', 'packages', 'orders', 'claims'] as $key) {
             $candidate = data_get($payload, $key);
 
             if (is_array($candidate) && array_is_list($candidate)) {

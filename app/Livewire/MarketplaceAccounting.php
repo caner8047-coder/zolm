@@ -19,6 +19,7 @@ use App\Services\UnitEconomicsService;
 use App\Services\MarketplaceExportService;
 use App\Services\OrderDetailsService;
 use App\Services\MpSettingsService;
+use App\Services\ProfitabilityMetric;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -33,8 +34,10 @@ class MarketplaceAccounting extends Component
     #[Url(as: 'tab', except: 'dashboard')]
     public string $activeTab = 'dashboard';
     public ?int $selectedPeriodId = null;
-    public int $selectedYear;
-    public int $selectedMonth;
+    #[Url(as: 'year', except: 0)]
+    public int $selectedYear = 0;
+    #[Url(as: 'month', except: -1)]
+    public int $selectedMonth = -1;
     public int $perPage = 20;
 
     // Upload
@@ -213,7 +216,7 @@ class MarketplaceAccounting extends Component
         'kargo'    => 'Kargo',
         'cogs'     => 'Maliyet',
         'net_kar'  => 'Net Kâr',
-        'margin'   => 'Marj',
+        'margin'   => 'Kârlılık',
         'detay'    => 'Detay',
     ];
 
@@ -224,28 +227,36 @@ class MarketplaceAccounting extends Component
 
     public function mount()
     {
-        $this->selectedYear = (int) date('Y');
-        $this->selectedMonth = (int) date('n');
+        $hasPeriodFromUrl = $this->selectedYear > 0 && $this->selectedMonth >= 0;
 
-        // Öncelikle içinde sipariş verisi bulunan en güncel dönemi bul
-        $lastPeriod = MpPeriod::where('user_id', Auth::id())
-            ->whereHas('orders')
-            ->orderBy('year', 'desc')
-            ->orderBy('month', 'desc')
-            ->first();
+        if ($hasPeriodFromUrl) {
+            $this->selectedYear = (int) $this->selectedYear;
+            $this->selectedMonth = (int) $this->selectedMonth;
+            $this->selectPeriod();
+        } else {
+            $this->selectedYear = (int) date('Y');
+            $this->selectedMonth = (int) date('n');
 
-        // Eğer veri olan dönem yoksa, herhangi bir dönemi al
-        if (!$lastPeriod) {
+            // Öncelikle içinde sipariş verisi bulunan en güncel dönemi bul
             $lastPeriod = MpPeriod::where('user_id', Auth::id())
+                ->whereHas('orders')
                 ->orderBy('year', 'desc')
                 ->orderBy('month', 'desc')
                 ->first();
-        }
 
-        if ($lastPeriod) {
-            $this->selectedPeriodId = $lastPeriod->id;
-            $this->selectedYear = $lastPeriod->year;
-            $this->selectedMonth = $lastPeriod->month;
+            // Eğer veri olan dönem yoksa, herhangi bir dönemi al
+            if (!$lastPeriod) {
+                $lastPeriod = MpPeriod::where('user_id', Auth::id())
+                    ->orderBy('year', 'desc')
+                    ->orderBy('month', 'desc')
+                    ->first();
+            }
+
+            if ($lastPeriod) {
+                $this->selectedPeriodId = $lastPeriod->id;
+                $this->selectedYear = $lastPeriod->year;
+                $this->selectedMonth = $lastPeriod->month;
+            }
         }
 
         // ERP Ayarlarını Yükle
@@ -735,6 +746,18 @@ class MarketplaceAccounting extends Component
         $this->selectPeriod();
     }
 
+    public function changeSelectedYear($value): void
+    {
+        $this->selectedYear = (int) $value;
+        $this->selectPeriod();
+    }
+
+    public function changeSelectedMonth($value): void
+    {
+        $this->selectedMonth = (int) $value;
+        $this->selectPeriod();
+    }
+
     public function updatedPerPage()
     {
         $this->resetPage();
@@ -742,6 +765,9 @@ class MarketplaceAccounting extends Component
 
     public function selectPeriod($periodId = null)
     {
+        $this->selectedYear = (int) $this->selectedYear;
+        $this->selectedMonth = (int) $this->selectedMonth;
+
         if ($periodId) {
             $this->selectedPeriodId = $periodId;
             $period = MpPeriod::where('user_id', Auth::id())->find($periodId);
@@ -772,6 +798,17 @@ class MarketplaceAccounting extends Component
 
         $this->importErrors = [];
         $this->importStatus = '';
+        $this->selectedOrders = [];
+        $this->selectAll = false;
+        $this->lastAuditResult = null;
+        unset(
+            $this->selectedPeriod,
+            $this->selectedPeriodLabel,
+            $this->hasSelectedPeriodScope,
+            $this->dashboardStats,
+            $this->profitData,
+            $this->invoiceReconciliation
+        );
         $this->resetPage(); // Dönem değişince sayfalamayı sıfırla
     }
 
@@ -1336,7 +1373,10 @@ class MarketplaceAccounting extends Component
         }
 
         // Tüm ürünleri bir kerede çek (N+1 önleme)
-        $products = \App\Models\MpProduct::where('user_id', $userId)->get();
+        $products = \App\Models\MpProduct::with(['productSet.items.componentProduct'])
+            ->where('user_id', $userId)
+            ->get();
+        $compositionResolver = app(\App\Services\ProductCompositionResolver::class);
 
         // Barkod → ürün ve stok kodu → ürün haritaları oluştur
         $byBarcode   = $products->keyBy('barcode');
@@ -1375,19 +1415,20 @@ class MarketplaceAccounting extends Component
                 continue;
             }
 
+            $qty = max(1, (int) $order->resolved_quantity);
+            $composition = $compositionResolver->resolve($product, $qty);
+
             // COGS 0 / null olan ürünü atla
-            if (!$product->cogs || (float)$product->cogs <= 0) {
+            if ((float) ($composition['cogs_cost'] ?? 0) <= 0) {
                 $skipped++;
                 continue;
             }
 
-            // Güncelle — birim maliyet × sipariş adedi
-            $qty = max(1, (int) $order->resolved_quantity);
-            
+            // Güncelle — tekil ürün veya set bileşen toplamı
             $updateData = [
-                'cogs_at_time'              => round((float)$product->cogs * $qty, 2),
-                'packaging_cost_at_time'    => round((float)($product->packaging_cost ?? 0) * $qty, 2),
-                'own_cargo_cost_at_time'    => round((float)($product->cargo_cost ?? 0) * $qty, 2),
+                'cogs_at_time'              => round((float) ($composition['cogs_cost'] ?? 0), 2),
+                'packaging_cost_at_time'    => round((float) ($composition['packaging_cost'] ?? 0), 2),
+                'own_cargo_cost_at_time'    => round((float) ($composition['own_cargo_cost'] ?? 0), 2),
                 'product_vat_rate'          => $product->vat_rate ?? 10,
             ];
 
@@ -1454,6 +1495,21 @@ class MarketplaceAccounting extends Component
             : null;
     }
 
+    public function getHasSelectedPeriodScopeProperty(): bool
+    {
+        return (int) $this->selectedMonth === 0 || $this->selectedPeriodId !== null;
+    }
+
+    public function getSelectedPeriodLabelProperty(): string
+    {
+        if ((int) $this->selectedMonth === 0) {
+            return 'Tüm Yıl ' . (int) $this->selectedYear;
+        }
+
+        return $this->selectedPeriod?->period_name
+            ?? $this->monthLabel((int) $this->selectedMonth) . ' ' . (int) $this->selectedYear;
+    }
+
     public function getSelectedOrderProperty(): ?MpOrder
     {
         return $this->selectedOrderId
@@ -1466,13 +1522,15 @@ class MarketplaceAccounting extends Component
      */
     public function getDashboardStatsProperty(): array
     {
-        if (!$this->selectedPeriodId) {
+        $periodIds = $this->selectedPeriodIds();
+
+        if (empty($periodIds)) {
             return $this->emptyStats();
         }
 
         try {
             $reportService = new ReportService();
-            return $reportService->getDashboardKpis($this->selectedPeriodId);
+            return $reportService->getDashboardKpis($periodIds);
         } catch (\Exception $e) {
             Log::error('Dashboard KPI Error', ['error' => $e->getMessage()]);
             return $this->emptyStats();
@@ -1484,12 +1542,55 @@ class MarketplaceAccounting extends Component
      */
     public function getProfitDataProperty(): array
     {
-        if (!$this->selectedPeriodId) return [];
+        $periodIds = $this->selectedPeriodIds();
+        if (empty($periodIds)) return [];
 
         try {
             $unitService = new UnitEconomicsService();
-            $period = MpPeriod::findOrFail($this->selectedPeriodId);
-            $data = $unitService->profitBySku($period);
+            $data = collect();
+
+            MpPeriod::whereIn('id', $periodIds)->get()->each(function (MpPeriod $period) use ($unitService, &$data) {
+                $data = $data->merge($unitService->profitBySku($period));
+            });
+
+            if (count($periodIds) > 1) {
+                $data = $data
+                    ->groupBy(fn (array $item) => implode('|', [
+                        $item['barcode'] ?? '-',
+                        $item['stock_code'] ?? '-',
+                        $item['product_name'] ?? '-',
+                    ]))
+                    ->map(function ($items) {
+                        $first = $items->first();
+                        $totalGross = (float) $items->sum('total_gross');
+                        $totalNetProfit = (float) $items->sum('total_net_profit');
+
+                        return [
+                            'barcode'          => $first['barcode'] ?? '-',
+                            'stock_code'       => $first['stock_code'] ?? '-',
+                            'product_name'     => $first['product_name'] ?? '-',
+                            'order_count'      => (int) $items->sum('order_count'),
+                            'total_quantity'   => (int) $items->sum('total_quantity'),
+                            'total_gross'      => round($totalGross, 2),
+                            'total_hakedis'    => round((float) $items->sum('total_hakedis'), 2),
+                            'total_cogs'       => round((float) $items->sum('total_cogs'), 2),
+                            'total_packaging'  => round((float) $items->sum('total_packaging'), 2),
+                            'total_net_profit' => round($totalNetProfit, 2),
+                            'avg_margin'       => ProfitabilityMetric::multiplierOrZero(
+                                $totalNetProfit,
+                                ProfitabilityMetric::productCost(
+                                    (float) $items->sum('total_cogs'),
+                                    (float) $items->sum('total_packaging'),
+                                ),
+                            ),
+                            'bleeding_count'   => (int) $items->sum('bleeding_count'),
+                            'is_bleeding'      => $totalNetProfit < 0,
+                            'has_cogs'         => $items->contains(fn (array $item) => (bool) ($item['has_cogs'] ?? false)),
+                            'cogs_missing_reason' => $items->pluck('cogs_missing_reason')->filter()->first(),
+                        ];
+                    })
+                    ->values();
+            }
 
             if ($this->showOnlyBleeding) {
                 $data = $data->where('is_bleeding', true)->values();
@@ -1510,17 +1611,18 @@ class MarketplaceAccounting extends Component
     #[Computed]
     public function getInvoiceReconciliationProperty()
     {
-        if (!$this->selectedPeriodId) return null;
+        $periodIds = $this->selectedPeriodIds();
+        if (empty($periodIds)) return null;
 
         // Dönemdeki komisyon faturalarının KDV Hariç toplamı
-        $invoiceCommission = \App\Models\MpTransaction::where('period_id', $this->selectedPeriodId)
+        $invoiceCommission = \App\Models\MpTransaction::whereIn('period_id', $periodIds)
             ->where(function($q) {
                 $q->where('transaction_type', 'like', '%Komisyon%')
                   ->orWhere('description', 'like', '%Komisyon%');
             })
             ->sum('debt'); // Borç her zaman kesintidir
 
-        $invoiceCargo = \App\Models\MpTransaction::where('period_id', $this->selectedPeriodId)
+        $invoiceCargo = \App\Models\MpTransaction::whereIn('period_id', $periodIds)
             ->where(function($q) {
                 $q->where('transaction_type', 'like', '%Kargo%')
                   ->orWhere('description', 'like', '%Kargo%');
@@ -1535,10 +1637,10 @@ class MarketplaceAccounting extends Component
         $cargoTolerance = $svc->getCargoMatchTolerance();
 
         // Bizdeki sipariş 'commission_amount' genelde KDV dahil Trendyol kesintisidir. Bazı iadelerde pozitif/negatif olabilir, mutlak toplam alınmalı.
-        $orderCommissionNet = \App\Models\MpOrder::where('period_id', $this->selectedPeriodId)
+        $orderCommissionNet = \App\Models\MpOrder::whereIn('period_id', $periodIds)
             ->selectRaw('SUM(ABS(commission_amount)) as total')->value('total') / $vatDivisor;
             
-        $orderCargoNet = \App\Models\MpOrder::where('period_id', $this->selectedPeriodId)
+        $orderCargoNet = \App\Models\MpOrder::whereIn('period_id', $periodIds)
             ->selectRaw('SUM(ABS(cargo_amount)) as total')->value('total') / $vatDivisor;
 
         // Fark (Mutlak Değer)
@@ -1577,6 +1679,31 @@ class MarketplaceAccounting extends Component
             ->toArray();
     }
 
+    protected function selectedPeriodIds(): array
+    {
+        if ((int) $this->selectedMonth === 0) {
+            return MpPeriod::where('user_id', Auth::id())
+                ->where('year', (int) $this->selectedYear)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->toArray();
+        }
+
+        return $this->selectedPeriodId ? [(int) $this->selectedPeriodId] : [];
+    }
+
+    protected function monthLabel(int $month): string
+    {
+        $months = [
+            1 => 'Ocak', 2 => 'Şubat', 3 => 'Mart', 4 => 'Nisan',
+            5 => 'Mayıs', 6 => 'Haziran', 7 => 'Temmuz', 8 => 'Ağustos',
+            9 => 'Eylül', 10 => 'Ekim', 11 => 'Kasım', 12 => 'Aralık',
+        ];
+
+        return $months[$month] ?? 'Dönem';
+    }
+
     protected function emptyStats(): array
     {
         return [
@@ -1603,18 +1730,8 @@ class MarketplaceAccounting extends Component
         $auditLogs = collect();
         $transactions = collect();
 
-        // Eğer belirli bir Period seçilmişse onu kullan, değilse Tüm Yıl modunda çalış
-        $isAllYearMode = ($this->selectedMonth == 0);
-        $periodIds = [];
-
-        if ($isAllYearMode) {
-            $periodIds = MpPeriod::where('user_id', Auth::id())
-                ->where('year', $this->selectedYear)
-                ->pluck('id')
-                ->toArray();
-        } elseif ($this->selectedPeriodId) {
-            $periodIds = [$this->selectedPeriodId];
-        }
+        // Eğer belirli bir dönem seçilmişse onu, Tüm Yıl modunda ise yıl içindeki tüm dönemleri kullan.
+        $periodIds = $this->selectedPeriodIds();
 
         if (!empty($periodIds)) {
             $allUserPeriodIds = MpPeriod::where('user_id', Auth::id())->pluck('id')->toArray();

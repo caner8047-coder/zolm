@@ -94,4 +94,9 @@ class ChannelOrder extends Model
     {
         return $this->hasMany(IntegrationOrderActionRun::class, 'channel_order_id');
     }
+
+    public function shipments(): HasMany
+    {
+        return $this->hasMany(Shipment::class, 'channel_order_id');
+    }
 }

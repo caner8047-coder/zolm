@@ -6,6 +6,7 @@ use App\Models\MpPeriod;
 use App\Models\MpOrder;
 use App\Models\MpTransaction;
 use App\Models\MpFinancialRule;
+use App\Services\ProfitabilityMetric;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -139,9 +140,10 @@ class UnitEconomicsService
             'is_bleeding'      => $realNetProfitWithVat < 0,
             'has_cogs'         => $cogs > 0,
             'cogs_missing_reason' => $order->cogs_missing_reason,
-            'margin_percent'   => $grossAmount > 0
-                ? round(($realNetProfitWithVat / $grossAmount) * 100, 1)
-                : 0,
+            'margin_percent'   => ProfitabilityMetric::multiplierOrZero(
+                $realNetProfitWithVat,
+                ProfitabilityMetric::productCost($cogs, $packaging),
+            ),
         ];
     }
 
@@ -223,9 +225,10 @@ class UnitEconomicsService
                     'total_cogs'       => round($totalCogs, 2),
                     'total_packaging'  => round($totalPackaging, 2),
                     'total_net_profit' => round($totalNetProfit, 2),
-                    'avg_margin'       => $totalGross > 0
-                        ? round(($totalNetProfit / $totalGross) * 100, 1)
-                        : 0,
+                    'avg_margin'       => ProfitabilityMetric::multiplierOrZero(
+                        $totalNetProfit,
+                        ProfitabilityMetric::productCost($totalCogs, $totalPackaging),
+                    ),
                     'bleeding_count'   => $bleedingCount,
                     'is_bleeding'      => $totalNetProfit < 0,
                     'has_cogs'         => $hasCogs,

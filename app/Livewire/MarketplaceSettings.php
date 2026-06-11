@@ -2,12 +2,20 @@
 
 namespace App\Livewire;
 
+use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Services\MpSettingsService;
+use App\Services\RecipeProductCostSyncService;
 use Livewire\Component;
 
 class MarketplaceSettings extends Component
 {
     public bool $helpTipsEnabled = true;
+
+    public string $defaultProfitMarketplace = 'average';
+
+    public $woocommerceCommissionRate = 0;
+
+    public bool $recipeCostSyncEnabled = false;
 
     public array $labelPrintSettings = [];
 
@@ -30,6 +38,9 @@ class MarketplaceSettings extends Component
         $settings = app(MpSettingsService::class);
 
         $this->helpTipsEnabled = $settings->helpTipsEnabled();
+        $this->defaultProfitMarketplace = $settings->getProductProfitDefaultMarketplace();
+        $this->woocommerceCommissionRate = $settings->getProductProfitWooCommerceCommissionRate();
+        $this->recipeCostSyncEnabled = $settings->recipeCostSyncEnabled();
         $this->labelPrintSettings = $settings->getArray('print.label', $this->defaultLabelPrintSettings());
         $this->dispatchPrintSettings = $settings->getArray('print.dispatch', $this->defaultDispatchPrintSettings());
         $this->companyForm = [
@@ -42,11 +53,33 @@ class MarketplaceSettings extends Component
 
     public function saveSettings(): void
     {
-        app(MpSettingsService::class)->setMany([
-            'ui.help_tips_enabled' => (bool) $this->helpTipsEnabled,
+        $validated = $this->validate([
+            'helpTipsEnabled' => ['boolean'],
+            'defaultProfitMarketplace' => ['required', 'string', 'in:' . implode(',', array_keys($this->productProfitMarketplaceOptions()))],
+            'woocommerceCommissionRate' => ['required', 'numeric', 'min:0', 'max:100'],
+            'recipeCostSyncEnabled' => ['boolean'],
         ]);
 
-        session()->flash('settings_success', 'Genel ayarlar kaydedildi.');
+        app(MpSettingsService::class)->setMany([
+            'ui.help_tips_enabled' => (bool) $validated['helpTipsEnabled'],
+            'marketplace_products.profit.default_marketplace' => $validated['defaultProfitMarketplace'],
+            'marketplace_products.profit.woocommerce_commission_rate' => round((float) $validated['woocommerceCommissionRate'], 2),
+            'marketplace_products.recipe_cost_sync_enabled' => (bool) $validated['recipeCostSyncEnabled'],
+        ]);
+
+        $syncSummary = null;
+        if ((bool) $validated['recipeCostSyncEnabled']) {
+            $syncSummary = app(RecipeProductCostSyncService::class)->syncAllForUser((int) auth()->id(), true);
+        }
+
+        $this->loadSettings();
+
+        $message = 'Genel ayarlar kaydedildi.';
+        if ($syncSummary) {
+            $message .= " Reçete maliyeti {$syncSummary['matched_products']} stok kartına uygulandı.";
+        }
+
+        session()->flash('settings_success', $message);
     }
 
     public function saveDocumentSettings(): void
@@ -99,11 +132,19 @@ class MarketplaceSettings extends Component
 
     public function resetUiSettings(): void
     {
-        app(MpSettingsService::class)->set('ui.help_tips_enabled', true);
+        app(MpSettingsService::class)->setMany([
+            'ui.help_tips_enabled' => true,
+            'marketplace_products.profit.default_marketplace' => 'average',
+            'marketplace_products.profit.woocommerce_commission_rate' => 0.00,
+            'marketplace_products.recipe_cost_sync_enabled' => false,
+        ]);
 
         $this->helpTipsEnabled = true;
+        $this->defaultProfitMarketplace = 'average';
+        $this->woocommerceCommissionRate = 0.00;
+        $this->recipeCostSyncEnabled = false;
 
-        session()->flash('settings_success', 'Arayüz ayarları varsayılan değerlere döndürüldü.');
+        session()->flash('settings_success', 'Genel ayarlar varsayılan değerlere döndürüldü.');
     }
 
     public function resetDocumentSettings(): void
@@ -159,7 +200,16 @@ class MarketplaceSettings extends Component
                 'a5' => 'A5 dikey',
                 'a5_landscape' => 'A5 yatay',
             ],
+            'productProfitMarketplaceOptions' => $this->productProfitMarketplaceOptions(),
         ])->layout('layouts.app', ['title' => 'Pazaryeri Ayarları']);
+    }
+
+    protected function productProfitMarketplaceOptions(): array
+    {
+        return [
+            'average' => 'Mağaza ortalaması',
+            'worst' => 'En düşük kâr senaryosu',
+        ] + MarketplaceProviderRegistry::options();
     }
 
     protected function normalizeDocumentSettings(array $settings): array

@@ -129,6 +129,25 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
         $this->assertSame('2231.00', (string) $snapshot->confirmed_profit);
     }
 
+    public function test_koctas_snapshot_uses_agreed_commission_rate(): void
+    {
+        config()->set('marketplace.koctas.commission_rate', 15);
+
+        [$store, $order] = $this->createOrderGraph('koctas');
+
+        app(MarketplaceProfitSnapshotService::class)->recalculateForOrders($store, [$order->id]);
+
+        $snapshot = OrderProfitSnapshot::query()
+            ->where('store_id', $store->id)
+            ->where('channel_order_id', $order->id)
+            ->whereNull('channel_order_item_id')
+            ->firstOrFail();
+
+        $this->assertSame('345.00', (string) $snapshot->commission_total);
+        $this->assertSame('1955.00', (string) $snapshot->estimated_profit);
+        $this->assertSame('1955.00', (string) $snapshot->confirmed_profit);
+    }
+
     /**
      * @return array{0: MarketplaceStore, 1: ChannelOrder}
      */

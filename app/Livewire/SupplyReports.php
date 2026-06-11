@@ -3,9 +3,11 @@
 namespace App\Livewire;
 
 use App\Models\SupplyOrder;
+use App\Services\ExcelService;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -34,6 +36,25 @@ class SupplyReports extends Component
     // Sıralama
     public string $sortField = 'soz_tarihi';
     public string $sortDirection = 'asc';
+
+    // Tablo görünümü
+    public array $visibleColumns = ['kayit', 'musteri', 'urun', 'adet', 'soz', 'sebep', 'durum', 'islem'];
+
+    public static array $columnDefs = [
+        'kayit' => 'Kayıt',
+        'musteri' => 'Müşteri',
+        'urun' => 'Ürün',
+        'adet' => 'Adet',
+        'soz' => 'Söz Tarihi',
+        'sebep' => 'Birim',
+        'durum' => 'Durum',
+        'islem' => 'İşlem',
+    ];
+
+    public static array $sortableColumns = [
+        'kayit' => 'kayit_tarihi',
+        'soz' => 'soz_tarihi',
+    ];
 
     // Toplu işlem
     public array $selectedIds = [];
@@ -77,6 +98,41 @@ class SupplyReports extends Component
     public function mount()
     {
         // Başlangıç ayarları
+    }
+
+    public function updatingSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedDurumFiltre(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedSebebiyetFiltre(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedGecikmeFiltre(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedBaslangicTarihi(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedBitisTarihi(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedTarihAlani(): void
+    {
+        $this->resetPage();
     }
 
     /**
@@ -153,12 +209,44 @@ class SupplyReports extends Component
      */
     public function sortBy(string $field): void
     {
+        if (!in_array($field, self::$sortableColumns, true)) {
+            return;
+        }
+
         if ($this->sortField === $field) {
             $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
         } else {
             $this->sortField = $field;
             $this->sortDirection = 'asc';
         }
+    }
+
+    public function sortTable(string $column): void
+    {
+        $field = self::$sortableColumns[$column] ?? null;
+
+        if ($field) {
+            $this->sortBy($field);
+        }
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        if (!array_key_exists($column, self::$columnDefs)) {
+            return;
+        }
+
+        if (in_array($column, $this->visibleColumns, true)) {
+            if (count($this->visibleColumns) <= 3) {
+                return;
+            }
+
+            $this->visibleColumns = array_values(array_diff($this->visibleColumns, [$column]));
+            return;
+        }
+
+        $this->visibleColumns[] = $column;
+        $this->visibleColumns = array_values(array_intersect(array_keys(self::$columnDefs), $this->visibleColumns));
     }
 
     /**
@@ -411,13 +499,19 @@ class SupplyReports extends Component
      */
     public function exportExcel()
     {
-        // use importları kontrol et
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Tedarik Raporu');
+        $excelService = app(ExcelService::class);
+        $clean = fn ($value): string => (string) ($excelService->cleanString($value ?? '') ?? '');
 
         // Başlık satırı
-        $headers = ['Sipariş No', 'Kayıt Tarihi', 'Müşteri', 'Telefon', 'Adres', 'İlçe', 'İl', 'Ürün', 'Adet', 'Söz Tarihi', 'Sebebiyet', 'Durum'];
-        $sheet->fromArray($headers, null, 'A1');
+        $headers = ['Sipariş No', 'Kayıt Tarihi', 'Müşteri', 'Telefon', 'Adres', 'İlçe', 'İl', 'Ürün', 'Adet', 'Söz Tarihi', 'Sebebiyet Veren Birim', 'Durum'];
+        $columns = range('A', 'L');
+
+        foreach ($headers as $index => $header) {
+            $sheet->setCellValueExplicit($columns[$index] . '1', $clean($header), DataType::TYPE_STRING);
+        }
 
         // Başlık stilini ayarla
         $headerStyle = [
@@ -432,6 +526,11 @@ class SupplyReports extends Component
             ->durumFiltre($this->durumFiltre)
             ->sebebiyetFiltre($this->sebebiyetFiltre)
             ->when($this->gecikmeFiltre === 'gecikmis', fn($q) => $q->gecikmis())
+            ->when($this->gecikmeFiltre === 'zamaninda', fn($q) => $q->where(function($q) {
+                $q->whereNull('soz_tarihi')
+                  ->orWhereDate('soz_tarihi', '>=', Carbon::today())
+                  ->orWhere('durum', 'gonderildi');
+            }))
             ->when($this->baslangicTarihi, fn($q) => $q->whereDate($this->tarihAlani, '>=', $this->baslangicTarihi))
             ->when($this->bitisTarihi, fn($q) => $q->whereDate($this->tarihAlani, '<=', $this->bitisTarihi))
             ->orderByRaw("FIELD(durum, 'bekliyor', 'uretim', 'paketleme', 'kargo', 'gonderildi')")
@@ -440,18 +539,29 @@ class SupplyReports extends Component
         // Verileri yaz
         $row = 2;
         foreach ($orders as $order) {
-            $sheet->setCellValue('A' . $row, $order->siparis_no);
-            $sheet->setCellValue('B' . $row, $order->kayit_tarihi?->format('d.m.Y'));
-            $sheet->setCellValue('C' . $row, $order->musteri_adi);
-            $sheet->setCellValue('D' . $row, $order->telefon);
-            $sheet->setCellValue('E' . $row, $order->adres);
-            $sheet->setCellValue('F' . $row, $order->ilce);
-            $sheet->setCellValue('G' . $row, $order->il);
-            $sheet->setCellValue('H' . $row, $order->urun_adi);
-            $sheet->setCellValue('I' . $row, $order->adet);
-            $sheet->setCellValue('J' . $row, $order->soz_tarihi?->format('d.m.Y'));
-            $sheet->setCellValue('K' . $row, $order->sebebiyet_label);
-            $sheet->setCellValue('L' . $row, $order->durum_label);
+            $values = [
+                'A' => $order->siparis_no,
+                'B' => $order->kayit_tarihi?->format('d.m.Y'),
+                'C' => $order->musteri_adi,
+                'D' => $order->telefon,
+                'E' => $order->adres,
+                'F' => $order->ilce,
+                'G' => $order->il,
+                'H' => $order->urun_adi,
+                'I' => (int) $order->adet,
+                'J' => $order->soz_tarihi?->format('d.m.Y'),
+                'K' => $order->sebebiyet_label,
+                'L' => $order->durum_label,
+            ];
+
+            foreach ($values as $column => $value) {
+                $sheet->setCellValueExplicit(
+                    $column . $row,
+                    $column === 'I' ? $value : $clean($value),
+                    $column === 'I' ? DataType::TYPE_NUMERIC : DataType::TYPE_STRING
+                );
+            }
+
             $row++;
         }
 
@@ -565,6 +675,8 @@ class SupplyReports extends Component
             'stats' => $this->stats,
             'durumOptions' => SupplyOrder::DURUM_OPTIONS,
             'sebebiyetOptions' => SupplyOrder::SEBEBIYET_OPTIONS,
+            'columnDefs' => self::$columnDefs,
+            'sortableColumns' => self::$sortableColumns,
         ]);
     }
 }

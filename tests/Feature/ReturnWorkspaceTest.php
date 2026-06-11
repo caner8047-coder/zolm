@@ -31,6 +31,7 @@ class ReturnWorkspaceTest extends TestCase
             ->assertOk()
             ->assertSee('İade Merkezi')
             ->assertSee('İade Kabul Formu')
+            ->assertSee('Pazaryeri İadeleri')
             ->assertSee('Akıllı İade Merkezi')
             ->assertSee('WhatsApp Köprüsü');
     }
@@ -73,6 +74,10 @@ class ReturnWorkspaceTest extends TestCase
         $this->actingAs($user)
             ->get(route('returns.center', ['item' => 12]))
             ->assertRedirect(route('returns.workspace', ['item' => 12, 'tab' => 'havuz']));
+
+        $this->actingAs($user)
+            ->get(route('returns.marketplace-claims', ['claim' => 7]))
+            ->assertRedirect(route('returns.workspace', ['claim' => 7, 'tab' => 'pazaryeri']));
 
         $this->actingAs($user)
             ->get(route('returns.whatsapp-bridge', ['thread' => 7]))

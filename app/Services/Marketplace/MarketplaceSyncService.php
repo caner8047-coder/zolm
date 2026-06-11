@@ -4,7 +4,9 @@ namespace App\Services\Marketplace;
 
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationSyncRun;
+use App\Services\Marketplace\Contracts\PullsClaims;
 use App\Services\Marketplace\Contracts\PullsFinancials;
+use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
 use Carbon\CarbonImmutable;
@@ -18,7 +20,9 @@ class MarketplaceSyncService
         protected MarketplaceConnectorManager $connectorManager,
         protected MarketplacePayloadDiagnosticsService $payloadDiagnosticsService,
         protected MarketplaceFinancialSyncService $financialSyncService,
+        protected MarketplaceClaimSyncService $claimSyncService,
         protected MarketplaceOrderSyncService $orderSyncService,
+        protected MarketplaceQuestionSyncService $questionSyncService,
         protected MarketplaceProfitSnapshotService $profitSnapshotService,
     ) {
     }
@@ -50,6 +54,8 @@ class MarketplaceSyncService
                 'orders' => $this->syncOrders($connector, $store, $options),
                 'products' => $this->syncProducts($connector, $store, $options),
                 'finance' => $this->syncFinancials($connector, $store, $options),
+                'questions' => $this->syncQuestions($connector, $store, $options),
+                'claims' => $this->syncClaims($connector, $store, $options),
                 default => throw new \RuntimeException("Bilinmeyen sync tipi: {$run->sync_type}"),
             };
 
@@ -78,7 +84,7 @@ class MarketplaceSyncService
         $response = $connector->pullOrders($store, $options);
         $items = $response['items'] ?? [];
         $diagnostics = $this->payloadDiagnosticsService->analyzeOrders($items);
-        $sync = $this->orderSyncService->sync($store, $items);
+        $sync = $this->orderSyncService->sync($store, $items, $options);
 
         return array_merge($sync, [
             'items_received' => $response['meta']['items_received'] ?? count($items),
@@ -102,7 +108,7 @@ class MarketplaceSyncService
         $response = $connector->pullProducts($store, $options);
         $items = $response['items'] ?? [];
         $diagnostics = $this->payloadDiagnosticsService->analyzeProducts($items);
-        $sync = $this->catalogSyncService->sync($store, $items);
+        $sync = $this->catalogSyncService->sync($store, $items, $options);
 
         return array_merge($sync, [
             'impacted_order_ids' => [],
@@ -137,6 +143,52 @@ class MarketplaceSyncService
         ]);
     }
 
+    /**
+     * @param  object  $connector
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    protected function syncQuestions(object $connector, $store, array $options): array
+    {
+        if (!$connector instanceof PullsCustomerQuestions) {
+            throw new \RuntimeException('Bu bağlayıcı müşteri sorusu çekmeyi henüz desteklemiyor.');
+        }
+
+        $response = $connector->pullCustomerQuestions($store, $options);
+        $items = $response['items'] ?? [];
+        $sync = $this->questionSyncService->sync($store, $items, $options);
+
+        return array_merge($sync, [
+            'items_received' => $response['meta']['items_received'] ?? count($items),
+            'cursor_after' => $response['meta']['cursor_after'] ?? ($options['end_date'] ?? null),
+            'notes' => $response['meta'] ?? [],
+            'diagnostics' => [],
+        ]);
+    }
+
+    /**
+     * @param  object  $connector
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    protected function syncClaims(object $connector, $store, array $options): array
+    {
+        if (!$connector instanceof PullsClaims) {
+            throw new \RuntimeException('Bu bağlayıcı iade talebi çekmeyi henüz desteklemiyor.');
+        }
+
+        $response = $connector->pullClaims($store, $options);
+        $items = $response['items'] ?? [];
+        $sync = $this->claimSyncService->sync($store, $items, $options);
+
+        return array_merge($sync, [
+            'items_received' => $response['meta']['items_received'] ?? count($items),
+            'cursor_after' => $response['meta']['cursor_after'] ?? ($options['end_date'] ?? null),
+            'notes' => $response['meta'] ?? [],
+            'diagnostics' => [],
+        ]);
+    }
+
     protected function normalizeSyncType(string $syncType): string
     {
         return $syncType === 'webhook_refresh' ? 'orders' : $syncType;
@@ -158,6 +210,10 @@ class MarketplaceSyncService
         $startDate = Arr::get($notes, 'options.start_date')
             ? CarbonImmutable::parse(Arr::get($notes, 'options.start_date'))
             : null;
+
+        if (!$startDate && $this->shouldUseWideManualQuestionWindow($run)) {
+            $startDate = $now->subDays(31);
+        }
 
         if (!$startDate) {
             $lastCompletedRun = IntegrationSyncRun::query()
@@ -181,12 +237,30 @@ class MarketplaceSyncService
             'page_size' => Arr::get($notes, 'options.page_size'),
             'order_number' => Arr::get($notes, 'options.order_number'),
             'shipment_package_ids' => Arr::get($notes, 'options.shipment_package_ids', []),
+            'stock_code' => Arr::get($notes, 'options.stock_code'),
+            'barcode' => Arr::get($notes, 'options.barcode'),
+            'product_main_id' => Arr::get($notes, 'options.product_main_id'),
+            'external_product_id' => Arr::get($notes, 'options.external_product_id'),
+            'variant_name' => Arr::get($notes, 'options.variant_name'),
+            'status' => Arr::get($notes, 'options.status'),
+            'on_sale' => Arr::get($notes, 'options.on_sale'),
+            'date_query_type' => Arr::get($notes, 'options.date_query_type'),
+            'full_catalog_refresh' => (bool) Arr::get($notes, 'options.full_catalog_refresh', false),
+            'current_status_refresh' => (bool) Arr::get($notes, 'options.current_status_refresh', false),
+            'refresh_commission_rates' => (bool) Arr::get($notes, 'options.refresh_commission_rates', false),
             'trigger_type' => $run->trigger_type,
             'sync_type' => $run->sync_type,
             'request_jitter_seconds' => $profile?->request_jitter_seconds ?? 5,
             'max_parallel_jobs' => $profile?->max_parallel_jobs ?? 1,
             'backfill_mode' => $profile?->backfill_mode,
         ];
+    }
+
+    protected function shouldUseWideManualQuestionWindow(IntegrationSyncRun $run): bool
+    {
+        return $run->sync_type === 'questions'
+            && $run->trigger_type === 'manual'
+            && MarketplaceProviderRegistry::normalize((string) $run->store->marketplace) === 'ciceksepeti';
     }
 
     protected function resolveBackfillStart(IntegrationSyncRun $run): CarbonImmutable
@@ -275,5 +349,7 @@ class MarketplaceSyncService
                 'last_error' => $exception->getMessage(),
             ])->save();
         }
+
+        app(\App\Services\NotificationCenterService::class)->notifyIntegrationFailure($run, $exception);
     }
 }

@@ -809,7 +809,7 @@ class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFina
                         'vat_rate' => data_get($variant, 'taxable') === true ? null : 0,
                         'raw_payload' => array_merge($payload, ['variant' => $variant]),
                     ],
-                    'listing' => [
+                    'listing' => array_merge([
                         'listing_id' => $variantId,
                         'listing_status' => $status !== '' ? $status : 'draft',
                         'sale_price' => $this->moneyAmount(data_get($variant, 'price')),
@@ -817,7 +817,7 @@ class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFina
                         'currency' => $defaultCurrency,
                         'stock_quantity' => data_get($variant, 'inventoryQuantity') !== null ? (int) data_get($variant, 'inventoryQuantity') : null,
                         'published_at' => $publishedAt,
-                    ],
+                    ], $this->catalogDeliveryTermData($variant, $payload)),
                 ];
             })
             ->all();

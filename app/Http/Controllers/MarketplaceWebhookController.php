@@ -70,6 +70,27 @@ class MarketplaceWebhookController extends Controller
 
         $syncRun = null;
 
+        if (!$signatureValid) {
+            app(\App\Services\NotificationCenterService::class)->createForStore($store, [
+                'type' => 'integration_failed',
+                'severity' => 'critical',
+                'event_key' => "webhook-signature-failed:{$event->id}",
+                'title' => 'Webhook imzası doğrulanamadı',
+                'body' => implode(' · ', array_values(array_filter([
+                    strtoupper($normalizedProvider),
+                    $event->event_type,
+                ]))),
+                'subject_type' => get_class($event),
+                'subject_id' => $event->id,
+                'data_json' => [
+                    'webhook_event_id' => $event->id,
+                    'event_type' => $event->event_type,
+                    'provider' => $normalizedProvider,
+                ],
+                'action_url' => route('mp.overview'),
+            ]);
+        }
+
         if ($signatureValid && !$alreadyExists) {
             $syncRun = $webhookDispatchService->dispatchForEvent($store, $event);
         }

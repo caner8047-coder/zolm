@@ -26,9 +26,12 @@ class ReportService
      * KPI 1: Toplam Brüt Ciro
      * Başarılı (Teslim Edildi) siparişlerin müşteri ödeme tutarı toplamı
      */
-    public function totalBrutCiro(int $periodId): float
+    public function totalBrutCiro(int|array $periodIds): float
     {
-        return (float) MpOrder::where('period_id', $periodId)
+        $periodIds = $this->normalizePeriodIds($periodIds);
+        if (empty($periodIds)) return 0.0;
+
+        return (float) MpOrder::whereIn('period_id', $periodIds)
             ->where('status', 'Teslim Edildi')
             ->sum('gross_amount');
     }
@@ -37,9 +40,12 @@ class ReportService
      * KPI 2: Peşin Ödenen Stopaj Toplamı
      * Yıl sonu vergiden düşülecek brüt üzerinden kesilen %1 toplam
      */
-    public function totalStopaj(int $periodId): float
+    public function totalStopaj(int|array $periodIds): float
     {
-        $actualSum = (float) MpOrder::where('period_id', $periodId)->sum('withholding_tax');
+        $periodIds = $this->normalizePeriodIds($periodIds);
+        if (empty($periodIds)) return 0.0;
+
+        $actualSum = (float) MpOrder::whereIn('period_id', $periodIds)->sum('withholding_tax');
         
         // Eğer E-Ticaret Stopaj Excel'i sisteme yüklenmemişse (çok küçükse), tahmini hesapla
         // Tüm başarılı ve iade edilen (stoktan çıkan) siparişlerin KDV hariç brüt toplamı üzerinden
@@ -47,7 +53,7 @@ class ReportService
             $stopajRate = MpFinancialRule::getRuleFloat('stopaj_rate') ?: 0.01;
             $defaultVatRate = (MpFinancialRule::getRuleFloat('default_product_vat_rate') ?: 0.20) * 100;
             
-            $theoretical = MpOrder::where('period_id', $periodId)
+            $theoretical = MpOrder::whereIn('period_id', $periodIds)
                 ->whereNotIn('status', ['İptal Edildi']) // İptaller faturaya/vergiye yansımaz
                 ->selectRaw("SUM( GREATEST(COALESCE(gross_amount,0) - ABS(COALESCE(discount_amount,0)) - ABS(COALESCE(campaign_discount,0)), 0) / (1 + (COALESCE(product_vat_rate,?) / 100)) * ? ) as total", [$defaultVatRate, $stopajRate])
                 ->value('total');
@@ -62,15 +68,20 @@ class ReportService
      * KPI 3: Lojistik Zararı (Yanık Maliyet)
      * İade siparişlerin geri ödenmeyen gidiş kargosu + Cari Ekstre'den iade kargo cezaları
      */
-    public function logisticLoss(int $periodId): array
+    public function logisticLoss(int|array $periodIds): array
     {
+        $periodIds = $this->normalizePeriodIds($periodIds);
+        if (empty($periodIds)) {
+            return ['sunk_cargo' => 0, 'return_cargo' => 0, 'total' => 0];
+        }
+
         // Gidiş kargo yanık maliyeti (iade edilmiş siparişlerden)
-        $sunkCargo = (float) MpOrder::where('period_id', $periodId)
+        $sunkCargo = (float) MpOrder::whereIn('period_id', $periodIds)
             ->where('status', 'İade Edildi')
             ->sum('cargo_amount');
 
         // Dönüş kargo cezaları (Cari Ekstre'den)
-        $returnCargo = (float) MpTransaction::where('period_id', $periodId)
+        $returnCargo = (float) MpTransaction::whereIn('period_id', $periodIds)
             ->where(function ($q) {
                 $q->where('transaction_type', 'like', '%İade Kargo%')
                   ->orWhere('transaction_type', 'like', '%iade kargo%')
@@ -93,8 +104,18 @@ class ReportService
      *
      * Her sipariş için ayrı hesap (ürün KDV oranı değişken olabilir)
      */
-    public function netVatPayable(int $periodId): array
+    public function netVatPayable(int|array $periodIds): array
     {
+        $periodIds = $this->normalizePeriodIds($periodIds);
+        if (empty($periodIds)) {
+            return [
+                'sales_vat'   => 0,
+                'expense_vat' => 0,
+                'net_vat'     => 0,
+                'is_payable'  => false,
+            ];
+        }
+
         $svc = new \App\Services\MpSettingsService();
         
         // KDV hesaplama kapalıysa sıfır döndür
@@ -113,7 +134,7 @@ class ReportService
         $totalSalesVat   = 0;
         $totalExpenseVat  = 0;
 
-        MpOrder::where('period_id', $periodId)
+        MpOrder::whereIn('period_id', $periodIds)
             ->where('status', 'Teslim Edildi')
             ->select(['gross_amount', 'product_vat_rate', 'commission_amount', 'cargo_amount'])
             ->chunk(2000, function ($orders) use (&$totalSalesVat, &$totalExpenseVat, $defaultVatRate, $expenseVatRate) {
@@ -146,11 +167,19 @@ class ReportService
      * KPI 5: Toplam Gerçek Net Kâr
      * Hakediş - COGS - Ambalaj - Net KDV Yükü (devlete ödenecek)
      */
-    public function totalRealNetProfit(int $periodId): array
+    public function totalRealNetProfit(int|array $periodIds): array
     {
+        $periodIds = $this->normalizePeriodIds($periodIds);
+        if (empty($periodIds)) {
+            return ['total_profit' => 0, 'profitable_count' => 0, 'bleeding_count' => 0, 'has_cogs' => false, 'no_cogs_count' => 0];
+        }
+
         $unitService = new UnitEconomicsService();
-        $period = MpPeriod::findOrFail($periodId);
-        $results = $unitService->calculateForPeriod($period);
+        $results = collect();
+
+        MpPeriod::whereIn('id', $periodIds)->get()->each(function (MpPeriod $period) use ($unitService, &$results) {
+            $results = $results->merge($unitService->calculateForPeriod($period));
+        });
 
         $totalProfit     = $results->sum('real_net_profit');
         $bleedingCount   = $results->where('is_bleeding', true)->count();
@@ -174,9 +203,14 @@ class ReportService
     /**
      * Vadesi gelen/gelecek hakedişleri (Settlements) haftalık vizyona göre gruplar.
      */
-    public function expectedCashFlow(int $periodId): array
+    public function expectedCashFlow(int|array $periodIds): array
     {
-        $settlements = \App\Models\MpSettlement::where('period_id', $periodId)
+        $periodIds = $this->normalizePeriodIds($periodIds);
+        if (empty($periodIds)) {
+            return ['total_expected' => 0, 'kanban' => []];
+        }
+
+        $settlements = \App\Models\MpSettlement::whereIn('period_id', $periodIds)
             ->whereNotNull('due_date')
             ->orderBy('due_date', 'asc')
             ->get();
@@ -248,32 +282,34 @@ class ReportService
     /**
      * Tüm KPI'ları tek seferde döndür (Dashboard'a optimal)
      */
-    public function getDashboardKpis(int $periodId): array
+    public function getDashboardKpis(int|array $periodIds): array
     {
-        $brut     = $this->totalBrutCiro($periodId);
-        $stopaj   = $this->totalStopaj($periodId);
-        $logistic = $this->logisticLoss($periodId);
-        $vat      = $this->netVatPayable($periodId);
-        $profit   = $this->totalRealNetProfit($periodId);
-        $cashFlow  = $this->expectedCashFlow($periodId);
+        $periodIds = $this->normalizePeriodIds($periodIds);
+
+        $brut     = $this->totalBrutCiro($periodIds);
+        $stopaj   = $this->totalStopaj($periodIds);
+        $logistic = $this->logisticLoss($periodIds);
+        $vat      = $this->netVatPayable($periodIds);
+        $profit   = $this->totalRealNetProfit($periodIds);
+        $cashFlow  = $this->expectedCashFlow($periodIds);
 
         // Temel sipariş sayıları (ek context)
-        $totalOrders  = MpOrder::where('period_id', $periodId)->count();
-        $totalReturns = MpOrder::where('period_id', $periodId)->where('status', 'İade Edildi')->count();
-        $totalCancels = MpOrder::where('period_id', $periodId)->where('status', 'İptal Edildi')->count();
+        $totalOrders  = MpOrder::whereIn('period_id', $periodIds)->count();
+        $totalReturns = MpOrder::whereIn('period_id', $periodIds)->where('status', 'İade Edildi')->count();
+        $totalCancels = MpOrder::whereIn('period_id', $periodIds)->where('status', 'İptal Edildi')->count();
         $returnRate   = $totalOrders > 0 ? round(($totalReturns / $totalOrders) * 100, 1) : 0;
 
         // Toplam Hakediş
-        $totalHakedis = (float) MpOrder::where('period_id', $periodId)
+        $totalHakedis = (float) MpOrder::whereIn('period_id', $periodIds)
             ->where('status', 'Teslim Edildi')
             ->sum('net_hakedis');
 
         // Audit toplamları
-        $auditCount = MpAuditLog::where('period_id', $periodId)
+        $auditCount = MpAuditLog::whereIn('period_id', $periodIds)
             ->whereIn('severity', ['critical', 'warning'])
             ->where('status', 'open')
             ->count();
-        $auditAmount = (float) MpAuditLog::where('period_id', $periodId)
+        $auditAmount = (float) MpAuditLog::whereIn('period_id', $periodIds)
             ->whereIn('severity', ['critical', 'warning'])
             ->where('status', 'open')
             ->sum('difference');
@@ -296,6 +332,18 @@ class ReportService
             'audit_count'      => $auditCount,
             'audit_amount'     => round($auditAmount, 2),
         ];
+    }
+
+    protected function normalizePeriodIds(int|array $periodIds): array
+    {
+        $ids = is_array($periodIds) ? $periodIds : [$periodIds];
+
+        return collect($ids)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->toArray();
     }
 
     // ═══════════════════════════════════════════════════════════════

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ProfitabilityMetric;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -65,17 +66,40 @@ class OptimizationReportItem extends Model
      */
     public function totalCost(): float
     {
+        $scenarioTotalCost = data_get($this->scenario_details, '0.total_cost');
+
+        if (is_numeric($scenarioTotalCost) && (float) $scenarioTotalCost > 0) {
+            return (float) $scenarioTotalCost;
+        }
+
         return (float) $this->production_cost + (float) $this->shipping_cost;
     }
 
+    public function productCostForProfitability(): float
+    {
+        $packagingCost = data_get($this->campaign_data, 'packaging_cost');
+
+        if (is_numeric($packagingCost)) {
+            return ProfitabilityMetric::productCost((float) $this->production_cost, (float) $packagingCost);
+        }
+
+        $scenarioProductCost = data_get($this->scenario_details, '0.product_cost');
+
+        if (is_numeric($scenarioProductCost) && (float) $scenarioProductCost > 0) {
+            return (float) $scenarioProductCost;
+        }
+
+        $productionCost = (float) $this->production_cost;
+
+        return $productionCost > 0 ? $productionCost : $this->totalCost();
+    }
+
     /**
-     * Kâr marjı yüzdesi: (net_profit / total_cost) * 100
+     * Geriye uyumluluk için çarpan döner; ekranda (çarpan - 1) * 100 gösterilir.
      */
     public function profitMarginPercent(?float $netProfit = null): float
     {
         $profit = $netProfit ?? (float) $this->current_net_profit;
-        $cost = $this->totalCost();
-        if ($cost <= 0) return 0;
-        return round(($profit / $cost) * 100, 1);
+        return ProfitabilityMetric::multiplierOrZero($profit, $this->productCostForProfitability());
     }
 }

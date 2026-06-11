@@ -10,6 +10,8 @@
     $errorSortableColumns = \App\Livewire\Cargo\CompensationDashboard::$errorSortableColumns;
     $compensationColumnDefs = \App\Livewire\Cargo\CompensationDashboard::$compensationColumnDefs;
     $compensationSortableColumns = \App\Livewire\Cargo\CompensationDashboard::$compensationSortableColumns;
+    $crmLinks = app(\App\Services\Crm\CrmSourceLinkService::class);
+    $crmSnapshots = app(\App\Services\Crm\CrmCustomerSnapshotService::class);
 
     $messageClasses = match ($messageType) {
         'success' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
@@ -168,18 +170,18 @@
     @if($viewMode === 'dashboard')
         <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4 lg:gap-6">
             <div class="max-w-3xl">
-                <h2 class="text-xl lg:text-2xl font-bold text-gray-900">Kargo tazmin merkezi</h2>
-                <p class="mt-1 text-sm lg:text-base text-gray-700">
+                <h2 class="text-xl lg:text-2xl font-bold text-slate-900">Kargo tazmin merkezi</h2>
+                <p class="mt-1 text-sm lg:text-base text-slate-700">
                     Açık dosyaları, talep tutarını ve tahsilat sonucunu tek ekranda izleyin.
                 </p>
             </div>
 
             <div class="flex w-full xl:w-auto flex-col sm:flex-row gap-3">
                 <x-zolm.primary-button color="indigo" compact wire:click="openCreateModal">Yeni Talep</x-zolm.primary-button>
-                <button wire:click="showAllErrors" class="min-h-[44px] w-full sm:w-auto rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                <button wire:click="showAllErrors" class="min-h-[44px] w-full sm:w-auto rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     Tüm Hatalar
                 </button>
-                <button wire:click="showAllCompensations" class="min-h-[44px] w-full sm:w-auto rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                <button wire:click="showAllCompensations" class="min-h-[44px] w-full sm:w-auto rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     Tüm Talepler
                 </button>
             </div>
@@ -220,12 +222,12 @@
             <div class="space-y-4">
                 <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 lg:gap-4">
                     <div>
-                        <h3 class="text-base lg:text-lg font-semibold text-gray-900">Tazmin filtreleri</h3>
-                        <p class="mt-1 text-sm text-gray-500">
+                        <h3 class="text-base lg:text-lg font-semibold text-slate-900">Tazmin filtreleri</h3>
+                        <p class="mt-1 text-sm text-slate-500">
                             Dosyaları firma, durum, sebep ve kayıt tipine göre daraltın.
                         </p>
                     </div>
-                    <p class="text-sm text-gray-500">
+                    <p class="text-sm text-slate-500">
                         {{ count($activeFilters) > 0 ? implode(' · ', $activeFilters) : 'Son 30 günün tüm talepleri ve hataları gösteriliyor.' }}
                         · {{ $filterStartDate ? \Carbon\Carbon::parse($filterStartDate)->format('d.m.Y') : '-' }} - {{ $filterEndDate ? \Carbon\Carbon::parse($filterEndDate)->format('d.m.Y') : '-' }}
                     </p>
@@ -234,16 +236,16 @@
                 <div x-data="{ showAdvanced: @js($showDashboardAdvancedFilters) }" class="space-y-4">
                     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
                         <div>
-                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Başlangıç</label>
-                            <input type="date" wire:model.live="filterStartDate" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <label class="block text-xs sm:text-sm font-medium text-slate-500">Başlangıç</label>
+                            <input type="date" wire:model.live="filterStartDate" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                         </div>
                         <div>
-                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Bitiş</label>
-                            <input type="date" wire:model.live="filterEndDate" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <label class="block text-xs sm:text-sm font-medium text-slate-500">Bitiş</label>
+                            <input type="date" wire:model.live="filterEndDate" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                         </div>
                         <div>
-                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Kargo firması</label>
-                            <select wire:model.live="filterCargoCompany" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <label class="block text-xs sm:text-sm font-medium text-slate-500">Kargo firması</label>
+                            <select wire:model.live="filterCargoCompany" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="">Tümü</option>
                                 @foreach($cargoCompanies as $company)
                                     <option value="{{ $company }}">{{ $company }}</option>
@@ -251,8 +253,8 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs sm:text-sm font-medium text-gray-500">Durum</label>
-                            <select wire:model.live="filterStatus" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <label class="block text-xs sm:text-sm font-medium text-slate-500">Durum</label>
+                            <select wire:model.live="filterStatus" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="">Tümü</option>
                                 @foreach($statusOptions as $statusKey => $statusInfo)
                                     <option value="{{ $statusKey }}">{{ $statusInfo['label'] }}</option>
@@ -261,15 +263,15 @@
                         </div>
                     </div>
 
-                    <button type="button" @click="showAdvanced = !showAdvanced" class="min-h-[44px] w-full sm:w-auto rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">
+                    <button type="button" @click="showAdvanced = !showAdvanced" class="min-h-[44px] w-full sm:w-auto rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                         <span x-text="showAdvanced ? 'Gelişmiş filtreleri gizle' : 'Gelişmiş filtreler'"></span>
                     </button>
 
-                    <div x-show="showAdvanced" x-cloak x-transition.opacity.duration.150ms class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <div x-show="showAdvanced" x-cloak x-transition.opacity.duration.150ms class="rounded-lg border border-slate-200 bg-slate-50 p-4">
                         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
                             <div>
-                                <label class="block text-xs sm:text-sm font-medium text-gray-500">Kayıt tipi</label>
-                                <select wire:model.live="filterRecordType" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <label class="block text-xs sm:text-sm font-medium text-slate-500">Kayıt tipi</label>
+                                <select wire:model.live="filterRecordType" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                     <option value="all">Tümü</option>
                                     <option value="siparis">Sipariş</option>
                                     <option value="iade">İade / değişim</option>
@@ -277,8 +279,8 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs sm:text-sm font-medium text-gray-500">Pazaryeri</label>
-                                <select wire:model.live="filterMarketplace" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <label class="block text-xs sm:text-sm font-medium text-slate-500">Pazaryeri</label>
+                                <select wire:model.live="filterMarketplace" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                     <option value="">Tümü</option>
                                     @foreach($marketplaces as $marketplace)
                                         <option value="{{ $marketplace }}">{{ $marketplace }}</option>
@@ -286,8 +288,8 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs sm:text-sm font-medium text-gray-500">Mağaza</label>
-                                <select wire:model.live="filterStore" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <label class="block text-xs sm:text-sm font-medium text-slate-500">Mağaza</label>
+                                <select wire:model.live="filterStore" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                     <option value="">Tümü</option>
                                     @foreach($stores as $store)
                                         <option value="{{ $store }}">{{ $store }}</option>
@@ -295,8 +297,8 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs sm:text-sm font-medium text-gray-500">Sebep</label>
-                                <select wire:model.live="filterReason" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <label class="block text-xs sm:text-sm font-medium text-slate-500">Sebep</label>
+                                <select wire:model.live="filterReason" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                     <option value="">Tümü</option>
                                     @foreach($reasonOptions as $reasonKey => $reasonInfo)
                                         <option value="{{ $reasonKey }}">{{ $reasonInfo['label'] }}</option>
@@ -304,8 +306,8 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs sm:text-sm font-medium text-gray-500">Öncelik</label>
-                                <select wire:model.live="filterPriority" class="mt-1 min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <label class="block text-xs sm:text-sm font-medium text-slate-500">Öncelik</label>
+                                <select wire:model.live="filterPriority" class="mt-1 min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base sm:text-sm text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                     <option value="">Tümü</option>
                                     @foreach($priorityOptions as $priorityKey => $priorityInfo)
                                         <option value="{{ $priorityKey }}">{{ $priorityInfo['label'] }}</option>
@@ -338,15 +340,15 @@
                                     <p class="mt-1 truncate text-sm text-slate-500">{{ $error->urun_adi ?: 'Ürün bilgisi yok' }}</p>
 
                                     <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 lg:gap-3">
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                        <div class="rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
                                             <p class="text-slate-500">Yanlış desi</p>
                                             <p class="mt-1 font-semibold text-rose-600">{{ number_format((float) $error->gercek_desi, 0, ',', '.') }}</p>
                                         </div>
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                        <div class="rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
                                             <p class="text-slate-500">Doğru desi</p>
                                             <p class="mt-1 font-semibold text-emerald-600">{{ number_format((float) $error->beklenen_desi, 0, ',', '.') }}</p>
                                         </div>
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                        <div class="rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
                                             <p class="text-slate-500">Talep potansiyeli</p>
                                             <p class="mt-1 font-semibold {{ $error->tutar_fark > 0 ? 'text-rose-600' : 'text-emerald-600' }}">{{ $formatSignedMoney($error->tutar_fark) }}</p>
                                         </div>
@@ -399,19 +401,19 @@
                                     <p class="mt-1 text-sm text-slate-500">{{ $comp->cargo_company ?: 'Kargo firması yok' }}{{ $comp->takip_kodu ? ' · ' . $comp->takip_kodu : '' }}</p>
 
                                     <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 lg:gap-3">
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                        <div class="rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
                                             <p class="text-slate-500">Talep edilen</p>
                                             <p class="mt-1 font-semibold text-slate-900">{{ $formatMoney($comp->talep_tutari) }}</p>
                                         </div>
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                        <div class="rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
                                             <p class="text-slate-500">Onaylanan</p>
                                             <p class="mt-1 font-semibold text-emerald-600">{{ $formatMoney($comp->onaylanan_tutar) }}</p>
                                         </div>
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                        <div class="rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
                                             <p class="text-slate-500">Sorumlu</p>
                                             <p class="mt-1 font-semibold text-slate-900">{{ $comp->responsibleUser?->name ?? 'Atanmadı' }}</p>
                                         </div>
-                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                                        <div class="rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
                                             <p class="text-slate-500">Sonraki aksiyon</p>
                                             <p class="mt-1 font-semibold text-slate-900">{{ $comp->next_action_at?->format('d.m.Y') ?? 'Planlanmadı' }}</p>
                                         </div>
@@ -481,7 +483,7 @@
                             type="text"
                             wire:model.live.debounce.300ms="search"
                             placeholder="Müşteri, takip kodu veya ürün ara..."
-                            class="w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            class="w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"
                         >
                         <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400">
                             <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -505,15 +507,15 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
                     <div>
                         <label class="text-xs sm:text-sm font-medium text-slate-700">Başlangıç</label>
-                        <input type="date" wire:model.live="filterStartDate" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <input type="date" wire:model.live="filterStartDate" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                     </div>
                     <div>
                         <label class="text-xs sm:text-sm font-medium text-slate-700">Bitiş</label>
-                        <input type="date" wire:model.live="filterEndDate" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <input type="date" wire:model.live="filterEndDate" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                     </div>
                     <div>
                         <label class="text-xs sm:text-sm font-medium text-slate-700">Kargo firması</label>
-                        <select wire:model.live="filterCargoCompany" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <select wire:model.live="filterCargoCompany" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                             <option value="">Tümü</option>
                             @foreach($cargoCompanies as $company)
                                 <option value="{{ $company }}">{{ $company }}</option>
@@ -523,7 +525,7 @@
                     @if($viewMode === 'all_compensations')
                         <div>
                             <label class="text-xs sm:text-sm font-medium text-slate-700">Durum</label>
-                            <select wire:model.live="filterStatus" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <select wire:model.live="filterStatus" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="">Tümü</option>
                                 @foreach(\App\Models\Compensation::DURUMLAR as $statusKey => $statusInfo)
                                     <option value="{{ $statusKey }}">{{ $statusInfo['label'] }}</option>
@@ -542,11 +544,11 @@
                     </p>
                 </div>
 
-                <div x-show="showAdvanced" x-cloak x-transition.opacity.duration.150ms class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-4">
+                <div x-show="showAdvanced" x-cloak x-transition.opacity.duration.150ms class="rounded-[8px] border border-dashed border-slate-200 bg-slate-50/80 p-4">
                     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
                         <div>
                             <label class="text-xs sm:text-sm font-medium text-slate-700">Kayıt tipi</label>
-                            <select wire:model.live="filterRecordType" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <select wire:model.live="filterRecordType" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="all">Tümü</option>
                                 <option value="siparis">Sipariş</option>
                                 <option value="iade">İade / değişim</option>
@@ -555,7 +557,7 @@
                         </div>
                         <div>
                             <label class="text-xs sm:text-sm font-medium text-slate-700">Pazaryeri</label>
-                            <select wire:model.live="filterMarketplace" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <select wire:model.live="filterMarketplace" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="">Tümü</option>
                                 @foreach($marketplaces as $marketplace)
                                     <option value="{{ $marketplace }}">{{ $marketplace }}</option>
@@ -564,7 +566,7 @@
                         </div>
                         <div>
                             <label class="text-xs sm:text-sm font-medium text-slate-700">Mağaza</label>
-                            <select wire:model.live="filterStore" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            <select wire:model.live="filterStore" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 <option value="">Tümü</option>
                                 @foreach($stores as $store)
                                     <option value="{{ $store }}">{{ $store }}</option>
@@ -574,7 +576,7 @@
                         @if($viewMode === 'all_compensations')
                             <div>
                                 <label class="text-xs sm:text-sm font-medium text-slate-700">Sebep</label>
-                                <select wire:model.live="filterReason" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <select wire:model.live="filterReason" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                     <option value="">Tümü</option>
                                     @foreach(\App\Models\Compensation::SEBEPLER as $reasonKey => $reasonInfo)
                                         <option value="{{ $reasonKey }}">{{ $reasonInfo['label'] }}</option>
@@ -583,7 +585,7 @@
                             </div>
                             <div>
                                 <label class="text-xs sm:text-sm font-medium text-slate-700">Öncelik</label>
-                                <select wire:model.live="filterPriority" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <select wire:model.live="filterPriority" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                     <option value="">Tümü</option>
                                     @foreach(\App\Models\Compensation::PRIORITIES as $priorityKey => $priorityInfo)
                                         <option value="{{ $priorityKey }}">{{ $priorityInfo['label'] }}</option>
@@ -623,12 +625,12 @@
                         <button @click="open = !open" type="button" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                             Kolonlar
                         </button>
-                        <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                        <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-[10px] border border-slate-200 bg-white p-3 shadow-xl">
                             <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Hata Kolonları</p>
                             <div class="mt-3 space-y-1.5">
                                 @foreach($errorColumnDefs as $colKey => $colLabel)
                                     <label class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                        <input type="checkbox" wire:click="toggleErrorColumn('{{ $colKey }}')" {{ in_array($colKey, $errorVisibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                        <input type="checkbox" wire:click="toggleErrorColumn('{{ $colKey }}')" {{ in_array($colKey, $errorVisibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-slate-200">
                                         <span>{{ $colLabel }}</span>
                                     </label>
                                 @endforeach
@@ -664,7 +666,10 @@
                             </thead>
                             <tbody class="divide-y divide-slate-200">
                                 @forelse($this->allErrors as $error)
-                                    @php $isClaimable = in_array($error->error_type, \App\Models\CargoReportItem::CLAIMABLE_ERROR_TYPES, true); @endphp
+                                    @php
+                                        $isClaimable = in_array($error->error_type, \App\Models\CargoReportItem::CLAIMABLE_ERROR_TYPES, true);
+                                        $errorCrmSnapshot = $crmSnapshots->forSubject(auth()->user(), 'cargo', $error);
+                                    @endphp
                                     <tr class="bg-white hover:bg-slate-50 transition">
                                         @foreach($errorColumnDefs as $colKey => $colLabel)
                                             @if(in_array($colKey, $errorVisibleColumns, true))
@@ -676,6 +681,7 @@
                                                         <td class="px-2 py-2 align-top">
                                                             <p class="truncate text-sm font-semibold text-slate-900" title="{{ $error->musteri_adi }}">{{ $error->musteri_adi }}</p>
                                                             <p class="mt-1 truncate text-xs text-slate-500">{{ $error->takip_kodu ?: 'Takip kodu yok' }}</p>
+                                                            <x-zolm.crm-snapshot :snapshot="$errorCrmSnapshot" variant="table" class="mt-2" />
                                                         </td>
                                                         @break
                                                     @case('product')
@@ -694,15 +700,21 @@
                                                         @break
                                                     @case('actions')
                                                         <td class="px-2 py-2 text-right">
-                                                            @if($isClaimable)
-                                                                <button wire:click="openCreateModal({{ $error->id }})" class="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
-                                                                    Talep Aç
-                                                                </button>
-                                                            @else
-                                                                <span class="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-400">
-                                                                    Manuel İnceleme
-                                                                </span>
-                                                            @endif
+                                                            <div class="flex justify-end gap-1.5">
+                                                                <a href="{{ $crmLinks->urlFor('cargo', $error) }}"
+                                                                   class="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                                                                    CRM
+                                                                </a>
+                                                                @if($isClaimable)
+                                                                    <button wire:click="openCreateModal({{ $error->id }})" class="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                                                                        Talep Aç
+                                                                    </button>
+                                                                @else
+                                                                    <span class="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-2.5 text-xs font-medium text-slate-400">
+                                                                        Manuel İnceleme
+                                                                    </span>
+                                                                @endif
+                                                            </div>
                                                         </td>
                                                         @break
                                                 @endswitch
@@ -757,7 +769,11 @@
                                 </div>
 
                                 @if(in_array('actions', $errorVisibleColumns, true))
-                                    <div class="mt-4">
+                                    <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        <a href="{{ $crmLinks->urlFor('cargo', $error) }}"
+                                           class="inline-flex w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                            CRM 360 Aç
+                                        </a>
                                         @if($isClaimable)
                                             <button wire:click="openCreateModal({{ $error->id }})" class="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                                                 Tazmin Talebi Oluştur
@@ -812,12 +828,12 @@
                         <button @click="open = !open" type="button" class="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                             Kolonlar
                         </button>
-                        <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                        <div x-show="open" @click.outside="open = false" x-transition class="absolute right-0 top-full z-30 mt-2 w-60 rounded-[10px] border border-slate-200 bg-white p-3 shadow-xl">
                             <p class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Talep Kolonları</p>
                             <div class="mt-3 space-y-1.5">
                                 @foreach($compensationColumnDefs as $colKey => $colLabel)
                                     <label class="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                        <input type="checkbox" wire:click="toggleCompensationColumn('{{ $colKey }}')" {{ in_array($colKey, $compensationVisibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                        <input type="checkbox" wire:click="toggleCompensationColumn('{{ $colKey }}')" {{ in_array($colKey, $compensationVisibleColumns, true) ? 'checked' : '' }} class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-slate-200">
                                         <span>{{ $colLabel }}</span>
                                     </label>
                                 @endforeach
@@ -935,7 +951,7 @@
                                                                     x-show="open"
                                                                     style="display:none;"
                                                                     :style="'position:fixed;top:'+top+'px;left:'+left+'px;z-index:9999;width:192px;'"
-                                                                    class="rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl"
+                                                                    class="rounded-[10px] border border-slate-200 bg-white p-1.5 shadow-xl"
                                                                 >
                                                                     <button wire:click="openStatusModal({{ $comp->id }})" @click="open=false" class="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition text-left">
                                                                         <svg class="h-4 w-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -1109,12 +1125,12 @@
                                     <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Tarih</label>
-                                            <input type="date" wire:model="newCompensation.tarih" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <input type="date" wire:model="newCompensation.tarih" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                             @error('newCompensation.tarih') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
                                         </div>
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Kargo firması</label>
-                                            <select wire:model="newCompensation.cargo_company" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <select wire:model="newCompensation.cargo_company" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                                 <option value="Sürat Kargo">Sürat Kargo</option>
                                                 <option value="MNG Kargo">MNG Kargo</option>
                                                 <option value="Yurtiçi Kargo">Yurtiçi Kargo</option>
@@ -1127,12 +1143,12 @@
                                     <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Müşteri adı</label>
-                                            <input type="text" wire:model="newCompensation.musteri_adi" placeholder="Müşteri adını girin" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <input type="text" wire:model="newCompensation.musteri_adi" placeholder="Müşteri adını girin" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                             @error('newCompensation.musteri_adi') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
                                         </div>
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Talep tutarı (₺)</label>
-                                            <input type="number" step="0.01" wire:model="newCompensation.talep_tutari" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <input type="number" step="0.01" wire:model="newCompensation.talep_tutari" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                             @error('newCompensation.talep_tutari') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
                                         </div>
                                     </div>
@@ -1140,7 +1156,7 @@
                                     <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Öncelik</label>
-                                            <select wire:model="newCompensation.priority" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <select wire:model="newCompensation.priority" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                                 @foreach(\App\Models\Compensation::PRIORITIES as $priorityKey => $priorityInfo)
                                                     <option value="{{ $priorityKey }}">{{ $priorityInfo['label'] }}</option>
                                                 @endforeach
@@ -1148,7 +1164,7 @@
                                         </div>
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Sorumlu</label>
-                                            <select wire:model="newCompensation.responsible_user_id" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <select wire:model="newCompensation.responsible_user_id" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                                 <option value="">Seçilmedi</option>
                                                 @foreach($assignableUsers as $user)
                                                     <option value="{{ $user->id }}">{{ $user->name }}</option>
@@ -1157,7 +1173,7 @@
                                         </div>
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Sonraki aksiyon</label>
-                                            <input type="date" wire:model="newCompensation.next_action_at" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <input type="date" wire:model="newCompensation.next_action_at" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                         </div>
                                     </div>
                                 </div>
@@ -1169,11 +1185,11 @@
                                     <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Takip kodu</label>
-                                            <input type="text" wire:model="newCompensation.takip_kodu" placeholder="Opsiyonel" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <input type="text" wire:model="newCompensation.takip_kodu" placeholder="Opsiyonel" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                         </div>
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Sebep</label>
-                                            <select wire:model="newCompensation.sebep" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <select wire:model="newCompensation.sebep" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                                 @foreach(\App\Models\Compensation::SEBEPLER as $key => $info)
                                                     <option value="{{ $key }}">{{ $info['label'] }}</option>
                                                 @endforeach
@@ -1184,22 +1200,22 @@
 
                                     <div class="mt-4">
                                         <label class="text-xs sm:text-sm font-medium text-slate-700">Ürün adı</label>
-                                        <input type="text" wire:model="newCompensation.urun_adi" placeholder="Opsiyonel ürün bilgisi" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                        <input type="text" wire:model="newCompensation.urun_adi" placeholder="Opsiyonel ürün bilgisi" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                     </div>
 
                                     <div class="mt-4">
                                         <label class="text-xs sm:text-sm font-medium text-slate-700">Açıklama</label>
-                                        <textarea wire:model="newCompensation.aciklama" rows="4" placeholder="Talebin kısa açıklamasını girin" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                                        <textarea wire:model="newCompensation.aciklama" rows="4" placeholder="Talebin kısa açıklamasını girin" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"></textarea>
                                     </div>
 
                                     <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Kargo vaka / referans no</label>
-                                            <input type="text" wire:model="newCompensation.carrier_case_no" placeholder="Opsiyonel taşıyıcı referansı" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <input type="text" wire:model="newCompensation.carrier_case_no" placeholder="Opsiyonel taşıyıcı referansı" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                         </div>
                                         <div>
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">İç not</label>
-                                            <input type="text" wire:model="newCompensation.internal_note" placeholder="Operasyon / finans notu" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <input type="text" wire:model="newCompensation.internal_note" placeholder="Operasyon / finans notu" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                         </div>
                                     </div>
                                 </div>
@@ -1218,7 +1234,7 @@
                                     <label class="mt-4 block cursor-pointer rounded-3xl border border-dashed border-slate-300 bg-white px-4 py-5 transition hover:border-slate-400">
                                         <input wire:model="attachments" type="file" class="hidden" multiple accept="image/*">
                                         <div class="flex flex-col sm:flex-row sm:items-center gap-3 lg:gap-4">
-                                            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white">
+                                            <div class="flex h-12 w-12 items-center justify-center rounded-[8px] bg-slate-900 text-white">
                                                 <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-6l-4-4m0 0L8 10m4-4v12" />
                                                 </svg>
@@ -1312,7 +1328,7 @@
 
                         <div class="mt-4">
                             <label class="text-xs sm:text-sm font-medium text-slate-700">Dilekçe metni</label>
-                            <textarea wire:model="editingPetitionText" rows="16" placeholder="Dilekçe metni..." class="mt-1 w-full rounded-3xl border border-slate-200 bg-white px-4 py-4 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                            <textarea wire:model="editingPetitionText" rows="16" placeholder="Dilekçe metni..." class="mt-1 w-full rounded-3xl border border-slate-200 bg-white px-4 py-4 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"></textarea>
                         </div>
                     </div>
 
@@ -1383,7 +1399,7 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
                                 <div>
                                     <label class="text-xs sm:text-sm font-medium text-slate-700">Durum</label>
-                                    <select wire:model="newStatus" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <select wire:model="newStatus" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                         @foreach(\App\Models\Compensation::DURUMLAR as $key => $info)
                                             <option value="{{ $key }}">{{ $info['label'] }}</option>
                                         @endforeach
@@ -1391,26 +1407,26 @@
                                 </div>
                                 <div>
                                     <label class="text-xs sm:text-sm font-medium text-slate-700">Onaylanan tutar (₺)</label>
-                                    <input type="number" step="0.01" wire:model="onaylananTutar" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <input type="number" step="0.01" wire:model="onaylananTutar" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 </div>
                             </div>
 
                             <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
                                 <div>
                                     <label class="text-xs sm:text-sm font-medium text-slate-700">Tahsil edilen tutar (₺)</label>
-                                    <input type="number" step="0.01" wire:model="collectedAmount" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <input type="number" step="0.01" wire:model="collectedAmount" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 </div>
                                 <div>
                                     <label class="text-xs sm:text-sm font-medium text-slate-700">Ödeme tarihi</label>
-                                    <input type="date" wire:model="paymentDate" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <input type="date" wire:model="paymentDate" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 </div>
                                 <div>
                                     <label class="text-xs sm:text-sm font-medium text-slate-700">Sonraki aksiyon</label>
-                                    <input type="date" wire:model="nextActionAt" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <input type="date" wire:model="nextActionAt" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 </div>
                                 <div>
                                     <label class="text-xs sm:text-sm font-medium text-slate-700">Sorumlu</label>
-                                    <select wire:model="responsibleUserId" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <select wire:model="responsibleUserId" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                         <option value="">Seçilmedi</option>
                                         @foreach($assignableUsers as $user)
                                             <option value="{{ $user->id }}">{{ $user->name }}</option>
@@ -1419,7 +1435,7 @@
                                 </div>
                                 <div>
                                     <label class="text-xs sm:text-sm font-medium text-slate-700">Öncelik</label>
-                                    <select wire:model="priority" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <select wire:model="priority" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                         @foreach(\App\Models\Compensation::PRIORITIES as $priorityKey => $priorityInfo)
                                             <option value="{{ $priorityKey }}">{{ $priorityInfo['label'] }}</option>
                                         @endforeach
@@ -1427,22 +1443,22 @@
                                 </div>
                                 <div>
                                     <label class="text-xs sm:text-sm font-medium text-slate-700">Taşıyıcı vaka no</label>
-                                    <input type="text" wire:model="carrierCaseNo" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <input type="text" wire:model="carrierCaseNo" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                 </div>
                             </div>
 
                             <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
                                 <div>
                                     <label class="text-xs sm:text-sm font-medium text-slate-700">İç not</label>
-                                    <textarea wire:model="internalNote" rows="4" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                                    <textarea wire:model="internalNote" rows="4" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"></textarea>
                                 </div>
                                 <div>
                                     <label class="text-xs sm:text-sm font-medium text-slate-700">Sonuç notu</label>
-                                    <textarea wire:model="resolutionNote" rows="4" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                                    <textarea wire:model="resolutionNote" rows="4" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200"></textarea>
                                 </div>
                             </div>
 
-                            <div class="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+                            <div class="mt-4 rounded-[8px] border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
                                 Sonuç tarihi sonuçlanan statülerde, ödeme tarihi ise ödeme bekleniyor / ödendi akışlarında kullanılır.
                             </div>
                         </div>

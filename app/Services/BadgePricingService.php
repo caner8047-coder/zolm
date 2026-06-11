@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\OptimizationReport;
 use App\Models\OptimizationReportItem;
+use App\Services\ProfitabilityMetric;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 
@@ -87,6 +88,7 @@ class BadgePricingService
                 $product = $this->campaignService->matchProduct($barcode, null, $modelCode, $productName);
                 $costs = $this->campaignService->getProductCosts($product);
                 $totalCost = $costs['total_cost'];
+                $productCost = ProfitabilityMetric::productCost($costs['cogs'], $costs['packaging_cost']);
 
                 if (!$product) $unmatchedCount++;
 
@@ -95,7 +97,7 @@ class BadgePricingService
 
                 // Mevcut kâr
                 $currentNetProfit = $this->campaignService->calculateNetProfit($currentTsf, $commission, $totalCost);
-                $currentMargin = $totalCost > 0 ? round(($currentNetProfit / $totalCost) * 100, 1) : 0;
+                $currentMargin = ProfitabilityMetric::multiplierOrZero($currentNetProfit, $productCost);
 
                 // Senaryolar
                 $scenarios = [
@@ -119,8 +121,8 @@ class BadgePricingService
                     $starProfit = ($maxPrice > 0)
                         ? $this->campaignService->calculateNetProfit($maxPrice, $commission, $totalCost)
                         : 0;
-                    $starMargin = ($maxPrice > 0 && $totalCost > 0)
-                        ? round(($starProfit / $totalCost) * 100, 1)
+                    $starMargin = $maxPrice > 0
+                        ? ProfitabilityMetric::multiplierOrZero($starProfit, $productCost)
                         : 0;
 
                     $scenarios[] = [
@@ -169,6 +171,7 @@ class BadgePricingService
                         'matched' => (bool) $product,
                         'category' => trim($row[$columnMap['category'] ?? ''] ?? ''),
                         'brand' => trim($row[$columnMap['brand'] ?? ''] ?? ''),
+                        'packaging_cost' => $costs['packaging_cost'],
                     ],
                 ]);
 

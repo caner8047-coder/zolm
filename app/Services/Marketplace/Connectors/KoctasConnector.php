@@ -3,7 +3,13 @@
 namespace App\Services\Marketplace\Connectors;
 
 use App\Models\ChannelListing;
+use App\Models\MarketplaceQuestion;
 use App\Models\MarketplaceStore;
+use App\Services\Marketplace\Connectors\Concerns\NormalizesCustomerQuestions;
+use App\Services\Marketplace\Contracts\AnswersCustomerQuestions;
+use App\Services\Marketplace\Contracts\ManagesClaims;
+use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
+use App\Services\Marketplace\Contracts\PullsClaims;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
 use App\Services\Marketplace\Contracts\PushesPrice;
@@ -15,8 +21,10 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class KoctasConnector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PushesPrice, PushesStock, TestsConnection
+class KoctasConnector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PullsCustomerQuestions, PullsClaims, ManagesClaims, AnswersCustomerQuestions, PushesPrice, PushesStock, TestsConnection
 {
+    use NormalizesCustomerQuestions;
+
     public function providerKey(): string
     {
         return 'koctas';
@@ -52,6 +60,11 @@ class KoctasConnector extends AbstractMarketplaceConnector implements PullsOrder
             'package_common_label_get' => false,
             'invoice_link' => false,
             'package_invoice_link' => false,
+            'questions' => true,
+            'question_answer' => true,
+            'claims' => true,
+            'claim_approve' => true,
+            'claim_reject' => true,
         ];
     }
 
@@ -174,6 +187,184 @@ class KoctasConnector extends AbstractMarketplaceConnector implements PullsOrder
                 'more_pages_available' => $offset < $totalCount,
                 'cursor_after' => now()->toIso8601String(),
             ],
+        ];
+    }
+
+    public function pullCustomerQuestions(MarketplaceStore $store, array $options = []): array
+    {
+        $limit = min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.koctas.question_page_size', 50))));
+        $maxPages = max(1, (int) config('marketplace.koctas.max_question_pages_per_sync', 10));
+        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('UTC');
+        $endDate = CarbonImmutable::parse($options['end_date'] ?? now())->setTimezone('UTC');
+        $path = trim((string) config('marketplace.koctas.question_list_path', 'api/inbox/threads'), '/');
+        $offset = 0;
+        $pages = 0;
+        $items = [];
+
+        do {
+            $response = $this->request($store)
+                ->get($path, $this->withShopSelection($store, array_filter([
+                    'limit' => $limit,
+                    'max' => $limit,
+                    'offset' => $offset,
+                    'updated_since' => $startDate->toIso8601String(),
+                    'updated_until' => $endDate->toIso8601String(),
+                    'last_message_date_from' => $startDate->toIso8601String(),
+                    'last_message_date_to' => $endDate->toIso8601String(),
+                    'state' => $options['status'] ?? null,
+                ], fn ($value) => $value !== null && $value !== '')))
+                ->throw()
+                ->json();
+
+            $payload = is_array($response) ? $response : [];
+            $rows = $this->questionRowsFromPayload($payload, ['threads', 'items', 'data']);
+
+            foreach ($rows as $row) {
+                $items[] = $this->normalizeKoctasQuestion($row);
+            }
+
+            $totalCount = (int) (
+                data_get($payload, 'total_count')
+                ?: data_get($payload, 'totalCount')
+                ?: count($rows)
+            );
+            $offset += $limit;
+            $pages++;
+            $hasMore = $totalCount > 0 ? $offset < $totalCount : count($rows) === $limit;
+        } while ($rows !== [] && $hasMore && $pages < $maxPages);
+
+        return [
+            'items' => $items,
+            'meta' => [
+                'items_received' => count($items),
+                'cursor_after' => $endDate->toIso8601String(),
+                'pages_processed' => $pages,
+                'more_pages_available' => $hasMore ?? false,
+                'endpoint' => $path,
+            ],
+        ];
+    }
+
+    public function pullClaims(MarketplaceStore $store, array $options = []): array
+    {
+        $limit = min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.koctas.claim_page_size', 50))));
+        $maxPages = max(1, (int) config('marketplace.koctas.max_order_pages_per_sync', 20));
+        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('UTC');
+        $endDate = CarbonImmutable::parse($options['end_date'] ?? now())->setTimezone('UTC');
+        $path = trim((string) config('marketplace.koctas.return_list_path', 'api/returns'), '/');
+        $items = [];
+        $offset = 0;
+        $pages = 0;
+
+        do {
+            $response = $this->request($store)
+                ->get($path, $this->withShopSelection($store, array_filter([
+                    'limit' => $limit,
+                    'max' => $limit,
+                    'offset' => $offset,
+                    'updated_since' => $startDate->toIso8601String(),
+                    'updated_until' => $endDate->toIso8601String(),
+                    'status' => $options['status'] ?? null,
+                    'order_references' => $options['order_number'] ?? null,
+                ], fn ($value) => $value !== null && $value !== '')))
+                ->throw()
+                ->json();
+
+            $payload = is_array($response) ? $response : [];
+            $rows = collect(Arr::wrap(
+                data_get($payload, 'returns')
+                ?: data_get($payload, 'items')
+                ?: data_get($payload, 'data')
+                ?: []
+            ))
+                ->filter(fn ($row) => is_array($row))
+                ->values();
+
+            foreach ($rows as $row) {
+                $items[] = $this->normalizeClaim($row);
+            }
+
+            $totalCount = (int) (data_get($payload, 'total_count') ?: data_get($payload, 'totalCount') ?: $rows->count());
+            $offset += $limit;
+            $pages++;
+            $hasMore = $totalCount > 0 ? $offset < $totalCount : $rows->count() === $limit;
+        } while ($rows->isNotEmpty() && $hasMore && $pages < $maxPages);
+
+        return [
+            'items' => $items,
+            'meta' => [
+                'items_received' => count($items),
+                'cursor_after' => $endDate->toIso8601String(),
+                'pages_processed' => $pages,
+                'endpoint' => $path,
+            ],
+        ];
+    }
+
+    public function approveClaim(MarketplaceStore $store, string $externalClaimId, array $context = []): array
+    {
+        $path = $this->claimActionPath('return_accept_path', 'api/returns/{return_id}/accept', $externalClaimId);
+        $response = $this->request($store)
+            ->withQueryParameters($this->withShopSelection($store, []))
+            ->post($path, $context['payload'] ?? [])
+            ->throw();
+
+        return [
+            'status' => 'approved',
+            'message' => 'Koçtaş iade onayı gönderildi.',
+            'response_status' => $response->status(),
+            'response' => $response->json() ?: [],
+        ];
+    }
+
+    public function rejectClaim(MarketplaceStore $store, string $externalClaimId, string $reason, array $context = []): array
+    {
+        $path = $this->claimActionPath('return_reject_path', 'api/returns/{return_id}/refuse', $externalClaimId);
+        $response = $this->request($store)
+            ->withQueryParameters($this->withShopSelection($store, []))
+            ->post($path, array_replace([
+                'reason' => $reason,
+                'message' => $reason,
+            ], $context['payload'] ?? []))
+            ->throw();
+
+        return [
+            'status' => 'rejected',
+            'message' => 'Koçtaş iade reddi gönderildi.',
+            'response_status' => $response->status(),
+            'response' => $response->json() ?: [],
+        ];
+    }
+
+    public function answerCustomerQuestion(MarketplaceQuestion $question, string $answer): array
+    {
+        $question->loadMissing('store.connection');
+
+        $path = str_replace(
+            ['{thread_id}', '{question_id}', '{id}'],
+            $question->external_question_id,
+            trim((string) config('marketplace.koctas.question_answer_path', 'api/inbox/threads/{thread_id}/messages'), '/')
+        );
+
+        $response = $this->request($question->store)
+            ->withQueryParameters($this->withShopSelection($question->store, []))
+            ->post($path, [
+                'body' => $answer,
+                'message' => $answer,
+            ])
+            ->throw();
+
+        $payload = $response->json();
+        $payload = is_array($payload) ? $payload : [];
+
+        return [
+            'external_answer_id' => (string) (
+                data_get($payload, 'message_id')
+                ?: data_get($payload, 'id')
+                ?: $question->external_question_id
+            ),
+            'response_status' => $response->status(),
+            'response' => $payload,
         ];
     }
 
@@ -393,16 +584,154 @@ class KoctasConnector extends AbstractMarketplaceConnector implements PullsOrder
                 'vat_rate' => $this->toDecimal(data_get($payload, 'vat_rate') ?: data_get($payload, 'tax_rate')),
                 'raw_payload' => $payload,
             ],
-            'listing' => [
+            'listing' => array_merge([
                 'listing_id' => (string) (data_get($payload, 'offer_id') ?: $stockCode ?: $externalProductId),
                 'listing_status' => $this->normalizeListingStatus($payload),
                 'sale_price' => $this->toDecimal(data_get($payload, 'discount_price') ?: data_get($payload, 'price')),
                 'list_price' => $this->toDecimal(data_get($payload, 'price')),
+                'commission_rate' => null,
+                'commission_source' => 'product_fallback',
+                'commission_authority' => 'product',
                 'currency' => data_get($payload, 'currency_iso_code') ?: data_get($payload, 'currency') ?: 'TRY',
                 'stock_quantity' => (int) (data_get($payload, 'quantity') ?: 0),
                 'published_at' => $this->normalizeDate(data_get($payload, 'updated_date') ?: data_get($payload, 'created_date')),
-            ],
+            ], $this->catalogDeliveryTermData($payload)),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function normalizeKoctasQuestion(array $payload): array
+    {
+        $lastMessage = data_get($payload, 'last_message')
+            ?: data_get($payload, 'lastMessage')
+            ?: collect(Arr::wrap(data_get($payload, 'messages', [])))->last();
+
+        return $this->normalizeQuestionPayload($payload, [
+            'external_question_id' => (string) (
+                data_get($payload, 'thread_id')
+                ?: data_get($payload, 'threadId')
+                ?: data_get($payload, 'id')
+            ),
+            'question_type' => $this->koctasQuestionType($payload),
+            'question_text' => $this->questionTextValue(
+                data_get($payload, 'topic')
+                ?: data_get($payload, 'subject')
+                ?: data_get($payload, 'title')
+                ?: (is_array($lastMessage) ? data_get($lastMessage, 'body') : null)
+                ?: (is_array($lastMessage) ? data_get($lastMessage, 'message') : null)
+            ),
+            'status' => $this->normalizeQuestionStatus((string) (
+                data_get($payload, 'state')
+                ?: data_get($payload, 'status')
+                ?: 'open'
+            )),
+            'product_name' => data_get($payload, 'entity.product.title')
+                ?: data_get($payload, 'product_title')
+                ?: data_get($payload, 'product.name'),
+            'product_sku' => data_get($payload, 'offer_sku')
+                ?: data_get($payload, 'shop_sku')
+                ?: data_get($payload, 'entity.offer.sku'),
+            'external_product_id' => data_get($payload, 'product_id')
+                ?: data_get($payload, 'entity.product.id'),
+            'listing_id' => data_get($payload, 'offer_id')
+                ?: data_get($payload, 'entity.offer.id'),
+            'order_number' => data_get($payload, 'order_reference_for_seller')
+                ?: data_get($payload, 'order_references_for_seller.0')
+                ?: data_get($payload, 'order_id')
+                ?: data_get($payload, 'entity.order.id')
+                ?: data_get($payload, 'entity.id'),
+            'asked_at' => $this->questionDate(
+                data_get($payload, 'created_date')
+                ?: data_get($payload, 'createdDate')
+                ?: data_get($payload, 'date_created')
+            ),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function koctasQuestionType(array $payload): string
+    {
+        $entityType = Str::lower((string) (
+            data_get($payload, 'entity.type')
+            ?: data_get($payload, 'entity_type')
+            ?: data_get($payload, 'entities.0.type')
+            ?: data_get($payload, 'entity.kind')
+        ));
+
+        if (Str::contains($entityType, ['order'])) {
+            return 'order';
+        }
+
+        if (filled(
+            data_get($payload, 'order_reference_for_seller')
+            ?: data_get($payload, 'order_references_for_seller.0')
+            ?: data_get($payload, 'order_id')
+            ?: data_get($payload, 'entity.order.id')
+        )) {
+            return 'order';
+        }
+
+        return 'product';
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function normalizeClaim(array $payload): array
+    {
+        $returnId = (string) (
+            data_get($payload, 'return_id')
+            ?: data_get($payload, 'returnId')
+            ?: data_get($payload, 'id')
+            ?: data_get($payload, 'order_id')
+            ?: ''
+        );
+
+        return [
+            'external_claim_id' => $returnId,
+            'order_number' => data_get($payload, 'order_reference_for_seller')
+                ?: data_get($payload, 'order_references_for_seller.0')
+                ?: data_get($payload, 'order_id'),
+            'cargo_tracking_number' => data_get($payload, 'tracking.tracking_number') ?: data_get($payload, 'tracking_number'),
+            'cargo_provider' => data_get($payload, 'carrier_code') ?: data_get($payload, 'shipping_type_label'),
+            'status' => data_get($payload, 'return_state') ?: data_get($payload, 'status') ?: data_get($payload, 'state'),
+            'type' => 'return',
+            'reason' => data_get($payload, 'reason') ?: data_get($payload, 'return_reason'),
+            'reason_detail' => data_get($payload, 'reason_detail') ?: data_get($payload, 'message'),
+            'customer_note' => data_get($payload, 'customer_message') ?: data_get($payload, 'message'),
+            'customer_name' => trim((string) collect([
+                data_get($payload, 'customer.firstname'),
+                data_get($payload, 'customer.lastname'),
+            ])->filter()->implode(' ')),
+            'created_date' => data_get($payload, 'created_date') ?: data_get($payload, 'date_created'),
+            'items' => collect(Arr::wrap(
+                data_get($payload, 'return_lines')
+                ?: data_get($payload, 'order_lines')
+                ?: data_get($payload, 'items')
+                ?: []
+            ))
+                ->filter(fn ($row) => is_array($row))
+                ->values()
+                ->all(),
+            'raw_payload' => $payload,
+        ];
+    }
+
+    protected function claimActionPath(string $configKey, string $defaultPath, string $claimId): string
+    {
+        $path = trim((string) config('marketplace.koctas.'.$configKey, $defaultPath), '/');
+
+        return str_replace(
+            ['{return_id}', '{claim_id}', '{id}'],
+            $claimId,
+            $path
+        );
     }
 
     /**

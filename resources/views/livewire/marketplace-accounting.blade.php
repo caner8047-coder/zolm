@@ -2,6 +2,7 @@
     $tabs = $this->tabs;
     $tabKeys = array_keys($tabs);
     $tabPositions = array_flip($tabKeys);
+    $formatProfitabilityPercent = fn ($value) => $value !== null ? '%' . number_format((float) $value, 1, ',', '.') : '—';
 @endphp
 
 @once
@@ -101,23 +102,28 @@
             </div>
 
             {{-- Dönem Seçici --}}
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <select wire:model.live="selectedYear" class="px-3 py-2 border border-slate-200 rounded-lg text-base sm:text-sm bg-white text-slate-900 shadow-sm">
+            <form method="GET" action="{{ route('marketplace-accounting') }}" autocomplete="off" x-data x-init="$nextTick(() => { $refs.year.value = '{{ (int) $selectedYear }}'; $refs.month.value = '{{ (int) $selectedMonth }}'; })" class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <input type="hidden" name="tab" value="{{ $activeTab }}">
+                <select id="accounting-year-picker" x-ref="year" name="year" autocomplete="off" wire:key="accounting-year-{{ (int) $selectedYear }}" class="px-3 py-2 border border-slate-200 rounded-lg text-base sm:text-sm bg-white text-slate-900 shadow-sm">
                     @for($y = 2024; $y <= 2027; $y++)
-                        <option value="{{ $y }}">{{ $y }}</option>
+                        <option value="{{ $y }}" @selected((int) $selectedYear === $y)>{{ $y }}</option>
                     @endfor
                 </select>
-                <select wire:model.live="selectedMonth" class="px-3 py-2 border border-slate-200 rounded-lg text-base sm:text-sm bg-white text-slate-900 shadow-sm">
-                    <option value="0">Tüm Yıl (Bütün Aylar)</option>
+                <select id="accounting-month-picker" x-ref="month" name="month" autocomplete="off" wire:key="accounting-month-{{ (int) $selectedYear }}-{{ (int) $selectedMonth }}" class="px-3 py-2 border border-slate-200 rounded-lg text-base sm:text-sm bg-white text-slate-900 shadow-sm">
+                    <option value="0" @selected((int) $selectedMonth === 0)>Tüm Yıl (Bütün Aylar)</option>
                     @foreach(['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'] as $i => $ay)
-                        <option value="{{ $i + 1 }}">{{ $ay }}</option>
+                        <option value="{{ $i + 1 }}" @selected((int) $selectedMonth === $i + 1)>{{ $ay }}</option>
                     @endforeach
                 </select>
-                <button wire:click="selectPeriod" class="px-4 py-3 sm:py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">
+                <button type="submit" class="px-4 py-3 sm:py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors shadow-sm">
                     Seç
                 </button>
-                @if(!$selectedPeriodId)
-                    <button wire:click="createPeriod" class="px-4 py-3 sm:py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
+                @if((int) $selectedMonth === 0)
+                    <span class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600 shadow-sm sm:py-2">
+                        Yıllık Görünüm
+                    </span>
+                @elseif(!$selectedPeriodId)
+                    <button type="button" wire:click="createPeriod" class="px-4 py-3 sm:py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
                         + Yeni Dönem
                     </button>
                 @else
@@ -127,18 +133,18 @@
                     @endphp
                     
                     @if($isLocked)
-                        <button wire:click="unlockPeriod" class="px-4 py-3 sm:py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors flex items-center gap-2 shadow-sm" title="Kilitli Dönemi Aç">
+                        <button type="button" wire:click="unlockPeriod" class="px-4 py-3 sm:py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors flex items-center gap-2 shadow-sm" title="Kilitli Dönemi Aç">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
                             Kilitli
                         </button>
                     @else
-                        <button wire:click="lockPeriod" wire:confirm="Bu dönemi kilitlemek istediğinize emin misiniz? Dönem kilitlendiğinde yeni excel verisi yüklenemez." class="px-4 py-3 sm:py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm" title="Mutabakatı Kapat / Kilitle">
+                        <button type="button" wire:click="lockPeriod" wire:confirm="Bu dönemi kilitlemek istediğinize emin misiniz? Dönem kilitlendiğinde yeni excel verisi yüklenemez." class="px-4 py-3 sm:py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm" title="Mutabakatı Kapat / Kilitle">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                             Kilitle
                         </button>
                     @endif
                 @endif
-            </div>
+            </form>
         </div>
 
         {{-- Status Bar --}}
@@ -163,7 +169,7 @@
 
                     <a
                         wire:key="accounting-tab-{{ $tabKey }}"
-                        href="{{ route('marketplace-accounting', ['tab' => $tabKey]) }}"
+                        href="{{ route('marketplace-accounting', ['tab' => $tabKey, 'year' => (int) $selectedYear, 'month' => (int) $selectedMonth]) }}"
                         aria-current="{{ $isActive ? 'page' : 'false' }}"
                         class="min-h-[44px] inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap {{ $isActive ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50' }}"
                     >
@@ -183,16 +189,10 @@
         {{-- TAB 1: DASHBOARD --}}
         {{-- ═══════════════════════════════════════════════════════════════ --}}
         @if($activeTab === 'dashboard')
-            @if($selectedPeriodId)
+            @if($this->hasSelectedPeriodScope)
                 @php
                     $stats = $this->dashboardStats;
-                    $period = $this->selectedPeriod;
-                    $monthNames = [
-                        1 => 'Ocak', 2 => 'Şubat', 3 => 'Mart', 4 => 'Nisan',
-                        5 => 'Mayıs', 6 => 'Haziran', 7 => 'Temmuz', 8 => 'Ağustos',
-                        9 => 'Eylül', 10 => 'Ekim', 11 => 'Kasım', 12 => 'Aralık',
-                    ];
-                    $periodLabel = $period?->period_name ?? (($selectedMonth > 0 ? ($monthNames[(int) $selectedMonth] ?? 'Dönem') : 'Tüm Yıl') . ' ' . $selectedYear);
+                    $periodLabel = $this->selectedPeriodLabel;
                     $formatMoney = fn ($value) => number_format((float) $value, 0, ',', '.') . ' ₺';
                     $formatMoneyDetailed = fn ($value) => number_format((float) $value, 2, ',', '.') . ' ₺';
                     $formatCount = fn ($value) => number_format((float) $value, 0, ',', '.');
@@ -1080,7 +1080,7 @@
                         </div>
                     @endforeach
                 </div>
-            @elseif($selectedPeriodId)
+            @elseif($this->hasSelectedPeriodScope)
                 <div class="text-center py-12 text-gray-400">
                     <p class="text-3xl mb-2">🛡️</p>
                     <p>Henüz denetim çalıştırılmamış</p>
@@ -1092,7 +1092,7 @@
         {{-- TAB 5: KÂRLILIK (Kâr Motoru — SKU Bazlı) --}}
         {{-- ═══════════════════════════════════════════════════════════════ --}}
         @elseif($activeTab === 'profit')
-            @if($selectedPeriodId)
+            @if($this->hasSelectedPeriodScope)
                 @php $profitItems = $this->profitData; @endphp
 
                 {{-- Filtre + Export + COGS Sync --}}
@@ -1191,12 +1191,15 @@
                                     </th>
                                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
                                         wire:click="sortProfit('avg_margin')">
-                                        Marj {{ $profitSortBy === 'avg_margin' ? ($profitSortDir === 'asc' ? '↑' : '↓') : '' }}
+                                        Kârlılık {{ $profitSortBy === 'avg_margin' ? ($profitSortDir === 'asc' ? '↑' : '↓') : '' }}
                                     </th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
                                 @foreach($profitItems as $item)
+                                    @php
+                                        $avgMarginPercent = \App\Services\ProfitabilityMetric::profitPercentFromMultiplier($item['avg_margin'] ?? null);
+                                    @endphp
                                     <tr class="{{ $item['is_bleeding'] ? 'bg-red-100 text-red-800' : 'hover:bg-gray-50' }}">
                                         <td class="px-3 py-3">
                                             <div class="min-w-0">
@@ -1221,8 +1224,8 @@
                                                 <span class="ml-1">🩸</span>
                                             @endif
                                         </td>
-                                        <td class="px-3 py-3 text-right text-sm font-medium {{ $item['avg_margin'] < 0 ? 'text-red-600' : ($item['avg_margin'] > 20 ? 'text-emerald-600' : 'text-gray-700') }}">
-                                            %{{ $item['avg_margin'] }}
+                                        <td class="px-3 py-3 text-right text-sm font-medium {{ $avgMarginPercent !== null ? ($avgMarginPercent < 0 ? 'text-red-600' : ($avgMarginPercent >= 20 ? 'text-emerald-600' : 'text-gray-700')) : 'text-gray-400' }}">
+                                            {{ $formatProfitabilityPercent($avgMarginPercent) }}
                                         </td>
                                     </tr>
                                 @endforeach
@@ -1247,7 +1250,7 @@
         {{-- TAB 6: SİPARİŞLER LİSTESİ --}}
         {{-- ═══════════════════════════════════════════════════════════════ --}}
         @elseif($activeTab === 'orders')
-            @if($selectedPeriodId)
+            @if($this->hasSelectedPeriodScope)
                 <div class="flex flex-col gap-4 mb-6">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div class="flex flex-wrap gap-3">
@@ -1430,9 +1433,10 @@
                                             $isFuturePayment = $order->expected_payment_date->copy()->startOfDay()->isAfter(\Carbon\Carbon::today());
                                         }
                                         $displayCogs = (float) $order->resolved_cogs_at_time;
+                                        $displayPackaging = (float) $order->resolved_packaging_cost_at_time;
                                         $hasDisplayCogs = $displayCogs > 0;
                                         $netProfit = $hasDisplayCogs ? $order->real_net_profit : null;
-                                        $margin = ($hasDisplayCogs && (float) $order->gross_amount > 0) ? round($netProfit / (float) $order->gross_amount * 100, 1) : null;
+                                        $margin = $hasDisplayCogs ? \App\Services\ProfitabilityMetric::profitPercent($netProfit, $displayCogs + $displayPackaging) : null;
                                     @endphp
                                     <tr class="{{ $order->is_flagged ? 'bg-red-50' : ($order->is_reconciled ? 'bg-gray-100 opacity-75' : ($isFuturePayment ? 'bg-gray-50 opacity-80 border-l-4 border-amber-400' : 'hover:bg-gray-50')) }}">
                                         <td class="px-3 py-3 text-center">
@@ -1515,8 +1519,8 @@
                                         </td>
                                         @endif
                                         @if(in_array('margin', $visibleColumns))
-                                        <td class="px-3 py-3 text-right text-sm font-medium {{ $margin !== null ? ($margin > 20 ? 'text-emerald-600' : ($margin > 0 ? 'text-amber-600' : 'text-red-600')) : 'text-gray-400' }}">
-                                            {{ $margin !== null ? '%' . $margin : '—' }}
+                                        <td class="px-3 py-3 text-right text-sm font-medium {{ $margin !== null ? ($margin >= 20 ? 'text-emerald-600' : ($margin >= 0 ? 'text-amber-600' : 'text-red-600')) : 'text-gray-400' }}">
+                                            {{ $formatProfitabilityPercent($margin) }}
                                         </td>
                                         @endif
                                         @if(in_array('detay', $visibleColumns))
@@ -1541,9 +1545,10 @@
                                     $isFuturePayment = $order->expected_payment_date->copy()->startOfDay()->isAfter(\Carbon\Carbon::today());
                                 }
                                 $displayCogs = (float) $order->resolved_cogs_at_time;
+                                $displayPackaging = (float) $order->resolved_packaging_cost_at_time;
                                 $hasDisplayCogs = $displayCogs > 0;
                                 $netProfit = $hasDisplayCogs ? $order->real_net_profit : null;
-                                $margin = ($hasDisplayCogs && (float) $order->gross_amount > 0) ? round($netProfit / (float) $order->gross_amount * 100, 1) : null;
+                                $margin = $hasDisplayCogs ? \App\Services\ProfitabilityMetric::profitPercent($netProfit, $displayCogs + $displayPackaging) : null;
                             @endphp
                             <div class="bg-white rounded-xl border border-gray-200 p-4 {{ $order->is_flagged ? 'border-red-300 bg-red-50' : ($order->is_reconciled ? 'opacity-75' : '') }}">
                                 {{-- Kart Başlık --}}
@@ -1622,9 +1627,9 @@
                                     @endif
                                     @if(in_array('margin', $visibleColumns))
                                     <div class="flex justify-between">
-                                        <span class="text-gray-400">Marj</span>
-                                        <span class="font-semibold {{ $margin !== null ? ($margin > 20 ? 'text-emerald-600' : ($margin > 0 ? 'text-amber-600' : 'text-red-600')) : 'text-gray-300' }}">
-                                            {{ $margin !== null ? '%' . $margin : '—' }}
+                                        <span class="text-gray-400">Kârlılık</span>
+                                        <span class="font-semibold {{ $margin !== null ? ($margin >= 20 ? 'text-emerald-600' : ($margin >= 0 ? 'text-amber-600' : 'text-red-600')) : 'text-gray-300' }}">
+                                            {{ $formatProfitabilityPercent($margin) }}
                                         </span>
                                     </div>
                                     @endif

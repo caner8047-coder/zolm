@@ -136,6 +136,10 @@ class N11ConnectorTest extends TestCase
                     'agreedDeliveryDate' => 1725310828346,
                     'packageHistories' => [
                         [
+                            'createdDate' => 1724200000000,
+                            'status' => 'Created',
+                        ],
+                        [
                             'createdDate' => 1724274492082,
                             'status' => 'Shipped',
                         ],
@@ -157,6 +161,7 @@ class N11ConnectorTest extends TestCase
         $this->assertCount(1, $result['items']);
         $this->assertSame('203872347637', data_get($result, 'items.0.order.order_number'));
         $this->assertSame('n11 müşteri', data_get($result, 'items.0.order.customer_name'));
+        $this->assertSame('2024-08-21T00:26:40+00:00', data_get($result, 'items.0.order.ordered_at'));
         $this->assertSame('112999455244259', data_get($result, 'items.0.package.external_package_id'));
         $this->assertSame('20242024', data_get($result, 'items.0.items.0.stock_code'));
         $this->assertSame(292.80, data_get($result, 'items.0.items.0.unit_price'));

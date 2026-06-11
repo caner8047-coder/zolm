@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class RecipeLine extends Model
 {
     protected $fillable = [
-        'recipe_id', 'material_id', 'operation', 'usage_area',
+        'recipe_id', 'material_id', 'sub_recipe_id', 'operation', 'usage_area',
         'calc_type', 'width_cm', 'length_cm', 'height_cm', 'pieces',
         'waste_rate_override', 'fabric_width_override',
         'constant_qty', 'calculated_qty', 'calculated_unit',
@@ -54,6 +54,11 @@ class RecipeLine extends Model
     public function material()
     {
         return $this->belongsTo(Material::class);
+    }
+
+    public function subRecipe()
+    {
+        return $this->belongsTo(Recipe::class, 'sub_recipe_id');
     }
 
     // ─── Accessor'lar ──────────────────────────────────────

@@ -11,19 +11,27 @@ class MarketplaceReconciliationQueryService
 {
     public function itemAggregate(): Builder
     {
+        $koctasCommissionRate = round((float) config('marketplace.koctas.commission_rate', 15), 2);
+
         return ChannelOrderItem::query()
+            ->leftJoin('marketplace_stores', 'marketplace_stores.id', '=', 'channel_order_items.store_id')
+            ->leftJoin('channel_listings', 'channel_listings.id', '=', 'channel_order_items.channel_listing_id')
+            ->leftJoin('mp_products', 'mp_products.id', '=', 'channel_order_items.mp_product_id')
             ->selectRaw('
-                channel_order_id,
+                channel_order_items.channel_order_id,
                 COUNT(*) as item_lines_count,
-                COALESCE(SUM(quantity), 0) as total_quantity,
-                COALESCE(SUM(CASE WHEN is_matched = 1 THEN 1 ELSE 0 END), 0) as matched_lines_count,
-                COALESCE(SUM(gross_amount), 0) as gross_items_total,
+                COALESCE(SUM(channel_order_items.quantity), 0) as total_quantity,
+                COALESCE(SUM(CASE WHEN channel_order_items.is_matched = 1 THEN 1 ELSE 0 END), 0) as matched_lines_count,
+                COALESCE(SUM(channel_order_items.gross_amount), 0) as gross_items_total,
                 COALESCE(SUM((
-                    COALESCE(NULLIF(billable_amount, 0), NULLIF(gross_amount, 0), (COALESCE(unit_price, 0) * COALESCE(quantity, 0)))
-                    * COALESCE(commission_rate, 0) / 100
+                    COALESCE(NULLIF(channel_order_items.billable_amount, 0), NULLIF(channel_order_items.gross_amount, 0), (COALESCE(channel_order_items.unit_price, 0) * COALESCE(channel_order_items.quantity, 0)))
+                    * CASE
+                        WHEN LOWER(marketplace_stores.marketplace) = \'koctas\' THEN ?
+                        ELSE COALESCE(channel_order_items.commission_rate, channel_listings.commission_rate, mp_products.commission_rate, 0)
+                    END / 100
                 )), 0) as estimated_commission_total
-            ')
-            ->groupBy('channel_order_id');
+            ', [$koctasCommissionRate])
+            ->groupBy('channel_order_items.channel_order_id');
     }
 
     public function financialAggregate(): Builder
@@ -56,6 +64,9 @@ class MarketplaceReconciliationQueryService
                 'cargo_total',
                 'service_fee_total',
                 'withholding_total',
+                'packaging_cost',
+                'own_cargo_cost',
+                'cogs_cost',
                 'estimated_profit',
                 'confirmed_profit',
                 'margin_percent',
@@ -83,6 +94,8 @@ class MarketplaceReconciliationQueryService
         $deductionTotalSql = "({$commissionTotalSql} + {$cargoTotalSql} + {$serviceFeeTotalSql} + {$withholdingTotalSql})";
         $profitStateSql = "COALESCE(order_snapshot.profit_state, CASE WHEN {$hasFinanceSql} THEN 'confirmed' ELSE 'estimated' END)";
         $profitValueSql = "CASE WHEN {$profitStateSql} = 'confirmed' THEN COALESCE(order_snapshot.confirmed_profit, 0) ELSE COALESCE(order_snapshot.estimated_profit, 0) END";
+        $productCostSql = '(COALESCE(order_snapshot.cogs_cost, 0) + COALESCE(order_snapshot.packaging_cost, 0))';
+        $profitabilityRatioSql = "CASE WHEN {$productCostSql} > 0 THEN (({$profitValueSql}) + {$productCostSql}) / {$productCostSql} ELSE 0 END";
         $profitDeltaSql = "CASE WHEN {$hasFinanceSql} AND {$hasSnapshotSql} THEN COALESCE(order_snapshot.confirmed_profit, 0) - COALESCE(order_snapshot.estimated_profit, 0) ELSE 0 END";
         $deductionDeltaSql = "CASE WHEN {$hasFinanceSql} THEN ({$deductionTotalSql}) - {$estimatedCommissionSql} ELSE 0 END";
         $minorThresholdSql = "GREATEST(50, ({$grossRevenueSql} * 0.03))";
@@ -119,6 +132,7 @@ class MarketplaceReconciliationQueryService
             'deduction_total' => $deductionTotalSql,
             'profit_state' => $profitStateSql,
             'profit_value' => $profitValueSql,
+            'profitability_ratio' => $profitabilityRatioSql,
             'profit_delta' => $profitDeltaSql,
             'deduction_delta' => $deductionDeltaSql,
             'minor_threshold' => $minorThresholdSql,

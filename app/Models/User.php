@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -75,6 +76,16 @@ class User extends Authenticatable
         return $this->hasMany(MarketplaceStore::class);
     }
 
+    public function appNotifications(): HasMany
+    {
+        return $this->hasMany(AppNotification::class);
+    }
+
+    public function notificationPreference(): HasOne
+    {
+        return $this->hasOne(UserNotificationPreference::class);
+    }
+
     // === ROLE CHECKING (New System) ===
 
     public function roleSlug(): ?string
@@ -139,6 +150,13 @@ class User extends Authenticatable
     {
         $role = $this->roleSlug();
         return in_array($role, ['admin', 'manager', 'crm_sorumlusu', 'uretim_sorumlusu', 'operasyon_sorumlusu']);
+    }
+
+    public function canAccessCrm(): bool
+    {
+        $role = $this->roleSlug();
+
+        return in_array($role, ['admin', 'manager', 'operator', 'crm_sorumlusu', 'operasyon_sorumlusu'], true);
     }
 
     public function canAccessCustomMotor(): bool

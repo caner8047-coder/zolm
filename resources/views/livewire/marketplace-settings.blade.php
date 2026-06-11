@@ -1,420 +1,377 @@
-<div class="-mt-1 space-y-4 lg:-mt-4 lg:space-y-6">
-    <x-zolm.section-card
-        eyebrow="Pazaryeri Ayarları"
-        title="Pazaryeri Ayarları"
-        description="Tüm pazaryeri modüllerini etkileyen genel tercihleri tek yerden yönetin. Bu ekran modül bazlı ayarları değil, uygulama geneline yayılan kullanıcı tercihlerini toplar."
-        padding="p-4 lg:p-6"
-        bodyPadding="px-4 pb-4 pt-0 lg:px-6 lg:pb-6 lg:pt-0"
-    >
-        <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)] xl:gap-6">
-            <div class="rounded-[10px] border border-slate-200 bg-slate-50/60 p-4 lg:p-5">
-                <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+@php
+    $currentProfitMarketplace = $productProfitMarketplaceOptions[$defaultProfitMarketplace] ?? 'Mağaza ortalaması';
+    $currentLabelTemplate = $labelTemplateOptions[$labelPrintSettings['template'] ?? 'courier'] ?? 'Kurye standart';
+    $currentLabelPaper = $labelPaperOptions[$labelPrintSettings['paper'] ?? 'thermal_100x150'] ?? 'Termal 100x150';
+    $currentDispatchTemplate = $dispatchTemplateOptions[$dispatchPrintSettings['template'] ?? 'classic'] ?? 'Klasik irsaliye';
+    $currentDispatchPaper = $dispatchPaperOptions[$dispatchPrintSettings['paper'] ?? 'a4'] ?? 'A4 dikey';
+
+    $generalToggles = [
+        [
+            'title' => 'Bilgilendirici yardım ipuçlarını göster',
+            'description' => 'KPI, tablo ve kritik aksiyon açıklamalarını pazaryeri ekranlarında görünür tutar.',
+            'model' => 'helpTipsEnabled',
+            'enabled' => $helpTipsEnabled,
+            'badge' => $helpTipsEnabled ? 'Aktif' : 'Kapalı',
+        ],
+        [
+            'title' => 'Reçete maliyetini stok kartına işle',
+            'description' => 'Aktif reçete maliyetini aynı stok koduyla eşleşen ürün kartına yazar.',
+            'model' => 'recipeCostSyncEnabled',
+            'enabled' => $recipeCostSyncEnabled,
+            'badge' => $recipeCostSyncEnabled ? 'Otomatik açık' : 'Kapalı',
+        ],
+    ];
+
+    $labelToggles = [
+        ['label' => 'Gönderici', 'hint' => 'Firma alanı', 'model' => 'labelPrintSettings.show_sender'],
+        ['label' => 'Takip no', 'hint' => 'Başlık alanı', 'model' => 'labelPrintSettings.show_tracking_number'],
+        ['label' => 'Mağaza', 'hint' => 'Pazaryeri adı', 'model' => 'labelPrintSettings.show_marketplace'],
+        ['label' => 'Telefon', 'hint' => 'Alıcı telefonu', 'model' => 'labelPrintSettings.show_customer_phone'],
+        ['label' => 'Ürünler', 'hint' => 'Detay satırları', 'model' => 'labelPrintSettings.show_items'],
+        ['label' => 'Barkod metni', 'hint' => 'Okunabilir kod', 'model' => 'labelPrintSettings.show_barcode_text'],
+        ['label' => 'Ürün özeti', 'hint' => 'Kısa rozetler', 'model' => 'labelPrintSettings.show_item_summary'],
+    ];
+
+    $dispatchToggles = [
+        ['label' => 'Gönderici', 'hint' => 'Firma kartı', 'model' => 'dispatchPrintSettings.show_sender'],
+        ['label' => 'Telefon', 'hint' => 'Alıcı telefonu', 'model' => 'dispatchPrintSettings.show_customer_phone'],
+        ['label' => 'Fatura', 'hint' => 'Vergi bilgisi', 'model' => 'dispatchPrintSettings.show_billing_info'],
+        ['label' => 'Ürün tablosu', 'hint' => 'Adet ve barkod', 'model' => 'dispatchPrintSettings.show_items'],
+        ['label' => 'Paket barkodu', 'hint' => 'Üst blok', 'model' => 'dispatchPrintSettings.show_barcode'],
+        ['label' => 'Barkod metni', 'hint' => 'Okunabilir kod', 'model' => 'dispatchPrintSettings.show_barcode_text'],
+        ['label' => 'Mağaza', 'hint' => 'Pazaryeri adı', 'model' => 'dispatchPrintSettings.show_marketplace'],
+        ['label' => 'İmza alanı', 'hint' => 'Alt kutu', 'model' => 'dispatchPrintSettings.show_signature_area'],
+    ];
+@endphp
+
+<div class="-mt-1 w-full space-y-4 lg:-mt-4 lg:space-y-6">
+    @if (session('settings_success'))
+        <div class="rounded-[8px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {{ session('settings_success') }}
+        </div>
+    @endif
+
+    @if (session('document_settings_success'))
+        <div class="rounded-[8px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {{ session('document_settings_success') }}
+        </div>
+    @endif
+
+    @if($errors->any())
+        <div class="rounded-[8px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {{ $errors->first() }}
+        </div>
+    @endif
+
+    <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Pazaryeri Ayarları</p>
+                <h1 class="mt-2 text-xl font-semibold text-slate-900 lg:text-2xl">Daha az seçenek, daha net kontrol.</h1>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                    Genel görünüm, kârlılık hesabı ve çıktı şablonlarını tek ekrandan yönetin. Değişiklikler kaydedildikten sonra ilgili pazaryeri modüllerinde kullanılır.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:min-w-[520px]">
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                    <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">Yardım</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-900">{{ $helpTipsEnabled ? 'Aktif' : 'Kapalı' }}</p>
+                </div>
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                    <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">Kâr görünümü</p>
+                    <p class="mt-2 truncate text-sm font-semibold text-slate-900">{{ $currentProfitMarketplace }}</p>
+                </div>
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                    <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">Çıktı</p>
+                    <p class="mt-2 truncate text-sm font-semibold text-slate-900">{{ $currentLabelPaper }}</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Genel</p>
+                <h2 class="mt-2 text-lg font-semibold text-slate-900">Arayüz ve ürün hesabı</h2>
+                <p class="mt-1 text-sm text-slate-500">Pazaryeri ekranlarının davranışını belirleyen ortak ayarlar.</p>
+            </div>
+
+            <div class="flex flex-col gap-2 sm:flex-row">
+                <button
+                    type="button"
+                    wire:click="saveSettings"
+                    wire:loading.attr="disabled"
+                    wire:target="saveSettings"
+                    class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2"
+                >
+                    <span wire:loading.remove wire:target="saveSettings">Kaydet</span>
+                    <span wire:loading wire:target="saveSettings">Kaydediliyor...</span>
+                </button>
+
+                <button
+                    type="button"
+                    wire:click="resetUiSettings"
+                    wire:loading.attr="disabled"
+                    class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2"
+                >
+                    Varsayılan
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.55fr)]">
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div class="min-w-0">
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Arayüz ve Yardım</p>
-                        <h2 class="mt-2 text-lg font-semibold text-slate-900">Bilgilendirici yardım katmanı</h2>
-                        <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                            KPI kartları, tablo başlıkları ve bazı kritik aksiyonlarda görünen açıklama ipuçlarını kontrol eder.
-                            Masaüstünde hover, mobilde dokunarak açılır. İsteyen kullanıcı tamamen kapatabilir.
-                        </p>
+                        <h3 class="text-sm font-semibold text-slate-900">Ürün kârlılığı ve komisyon</h3>
+                        <p class="mt-1 text-sm leading-5 text-slate-500">Ürünlerde varsayılan kâr hesabı ve WooCommerce kesinti oranı.</p>
+                    </div>
+                    <span class="inline-flex w-fit items-center rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                        {{ $currentProfitMarketplace }}
+                    </span>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-500">Varsayılan pazaryeri</label>
+                        <select wire:model.live="defaultProfitMarketplace" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                            @foreach($productProfitMarketplaceOptions as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error('defaultProfitMarketplace')
+                            <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                        @enderror
                     </div>
 
-                    <div class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                        {{ $helpTipsEnabled ? 'Aktif' : 'Kapalı' }}
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-500">WooCommerce komisyonu</label>
+                        <div class="relative">
+                            <input type="number" min="0" max="100" step="0.01" wire:model.live="woocommerceCommissionRate" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 pr-9 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                            <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-slate-400">%</span>
+                        </div>
+                        @error('woocommerceCommissionRate')
+                            <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                        @enderror
                     </div>
                 </div>
 
-                <div class="mt-5 rounded-[8px] border border-slate-200 bg-white p-4">
-                    <label class="flex cursor-pointer items-start justify-between gap-4">
+                <p class="mt-3 text-xs leading-5 text-slate-500">
+                    WooCommerce için API komisyonu yoksa burada girilen oran kullanılır.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3">
+                @foreach($generalToggles as $toggle)
+                    <label class="flex cursor-pointer items-start justify-between gap-4 rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
                         <div class="min-w-0">
-                            <p class="text-sm font-semibold text-slate-900">Bilgilendirici yardım ipuçlarını göster</p>
-                            <p class="mt-1 text-sm leading-5 text-slate-500">
-                                Açıkken kullanıcı kavramların ne olduğunu, verinin nereden geldiğini, ne zaman güncellendiğini ve neyi etkilediğini görebilir.
-                            </p>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h3 class="text-sm font-semibold text-slate-900">{{ $toggle['title'] }}</h3>
+                                <span class="inline-flex rounded-[6px] border px-2 py-0.5 text-[11px] font-medium {{ $toggle['enabled'] ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500' }}">
+                                    {{ $toggle['badge'] }}
+                                </span>
+                            </div>
+                            <p class="mt-1 text-sm leading-5 text-slate-500">{{ $toggle['description'] }}</p>
                         </div>
 
-                        <div class="relative pt-0.5">
-                            <input type="checkbox" wire:model.live="helpTipsEnabled" class="sr-only peer">
-                            <div class="h-7 w-14 rounded-full bg-slate-300 shadow-inner transition peer-checked:bg-slate-900 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-slate-300 after:absolute after:start-[4px] after:top-[6px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-200 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-7"></div>
+                        <div class="relative h-7 w-14 shrink-0">
+                            <input type="checkbox" wire:model.live="{{ $toggle['model'] }}" class="sr-only peer">
+                            <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-300 shadow-inner transition peer-checked:bg-slate-900 peer-focus:ring-4 peer-focus:ring-slate-300"></span>
+                            <span class="pointer-events-none absolute left-1 top-1 h-5 w-5 rounded-full border border-slate-200 bg-white shadow-sm transition-transform peer-checked:translate-x-7"></span>
                         </div>
                     </label>
-                </div>
-
-                <div class="mt-4 flex flex-col gap-3 sm:flex-row">
-                    <button
-                        type="button"
-                        wire:click="saveSettings"
-                        wire:loading.attr="disabled"
-                        class="inline-flex w-full items-center justify-center rounded-[8px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                    >
-                        <span wire:loading.remove wire:target="saveSettings">Ayarları kaydet</span>
-                        <span wire:loading wire:target="saveSettings">Kaydediliyor...</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        wire:click="resetUiSettings"
-                        wire:loading.attr="disabled"
-                        class="inline-flex w-full items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                    >
-                        Varsayılanı geri yükle
-                    </button>
-                </div>
-
-                @if (session('settings_success'))
-                    <div class="mt-4 rounded-[8px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                        {{ session('settings_success') }}
-                    </div>
-                @endif
+                @endforeach
             </div>
+        </div>
 
-            <div class="space-y-4">
-                <div class="rounded-[10px] border border-slate-200 bg-white p-4 lg:p-5">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Etkilenen modüller</p>
-                    <div class="mt-4 flex flex-wrap gap-2">
-                        @foreach($helpTipCoverage as $moduleLabel)
-                            <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                                {{ $moduleLabel }}
-                            </span>
-                        @endforeach
-                    </div>
-                    <p class="mt-4 text-sm leading-6 text-slate-500">
-                        Bu tercih aynı anda tüm pazaryeri sayfalarına uygulanır; her ekran için ayrı ayrı ayar yapmanız gerekmez.
-                    </p>
-                </div>
-
-                <div class="rounded-[10px] border border-dashed border-slate-200 bg-slate-50/60 p-4 lg:p-5">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Yol haritası</p>
-                    <div class="mt-4 grid grid-cols-1 gap-3">
-                        <div class="rounded-[8px] border border-slate-200 bg-white px-4 py-3">
-                            <p class="text-sm font-medium text-slate-900">Kompakt görünüm</p>
-                            <p class="mt-1 text-xs leading-5 text-slate-500">Kart ve tablo boşluklarını daraltan ikinci bir yoğunluk modu burada yönetilecek.</p>
-                        </div>
-                        <div class="rounded-[8px] border border-slate-200 bg-white px-4 py-3">
-                            <p class="text-sm font-medium text-slate-900">Tablo yoğunluğu</p>
-                            <p class="mt-1 text-xs leading-5 text-slate-500">Siparişler, ürünler ve finans için daha sıkı ya da daha rahat satır yoğunluğu seçilebilecek.</p>
-                        </div>
-                        <div class="rounded-[8px] border border-slate-200 bg-white px-4 py-3">
-                            <p class="text-sm font-medium text-slate-900">Varsayılan kolon setleri</p>
-                            <p class="mt-1 text-xs leading-5 text-slate-500">Kullanıcının tercih ettiği kolon görünümü modül bazında burada kalıcı hale getirilecek.</p>
-                        </div>
-                    </div>
+        <div class="mt-4 rounded-[8px] border border-slate-200 bg-white px-4 py-3">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p class="text-sm font-medium text-slate-900">Etkilenen modüller</p>
+                <div class="flex flex-wrap gap-2">
+                    @foreach($helpTipCoverage as $moduleLabel)
+                        <span class="inline-flex min-h-[28px] items-center rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                            {{ $moduleLabel }}
+                        </span>
+                    @endforeach
                 </div>
             </div>
         </div>
-    </x-zolm.section-card>
+    </section>
 
-    <x-zolm.section-card
-        eyebrow="Çıktı Çalışma Alanı"
-        title="Kargo Barkod ve Etiket Çıktıları"
-        description="Sipariş aksiyon menüsünden ve toplu seçimden indirilecek kargo etiketleri ile irsaliyelerin görünümünü buradan yönetebilirsiniz. Firma bilgisi varsa onu, yoksa aşağıdaki fallback gönderici bilgisini kullanır."
-        padding="p-4 lg:p-6"
-        bodyPadding="px-4 pb-4 pt-0 lg:px-6 lg:pb-6 lg:pt-0"
-    >
-        <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.22fr)_minmax(300px,0.78fr)] xl:gap-6">
-            <div class="space-y-4">
-                <div class="rounded-[10px] border border-slate-200 bg-slate-50/60 p-4 lg:p-5">
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Etiket Çıktısı</p>
-                            <h2 class="mt-2 text-lg font-semibold text-slate-900">Kargo etiketi şablonu</h2>
-                            <p class="mt-2 text-sm leading-6 text-slate-500">
-                                Tekil siparişte veya toplu seçimde oluşturulan PDF etiketleri bu kuralları kullanır.
-                            </p>
-                        </div>
-
-                        <div class="flex flex-wrap gap-2">
-                            <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                                {{ $labelTemplateOptions[$labelPrintSettings['template'] ?? 'courier'] ?? 'Kurye standart' }}
-                            </span>
-                            <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                                {{ $labelPaperOptions[$labelPrintSettings['paper'] ?? 'thermal_100x150'] ?? 'Termal 100x150' }}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-slate-500">Etiket şablonu</label>
-                            <select wire:model.live="labelPrintSettings.template" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
-                                @foreach($labelTemplateOptions as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-slate-500">Kağıt boyutu</label>
-                            <select wire:model.live="labelPrintSettings.paper" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
-                                @foreach($labelPaperOptions as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-slate-500">Barkod yüksekliği</label>
-                            <input type="number" min="32" max="96" step="1" wire:model.live="labelPrintSettings.barcode_height" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
-                        </div>
-                    </div>
-
-                    <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="labelPrintSettings.show_sender" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Gönderici alanı</span>
-                                <span class="mt-1 block text-xs text-slate-500">Firma veya fallback gönderici kartını göster.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="labelPrintSettings.show_tracking_number" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Takip numarası</span>
-                                <span class="mt-1 block text-xs text-slate-500">Kargo takip numarasını başlıkta sabitle.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="labelPrintSettings.show_marketplace" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Mağaza bilgisi</span>
-                                <span class="mt-1 block text-xs text-slate-500">Pazaryeri mağaza adını etiket üzerinde göster.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="labelPrintSettings.show_customer_phone" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Müşteri telefonu</span>
-                                <span class="mt-1 block text-xs text-slate-500">Alıcı kartında telefon bilgisini ekle.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="labelPrintSettings.show_items" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Ürün satırları</span>
-                                <span class="mt-1 block text-xs text-slate-500">Detaylı ürün listesini göster.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="labelPrintSettings.show_barcode_text" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Barkod metni</span>
-                                <span class="mt-1 block text-xs text-slate-500">Barkodun altında okunabilir metni yazdır.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="labelPrintSettings.show_item_summary" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Kompakt ürün özeti</span>
-                                <span class="mt-1 block text-xs text-slate-500">İlk ürünleri kısa rozet olarak ekler.</span>
-                            </span>
-                        </label>
-                    </div>
-
-                    <div class="mt-4">
-                        <label class="mb-1 block text-xs font-medium text-slate-500">Etiket dip notu</label>
-                        <textarea wire:model.live="labelPrintSettings.footer_note" rows="2" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="Örn. Teslimat sırasında paket hasarını kontrol edin."></textarea>
-                    </div>
-                </div>
-
-                <div class="rounded-[10px] border border-slate-200 bg-slate-50/60 p-4 lg:p-5">
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">İrsaliye Çıktısı</p>
-                            <h2 class="mt-2 text-lg font-semibold text-slate-900">Sevk ve irsaliye şablonu</h2>
-                            <p class="mt-2 text-sm leading-6 text-slate-500">
-                                Paket bazlı veya sipariş bazlı irsaliye PDF’leri bu alanı kullanır.
-                            </p>
-                        </div>
-
-                        <div class="flex flex-wrap gap-2">
-                            <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                                {{ $dispatchTemplateOptions[$dispatchPrintSettings['template'] ?? 'classic'] ?? 'Klasik irsaliye' }}
-                            </span>
-                            <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                                {{ $dispatchPaperOptions[$dispatchPrintSettings['paper'] ?? 'a4'] ?? 'A4 dikey' }}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-slate-500">İrsaliye şablonu</label>
-                            <select wire:model.live="dispatchPrintSettings.template" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
-                                @foreach($dispatchTemplateOptions as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-slate-500">Kağıt boyutu</label>
-                            <select wire:model.live="dispatchPrintSettings.paper" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
-                                @foreach($dispatchPaperOptions as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-slate-500">Barkod yüksekliği</label>
-                            <input type="number" min="32" max="96" step="1" wire:model.live="dispatchPrintSettings.barcode_height" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
-                        </div>
-                    </div>
-
-                    <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="dispatchPrintSettings.show_sender" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Gönderici kartı</span>
-                                <span class="mt-1 block text-xs text-slate-500">Sevk belgesinin üstünde firma alanını göster.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="dispatchPrintSettings.show_customer_phone" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Telefon alanı</span>
-                                <span class="mt-1 block text-xs text-slate-500">Alıcı telefon bilgisini ekle.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="dispatchPrintSettings.show_billing_info" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Fatura bilgisi</span>
-                                <span class="mt-1 block text-xs text-slate-500">Vergi no ve unvan bilgisini görünür tut.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="dispatchPrintSettings.show_items" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Ürün tablosu</span>
-                                <span class="mt-1 block text-xs text-slate-500">Adet, barkod ve stok kodu satırlarını yazdır.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="dispatchPrintSettings.show_barcode" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Paket barkodu</span>
-                                <span class="mt-1 block text-xs text-slate-500">Üst blokta kargo barkodunu göster.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="dispatchPrintSettings.show_barcode_text" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">Barkod metni</span>
-                                <span class="mt-1 block text-xs text-slate-500">İrsaliyede barkod altı metnini görünür tut.</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
-                            <input type="checkbox" wire:model.live="dispatchPrintSettings.show_signature_area" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm">
-                            <span>
-                                <span class="block text-sm font-medium text-slate-900">İmza alanı</span>
-                                <span class="mt-1 block text-xs text-slate-500">Belgenin altında teslim/imza kutusu bırak.</span>
-                            </span>
-                        </label>
-                    </div>
-
-                    <div class="mt-4">
-                        <label class="mb-1 block text-xs font-medium text-slate-500">İrsaliye dip notu</label>
-                        <textarea wire:model.live="dispatchPrintSettings.footer_note" rows="2" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="Örn. Ürün tesliminde hasar ve eksik kontrolü yapılmıştır."></textarea>
-                    </div>
-                </div>
-
-                <div class="rounded-[10px] border border-slate-200 bg-slate-50/60 p-4 lg:p-5">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Gönderici Fallback Bilgisi</p>
-                    <p class="mt-2 text-sm leading-6 text-slate-500">
-                        Siparişte bağlı firma kaydı yoksa etiket ve irsaliye bu bilgileri kullanır.
-                    </p>
-
-                    <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-slate-500">Firma adı</label>
-                            <input type="text" wire:model.live="companyForm.name" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="ZOLM Tekstil">
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-slate-500">Telefon</label>
-                            <input type="text" wire:model.live="companyForm.phone" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="0212 000 00 00">
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-slate-500">Vergi numarası</label>
-                            <input type="text" wire:model.live="companyForm.tax_number" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="1234567890">
-                        </div>
-                        <div class="sm:col-span-2">
-                            <label class="mb-1 block text-xs font-medium text-slate-500">Adres</label>
-                            <textarea wire:model.live="companyForm.address" rows="3" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="Mahalle, cadde, no, ilçe / il"></textarea>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex flex-col gap-3 sm:flex-row">
-                    <button
-                        type="button"
-                        wire:click="saveDocumentSettings"
-                        wire:loading.attr="disabled"
-                        class="inline-flex w-full items-center justify-center rounded-[8px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                    >
-                        <span wire:loading.remove wire:target="saveDocumentSettings">Çıktı ayarlarını kaydet</span>
-                        <span wire:loading wire:target="saveDocumentSettings">Kaydediliyor...</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        wire:click="resetDocumentSettings"
-                        wire:loading.attr="disabled"
-                        class="inline-flex w-full items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                    >
-                        Çıktı varsayılanlarını geri yükle
-                    </button>
-                </div>
-
-                @if (session('document_settings_success'))
-                    <div class="rounded-[8px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                        {{ session('document_settings_success') }}
-                    </div>
-                @endif
-
-                @if($errors->any())
-                    <div class="rounded-[8px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                        {{ $errors->first() }}
-                    </div>
-                @endif
+    <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Çıktı</p>
+                <h2 class="mt-2 text-lg font-semibold text-slate-900">Kargo etiketi ve irsaliye</h2>
+                <p class="mt-1 text-sm text-slate-500">Sipariş aksiyonlarından indirilen yerel PDF çıktılarının temel düzeni.</p>
             </div>
 
-            <div class="space-y-4">
-                <div class="rounded-[10px] border border-slate-200 bg-white p-4 lg:p-5">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Canlı kullanım</p>
-                    <div class="mt-4 grid grid-cols-1 gap-3">
-                        <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
-                            <p class="text-sm font-medium text-slate-900">Sipariş aksiyon menüsü</p>
-                            <p class="mt-1 text-xs leading-5 text-slate-500">Her siparişte tekil olarak `Kargo etiketi indir` ve `İrsaliye indir` aksiyonu görünür.</p>
-                        </div>
-                        <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
-                            <p class="text-sm font-medium text-slate-900">Toplu seçim akışı</p>
-                            <p class="mt-1 text-xs leading-5 text-slate-500">Sipariş veya paket seçip toplu PDF oluşturabilirsiniz. Paket seçimi yalnızca seçilen paketleri yazdırır.</p>
-                        </div>
-                        <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
-                            <p class="text-sm font-medium text-slate-900">Barkod katmanı</p>
-                            <p class="mt-1 text-xs leading-5 text-slate-500">Kargo barkodu sipariş, paket veya raw payload içinden çözülür; bulunamazsa sipariş numarası fallback olarak kullanılır.</p>
-                        </div>
+            <div class="flex flex-col gap-2 sm:flex-row">
+                <button
+                    type="button"
+                    wire:click="saveDocumentSettings"
+                    wire:loading.attr="disabled"
+                    wire:target="saveDocumentSettings"
+                    class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2"
+                >
+                    <span wire:loading.remove wire:target="saveDocumentSettings">Kaydet</span>
+                    <span wire:loading wire:target="saveDocumentSettings">Kaydediliyor...</span>
+                </button>
+
+                <button
+                    type="button"
+                    wire:click="resetDocumentSettings"
+                    wire:loading.attr="disabled"
+                    class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2"
+                >
+                    Varsayılan
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-900">Kargo etiketi</h3>
+                        <p class="mt-1 text-sm text-slate-500">Tekil veya toplu etiket çıktısı.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="inline-flex min-h-[28px] items-center rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">{{ $currentLabelTemplate }}</span>
+                        <span class="inline-flex min-h-[28px] items-center rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">{{ $currentLabelPaper }}</span>
                     </div>
                 </div>
 
-                <div class="rounded-[10px] border border-slate-200 bg-white p-4 lg:p-5">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Çıktı alanları</p>
-                    <div class="mt-4 flex flex-wrap gap-2">
-                        <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">Alıcı adı</span>
-                        <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">Adres</span>
-                        <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">Kargo barkodu</span>
-                        <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">Takip no</span>
-                        <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">Paket ürünleri</span>
-                        <span class="inline-flex min-h-[32px] items-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">Gönderici</span>
+                <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-500">Şablon</label>
+                        <select wire:model.live="labelPrintSettings.template" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                            @foreach($labelTemplateOptions as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
                     </div>
-                    <p class="mt-4 text-sm leading-6 text-slate-500">
-                        Farklı kağıt boyutlarında aynı veri yüzeyini koruyoruz; sadece yoğunluk ve blok yerleşimi değişiyor.
-                    </p>
+
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-500">Kağıt</label>
+                        <select wire:model.live="labelPrintSettings.paper" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                            @foreach($labelPaperOptions as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-500">Barkod yüksekliği</label>
+                        <input type="number" min="32" max="96" step="1" wire:model.live="labelPrintSettings.barcode_height" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                    </div>
                 </div>
 
-                <div class="rounded-[10px] border border-dashed border-slate-200 bg-slate-50/60 p-4 lg:p-5">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Not</p>
-                    <p class="mt-2 text-sm leading-6 text-slate-500">
-                        Buradaki çıktı şablonları iç PDF üretimi içindir. Pazaryerinden gelen ortak barkod servisleri ayrı operasyon aksiyonu olarak korunur; yerel PDF çıktısı bu servislere bağımlı değildir.
-                    </p>
+                <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    @foreach($labelToggles as $toggle)
+                        <label class="flex min-h-[62px] cursor-pointer items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
+                            <input type="checkbox" wire:model.live="{{ $toggle['model'] }}" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm focus:ring-slate-900">
+                            <span class="min-w-0">
+                                <span class="block text-sm font-medium text-slate-900">{{ $toggle['label'] }}</span>
+                                <span class="mt-0.5 block text-xs text-slate-500">{{ $toggle['hint'] }}</span>
+                            </span>
+                        </label>
+                    @endforeach
+                </div>
+
+                <div class="mt-4">
+                    <label class="mb-1 block text-xs font-medium text-slate-500">Etiket dip notu</label>
+                    <textarea wire:model.live="labelPrintSettings.footer_note" rows="2" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="Örn. Teslimat sırasında paket hasarını kontrol edin."></textarea>
+                </div>
+            </div>
+
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-900">Sevk ve irsaliye</h3>
+                        <p class="mt-1 text-sm text-slate-500">Paket veya sipariş bazlı sevk çıktısı.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="inline-flex min-h-[28px] items-center rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">{{ $currentDispatchTemplate }}</span>
+                        <span class="inline-flex min-h-[28px] items-center rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">{{ $currentDispatchPaper }}</span>
+                    </div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-500">Şablon</label>
+                        <select wire:model.live="dispatchPrintSettings.template" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                            @foreach($dispatchTemplateOptions as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-500">Kağıt</label>
+                        <select wire:model.live="dispatchPrintSettings.paper" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                            @foreach($dispatchPaperOptions as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-500">Barkod yüksekliği</label>
+                        <input type="number" min="32" max="96" step="1" wire:model.live="dispatchPrintSettings.barcode_height" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                    </div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    @foreach($dispatchToggles as $toggle)
+                        <label class="flex min-h-[62px] cursor-pointer items-start gap-3 rounded-[8px] border border-slate-200 bg-white p-3">
+                            <input type="checkbox" wire:model.live="{{ $toggle['model'] }}" class="mt-1 rounded border-slate-300 text-slate-900 shadow-sm focus:ring-slate-900">
+                            <span class="min-w-0">
+                                <span class="block text-sm font-medium text-slate-900">{{ $toggle['label'] }}</span>
+                                <span class="mt-0.5 block text-xs text-slate-500">{{ $toggle['hint'] }}</span>
+                            </span>
+                        </label>
+                    @endforeach
+                </div>
+
+                <div class="mt-4">
+                    <label class="mb-1 block text-xs font-medium text-slate-500">İrsaliye dip notu</label>
+                    <textarea wire:model.live="dispatchPrintSettings.footer_note" rows="2" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="Örn. Ürün tesliminde hasar ve eksik kontrolü yapılmıştır."></textarea>
                 </div>
             </div>
         </div>
-    </x-zolm.section-card>
+
+        <div class="mt-4 rounded-[8px] border border-slate-200 bg-white p-4">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                    <h3 class="text-sm font-semibold text-slate-900">Gönderici fallback bilgisi</h3>
+                    <p class="mt-1 text-sm text-slate-500">Siparişte bağlı firma yoksa etiket ve irsaliye bu bilgileri kullanır.</p>
+                </div>
+                <span class="inline-flex w-fit items-center rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                    {{ filled($companyForm['name'] ?? '') ? 'Tanımlı' : 'Boş' }}
+                </span>
+            </div>
+
+            <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-500">Firma adı</label>
+                    <input type="text" wire:model.live="companyForm.name" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="ZOLM Tekstil">
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-500">Telefon</label>
+                    <input type="text" wire:model.live="companyForm.phone" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="0212 000 00 00">
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-500">Vergi numarası</label>
+                    <input type="text" wire:model.live="companyForm.tax_number" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="1234567890">
+                </div>
+                <div class="xl:col-span-1">
+                    <label class="mb-1 block text-xs font-medium text-slate-500">Adres</label>
+                    <textarea wire:model.live="companyForm.address" rows="1" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="Mahalle, cadde, no, ilçe / il"></textarea>
+                </div>
+            </div>
+        </div>
+    </section>
 </div>

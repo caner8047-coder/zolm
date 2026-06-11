@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\OptimizationReport;
 use App\Models\OptimizationReportItem;
+use App\Services\ProfitabilityMetric;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 
@@ -91,6 +92,7 @@ class PlusCommissionService
                 $product = $this->campaignService->matchProduct($barcode, $stockCode, $modelCode, $productName);
                 $costs = $this->campaignService->getProductCosts($product);
                 $totalCost = $costs['total_cost'];
+                $productCost = ProfitabilityMetric::productCost($costs['cogs'], $costs['packaging_cost']);
 
                 if ($product) $matchedCount++;
                 else $unmatchedCount++;
@@ -103,8 +105,8 @@ class PlusCommissionService
                     : $currentNetProfit;
 
                 // Kâr marjı %
-                $currentMargin = $totalCost > 0 ? round(($currentNetProfit / $totalCost) * 100, 1) : 0;
-                $plusMargin = $totalCost > 0 ? round(($plusNetProfit / $totalCost) * 100, 1) : 0;
+                $currentMargin = ProfitabilityMetric::multiplierOrZero($currentNetProfit, $productCost);
+                $plusMargin = ProfitabilityMetric::multiplierOrZero($plusNetProfit, $productCost);
 
                 // Senaryolar (TariffOptimizer pattern)
                 $scenarios = [

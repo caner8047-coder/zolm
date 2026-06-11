@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ChannelOrderPackage;
 use App\Models\IntegrationConnection;
 use App\Models\MarketplaceStore;
 use App\Services\Marketplace\Connectors\TrendyolConnector;
@@ -26,6 +27,9 @@ class TrendyolConnectorTest extends TestCase
         $this->assertTrue($connector->capabilities()['package_common_label_get']);
         $this->assertTrue($connector->capabilities()['package_invoiced']);
         $this->assertTrue($connector->capabilities()['package_invoice_link']);
+        $this->assertTrue($connector->capabilities()['claims']);
+        $this->assertTrue($connector->capabilities()['claim_approve']);
+        $this->assertTrue($connector->capabilities()['claim_reject']);
     }
 
     public function test_it_normalizes_order_packages_with_new_trendyol_field_names(): void
@@ -55,7 +59,8 @@ class TrendyolConnectorTest extends TestCase
                     'createdDate' => '2026-03-20T10:00:00+03:00',
                     'lastModifiedDate' => '2026-03-21T12:00:00+03:00',
                     'cargoProviderName' => 'Yurtici',
-                    'cargoTrackingNumber' => 'TRK-1',
+                    'cargoSenderNumber' => 'TRACK-1',
+                    'cargoTrackingNumber' => 'BARCODE-1',
                     'lines' => [[
                         'lineId' => 11,
                         'stockCode' => 'TY-STK-1',
@@ -76,15 +81,19 @@ class TrendyolConnectorTest extends TestCase
         ]);
 
         $store = $this->makeStore();
+        $endDate = CarbonImmutable::now('Europe/Istanbul')->subDay();
+        $startDate = $endDate->subDays(2);
 
         $result = app(TrendyolConnector::class)->pullOrders($store, [
-            'start_date' => '2026-03-20T00:00:00+03:00',
-            'end_date' => '2026-03-22T00:00:00+03:00',
+            'start_date' => $startDate->toIso8601String(),
+            'end_date' => $endDate->toIso8601String(),
         ]);
 
         $this->assertCount(1, $result['items']);
         $this->assertSame('TY-ORD-1', data_get($result, 'items.0.order.order_number'));
         $this->assertSame('987654', data_get($result, 'items.0.package.external_package_id'));
+        $this->assertSame('TRACK-1', data_get($result, 'items.0.package.cargo_tracking_number'));
+        $this->assertSame('BARCODE-1', data_get($result, 'items.0.package.cargo_barcode'));
         $this->assertSame('Ayse Demir', data_get($result, 'items.0.order.customer_name'));
         $this->assertNotNull(data_get($result, 'items.0.order.cancelled_at'));
         $this->assertSame('11', data_get($result, 'items.0.items.0.external_line_id'));
@@ -95,6 +104,64 @@ class TrendyolConnectorTest extends TestCase
         $this->assertSame(5.50, data_get($result, 'items.0.items.0.marketplace_discount_amount'));
         $this->assertSame(225.50, data_get($result, 'items.0.items.0.billable_amount'));
         $this->assertSame(20.00, data_get($result, 'items.0.items.0.vat_rate'));
+    }
+
+    public function test_it_totals_multi_quantity_trendyol_lines_from_discount_details(): void
+    {
+        Http::fake([
+            'https://apigw.trendyol.com/integration/order/sellers/123456/orders*' => Http::response([
+                'content' => [[
+                    'orderNumber' => 'TY-QTY-2',
+                    'shipmentPackageId' => 123456,
+                    'status' => 'Shipped',
+                    'grossAmount' => 2439.80,
+                    'totalPrice' => 2439.80,
+                    'packageGrossAmount' => 2439.80,
+                    'packageTotalPrice' => 2439.80,
+                    'lines' => [[
+                        'lineId' => 5446578370,
+                        'stockCode' => '1PUFZEM00390',
+                        'barcode' => '87874848484848484',
+                        'productName' => 'Lines Puf',
+                        'quantity' => 2,
+                        'lineUnitPrice' => 1219.90,
+                        'lineGrossAmount' => 1219.90,
+                        'lineSellerDiscount' => 0,
+                        'lineTyDiscount' => 0,
+                        'lineTotalDiscount' => 0,
+                        'discountDetails' => [
+                            [
+                                'lineItemPrice' => 1219.90,
+                                'lineItemDiscount' => 0,
+                                'lineItemTyDiscount' => 0,
+                                'lineItemSellerDiscount' => 0,
+                            ],
+                            [
+                                'lineItemPrice' => 1219.90,
+                                'lineItemDiscount' => 0,
+                                'lineItemTyDiscount' => 0,
+                                'lineItemSellerDiscount' => 0,
+                            ],
+                        ],
+                    ]],
+                ]],
+                'totalPages' => 1,
+            ], 200),
+        ]);
+
+        $endDate = CarbonImmutable::now('Europe/Istanbul')->subDay();
+
+        $result = app(TrendyolConnector::class)->pullOrders($this->makeStore(), [
+            'start_date' => $endDate->subDays(2)->toIso8601String(),
+            'end_date' => $endDate->toIso8601String(),
+        ]);
+
+        $this->assertSame(2, data_get($result, 'items.0.items.0.quantity'));
+        $this->assertSame(1219.90, data_get($result, 'items.0.items.0.unit_price'));
+        $this->assertSame(2439.80, data_get($result, 'items.0.items.0.gross_amount'));
+        $this->assertSame(0.00, data_get($result, 'items.0.items.0.discount_amount'));
+        $this->assertSame(0.00, data_get($result, 'items.0.items.0.marketplace_discount_amount'));
+        $this->assertSame(2439.80, data_get($result, 'items.0.items.0.billable_amount'));
     }
 
     public function test_it_falls_back_to_legacy_trendyol_order_fields(): void
@@ -124,10 +191,12 @@ class TrendyolConnectorTest extends TestCase
         ]);
 
         $store = $this->makeStore();
+        $endDate = CarbonImmutable::now('Europe/Istanbul')->subDay();
+        $startDate = $endDate->subDays(2);
 
         $result = app(TrendyolConnector::class)->pullOrders($store, [
-            'start_date' => '2026-03-20T00:00:00+03:00',
-            'end_date' => '2026-03-22T00:00:00+03:00',
+            'start_date' => $startDate->toIso8601String(),
+            'end_date' => $endDate->toIso8601String(),
         ]);
 
         $this->assertCount(1, $result['items']);
@@ -140,6 +209,178 @@ class TrendyolConnectorTest extends TestCase
         $this->assertSame(7.50, data_get($result, 'items.0.items.0.marketplace_discount_amount'));
         $this->assertSame(130.00, data_get($result, 'items.0.items.0.billable_amount'));
         $this->assertSame(10.00, data_get($result, 'items.0.items.0.vat_rate'));
+    }
+
+    public function test_it_falls_back_to_v1_product_filter_when_approved_products_endpoint_is_not_found(): void
+    {
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), '/integration/product/sellers/123456/products/approved')) {
+                return Http::response([
+                    'path' => '/sellers/123456/products/approved',
+                    'exception' => 'TrendyolNotFoundException',
+                ], 404);
+            }
+
+            if (str_contains($request->url(), '/integration/product/sellers/123456/products')) {
+                return Http::response([
+                    'content' => [[
+                        'id' => 'TY-PROD-1',
+                        'approved' => true,
+                        'onsale' => true,
+                        'barcode' => '869000000003',
+                        'stockCode' => 'TY-STK-3',
+                        'productMainId' => 'MAIN-3',
+                        'title' => 'Fallback Ürün',
+                        'brand' => 'Zem',
+                        'categoryName' => 'Mobilya',
+                        'quantity' => 7,
+                        'salePrice' => 1200,
+                        'listPrice' => 1300,
+                        'vatRate' => 20,
+                    ]],
+                    'totalPages' => 1,
+                    'totalElements' => 1,
+                    'page' => 0,
+                ], 200);
+            }
+
+            return Http::response([], 500);
+        });
+
+        $endDate = CarbonImmutable::now('Europe/Istanbul')->subDay();
+
+        $result = app(TrendyolConnector::class)->pullProducts($this->makeStore(), [
+            'start_date' => $endDate->subDays(2)->toIso8601String(),
+            'end_date' => $endDate->toIso8601String(),
+        ]);
+
+        $this->assertCount(1, $result['items']);
+        $this->assertSame('869000000003', data_get($result, 'items.0.product.barcode'));
+        $this->assertSame('TY-STK-3', data_get($result, 'items.0.product.stock_code'));
+        $this->assertSame('active', data_get($result, 'items.0.listing.listing_status'));
+
+        Http::assertSent(function ($request) {
+            $query = [];
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return $request->method() === 'GET'
+                && str_contains($request->url(), '/integration/product/sellers/123456/products?')
+                && !str_contains($request->url(), '/products/approved')
+                && (string) ($query['approved'] ?? '') === '1'
+                && ($query['dateQueryType'] ?? null) === 'LAST_MODIFIED_DATE';
+        });
+    }
+
+    public function test_connection_check_falls_back_to_v1_product_filter(): void
+    {
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), '/integration/product/sellers/123456/products/approved')) {
+                return Http::response([
+                    'path' => '/sellers/123456/products/approved',
+                    'exception' => 'TrendyolNotFoundException',
+                ], 404);
+            }
+
+            if (str_contains($request->url(), '/integration/product/sellers/123456/products')) {
+                return Http::response([
+                    'content' => [],
+                    'totalPages' => 1,
+                    'totalElements' => 0,
+                    'page' => 0,
+                ], 200);
+            }
+
+            return Http::response([], 500);
+        });
+
+        $result = app(TrendyolConnector::class)->testConnection($this->makeStore());
+
+        $this->assertTrue((bool) $result['ok']);
+        $this->assertSame(0, data_get($result, 'meta.total_elements'));
+
+        Http::assertSent(function ($request) {
+            return $request->method() === 'GET'
+                && str_contains($request->url(), '/integration/product/sellers/123456/products?')
+                && !str_contains($request->url(), '/products/approved');
+        });
+    }
+
+    public function test_it_normalizes_approved_product_variant_price_and_commission(): void
+    {
+        Http::fake([
+            'https://apigw.trendyol.com/integration/product/sellers/123456/products/approved*' => Http::response([
+                'content' => [[
+                    'contentId' => 'CONTENT-1',
+                    'productMainId' => 'MAIN-1',
+                    'title' => 'Approved Ürün',
+                    'brand' => ['name' => 'Zem'],
+                    'category' => [
+                        'name' => 'Mobilya',
+                        'commissionRate' => 18,
+                    ],
+                    'price' => [
+                        'salePrice' => 1500,
+                        'listPrice' => 1800,
+                        'currencyType' => 'TRY',
+                    ],
+                    'variants' => [[
+                        'variantId' => 'VARIANT-1',
+                        'barcode' => '8690000001111',
+                        'stockCode' => 'TY-VAR-1',
+                        'status' => 'onSale',
+                        'price' => [
+                            'salePrice' => 1200,
+                            'listPrice' => 1400,
+                            'currencyType' => 'TRY',
+                        ],
+                        'commissionRate' => 20,
+                        'stock' => ['quantity' => 9],
+                    ]],
+                ]],
+                'totalPages' => 1,
+                'totalElements' => 1,
+                'page' => 0,
+            ], 200),
+        ]);
+
+        $endDate = CarbonImmutable::now('Europe/Istanbul')->subDay();
+
+        $result = app(TrendyolConnector::class)->pullProducts($this->makeStore(), [
+            'start_date' => $endDate->subDays(2)->toIso8601String(),
+            'end_date' => $endDate->toIso8601String(),
+        ]);
+
+        $this->assertCount(1, $result['items']);
+        $this->assertSame('TY-VAR-1', data_get($result, 'items.0.product.stock_code'));
+        $this->assertSame(1200.0, data_get($result, 'items.0.listing.sale_price'));
+        $this->assertSame(1400.0, data_get($result, 'items.0.listing.list_price'));
+        $this->assertSame(20.0, data_get($result, 'items.0.listing.commission_rate'));
+        $this->assertSame('catalog', data_get($result, 'items.0.listing.commission_source'));
+        $this->assertSame(9, data_get($result, 'items.0.listing.stock_quantity'));
+    }
+
+    public function test_it_uses_trendyol_cargo_barcode_for_common_label_requests(): void
+    {
+        Http::fake([
+            'https://apigw.trendyol.com/integration/sellers/123456/common-label/BARCODE-1' => Http::response([
+                'data' => [['label' => 'ZPL']],
+            ], 200),
+        ]);
+
+        $package = new ChannelOrderPackage([
+            'external_package_id' => 'PKG-1',
+            'cargo_tracking_number' => 'TRACK-1',
+            'cargo_barcode' => 'BARCODE-1',
+        ]);
+        $package->setRelation('store', $this->makeStore());
+
+        $result = app(TrendyolConnector::class)->getCommonLabel($package);
+
+        $this->assertSame('BARCODE-1', $result['tracking_number']);
+        $this->assertSame('BARCODE-1', $result['cargo_barcode']);
+
+        Http::assertSent(fn ($request) => $request->method() === 'GET'
+            && str_contains($request->url(), '/common-label/BARCODE-1'));
     }
 
     public function test_it_clamps_trendyol_order_queries_to_last_30_days(): void
@@ -222,6 +463,55 @@ class TrendyolConnectorTest extends TestCase
 
         $this->assertSame('order_created', $metadata['event_type']);
         $this->assertSame('TY-PKG-100', $metadata['external_event_id']);
+    }
+
+    public function test_it_pulls_trendyol_claims(): void
+    {
+        Http::fake([
+            'https://apigw.trendyol.com/integration/order/sellers/123456/claims*' => Http::response([
+                'content' => [[
+                    'id' => 'CLM-1',
+                    'orderNumber' => 'TY-ORDER-1',
+                    'claimStatus' => 'Delivered',
+                    'claimReason' => 'Ürün hasarlı',
+                    'claimDate' => '2026-04-20T10:00:00+03:00',
+                    'items' => [[
+                        'claimLineItemId' => 55,
+                        'orderLineId' => 11,
+                        'productName' => 'Deneme Ürün',
+                    ]],
+                ]],
+                'totalPages' => 1,
+            ], 200),
+        ]);
+
+        $result = app(TrendyolConnector::class)->pullClaims($this->makeStore(), [
+            'start_date' => '2026-04-20T00:00:00+03:00',
+            'end_date' => '2026-04-21T00:00:00+03:00',
+        ]);
+
+        $this->assertCount(1, $result['items']);
+        $this->assertSame('CLM-1', data_get($result, 'items.0.external_claim_id'));
+        $this->assertSame('55', data_get($result, 'items.0.items.0.external_item_id'));
+    }
+
+    public function test_it_sends_trendyol_claim_approval(): void
+    {
+        Http::fake([
+            'https://apigw.trendyol.com/integration/order/sellers/123456/claims/CLM-1/items/approve' => Http::response([], 200),
+        ]);
+
+        $result = app(TrendyolConnector::class)->approveClaim($this->makeStore(), 'CLM-1', [
+            'claim_item_ids' => [55],
+        ]);
+
+        $this->assertSame('approved', $result['status']);
+
+        Http::assertSent(function ($request) {
+            return $request->method() === 'PUT'
+                && str_contains($request->url(), '/claims/CLM-1/items/approve')
+                && data_get($request->data(), 'claimLineItemIdList.0') === 55;
+        });
     }
 
     protected function makeStore(): MarketplaceStore

@@ -16,7 +16,7 @@ class ExcelService
     /**
      * Import an XLS/XLSX file and return data as collection
      */
-    public function importOrderXls(UploadedFile $file, string $sheetName = null): Collection
+    public function importOrderXls(UploadedFile $file, ?string $sheetName = null): Collection
     {
         $spreadsheet = IOFactory::load($file->getPathname());
         

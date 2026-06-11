@@ -142,6 +142,8 @@ class MarketplaceConnectionReadinessService
             'finance_enabled' => ['capability' => 'finance', 'label' => 'Finans sync'],
             'products_enabled' => ['capability' => 'products', 'label' => 'Ürün sync'],
             'webhook_enabled' => ['capability' => 'webhooks', 'label' => 'Webhook'],
+            'claims_enabled' => ['capability' => 'claims', 'label' => 'İade sync'],
+            'questions_enabled' => ['capability' => 'questions', 'label' => 'Soru sync'],
             'price_push_enabled' => ['capability' => 'price_push', 'label' => 'Fiyat gönderimi'],
             'stock_push_enabled' => ['capability' => 'stock_push', 'label' => 'Stok gönderimi'],
         ];
@@ -176,7 +178,7 @@ class MarketplaceConnectionReadinessService
             $this->check('Seller ID', $sellerIdPresent, $sellerIdPresent ? 'Seller ID tanımlı.' : 'Trendyol seller ID eksik.'),
             $this->check('API key', $apiKeyPresent, $apiKeyPresent ? 'API key tanımlı.' : 'Trendyol API key eksik.'),
             $this->check('API secret', $apiSecretPresent, $apiSecretPresent ? 'API secret tanımlı.' : 'Trendyol API secret eksik.'),
-            $this->check('StoreFrontCode', $storeFrontCodePresent, $storeFrontCodePresent ? 'StoreFrontCode mevcut.' : 'StoreFrontCode boş. Her mağaza için zorunlu olmayabilir.'),
+            $this->optionalCheck('StoreFrontCode', $storeFrontCodePresent, $storeFrontCodePresent ? 'StoreFrontCode mevcut.' : 'StoreFrontCode boş. Türkiye mağazalarında çoğu test için zorunlu değildir.'),
         ];
 
         if (!$sellerIdPresent) {
@@ -189,10 +191,6 @@ class MarketplaceConnectionReadinessService
 
         if (!$apiSecretPresent) {
             $failures[] = 'Trendyol API secret eksik.';
-        }
-
-        if (!$storeFrontCodePresent) {
-            $warnings[] = 'StoreFrontCode boş. Bazı mağazalarda gerekli olabilir.';
         }
 
         return [$checks, $warnings, $failures];
@@ -218,8 +216,8 @@ class MarketplaceConnectionReadinessService
         $checks = [
             $this->check('Merchant ID', $merchantIdPresent, $merchantIdPresent ? 'Merchant ID tanımlı.' : 'Hepsiburada merchantId eksik.'),
             $this->check('Service Key', $serviceKeyPresent, $serviceKeyPresent ? 'Service key tanımlı.' : 'Hepsiburada service key eksik.'),
-            $this->check('User-Agent / entegratör kullanıcı', $userAgentPresent, $userAgentPresent ? 'User-Agent için kullanıcı alanı dolu.' : 'extraUser alanı boş. Yeni auth akışında önerilir.'),
-            $this->check('Legacy kullanıcı/şifre', $hasLegacyAuth, $hasLegacyAuth ? 'Legacy auth fallback mevcut.' : 'Legacy auth alanları boş. Zorunlu değil.'),
+            $this->check('User-Agent / entegratör kullanıcı', $userAgentPresent || $hasNewAuth, $userAgentPresent ? 'Yetkili entegratör kullanıcı alanı dolu.' : 'Boşsa ZOLM varsayılan User-Agent gönderilir; Hepsiburada tarafında yetki gerekebilir.'),
+            $this->check('Legacy kullanıcı/şifre', $hasNewAuth || $hasLegacyAuth, $hasLegacyAuth ? 'Legacy auth fallback mevcut.' : 'Yeni service key akışı kullanılıyor. Legacy alanlar zorunlu değil.'),
         ];
 
         if (!$merchantIdPresent) {
@@ -408,16 +406,18 @@ class MarketplaceConnectionReadinessService
                     ? 'Koçtaş API secret tanımlı.'
                     : 'Opsiyonel alan boş. Mirakl seller API bağlantısı API key ile kurulabilir.'
             ),
-            $this->check('Satıcı / mağaza kodu', $sellerIdPresent, $sellerIdPresent ? 'Satıcı / mağaza kodu tanımlı.' : 'Satıcı / mağaza kodu boş. Bazı akışlarda gerekli olabilir.'),
+            $this->check(
+                'Shop ID (opsiyonel)',
+                true,
+                $sellerIdPresent
+                    ? 'Koçtaş shop ID tanımlı.'
+                    : 'Koçtaş panelinde yalnız API anahtarı varsa bu alan boş bırakılabilir.'
+            ),
             $this->check('API base URL', $baseUrlPresent, $baseUrlPresent ? 'API base URL tanımlı.' : 'API base URL boş. Resmi endpoint doğrulanınca doldurulmalı.'),
         ];
 
         if (!$apiKeyPresent) {
             $failures[] = 'Koçtaş API key eksik.';
-        }
-
-        if (!$sellerIdPresent) {
-            $warnings[] = 'Koçtaş mağaza / shop ID boş. Birden fazla shop erişiminde shop_id seçimi için gerekli olabilir.';
         }
 
         if (!$baseUrlPresent) {
@@ -667,6 +667,15 @@ class MarketplaceConnectionReadinessService
         ];
     }
 
+    protected function optionalCheck(string $label, bool $condition, string $message): array
+    {
+        return [
+            'label' => $label,
+            'state' => $condition ? 'ok' : 'warning',
+            'message' => $message,
+        ];
+    }
+
     /**
      * @return array{0: array<int, array{label: string, state: string, message: string}>, 1: array<int, string>, 2: array<int, string>}
      */
@@ -683,22 +692,51 @@ class MarketplaceConnectionReadinessService
         $failures = [];
         $lastVerifiedAt = $connection->last_verified_at;
         $lastError = trim((string) ($connection->last_error ?? ''));
+        $isTransientRateLimit = $this->isTransientRateLimitError($lastError);
+        $isIgnorableProviderError = $this->isIgnorableLiveVerificationError($store, $lastError);
 
         if ($lastVerifiedAt) {
-            $checks[] = $this->check(
-                'Son canlı doğrulama',
-                $lastError === '',
-                $lastError === ''
-                    ? 'Son canlı doğrulama başarılı.'
-                    : 'Son canlı doğrulama hata verdi: '.$lastError
-            );
+            $checks[] = match (true) {
+                $isTransientRateLimit => $this->optionalCheck('Son canlı doğrulama', false, 'Son canlı doğrulama geçici limit uyarısı verdi: '.$lastError),
+                $isIgnorableProviderError => $this->optionalCheck('Son canlı doğrulama', false, 'Son canlı doğrulama eski Pazarama 404 uyarısı verdi: '.$lastError),
+                default => $this->check(
+                    'Son canlı doğrulama',
+                    $lastError === '',
+                    $lastError === ''
+                        ? 'Son canlı doğrulama başarılı.'
+                        : 'Son canlı doğrulama hata verdi: '.$lastError
+                ),
+            };
         }
 
         if ($lastError !== '') {
-            $failures[] = 'Son canlı doğrulama başarısız: '.$lastError;
+            if ($isTransientRateLimit) {
+                $warnings[] = 'Son canlı doğrulama Çiçeksepeti geçici istek limitine takıldı. Birkaç saniye sonra senkron tekrar denenebilir.';
+            } elseif ($isIgnorableProviderError) {
+                $warnings[] = 'Son Pazarama canlı doğrulaması 404 döndü; bu eski doğrulama hatası sipariş senkronunu engellemeyecek. Sipariş endpointi tekrar denenecek.';
+            } else {
+                $failures[] = 'Son canlı doğrulama başarısız: '.$lastError;
+            }
         }
 
         return [$checks, $warnings, $failures];
+    }
+
+    protected function isTransientRateLimitError(string $message): bool
+    {
+        $normalized = mb_strtolower($message);
+
+        return str_contains($normalized, 'limit aşımı')
+            && str_contains($normalized, '5 saniyede 1 kez');
+    }
+
+    protected function isIgnorableLiveVerificationError(MarketplaceStore $store, string $message): bool
+    {
+        if (MarketplaceProviderRegistry::normalize((string) $store->marketplace) !== 'pazarama') {
+            return false;
+        }
+
+        return str_contains(mb_strtolower($message), 'status code 404');
     }
 
     protected function looksLikePlaceholderUrl(?string $url): bool

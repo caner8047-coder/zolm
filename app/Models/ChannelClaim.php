@@ -43,6 +43,11 @@ class ChannelClaim extends Model
         return $this->hasMany(ChannelClaimItem::class, 'claim_id');
     }
 
+    public function shipments(): HasMany
+    {
+        return $this->hasMany(Shipment::class, 'channel_claim_id');
+    }
+
     public function statusLabel(): string
     {
         return self::STATUS_LABELS[$this->status] ?? $this->status;

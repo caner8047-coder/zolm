@@ -79,8 +79,15 @@
     @if(count($lines) > 0)
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
         <div class="bg-white rounded-xl border border-gray-200 p-3 lg:p-4 shadow-sm">
-            <div class="text-[10px] text-gray-500 uppercase font-medium">Toplam Maliyet</div>
-            <div class="text-lg lg:text-xl font-bold text-gray-900 mt-0.5">{{ number_format($this->totalCost, 2, ',', '.') }} ₺</div>
+            <div class="flex justify-between items-start">
+                <div>
+                    <div class="text-[10px] text-gray-500 uppercase font-medium">Toplam Maliyet</div>
+                    <div class="text-lg lg:text-xl font-bold text-gray-900 mt-0.5">{{ number_format($this->totalCost, 2, ',', '.') }} ₺</div>
+                </div>
+                <button wire:click="$set('showSimModal', true)" class="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors" title="What-If Simülatörü">
+                    🔮
+                </button>
+            </div>
         </div>
         <div class="bg-white rounded-xl border border-gray-200 p-3 lg:p-4 shadow-sm">
             <div class="text-[10px] text-gray-500 uppercase font-medium">Satır Sayısı</div>
@@ -117,7 +124,63 @@
         </button>
     </div>
 
-    @if($viewMode === 'bom' && $recipeId)
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+
+        {{-- ═══════════════ SOL MENÜ (MALZEME KATALOĞU) ═══════════════ --}}
+        <div class="hidden lg:block lg:col-span-1 sticky top-6">
+            <div class="bg-white rounded-[10px] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-12rem)]">
+                <div class="p-4 border-b border-slate-200 bg-slate-50/50">
+                    <h3 class="text-sm font-bold text-slate-900 mb-2">Malzeme Kataloğu</h3>
+                    <input wire:model.live.debounce.300ms="globalMaterialSearch" type="text"
+                           class="w-full px-3 py-2 text-sm border border-slate-200 rounded-[6px] focus:ring-slate-500 focus:border-slate-500" placeholder="Arama yapın...">
+                    <p class="text-[10px] text-slate-500 mt-2 leading-tight">İstediğiniz malzemeyi tutarak sağdaki tabloya sürükleyin veya tıklayarak ekleyin.</p>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-2 space-y-1">
+                    @forelse($globalMaterialResults as $gmr)
+                        <div draggable="true"
+                             x-on:dragstart="event.dataTransfer.setData('item_id', {{ $gmr['id'] }}); event.dataTransfer.setData('item_type', '{{ $gmr['type'] }}'); event.dataTransfer.effectAllowed = 'copy';"
+                             wire:click="addMaterialFromDrag({{ $gmr['id'] }}, '{{ $gmr['type'] }}')"
+                             class="p-2 bg-white hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-[6px] cursor-grab active:cursor-grabbing transition-colors flex items-center gap-2 group">
+
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs font-bold text-slate-900 truncate">{{ $gmr['name'] }}</div>
+                                <div class="text-[10px] text-slate-500 font-mono mt-0.5">{{ $gmr['code'] }}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-[10px] font-bold {{ $gmr['type'] === 'recipe' ? 'text-indigo-600' : 'text-emerald-600' }}">
+                                    {{ number_format($gmr['unit_price'] ?? 0, 2, ',', '.') }} ₺
+                                </div>
+                                @if($gmr['type'] === 'recipe')
+                                    <div class="text-[9px] text-indigo-400 bg-indigo-50 px-1 rounded inline-block">Y.Mamul</div>
+                                @endif
+                            </div>
+                        </div>
+                    @empty
+                        @if(strlen($globalMaterialSearch) >= 2)
+                        <div class="p-4 text-center text-xs text-slate-500">
+                            Sonuç bulunamadı.
+                        </div>
+                        @else
+                        <div class="p-4 text-center text-xs text-slate-400">
+                            <div class="text-2xl mb-1">🔍</div>
+                            Arama yapın...
+                        </div>
+                        @endif
+                    @endforelse
+                </div>
+                <div class="p-3 border-t border-slate-200 bg-slate-50">
+                    <button wire:click="openQuickMaterialModal" class="w-full py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded hover:bg-slate-50 transition-colors shadow-sm">
+                        + Yeni Malzeme Ekle
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        {{-- ═══════════════ SAĞ ALAN (REÇETE İÇERİĞİ) ═══════════════ --}}
+        <div class="lg:col-span-3 space-y-4">
+
+            @if($viewMode === 'bom' && $recipeId)
     {{-- ═══════════════ KONSOLİDE BOM ═══════════════ --}}
     <div class="bg-white rounded-xl border overflow-x-auto shadow-sm">
         <table class="w-full text-sm">
@@ -173,7 +236,12 @@
     </div>
     @else
     {{-- ═══════════════ REÇETE SATIRLARI (Desktop) ═══════════════ --}}
-    <div class="hidden md:block bg-white rounded-xl border shadow-sm">
+    <div class="hidden md:block bg-white rounded-xl border shadow-sm transition-colors duration-200"
+         x-data="{ isDragOver: false }"
+         x-on:dragover.prevent="isDragOver = true"
+         x-on:dragleave="isDragOver = false"
+         x-on:drop="isDragOver = false; $wire.addMaterialFromDrag(event.dataTransfer.getData('item_id'), event.dataTransfer.getData('item_type'))"
+         x-bind:class="isDragOver ? 'border-indigo-500 bg-indigo-50/10 ring-4 ring-indigo-500/20' : 'border-slate-200'">
         <div class="overflow-x-auto">
             <table class="w-full text-sm" id="recipeTable" style="table-layout: fixed;">
                 <style>
@@ -217,10 +285,10 @@
                         </td>
                         {{-- Malzeme --}}
                         <td class="px-3 py-2" style="overflow:visible">
-                            @if($line['material_id'])
+                            @if(!empty($line['material_id']) || !empty($line['sub_recipe_id']))
                                 <div class="flex items-center gap-1">
                                     <span class="text-xs truncate flex-1" title="{{ $line['material_label'] }}">{{ $line['material_label'] }}</span>
-                                    <button wire:click="$set('lines.{{ $i }}.material_id', null)" class="text-gray-400 hover:text-red-500 text-xs flex-shrink-0">✕</button>
+                                    <button wire:click="$set('lines.{{ $i }}.material_id', null); $set('lines.{{ $i }}.sub_recipe_id', null)" class="text-gray-400 hover:text-red-500 text-xs flex-shrink-0">✕</button>
                                 </div>
                             @else
                                 <div class="relative">
@@ -229,8 +297,8 @@
                                     @if($searchingLineIndex === $i && count($materialSearchResults) > 0)
                                     <div class="absolute z-30 w-64 mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
                                         @foreach($materialSearchResults as $mr)
-                                        <button wire:click="selectMaterial({{ $i }}, {{ $mr['id'] }})"
-                                                class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b last:border-0">
+                                        <button wire:click="selectMaterial({{ $i }}, {{ $mr['id'] }}, {{ isset($mr['is_sub_recipe']) && $mr['is_sub_recipe'] ? 'true' : 'false' }})"
+                                                class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b last:border-0 {{ isset($mr['is_sub_recipe']) && $mr['is_sub_recipe'] ? 'bg-indigo-50' : '' }}">
                                             <span class="font-mono text-gray-500">{{ $mr['code'] }}</span>
                                             <span class="ml-1">{{ \Illuminate\Support\Str::limit($mr['name'], 30) }}</span>
                                         </button>
@@ -419,6 +487,9 @@
     </div>
     @endif
 
+    </div> <!-- // SAĞ ALAN BİTİŞİ -->
+    </div> <!-- // GRID BİTİŞİ -->
+
     {{-- ═══════════════ HIZLI MALZEME MODAL ═══════════════ --}}
     @if($showQuickMaterialModal)
     <div class="fixed inset-0 bg-gray-900/50 z-50 flex items-center justify-center p-4" wire:click.self="$set('showQuickMaterialModal', false)">
@@ -472,6 +543,64 @@
             <div class="p-6 border-t flex justify-end gap-3">
                 <button wire:click="$set('showQuickMaterialModal', false)" class="px-4 py-3 sm:py-2 text-sm border rounded-lg hover:bg-gray-50">İptal</button>
                 <button wire:click="saveQuickMaterial" class="px-4 py-3 sm:py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800">Kaydet & Ata</button>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    {{-- ═══════════════ WHAT-IF SİMÜLATÖR MODAL ═══════════════ --}}
+    @if($showSimModal)
+    <div class="fixed inset-0 bg-gray-900/50 z-50 flex items-center justify-center p-4" wire:click.self="$set('showSimModal', false)">
+        <div class="bg-white rounded-2xl w-full max-w-md">
+            <div class="p-6 border-b">
+                <h2 class="text-lg font-bold flex items-center gap-2">🔮 What-If Maliyet Simülatörü</h2>
+                <p class="text-xs text-gray-500 mt-1">Fiyat artış/azalış senaryolarını test edin.</p>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Hangi Kategori Etkilenecek?</label>
+                    <select wire:model.live="simCategory" class="w-full px-3 py-2.5 text-base sm:text-sm border rounded-lg">
+                        <option value="all">Tümü (Tüm Malzemeler)</option>
+                        @foreach(\App\Models\Material::CATEGORIES as $k => $v)
+                            <option value="{{ $k }}">{{ $v }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Değişim Oranı (%)</label>
+                    <div class="flex items-center gap-3">
+                        <input wire:model.live.debounce.300ms="simPercent" type="range" min="-50" max="100" step="5" class="flex-1">
+                        <input wire:model.live="simPercent" type="number" class="w-20 px-3 py-2 border rounded-lg text-sm text-center">
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 mt-2">
+                    <input wire:model.live="simIncludeSubRecipes" type="checkbox" id="simSubR" class="rounded text-indigo-600 border-gray-300 focus:ring-indigo-500">
+                    <label for="simSubR" class="text-xs text-gray-600">Alt reçeteleri de (yarım mamuller) etki alanına dahil et</label>
+                </div>
+
+                <div class="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs text-gray-500">Mevcut Maliyet:</span>
+                        <span class="font-medium text-sm">{{ number_format($this->totalCost, 2, ',', '.') }} ₺</span>
+                    </div>
+                    <div class="flex justify-between items-center pt-2 border-t border-gray-200">
+                        <span class="text-sm font-bold text-gray-900">Sanal Senaryo:</span>
+                        @php $simDiff = $this->simulatedCost - $this->totalCost; @endphp
+                        <div class="text-right">
+                            <span class="text-lg font-bold {{ $simDiff > 0 ? 'text-red-600' : ($simDiff < 0 ? 'text-emerald-600' : 'text-gray-900') }}">
+                                {{ number_format($this->simulatedCost, 2, ',', '.') }} ₺
+                            </span>
+                            @if($simDiff != 0)
+                            <div class="text-[10px] {{ $simDiff > 0 ? 'text-red-500' : 'text-emerald-500' }}">
+                                {{ $simDiff > 0 ? '+' : '' }}{{ number_format($simDiff, 2, ',', '.') }} ₺ fark
+                            </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 border-t flex justify-end gap-3">
+                <button wire:click="$set('showSimModal', false)" class="px-4 py-3 sm:py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800">Kapat</button>
             </div>
         </div>
     </div>

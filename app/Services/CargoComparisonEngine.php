@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CargoReport;
 use App\Models\CargoReportItem;
+use App\Models\ChannelOrder;
 use App\Models\MpOperationalOrder;
 use App\Models\MpProduct;
 use App\Models\Product;
@@ -12,6 +13,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 /**
@@ -103,6 +105,48 @@ class CargoComparisonEngine
             );
         } catch (\Exception $e) {
             Log::error('CargoComparisonEngine: Hata', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Karşılaştırma hatası: ' . $e->getMessage(),
+                'report' => null,
+                'stats' => $this->stats,
+            ];
+        }
+    }
+
+    /**
+     * Kayıtlı kargo raporu satırlarını Excel dosyası beklemeden karşılaştırır.
+     *
+     * @param Collection<int, array<string, mixed>> $cargoData
+     * @return array{success: bool, message: string, report: ?CargoReport, stats: array}
+     */
+    public function compareFromCargoRows(
+        Collection $cargoData,
+        ?string $reportName = null,
+        ?string $cargoCompany = null,
+        string $sourceLabel = 'Kayıtlı kargo raporu'
+    ): array {
+        try {
+            $this->resetStats();
+            $this->stats['total_cargo_rows'] = $cargoData->count();
+
+            Log::info('CargoComparisonEngine: Kayıtlı kargo raporundan karşılaştırma başladı', [
+                'cargo_rows' => $cargoData->count(),
+                'source' => $sourceLabel,
+            ]);
+
+            return $this->compareUsingMarketplaceData(
+                $cargoData,
+                $reportName,
+                $cargoCompany,
+                $sourceLabel
+            );
+        } catch (\Exception $e) {
+            Log::error('CargoComparisonEngine: Kayıtlı rapor karşılaştırma hatası', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -212,20 +256,29 @@ class CargoComparisonEngine
         $this->stats['iade_count'] = $returnBuckets->count();
         $this->stats['iade_tutar'] = $returnBuckets->sum('tutar');
 
+        $channelOrders = $this->loadMarketplaceChannelOrders($outgoingBuckets);
         $orders = $this->loadMarketplaceOrders($outgoingBuckets);
         $products = $this->loadMarketplaceProducts();
-        $this->stats['loaded_marketplace_orders'] = $orders->count();
+        $this->stats['loaded_marketplace_orders'] = $channelOrders->count() + $orders->count();
 
         Log::info('CargoComparisonEngine: Pazaryeri eşleştirme havuzu hazırlandı', [
             'cargo_bucket_count' => $outgoingBuckets->count(),
-            'loaded_orders' => $orders->count(),
+            'loaded_channel_orders' => $channelOrders->count(),
+            'loaded_legacy_orders' => $orders->count(),
             'sample_cargo_refs' => $outgoingBuckets->pluck('web_siparis_kodu')->filter()->unique()->take(5)->values()->all(),
+            'sample_channel_order_numbers' => $channelOrders->pluck('order_number')->filter()->take(5)->values()->all(),
+            'sample_channel_tracking_numbers' => $channelOrders
+                ->flatMap(fn(ChannelOrder $order) => $order->packages->pluck('cargo_tracking_number'))
+                ->filter()
+                ->take(5)
+                ->values()
+                ->all(),
             'sample_order_numbers' => $orders->pluck('order_number')->filter()->take(5)->values()->all(),
             'sample_package_numbers' => $orders->pluck('package_number')->filter()->take(5)->values()->all(),
             'sample_tracking_numbers' => $orders->pluck('tracking_number')->filter()->take(5)->values()->all(),
         ]);
 
-        $comparisonResults = $this->performMarketplaceComparison($outgoingBuckets, $orders, $products);
+        $comparisonResults = $this->performMarketplaceComparison($outgoingBuckets, $orders, $products, $channelOrders);
         $parcaGonderileri = $comparisonResults->where('is_parca_gonderi', true);
 
         $this->stats['parca_count'] = $parcaGonderileri->count();
@@ -247,7 +300,8 @@ class CargoComparisonEngine
 
         Log::info('CargoComparisonEngine: Pazaryeri veri kaynağı ile karşılaştırma tamamlandı', [
             'report_id' => $report->id,
-            'loaded_orders' => $orders->count(),
+            'loaded_channel_orders' => $channelOrders->count(),
+            'loaded_legacy_orders' => $orders->count(),
             'matched' => $this->stats['matched'],
             'unmatched' => $this->stats['unmatched'],
             'errors' => $this->stats['errors'],
@@ -259,8 +313,8 @@ class CargoComparisonEngine
         $message = "Karşılaştırma tamamlandı. {$this->stats['matched']} sipariş eşleşti, {$this->stats['unmatched']} eşleşmedi, {$this->stats['errors']} hata, {$this->stats['reference_issues']} referans uyarısı, {$this->stats['iade_count']} iade/değişim, {$this->stats['parca_count']} parça gönderisi.";
 
         if ($this->stats['matched'] === 0) {
-            if ($orders->isEmpty()) {
-                $message .= ' Pazaryeri Siparişlerim içinde bu tarih aralığına ait operasyonel sipariş bulunamadı.';
+            if ($channelOrders->isEmpty() && $orders->isEmpty()) {
+                $message .= ' Pazaryeri Siparişlerim içinde bu tarih aralığına ait sipariş bulunamadı.';
             } else {
                 $message .= ' Sürat dosyasındaki WebSiparisKodu, pazaryeri Sipariş No ile aynı formatta görünmüyor; paket no, takip no ve müşteri eşleşmeleri ile fallback denendi.';
             }
@@ -558,6 +612,13 @@ class CargoComparisonEngine
             ->unique()
             ->values();
 
+        $customerNames = $cargoBuckets
+            ->pluck('alici')
+            ->map(fn($value) => trim((string) $value))
+            ->filter()
+            ->unique()
+            ->values();
+
         $dateCandidates = $cargoBuckets
             ->flatMap(function (array $bucket) {
                 return array_filter([
@@ -576,7 +637,7 @@ class CargoComparisonEngine
             ]
             : null;
 
-        $query->where(function ($subQuery) use ($webOrderRefs, $trackingNumbers, $allReferenceCodes, $dateRange) {
+        $query->where(function ($subQuery) use ($webOrderRefs, $trackingNumbers, $allReferenceCodes, $customerNames, $dateRange) {
             $hasConstraint = false;
 
             if ($webOrderRefs->isNotEmpty()) {
@@ -596,8 +657,134 @@ class CargoComparisonEngine
                 $hasConstraint = true;
             }
 
+            if ($customerNames->isNotEmpty()) {
+                $subQuery->orWhereIn('customer_name', $customerNames->all());
+                $hasConstraint = true;
+            }
+
             if ($dateRange) {
                 $subQuery->orWhereBetween('order_date', $dateRange);
+                $hasConstraint = true;
+            }
+
+            if (!$hasConstraint) {
+                $subQuery->whereNotNull('id');
+            }
+        });
+
+        return $query->get();
+    }
+
+    protected function loadMarketplaceChannelOrders(Collection $cargoBuckets): Collection
+    {
+        if (
+            !Schema::hasTable('channel_orders')
+            || !Schema::hasTable('channel_order_packages')
+            || !Schema::hasTable('channel_order_items')
+            || !Schema::hasTable('marketplace_stores')
+        ) {
+            return collect();
+        }
+
+        $webOrderRefs = $cargoBuckets
+            ->pluck('web_siparis_kodu')
+            ->filter()
+            ->map(fn($value) => $this->normalizeOrderNumber($value))
+            ->unique()
+            ->values();
+
+        $trackingNumbers = $cargoBuckets
+            ->flatMap(fn(array $bucket) => $bucket['tracking_numbers'] ?? [])
+            ->filter()
+            ->map(fn($value) => $this->normalizeTrackingNumber((string) $value))
+            ->unique()
+            ->values();
+
+        $allReferenceCodes = $cargoBuckets
+            ->flatMap(function (array $bucket) {
+                return array_filter(array_merge(
+                    [$bucket['web_siparis_kodu'] ?? null],
+                    $bucket['tracking_numbers'] ?? []
+                ));
+            })
+            ->map(fn($value) => $this->normalizeOrderNumber((string) $value))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $customerNames = $cargoBuckets
+            ->pluck('alici')
+            ->map(fn($value) => trim((string) $value))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $dateCandidates = $cargoBuckets
+            ->flatMap(function (array $bucket) {
+                return array_filter([
+                    $bucket['fatura_tarihi'] ?? null,
+                    $bucket['teslim_tarihi'] ?? null,
+                ]);
+            })
+            ->filter()
+            ->map(fn($date) => Carbon::parse($date));
+
+        $dateRange = $dateCandidates->isNotEmpty()
+            ? [
+                $dateCandidates->min()->copy()->subDays(14)->startOfDay(),
+                $dateCandidates->max()->copy()->addDays(14)->endOfDay(),
+            ]
+            : null;
+
+        $userId = auth()->id() ?? 1;
+
+        $query = ChannelOrder::query()
+            ->with([
+                'store:id,user_id,marketplace,store_name',
+                'packages',
+                'items.product',
+                'items.listing.product',
+            ])
+            ->whereHas('store', fn($storeQuery) => $storeQuery->where('user_id', $userId));
+
+        $query->where(function ($subQuery) use ($webOrderRefs, $trackingNumbers, $allReferenceCodes, $customerNames, $dateRange) {
+            $hasConstraint = false;
+
+            if ($webOrderRefs->isNotEmpty()) {
+                $subQuery->orWhereIn('order_number', $webOrderRefs->all());
+                $subQuery->orWhereIn('external_order_id', $webOrderRefs->all());
+                $hasConstraint = true;
+            }
+
+            if ($customerNames->isNotEmpty()) {
+                $subQuery->orWhereIn('customer_name', $customerNames->all());
+                $hasConstraint = true;
+            }
+
+            if ($trackingNumbers->isNotEmpty()) {
+                $subQuery->orWhereHas('packages', function ($packageQuery) use ($trackingNumbers) {
+                    $packageQuery->whereIn('cargo_tracking_number', $trackingNumbers->all())
+                        ->orWhereIn('cargo_barcode', $trackingNumbers->all());
+                });
+                $hasConstraint = true;
+            }
+
+            if ($allReferenceCodes->isNotEmpty()) {
+                $subQuery->orWhereHas('packages', function ($packageQuery) use ($allReferenceCodes) {
+                    $packageQuery->whereIn('package_number', $allReferenceCodes->all())
+                        ->orWhereIn('external_package_id', $allReferenceCodes->all())
+                        ->orWhereIn('cargo_barcode', $allReferenceCodes->all());
+                });
+                $hasConstraint = true;
+            }
+
+            if ($dateRange) {
+                $subQuery->orWhereBetween('ordered_at', $dateRange)
+                    ->orWhereBetween('approved_at', $dateRange)
+                    ->orWhereHas('packages', function ($packageQuery) use ($dateRange) {
+                        $packageQuery->whereBetween('shipped_at', $dateRange)
+                            ->orWhereBetween('delivered_at', $dateRange);
+                    });
                 $hasConstraint = true;
             }
 
@@ -612,9 +799,32 @@ class CargoComparisonEngine
     protected function performMarketplaceComparison(
         Collection $cargoBuckets,
         Collection $orders,
-        Collection $products
+        Collection $products,
+        ?Collection $channelOrders = null
     ): Collection {
         $results = collect();
+        $channelOrders = $channelOrders ?? collect();
+
+        $channelOrdersByNumber = $this->buildChannelOrderIndex($channelOrders, function (ChannelOrder $order) {
+            return [
+                $this->normalizeOrderNumber($order->order_number),
+                $this->normalizeOrderNumber($order->external_order_id),
+            ];
+        });
+        $channelOrdersByPackageNumber = $this->buildChannelOrderIndex($channelOrders, function (ChannelOrder $order) {
+            return $order->packages->flatMap(fn($package) => [
+                $this->normalizeOrderNumber($package->package_number),
+                $this->normalizeOrderNumber($package->external_package_id),
+                $this->normalizeOrderNumber($package->cargo_barcode),
+            ])->all();
+        });
+        $channelOrdersByTracking = $this->buildChannelOrderIndex($channelOrders, function (ChannelOrder $order) {
+            return $order->packages->flatMap(fn($package) => [
+                $this->normalizeTrackingNumber($package->cargo_tracking_number),
+                $this->normalizeTrackingNumber($package->cargo_barcode),
+            ])->all();
+        });
+        $channelOrdersByCustomer = $channelOrders->groupBy(fn(ChannelOrder $order) => $this->normalizeCustomerName((string) $order->customer_name));
 
         $ordersByNumber = $orders->keyBy(fn(MpOperationalOrder $order) => $this->normalizeOrderNumber($order->order_number));
         $ordersByPackageNumber = $this->buildOrderIndex($orders, function (MpOperationalOrder $order) {
@@ -631,9 +841,35 @@ class CargoComparisonEngine
         });
         $ordersByCustomer = $orders->groupBy(fn(MpOperationalOrder $order) => $this->normalizeCustomerName((string) $order->customer_name));
 
+        $usedChannelOrderKeys = [];
         $usedOrderNumbers = [];
 
         foreach ($cargoBuckets as $bucket) {
+            [$matchedChannelOrder, $channelMatchType] = $this->findChannelOrderForBucket(
+                $bucket,
+                $channelOrdersByNumber,
+                $channelOrdersByPackageNumber,
+                $channelOrdersByTracking,
+                $channelOrdersByCustomer,
+                $usedChannelOrderKeys
+            );
+
+            if ($matchedChannelOrder) {
+                $usedChannelOrderKeys[$this->channelOrderUsedKey($matchedChannelOrder)] = true;
+
+                $comparisonResult = $this->compareWithChannelOrder($bucket, $matchedChannelOrder, $products);
+                $comparisonResult['match_type'] = 'channel_' . $channelMatchType;
+                $results->push($comparisonResult);
+
+                $this->stats['matched']++;
+
+                if ($comparisonResult['has_error']) {
+                    $this->stats['errors']++;
+                }
+
+                continue;
+            }
+
             [$matchedOrder, $matchType] = $this->findMarketplaceOrderForBucket(
                 $bucket,
                 $ordersByNumber,
@@ -672,6 +908,97 @@ class CargoComparisonEngine
         }
 
         return $results;
+    }
+
+    protected function findChannelOrderForBucket(
+        array $bucket,
+        Collection $ordersByNumber,
+        Collection $ordersByPackageNumber,
+        Collection $ordersByTracking,
+        Collection $ordersByCustomer,
+        array $usedOrderKeys = []
+    ): array {
+        $orderNumber = $this->normalizeOrderNumber($bucket['web_siparis_kodu'] ?? '');
+
+        if (!empty($orderNumber) && $ordersByNumber->has($orderNumber)) {
+            $bestMatch = $this->chooseBestChannelOrderMatch(
+                $ordersByNumber->get($orderNumber),
+                $bucket,
+                $usedOrderKeys
+            );
+
+            if ($bestMatch) {
+                return [$bestMatch, 'order_number'];
+            }
+        }
+
+        if (!empty($orderNumber) && $ordersByPackageNumber->has($orderNumber)) {
+            $bestMatch = $this->chooseBestChannelOrderMatch(
+                $ordersByPackageNumber->get($orderNumber),
+                $bucket,
+                $usedOrderKeys
+            );
+
+            if ($bestMatch) {
+                return [$bestMatch, 'package_number'];
+            }
+        }
+
+        foreach (($bucket['tracking_numbers'] ?? []) as $trackingNumber) {
+            $normalizedTracking = $this->normalizeTrackingNumber($trackingNumber);
+
+            if (!empty($normalizedTracking) && $ordersByTracking->has($normalizedTracking)) {
+                $bestMatch = $this->chooseBestChannelOrderMatch(
+                    $ordersByTracking->get($normalizedTracking),
+                    $bucket,
+                    $usedOrderKeys
+                );
+
+                if ($bestMatch) {
+                    return [$bestMatch, 'tracking'];
+                }
+            }
+
+            $normalizedReference = $this->normalizeOrderNumber($trackingNumber);
+            if (!empty($normalizedReference) && $ordersByPackageNumber->has($normalizedReference)) {
+                $bestMatch = $this->chooseBestChannelOrderMatch(
+                    $ordersByPackageNumber->get($normalizedReference),
+                    $bucket,
+                    $usedOrderKeys
+                );
+
+                if ($bestMatch) {
+                    return [$bestMatch, 'package_number'];
+                }
+            }
+        }
+
+        $customerKey = $this->normalizeCustomerName((string) ($bucket['alici'] ?? ''));
+        if (!empty($customerKey) && $ordersByCustomer->has($customerKey)) {
+            $bestMatch = $this->chooseBestChannelOrderMatch(
+                $ordersByCustomer->get($customerKey),
+                $bucket,
+                $usedOrderKeys
+            );
+
+            if ($bestMatch) {
+                return [$bestMatch, 'customer'];
+            }
+        }
+
+        $threshold = config('cargo.matching.fuzzy_threshold', 85);
+        foreach ($ordersByCustomer as $customerName => $candidates) {
+            if ($this->similarityScore($customerKey, $customerName) < $threshold) {
+                continue;
+            }
+
+            $bestMatch = $this->chooseBestChannelOrderMatch($candidates, $bucket, $usedOrderKeys);
+            if ($bestMatch) {
+                return [$bestMatch, 'customer_fuzzy'];
+            }
+        }
+
+        return [null, 'none'];
     }
 
     protected function findMarketplaceOrderForBucket(
@@ -770,6 +1097,112 @@ class CargoComparisonEngine
         }
 
         return [null, 'none'];
+    }
+
+    protected function buildChannelOrderIndex(Collection $orders, callable $resolver): Collection
+    {
+        return $orders
+            ->reduce(function (Collection $index, ChannelOrder $order) use ($resolver) {
+                $keys = array_values(array_unique(array_filter($resolver($order))));
+
+                foreach ($keys as $key) {
+                    $group = $index->get($key, collect());
+                    $group->push($order);
+                    $index->put($key, $group->unique(fn(ChannelOrder $candidate) => $this->channelOrderUsedKey($candidate))->values());
+                }
+
+                return $index;
+            }, collect());
+    }
+
+    protected function chooseBestChannelOrderMatch(
+        Collection $candidates,
+        array $bucket,
+        array $usedOrderKeys = []
+    ): ?ChannelOrder {
+        return $candidates
+            ->reject(fn(ChannelOrder $order) => isset($usedOrderKeys[$this->channelOrderUsedKey($order)]))
+            ->sortByDesc(fn(ChannelOrder $order) => $this->scoreChannelOrderMatch($order, $bucket))
+            ->first();
+    }
+
+    protected function scoreChannelOrderMatch(ChannelOrder $order, array $bucket): int
+    {
+        $score = 0;
+        $bucketCustomer = $this->normalizeCustomerName((string) ($bucket['alici'] ?? ''));
+        $orderCustomer = $this->normalizeCustomerName((string) $order->customer_name);
+
+        if ($bucketCustomer !== '' && $bucketCustomer === $orderCustomer) {
+            $score += 40;
+        } elseif ($bucketCustomer !== '' && $orderCustomer !== '') {
+            $score += (int) round($this->similarityScore($bucketCustomer, $orderCustomer) / 4);
+        }
+
+        $bucketTrackingNumbers = collect($bucket['tracking_numbers'] ?? [])
+            ->map(fn($trackingNumber) => $this->normalizeTrackingNumber((string) $trackingNumber))
+            ->filter()
+            ->all();
+        $orderTrackingNumbers = $order->packages
+            ->flatMap(fn($package) => [
+                $this->normalizeTrackingNumber($package->cargo_tracking_number),
+                $this->normalizeTrackingNumber($package->cargo_barcode),
+            ])
+            ->filter()
+            ->all();
+
+        if (!empty(array_intersect($bucketTrackingNumbers, $orderTrackingNumbers))) {
+            $score += 60;
+        }
+
+        $bucketReference = $this->normalizeOrderNumber($bucket['web_siparis_kodu'] ?? '');
+        if ($bucketReference !== '') {
+            $orderReferences = collect([
+                $this->normalizeOrderNumber($order->order_number),
+                $this->normalizeOrderNumber($order->external_order_id),
+            ])->merge($order->packages->flatMap(fn($package) => [
+                $this->normalizeOrderNumber($package->package_number),
+                $this->normalizeOrderNumber($package->external_package_id),
+                $this->normalizeOrderNumber($package->cargo_barcode),
+            ]))->filter()->all();
+
+            if (in_array($bucketReference, $orderReferences, true)) {
+                $score += 50;
+            }
+        }
+
+        $bucketDate = $bucket['fatura_tarihi'] ?? $bucket['teslim_tarihi'] ?? null;
+        $orderDate = $this->channelOrderComparisonDate($order);
+        if ($bucketDate && $orderDate) {
+            $dayDiff = abs(Carbon::parse($bucketDate)->diffInDays($orderDate, false));
+            $score += max(0, 30 - ($dayDiff * 2));
+        }
+
+        $bucketCity = $this->normalizeCustomerName((string) ($bucket['alici_il'] ?? ''));
+        $orderCity = $this->normalizeCustomerName((string) $order->shipment_city);
+        if ($bucketCity !== '' && $bucketCity === $orderCity) {
+            $score += 10;
+        }
+
+        return $score;
+    }
+
+    protected function channelOrderComparisonDate(ChannelOrder $order): ?Carbon
+    {
+        $date = $order->ordered_at
+            ?: $order->approved_at
+            ?: $order->packages->pluck('shipped_at')->filter()->sort()->first()
+            ?: $order->packages->pluck('delivered_at')->filter()->sort()->first();
+
+        return $date ? Carbon::parse($date) : null;
+    }
+
+    protected function channelOrderUsedKey(ChannelOrder $order): string
+    {
+        if ($order->getKey()) {
+            return 'id:' . $order->getKey();
+        }
+
+        return 'order:' . ($order->store_id ?? '0') . '|' . ($order->order_number ?? '') . '|' . spl_object_id($order);
     }
 
     protected function buildOrderIndex(Collection $orders, callable $resolver): Collection
@@ -939,6 +1372,126 @@ class CargoComparisonEngine
         ];
     }
 
+    protected function compareWithChannelOrder(
+        array $bucket,
+        ChannelOrder $order,
+        Collection $products
+    ): array {
+        if ($order->exists) {
+            $order->loadMissing(['store', 'packages', 'items.product', 'items.listing.product']);
+        }
+
+        $expectedValues = [
+            'parca' => 0,
+            'desi' => 0,
+            'tutar' => 0,
+        ];
+
+        $stokKodlari = [];
+        $urunAdlari = [];
+        $siparisDetay = [];
+        $referenceIssues = [];
+        $totalAdet = 0;
+
+        foreach ($order->items as $item) {
+            $qty = max(1, (int) ($item->quantity ?? 1));
+            $totalAdet += $qty;
+
+            $stokKodu = trim((string) ($item->stock_code ?? ''));
+            $urunAdi = trim((string) ($item->product_name ?? ''));
+
+            if ($stokKodu !== '') {
+                $stokKodlari[] = $stokKodu;
+            }
+
+            if ($urunAdi !== '') {
+                $urunAdlari[] = $urunAdi;
+            }
+
+            $detail = [
+                'stok_kodu' => $stokKodu,
+                'urun_adi' => $urunAdi,
+                'adet' => $qty,
+                'pazaryeri' => $order->store?->marketplace,
+                'magaza' => $order->store?->store_name,
+            ];
+
+            $product = $this->resolveChannelOrderItemProduct($item, $products);
+
+            if (!$product) {
+                $detail['not_found'] = true;
+                $detail['reference_note'] = 'Pazaryeri ürün kartı bulunamadı.';
+                $referenceIssues[] = $stokKodu ?: ($item->barcode ?? 'ÜRÜN');
+                $siparisDetay[] = $detail;
+                continue;
+            }
+
+            $pieces = max(1, (int) ($product->pieces ?? 1));
+            $desi = (float) ($product->desi ?? 0);
+            $tutar = (float) ($product->cargo_cost ?? 0);
+
+            $expectedValues['parca'] += $pieces * $qty;
+            $expectedValues['desi'] += $desi * $qty;
+            $expectedValues['tutar'] += $tutar * $qty;
+
+            $detail['parca'] = $pieces * $qty;
+            $detail['desi'] = round($desi * $qty, 2);
+            $detail['tutar'] = round($tutar * $qty, 2);
+
+            if ($desi <= 0 || $tutar <= 0) {
+                $detail['reference_note'] = 'Desi veya kargo fiyatı eksik.';
+                $referenceIssues[] = $stokKodu ?: ($item->barcode ?? 'ÜRÜN');
+            }
+
+            $siparisDetay[] = $detail;
+        }
+
+        $actualValues = [
+            'parca' => (int) ($bucket['adet'] ?? 1),
+            'desi' => (float) ($bucket['desi'] ?? 0),
+            'tutar' => (float) ($bucket['tutar'] ?? 0),
+        ];
+
+        $diff = [
+            'parca' => $actualValues['parca'] - $expectedValues['parca'],
+            'desi' => $actualValues['desi'] - $expectedValues['desi'],
+            'tutar' => $actualValues['tutar'] - $expectedValues['tutar'],
+        ];
+
+        $preliminaryErrorType = $this->determineErrorType($diff);
+        $hasReferenceIssue = !empty($referenceIssues);
+        $errorType = $hasReferenceIssue ? 'referans_eksik' : $preliminaryErrorType;
+
+        return [
+            'tarih' => $this->parseDate($bucket['teslim_tarihi'] ?? $bucket['fatura_tarihi'] ?? null),
+            'musteri_adi' => $bucket['alici'] ?? $order->customer_name,
+            'takip_kodu' => $this->formatTrackingLabel($bucket['tracking_numbers'] ?? [])
+                ?: $this->formatTrackingLabel($order->packages->pluck('cargo_tracking_number')->all()),
+            'stok_kodu' => mb_strimwidth(implode(', ', array_unique(array_filter($stokKodlari))), 0, 30, '...'),
+            'urun_adi' => mb_strimwidth(implode(', ', array_unique(array_filter($urunAdlari))), 0, 250, '...'),
+            'adet' => max(1, $totalAdet),
+            'beklenen_parca' => $expectedValues['parca'],
+            'beklenen_desi' => $expectedValues['desi'],
+            'beklenen_tutar' => $expectedValues['tutar'],
+            'gercek_parca' => $actualValues['parca'],
+            'gercek_desi' => $actualValues['desi'],
+            'gercek_tutar' => $actualValues['tutar'],
+            'parca_fark' => $diff['parca'],
+            'desi_fark' => $diff['desi'],
+            'tutar_fark' => $diff['tutar'],
+            'error_type' => $errorType,
+            'has_error' => $errorType !== 'none',
+            'is_matched' => true,
+            'pazaryeri' => $order->store?->marketplace,
+            'magaza' => $order->store?->store_name,
+            'siparis_no' => $order->order_number,
+            'siparis_detay' => $siparisDetay,
+            'cikis_il' => $bucket['alici_il'] ?? $order->shipment_city,
+            'is_iade' => false,
+            'is_parca_gonderi' => $this->isChannelPartShipment($order),
+        ];
+    }
+
     protected function resolveMarketplaceProduct(?string $stockCode, ?string $barcode, Collection $products): ?MpProduct
     {
         $normalizedStockCode = $this->normalizeOrderNumber((string) $stockCode);
@@ -962,6 +1515,22 @@ class CargoComparisonEngine
         });
     }
 
+    protected function resolveChannelOrderItemProduct($item, Collection $products): ?MpProduct
+    {
+        $product = $item->relationLoaded('product') ? $item->product : null;
+
+        if (!$product && $item->relationLoaded('listing')) {
+            $listing = $item->listing;
+            $product = $listing?->relationLoaded('product') ? $listing->product : null;
+        }
+
+        if (!$product && !empty($item->mp_product_id)) {
+            $product = $products->first(fn(MpProduct $candidate) => (int) $candidate->id === (int) $item->mp_product_id);
+        }
+
+        return $product ?: $this->resolveMarketplaceProduct($item->stock_code, $item->barcode, $products);
+    }
+
     protected function isMarketplacePartShipment(MpOperationalOrder $order): bool
     {
         if ($order->items->isEmpty()) {
@@ -974,6 +1543,21 @@ class CargoComparisonEngine
             $unit = (float) ($item->unit_price ?? 0);
 
             return $billable <= 0 && $sale <= 0 && $unit <= 0;
+        });
+    }
+
+    protected function isChannelPartShipment(ChannelOrder $order): bool
+    {
+        if ($order->items->isEmpty()) {
+            return false;
+        }
+
+        return $order->items->every(function ($item) {
+            $billable = (float) ($item->billable_amount ?? 0);
+            $gross = (float) ($item->gross_amount ?? 0);
+            $unit = (float) ($item->unit_price ?? 0);
+
+            return $billable <= 0 && $gross <= 0 && $unit <= 0;
         });
     }
 

@@ -65,6 +65,44 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         ));
     }
 
+    public function test_it_keeps_connection_ready_when_last_live_verification_only_hit_ciceksepeti_rate_limit(): void
+    {
+        $store = $this->makeStore('ciceksepeti', '1500041287', [
+            'api_key' => 'ciceksepeti_key',
+            'extra_user' => 'ZOLM',
+        ], '');
+
+        $store->connection->last_verified_at = now();
+        $store->connection->last_error = 'HTTP request returned status code 400: {"Message":"Limit aşımı! Bu endpointe farklı istekleri 5 saniyede 1 kez atabilirsiniz. Kalan Süre: 2 saniye"}';
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+
+        $this->assertTrue($result['is_ready']);
+        $this->assertEmpty($result['failures']);
+        $this->assertTrue(collect($result['warnings'])->contains(
+            fn (string $warning) => str_contains($warning, 'geçici istek limitine takıldı')
+        ));
+    }
+
+    public function test_it_keeps_pazarama_ready_when_last_live_verification_was_stale_404(): void
+    {
+        $store = $this->makeStore('pazarama', 'pazarama-test', [
+            'api_key' => 'pazarama_key',
+            'api_secret' => 'pazarama_secret',
+        ], 'https://isortagimapi.pazarama.com');
+
+        $store->connection->last_verified_at = now();
+        $store->connection->last_error = 'HTTP request returned status code 404';
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+
+        $this->assertTrue($result['is_ready']);
+        $this->assertEmpty($result['failures']);
+        $this->assertTrue(collect($result['warnings'])->contains(
+            fn (string $warning) => str_contains($warning, 'Pazarama canlı doğrulaması 404')
+        ));
+    }
+
     public function test_it_marks_woocommerce_ready_with_consumer_credentials(): void
     {
         $store = $this->makeStore('woocommerce', 'woo-test', [
@@ -235,6 +273,22 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         $this->assertTrue($result['is_ready']);
         $this->assertEmpty($result['failures']);
         $this->assertFalse(collect($result['warnings'])->contains(fn (string $warning) => str_contains(mb_strtolower($warning), 'skeleton')));
+        $this->assertSame(1, $summary['totals']['ready']);
+        $this->assertSame('ready', $summary['rows'][0]['state']);
+    }
+
+    public function test_it_marks_koctas_as_ready_with_only_api_key(): void
+    {
+        $store = $this->makeStore('koctas', null, [
+            'api_key' => 'koctas_key',
+        ], '');
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+        $summary = app(MarketplaceConnectionReadinessService::class)->inspectCollection([$store]);
+
+        $this->assertTrue($result['is_ready']);
+        $this->assertEmpty($result['warnings']);
+        $this->assertEmpty($result['failures']);
         $this->assertSame(1, $summary['totals']['ready']);
         $this->assertSame('ready', $summary['rows'][0]['state']);
     }

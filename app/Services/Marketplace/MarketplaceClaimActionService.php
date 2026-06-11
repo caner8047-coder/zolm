@@ -3,7 +3,7 @@
 namespace App\Services\Marketplace;
 
 use App\Models\ChannelClaim;
-use App\Services\Marketplace\Contracts\PullsClaims;
+use App\Services\Marketplace\Contracts\ManagesClaims;
 
 class MarketplaceClaimActionService
 {
@@ -18,16 +18,17 @@ class MarketplaceClaimActionService
      */
     public function approveClaim(ChannelClaim $claim, array $context = []): array
     {
+        $claim->loadMissing(['store.connection', 'items']);
         $connector = $this->connectorManager->resolve($claim->store->marketplace);
 
-        if (!$connector instanceof PullsClaims) {
-            throw new \RuntimeException('Bu kanal iade servisini desteklemiyor.');
+        if (!$connector instanceof ManagesClaims || !(bool) ($connector->capabilities()['claim_approve'] ?? false)) {
+            throw new \RuntimeException('Bu kanal iade onayını desteklemiyor.');
         }
 
-        $result = $connector->approveClaim($claim->store, $claim->external_claim_id, $context);
+        $result = $connector->approveClaim($claim->store, $claim->external_claim_id, $this->actionContext($claim, $context));
 
         $claim->update([
-            'status' => 'approved',
+            'status' => $result['status'] ?? 'approved',
         ]);
 
         return [
@@ -42,21 +43,48 @@ class MarketplaceClaimActionService
      */
     public function rejectClaim(ChannelClaim $claim, string $reason, array $context = []): array
     {
+        $claim->loadMissing(['store.connection', 'items']);
         $connector = $this->connectorManager->resolve($claim->store->marketplace);
 
-        if (!$connector instanceof PullsClaims) {
+        if (!$connector instanceof ManagesClaims || !(bool) ($connector->capabilities()['claim_reject'] ?? false)) {
             throw new \RuntimeException('Bu kanal iade reddetme servisini desteklemiyor.');
         }
 
-        $result = $connector->rejectClaim($claim->store, $claim->external_claim_id, $reason, $context);
+        $result = $connector->rejectClaim($claim->store, $claim->external_claim_id, $reason, $this->actionContext($claim, $context));
 
         $claim->update([
-            'status' => 'rejected',
+            'status' => $result['status'] ?? 'rejected',
         ]);
 
         return [
             'success' => true,
             'message' => $result['message'] ?? 'İade başarıyla reddedildi.',
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    protected function actionContext(ChannelClaim $claim, array $context): array
+    {
+        $items = $claim->items
+            ->map(fn ($item) => [
+                'external_item_id' => $item->external_item_id,
+                'external_order_line_id' => $item->external_order_line_id,
+                'quantity' => $item->quantity,
+                'status' => $item->status,
+                'raw_payload' => $item->raw_payload,
+            ])
+            ->values()
+            ->all();
+
+        return array_replace([
+            'claim' => $claim->toArray(),
+            'items' => $items,
+            'external_item_ids' => $claim->items->pluck('external_item_id')->filter()->values()->all(),
+            'claim_item_ids' => $claim->items->pluck('external_item_id')->filter()->values()->all(),
+            'external_order_line_ids' => $claim->items->pluck('external_order_line_id')->filter()->values()->all(),
+        ], $context);
     }
 }

@@ -5,6 +5,8 @@ namespace App\Services\Marketplace;
 use App\Models\ChannelListing;
 use App\Models\ChannelProduct;
 use App\Models\MarketplaceStore;
+use App\Services\MpProductChangeLogger;
+use Illuminate\Support\Facades\Schema;
 
 class MarketplaceCatalogSyncService
 {
@@ -15,9 +17,10 @@ class MarketplaceCatalogSyncService
 
     /**
      * @param  array<int, array<string, mixed>>  $items
+     * @param  array<string, mixed>  $context
      * @return array{created: int, updated: int, skipped: int}
      */
-    public function sync(MarketplaceStore $store, array $items): array
+    public function sync(MarketplaceStore $store, array $items, array $context = []): array
     {
         $created = 0;
         $updated = 0;
@@ -48,7 +51,7 @@ class MarketplaceCatalogSyncService
                 'store_id' => $store->id,
                 'external_product_id' => $externalProductId,
                 'external_parent_id' => $this->preferIncoming($productPayload['external_parent_id'] ?? null, $product->external_parent_id),
-                'stock_code' => $this->preferIncoming($productPayload['stock_code'] ?? null, $product->stock_code),
+                'stock_code' => $this->preferIncomingStockCode($store, $productPayload['stock_code'] ?? null, $product->stock_code, $externalProductId),
                 'barcode' => $this->preferIncoming($productPayload['barcode'] ?? null, $product->barcode),
                 'title' => $this->preferIncoming($productPayload['title'] ?? null, $product->title),
                 'brand' => $this->preferIncoming($productPayload['brand'] ?? null, $product->brand),
@@ -64,8 +67,11 @@ class MarketplaceCatalogSyncService
             $listing = $this->resolveListing($store, $product, $listingId);
 
             $listingDirty = !$listing->exists;
+            $listing->setRelation('store', $store);
+            $logger = app(MpProductChangeLogger::class);
+            $beforeListingSnapshot = $listingDirty ? [] : $logger->listingSnapshot($listing);
 
-            $listing->fill([
+            $listingData = [
                 'store_id' => $store->id,
                 'channel_product_id' => $product->id,
                 'listing_id' => $listingId,
@@ -76,7 +82,29 @@ class MarketplaceCatalogSyncService
                 'stock_quantity' => $this->preferIncoming($listingPayload['stock_quantity'] ?? null, $listing->stock_quantity),
                 'published_at' => $this->preferIncoming($listingPayload['published_at'] ?? null, $listing->published_at),
                 'last_synced_at' => now(),
-            ]);
+            ];
+
+            $listingData = array_merge($listingData, $this->deliveryTermData($listingPayload, $listing));
+
+            $usesProductCommission = ($listingPayload['commission_authority'] ?? null) === 'product'
+                || ($listingPayload['commission_source'] ?? null) === 'product_fallback';
+            $commissionRate = $this->normalizeCommissionRate($listingPayload['commission_rate'] ?? null);
+
+            if ($usesProductCommission) {
+                $listingData['commission_rate'] = null;
+                $listingData['commission_source'] = 'product_fallback';
+                $listingData['commission_synced_at'] = now();
+            } elseif ($commissionRate !== null) {
+                $listingData['commission_rate'] = $commissionRate;
+                $listingData['commission_source'] = $listingPayload['commission_source'] ?? 'catalog';
+                $listingData['commission_synced_at'] = now();
+            } elseif ($this->shouldUseZeroCommissionDefault($store)) {
+                $listingData['commission_rate'] = 0;
+                $listingData['commission_source'] = 'marketplace_default';
+                $listingData['commission_synced_at'] = now();
+            }
+
+            $listing->fill($listingData);
 
             $listingChanged = $listingDirty || $listing->isDirty();
             $listing->save();
@@ -86,6 +114,22 @@ class MarketplaceCatalogSyncService
                 $product->stock_code,
                 $product->barcode,
             );
+
+            $listing->refresh()->loadMissing(['store', 'product', 'channelProduct']);
+            $logger->logListingSnapshotChanges(
+                $listing,
+                $beforeListingSnapshot,
+                'catalog_sync',
+                null,
+                $listingDirty ? 'Pazaryeri ürün senkronu ile yeni kanal kaydı' : 'Pazaryeri ürün senkronu',
+                null,
+                [
+                    'marketplace' => $store->marketplace,
+                    'store_name' => $store->store_name,
+                    'sync_type' => $context['sync_type'] ?? 'products',
+                ]
+            );
+            app(\App\Services\NotificationCenterService::class)->syncListingStockAlert($listing);
 
             if ($productChanged || $listingChanged) {
                 if ($productDirty || $listingDirty) {
@@ -182,5 +226,71 @@ class MarketplaceCatalogSyncService
         }
 
         return $incoming;
+    }
+
+    protected function preferIncomingStockCode(MarketplaceStore $store, mixed $incoming, mixed $existing, string $externalProductId): mixed
+    {
+        if ($incoming !== null && (!is_string($incoming) || trim($incoming) !== '')) {
+            return $incoming;
+        }
+
+        $existing = trim((string) $existing);
+
+        if (
+            strtolower((string) $store->marketplace) === 'woocommerce'
+            && $existing !== ''
+            && $existing === trim($externalProductId)
+        ) {
+            return null;
+        }
+
+        return $existing !== '' ? $existing : null;
+    }
+
+    protected function normalizeCommissionRate(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $rate = (float) str_replace(',', '.', (string) $value);
+
+        if ($rate < 0 || $rate > 100) {
+            return null;
+        }
+
+        return round($rate, 2);
+    }
+
+    protected function shouldUseZeroCommissionDefault(MarketplaceStore $store): bool
+    {
+        return strtolower((string) $store->marketplace) === 'woocommerce';
+    }
+
+    /**
+     * @param  array<string, mixed>  $listingPayload
+     * @return array<string, mixed>
+     */
+    protected function deliveryTermData(array $listingPayload, ChannelListing $listing): array
+    {
+        static $columns = null;
+
+        $columns ??= [
+            'shipping_days' => Schema::hasColumn('channel_listings', 'shipping_days'),
+            'shipping_type' => Schema::hasColumn('channel_listings', 'shipping_type'),
+            'fast_delivery_type' => Schema::hasColumn('channel_listings', 'fast_delivery_type'),
+        ];
+
+        $data = [];
+
+        foreach (array_keys($columns) as $column) {
+            if (!$columns[$column]) {
+                continue;
+            }
+
+            $data[$column] = $this->preferIncoming($listingPayload[$column] ?? null, $listing->{$column});
+        }
+
+        return $data;
     }
 }

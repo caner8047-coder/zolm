@@ -6,11 +6,19 @@ use App\Models\IntegrationConnection;
 use App\Models\MarketplaceStore;
 use App\Services\Marketplace\Connectors\PazaramaConnector;
 use App\Services\Marketplace\MarketplaceConnectorManager;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class PazaramaConnectorTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Cache::flush();
+    }
+
     public function test_manager_resolves_pazarama_connector(): void
     {
         $manager = app(MarketplaceConnectorManager::class);
@@ -34,10 +42,10 @@ class PazaramaConnectorTest extends TestCase
                     'tokenType' => 'Bearer',
                 ],
             ], 200),
-            'https://isortagimapi.pazarama.com/product/products*' => Http::response([
+            'https://isortagimapi.pazarama.com/order/getOrdersForApi' => Http::response([
                 'data' => [],
                 'success' => true,
-                'messageCode' => 'PRD0',
+                'messageCode' => 'ORD0',
             ], 200),
         ]);
 
@@ -46,17 +54,17 @@ class PazaramaConnectorTest extends TestCase
         $this->assertTrue($result['ok']);
         $this->assertSame(0, data_get($result, 'meta.items_returned'));
 
-        Http::assertSent(function ($request) {
-            if ($request->url() === 'https://isortagimgiris.pazarama.com/connect/token') {
-                return $request->method() === 'POST'
-                    && $request->hasHeader('Authorization', 'Basic '.base64_encode('pazarama-key:pazarama-secret'))
-                    && data_get($request->data(), 'grant_type') === 'client_credentials'
-                    && data_get($request->data(), 'scope') === 'merchantgatewayapi.fullaccess';
-            }
+        Http::assertSent(fn ($request) => $request->url() === 'https://isortagimgiris.pazarama.com/connect/token'
+            && $request->method() === 'POST'
+            && $request->hasHeader('Authorization', 'Basic '.base64_encode('pazarama-key:pazarama-secret'))
+            && data_get($request->data(), 'grant_type') === 'client_credentials'
+            && data_get($request->data(), 'scope') === 'merchantgatewayapi.fullaccess');
 
-            return $request->url() === 'https://isortagimapi.pazarama.com/product/products?Approved=true&Size=1&Page=1'
-                && $request->hasHeader('Authorization', 'Bearer pazarama-token');
-        });
+        Http::assertSent(fn ($request) => $request->url() === 'https://isortagimapi.pazarama.com/order/getOrdersForApi'
+            && $request->method() === 'POST'
+            && $request->hasHeader('Authorization', 'Bearer pazarama-token')
+            && data_get($request->data(), 'pageSize') === 1
+            && data_get($request->data(), 'pageNumber') === 1);
     }
 
     public function test_it_normalizes_pazarama_products(): void
@@ -184,10 +192,45 @@ class PazaramaConnectorTest extends TestCase
         $this->assertSame('986089186', data_get($result, 'items.0.order.order_number'));
         $this->assertSame('Büşra Türker Arat', data_get($result, 'items.0.order.customer_name'));
         $this->assertSame('ord-1', data_get($result, 'items.0.package.external_package_id'));
-        $this->assertSame('Siparişiniz Alındı', data_get($result, 'items.0.package.package_status'));
+        $this->assertSame('Approved', data_get($result, 'items.0.package.package_status'));
         $this->assertSame('LIVA-PUF', data_get($result, 'items.0.items.0.stock_code'));
         $this->assertSame(1419.90, data_get($result, 'items.0.items.0.billable_amount'));
         $this->assertSame('2026-04-24 19:00', data_get($result, 'items.0.items.0.raw_payload.estimatedShippingDate'));
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://isortagimapi.pazarama.com/order/getOrdersForApi'
+            && data_get($request->data(), 'pageSize') === 100
+            && data_get($request->data(), 'pageNumber') === 1
+            && data_get($request->data(), 'startDate') === '2026-04-19T21:00:00'
+            && data_get($request->data(), 'endDate') === '2026-04-20T21:00:00');
+    }
+
+    public function test_it_uses_default_api_base_url_when_pazarama_auth_url_is_saved_as_api_url(): void
+    {
+        Http::fake([
+            'https://isortagimgiris.pazarama.com/connect/token' => Http::response([
+                'success' => true,
+                'data' => [
+                    'accessToken' => 'pazarama-token',
+                    'expiresIn' => 3600,
+                    'tokenType' => 'Bearer',
+                ],
+            ], 200),
+            'https://isortagimapi.pazarama.com/order/getOrdersForApi' => Http::response([
+                'data' => [],
+                'success' => true,
+                'messageCode' => 'ORD0',
+            ], 200),
+        ]);
+
+        $store = $this->makeStore();
+        $store->connection->api_base_url = 'https://isortagimgiris.pazarama.com/connect/token';
+
+        app(PazaramaConnector::class)->pullOrders($store, [
+            'start_date' => '2026-04-20T00:00:00+03:00',
+            'end_date' => '2026-04-21T00:00:00+03:00',
+        ]);
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://isortagimapi.pazarama.com/order/getOrdersForApi');
     }
 
     protected function makeStore(): MarketplaceStore

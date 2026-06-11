@@ -9,6 +9,7 @@ use App\Models\IntegrationSyncRun;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
 use App\Models\User;
+use App\Services\Marketplace\MarketplaceSyncService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -75,9 +76,10 @@ class MarketplaceDispatchSyncCommandsTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_due_dispatch_queues_ready_store(): void
+    public function test_due_dispatch_runs_ready_orders_inline(): void
     {
         Queue::fake();
+        $this->mockInlineOrderSync();
 
         [$readyStore] = $this->makeStores();
         $baselineCount = IntegrationSyncRun::query()->where('store_id', $readyStore->id)->count();
@@ -88,7 +90,74 @@ class MarketplaceDispatchSyncCommandsTest extends TestCase
         ])->assertExitCode(0);
 
         $this->assertSame($baselineCount + 1, IntegrationSyncRun::query()->where('store_id', $readyStore->id)->count());
+        $this->assertDatabaseHas('integration_sync_runs', [
+            'store_id' => $readyStore->id,
+            'sync_type' => 'orders',
+            'trigger_type' => 'schedule',
+            'status' => 'completed',
+        ]);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_due_dispatch_queues_ready_store_questions_sync(): void
+    {
+        Queue::fake();
+
+        [$readyStore] = $this->makeStores();
+        $baselineCount = IntegrationSyncRun::query()->where('store_id', $readyStore->id)->count();
+
+        $this->artisan('marketplace:dispatch-due-syncs', [
+            '--type' => 'questions',
+            '--store' => $readyStore->id,
+        ])->assertExitCode(0);
+
+        $this->assertSame($baselineCount + 1, IntegrationSyncRun::query()->where('store_id', $readyStore->id)->count());
+        $this->assertDatabaseHas('integration_sync_runs', [
+            'store_id' => $readyStore->id,
+            'sync_type' => 'questions',
+            'trigger_type' => 'schedule',
+            'status' => 'queued',
+        ]);
         Queue::assertPushed(SyncMarketplaceDataJob::class, 1);
+    }
+
+    public function test_due_dispatch_uses_global_15_minute_order_interval_for_existing_profiles(): void
+    {
+        Queue::fake();
+        $this->mockInlineOrderSync();
+
+        [$readyStore] = $this->makeStores();
+        $readyStore->syncProfile()->update([
+            'orders_poll_minutes' => 30,
+        ]);
+
+        IntegrationSyncRun::query()->create([
+            'store_id' => $readyStore->id,
+            'sync_type' => 'orders',
+            'trigger_type' => 'schedule',
+            'status' => 'completed',
+            'started_at' => now()->subMinutes(17),
+            'finished_at' => now()->subMinutes(16),
+            'notes_json' => ['options' => []],
+            'created_at' => now()->subMinutes(17),
+            'updated_at' => now()->subMinutes(16),
+        ]);
+
+        $baselineCount = IntegrationSyncRun::query()->where('store_id', $readyStore->id)->count();
+
+        $this->artisan('marketplace:dispatch-due-syncs', [
+            '--type' => 'orders',
+            '--store' => $readyStore->id,
+        ])->assertExitCode(0);
+
+        $this->assertSame($baselineCount + 1, IntegrationSyncRun::query()->where('store_id', $readyStore->id)->count());
+        $this->assertDatabaseHas('integration_sync_runs', [
+            'store_id' => $readyStore->id,
+            'sync_type' => 'orders',
+            'trigger_type' => 'schedule',
+            'status' => 'completed',
+        ]);
+        Queue::assertNothingPushed();
     }
 
     public function test_manual_dispatch_rejects_store_when_last_live_verification_failed(): void
@@ -166,10 +235,12 @@ class MarketplaceDispatchSyncCommandsTest extends TestCase
             'orders_poll_minutes' => 15,
             'finance_poll_minutes' => 60,
             'products_poll_minutes' => 360,
+            'questions_poll_minutes' => 15,
             'backfill_mode' => 'windowed',
             'orders_enabled' => true,
             'finance_enabled' => false,
             'products_enabled' => false,
+            'questions_enabled' => true,
             'webhook_enabled' => false,
             'price_push_enabled' => false,
             'stock_push_enabled' => false,
@@ -183,5 +254,24 @@ class MarketplaceDispatchSyncCommandsTest extends TestCase
         ]);
 
         return $store->fresh(['connection', 'syncProfile']);
+    }
+
+    protected function mockInlineOrderSync(): void
+    {
+        $this->mock(MarketplaceSyncService::class, function ($mock): void {
+            $mock->shouldReceive('run')->once()->andReturnUsing(function (int $runId): void {
+                IntegrationSyncRun::query()
+                    ->findOrFail($runId)
+                    ->forceFill([
+                        'status' => 'completed',
+                        'started_at' => now(),
+                        'finished_at' => now(),
+                        'items_received' => 1,
+                        'items_created' => 1,
+                        'notes_json' => ['options' => []],
+                    ])
+                    ->save();
+            });
+        });
     }
 }

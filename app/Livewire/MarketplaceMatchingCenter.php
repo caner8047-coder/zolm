@@ -317,7 +317,21 @@ class MarketplaceMatchingCenter extends Component
     public function manualMatchRecommended(int $issueId): void
     {
         $issue = $this->resolveIssueForUser($issueId);
-        $candidates = $this->resolveCandidatesForIssue($issue, collect());
+        $candidateIds = collect((array) ($issue->candidate_ids_json ?? []))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $prefetchedProducts = $candidateIds->isNotEmpty()
+            ? MpProduct::query()
+                ->where('user_id', $this->userId())
+                ->whereIn('id', $candidateIds->all())
+                ->get()
+                ->keyBy('id')
+            : collect();
+
+        $candidates = $this->resolveCandidatesForIssue($issue, $prefetchedProducts);
         $recommended = $candidates->first();
 
         if (!$recommended || $this->candidateScore($recommended) <= 0) {
@@ -421,11 +435,23 @@ class MarketplaceMatchingCenter extends Component
 
     public function statusLabel(?string $status): string
     {
-        return match ($status) {
-            'pending' => 'Bekliyor',
-            'resolved' => 'Çözüldü',
-            'ignored' => 'Göz ardı',
-            default => ucfirst((string) $status),
+        $status = Str::of((string) $status)
+            ->trim()
+            ->lower()
+            ->replaceMatches('/[\s-]+/', '_')
+            ->value();
+
+        return match (true) {
+            $status === 'pending' => 'Bekliyor',
+            $status === 'resolved' => 'Çözüldü',
+            $status === 'ignored' => 'Göz ardı',
+            in_array($status, ['active', 'approved', 'live', 'on_sale', 'onsale', 'published', 'publish', 'enabled'], true) => 'Yayında',
+            in_array($status, ['inactive', 'suspended', 'passive', 'paused', 'disabled', 'closed', 'archived', 'trash', 'deleted'], true) => 'Pasif',
+            in_array($status, ['draft', 'private'], true) => 'Taslak',
+            in_array($status, ['pending_approval', 'awaiting_approval', 'waiting_approval', 'review', 'under_review'], true) => 'Onay bekliyor',
+            in_array($status, ['rejected', 'reject', 'blocked', 'not_approved'], true) => 'Reddedildi',
+            in_array($status, ['out_of_stock', 'sold_out'], true) => 'Tükendi',
+            default => 'Bilinmeyen durum',
         };
     }
 

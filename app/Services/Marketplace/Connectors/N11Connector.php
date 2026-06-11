@@ -3,7 +3,13 @@
 namespace App\Services\Marketplace\Connectors;
 
 use App\Models\ChannelListing;
+use App\Models\MarketplaceQuestion;
 use App\Models\MarketplaceStore;
+use App\Services\Marketplace\Connectors\Concerns\NormalizesCustomerQuestions;
+use App\Services\Marketplace\Contracts\AnswersCustomerQuestions;
+use App\Services\Marketplace\Contracts\ManagesClaims;
+use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
+use App\Services\Marketplace\Contracts\PullsClaims;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
 use App\Services\Marketplace\Contracts\PushesPrice;
@@ -15,8 +21,10 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PushesPrice, PushesStock, TestsConnection
+class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PullsCustomerQuestions, PullsClaims, ManagesClaims, AnswersCustomerQuestions, PushesPrice, PushesStock, TestsConnection
 {
+    use NormalizesCustomerQuestions;
+
     public function providerKey(): string
     {
         return 'n11';
@@ -52,6 +60,11 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
             'package_common_label_get' => false,
             'invoice_link' => false,
             'package_invoice_link' => false,
+            'questions' => true,
+            'question_answer' => true,
+            'claims' => true,
+            'claim_approve' => true,
+            'claim_reject' => true,
         ];
     }
 
@@ -162,6 +175,171 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
         ];
     }
 
+    public function pullCustomerQuestions(MarketplaceStore $store, array $options = []): array
+    {
+        $page = 0;
+        $pageSize = min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.n11.question_page_size', 50))));
+        $maxPages = max(1, (int) config('marketplace.n11.max_question_pages_per_sync', 10));
+        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('Europe/Istanbul');
+        $endDate = CarbonImmutable::parse($options['end_date'] ?? now())->setTimezone('Europe/Istanbul');
+        $items = [];
+
+        do {
+            $response = $this->soapCall($store, 'GetProductQuestionList', [
+                'productQuestionSearch' => array_filter([
+                    'status' => $this->n11QuestionStatus($options['status'] ?? 'OPEN'),
+                    'startDate' => $startDate->format('d/m/Y'),
+                    'endDate' => $endDate->format('d/m/Y'),
+                    'productId' => $options['product_id'] ?? null,
+                    'subject' => $options['subject'] ?? null,
+                    'buyerEmail' => $options['buyer_email'] ?? null,
+                ], fn ($value) => $value !== null && $value !== ''),
+                'pagingData' => [
+                    'currentPage' => $page,
+                    'pageSize' => $pageSize,
+                ],
+            ]);
+
+            $rows = $this->questionRowsFromPayload($response, [
+                'productQuestions.productQuestion',
+                'productQuestionList.productQuestion',
+                'questions.question',
+            ]);
+
+            foreach ($rows as $row) {
+                $items[] = $this->normalizeN11Question($row);
+            }
+
+            $totalPages = (int) (
+                data_get($response, 'pagingData.pageCount')
+                ?: data_get($response, 'pagingData.totalPages')
+                ?: data_get($response, 'pageCount')
+                ?: 1
+            );
+            $page++;
+        } while ($rows !== [] && $page < min(max(1, $totalPages), $maxPages));
+
+        return [
+            'items' => $items,
+            'meta' => [
+                'items_received' => count($items),
+                'cursor_after' => $endDate->toIso8601String(),
+                'pages_processed' => $page,
+                'more_pages_available' => $page < ($totalPages ?? 1),
+            ],
+        ];
+    }
+
+    public function pullClaims(MarketplaceStore $store, array $options = []): array
+    {
+        $page = 0;
+        $pageSize = min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.n11.claim_page_size', 50))));
+        $maxPages = max(1, (int) config('marketplace.n11.max_claim_pages_per_sync', 20));
+        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('Europe/Istanbul');
+        $endDate = CarbonImmutable::parse($options['end_date'] ?? now())->setTimezone('Europe/Istanbul');
+        $operation = (string) config('marketplace.n11.claim_list_operation', 'ClaimReturnList');
+        $items = [];
+
+        do {
+            $response = $this->returnSoapCall($store, $operation, [
+                'claimReturnSearch' => array_filter([
+                    'status' => $options['status'] ?? null,
+                    'startDate' => $startDate->format('d/m/Y'),
+                    'endDate' => $endDate->format('d/m/Y'),
+                    'orderNumber' => $options['order_number'] ?? null,
+                ], fn ($value) => $value !== null && $value !== ''),
+                'pagingData' => [
+                    'currentPage' => $page,
+                    'pageSize' => $pageSize,
+                ],
+            ]);
+
+            $rows = $this->claimRowsFromPayload($response);
+
+            foreach ($rows as $row) {
+                $items[] = $this->normalizeClaim($row);
+            }
+
+            $totalPages = (int) (
+                data_get($response, 'pagingData.pageCount')
+                ?: data_get($response, 'pagingData.totalPages')
+                ?: data_get($response, 'pageCount')
+                ?: 1
+            );
+            $page++;
+        } while ($rows !== [] && $page < min(max(1, $totalPages), $maxPages));
+
+        return [
+            'items' => $items,
+            'meta' => [
+                'items_received' => count($items),
+                'cursor_after' => $endDate->toIso8601String(),
+                'pages_processed' => $page,
+                'more_pages_available' => $page < ($totalPages ?? 1),
+            ],
+        ];
+    }
+
+    public function approveClaim(MarketplaceStore $store, string $externalClaimId, array $context = []): array
+    {
+        $operation = (string) config('marketplace.n11.claim_approve_operation', 'ClaimReturnApprove');
+        $response = $this->returnSoapCall($store, $operation, $this->claimActionPayload($externalClaimId, $context));
+
+        return [
+            'status' => 'approved',
+            'message' => 'N11 iade onayı gönderildi.',
+            'response' => $response,
+        ];
+    }
+
+    public function rejectClaim(MarketplaceStore $store, string $externalClaimId, string $reason, array $context = []): array
+    {
+        $operation = (string) config('marketplace.n11.claim_reject_operation', 'ClaimReturnDeny');
+        $response = $this->returnSoapCall($store, $operation, $this->claimActionPayload($externalClaimId, $context + [
+            'reason' => $reason,
+            'description' => $reason,
+        ]));
+
+        return [
+            'status' => 'rejected',
+            'message' => 'N11 iade reddi gönderildi.',
+            'response' => $response,
+        ];
+    }
+
+    public function answerCustomerQuestion(MarketplaceQuestion $question, string $answer): array
+    {
+        $question->loadMissing('store.connection');
+
+        $response = $this->soapCall($question->store, 'SaveProductAnswer', [
+            'productQuestionId' => $question->external_question_id,
+            'answer' => $answer,
+        ]);
+
+        $status = Str::lower((string) (
+            data_get($response, 'result.status')
+            ?: data_get($response, 'status')
+            ?: 'success'
+        ));
+
+        if (Str::contains($status, ['fail', 'error', 'rejected'])) {
+            throw new \RuntimeException((string) (
+                data_get($response, 'result.errorMessage')
+                ?: data_get($response, 'errorMessage')
+                ?: 'N11 soru cevabı gönderilemedi.'
+            ));
+        }
+
+        return [
+            'external_answer_id' => (string) (
+                data_get($response, 'answerId')
+                ?: data_get($response, 'productQuestionId')
+                ?: $question->external_question_id
+            ),
+            'response' => $response,
+        ];
+    }
+
     public function pushPrice(ChannelListing $listing, float $price, array $context = []): array
     {
         return $this->pushSkuUpdate($listing, [
@@ -248,7 +426,7 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
                 'shipment_country' => 'TR',
                 'shipment_city' => data_get($shippingAddress, 'city'),
                 'shipment_district' => data_get($shippingAddress, 'district'),
-                'ordered_at' => $this->normalizeDate(data_get($payload, 'lastModifiedDate')),
+                'ordered_at' => $this->resolveOrderCreatedAt($payload),
                 'approved_at' => $this->normalizeDate(data_get($payload, 'agreedDeliveryDate')),
                 'delivered_at' => $this->historyDate($payload, 'Delivered'),
                 'cancelled_at' => $this->statusHas($status, ['cancel']) ? $this->normalizeDate(data_get($payload, 'lastModifiedDate')) : null,
@@ -327,15 +505,17 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
                 'vat_rate' => $this->toDecimal(data_get($payload, 'vatRate')),
                 'raw_payload' => $payload,
             ],
-            'listing' => [
+            'listing' => array_merge([
                 'listing_id' => $externalProductId !== '' ? $externalProductId : $stockCode,
                 'listing_status' => $this->normalizeListingStatus($payload),
                 'sale_price' => $this->toDecimal(data_get($payload, 'salePrice')),
                 'list_price' => $this->toDecimal(data_get($payload, 'listPrice')),
+                'commission_rate' => $this->toDecimal(data_get($payload, 'commissionRate') ?: data_get($payload, 'commission_rate') ?: data_get($payload, 'commission')),
+                'commission_source' => 'catalog',
                 'currency' => $this->normalizeCurrency((string) (data_get($payload, 'currencyType') ?: 'TL')),
                 'stock_quantity' => (int) (data_get($payload, 'quantity') ?: 0),
                 'published_at' => $this->normalizeDate(data_get($payload, 'lastModifiedDate') ?: data_get($payload, 'createDate')),
-            ],
+            ], $this->catalogDeliveryTermData($payload)),
         ];
     }
 
@@ -402,6 +582,294 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
         return rtrim($baseUrl, '/');
     }
 
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    protected function soapCall(MarketplaceStore $store, string $operation, array $body): array
+    {
+        $xml = $this->buildSoapEnvelope($operation, [
+            'auth' => [
+                'appKey' => $this->appKey($store),
+                'appSecret' => $this->appSecret($store),
+            ],
+            ...$body,
+        ]);
+
+        $response = Http::timeout((int) config('marketplace.n11.request_timeout', 45))
+            ->withHeaders(['Content-Type' => 'text/xml; charset=utf-8'])
+            ->withBody($xml, 'text/xml')
+            ->post($this->soapUrl($store))
+            ->throw();
+
+        return $this->parseSoapResponse($response->body(), $operation);
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    protected function returnSoapCall(MarketplaceStore $store, string $operation, array $body): array
+    {
+        $xml = $this->buildSoapEnvelope($operation, [
+            'auth' => [
+                'appKey' => $this->appKey($store),
+                'appSecret' => $this->appSecret($store),
+            ],
+            ...$body,
+        ]);
+
+        $response = Http::timeout((int) config('marketplace.n11.request_timeout', 45))
+            ->withHeaders(['Content-Type' => 'text/xml; charset=utf-8'])
+            ->withBody($xml, 'text/xml')
+            ->post($this->returnSoapUrl($store))
+            ->throw();
+
+        return $this->parseSoapResponse($response->body(), $operation);
+    }
+
+    protected function soapUrl(MarketplaceStore $store): string
+    {
+        $credentials = $store->connection?->credentials_encrypted ?? [];
+        $url = trim((string) ($credentials['soap_url'] ?? config('marketplace.n11.soap_url', 'https://api.n11.com/ws/productService/')));
+
+        if ($url === '') {
+            throw new \RuntimeException('N11 soru servisi SOAP URL boş.');
+        }
+
+        return $url;
+    }
+
+    protected function returnSoapUrl(MarketplaceStore $store): string
+    {
+        $credentials = $store->connection?->credentials_encrypted ?? [];
+        $url = trim((string) ($credentials['return_soap_url'] ?? config('marketplace.n11.return_soap_url', 'https://api.n11.com/ws/ReturnService/')));
+
+        if ($url === '') {
+            throw new \RuntimeException('N11 iade servisi SOAP URL boş.');
+        }
+
+        return $url;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function buildSoapEnvelope(string $operation, array $payload): string
+    {
+        return '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sch="http://www.n11.com/ws/schemas">'
+            .'<soapenv:Header/>'
+            .'<soapenv:Body>'
+            .'<sch:'.$operation.'Request>'
+            .$this->arrayToXml($payload)
+            .'</sch:'.$operation.'Request>'
+            .'</soapenv:Body>'
+            .'</soapenv:Envelope>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function arrayToXml(array $payload): string
+    {
+        $xml = '';
+
+        foreach ($payload as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            if (is_array($value)) {
+                if (array_is_list($value)) {
+                    foreach ($value as $row) {
+                        $xml .= '<'.$key.'>';
+                        $xml .= is_array($row)
+                            ? $this->arrayToXml($row)
+                            : $this->xmlValue($row);
+                        $xml .= '</'.$key.'>';
+                    }
+                    continue;
+                }
+
+                $xml .= '<'.$key.'>'.$this->arrayToXml($value).'</'.$key.'>';
+                continue;
+            }
+
+            $xml .= '<'.$key.'>'.$this->xmlValue($value).'</'.$key.'>';
+        }
+
+        return $xml;
+    }
+
+    protected function xmlValue(mixed $value): string
+    {
+        return htmlspecialchars((string) $value, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function parseSoapResponse(string $body, string $operation): array
+    {
+        $cleaned = preg_replace('/(<\/?)([A-Za-z0-9_]+):/', '$1', $body) ?: $body;
+        $xml = simplexml_load_string($cleaned, 'SimpleXMLElement', LIBXML_NOCDATA);
+
+        if ($xml === false) {
+            throw new \RuntimeException('N11 SOAP cevabı okunamadı.');
+        }
+
+        $array = json_decode(json_encode($xml, JSON_UNESCAPED_UNICODE) ?: '[]', true) ?: [];
+        $response = data_get($array, 'Body.'.$operation.'Response')
+            ?: data_get($array, 'Body.'.$operation.'Result')
+            ?: data_get($array, 'Body')
+            ?: $array;
+
+        return is_array($response) ? $response : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function normalizeN11Question(array $payload): array
+    {
+        return $this->normalizeQuestionPayload($payload, [
+            'external_question_id' => (string) (
+                data_get($payload, 'productQuestionId')
+                ?: data_get($payload, 'id')
+                ?: data_get($payload, 'questionId')
+            ),
+            'question_type' => 'product',
+            'question_text' => $this->questionTextValue(
+                data_get($payload, 'question')
+                ?: data_get($payload, 'subject')
+                ?: data_get($payload, 'questionText')
+            ),
+            'status' => $this->normalizeQuestionStatus((string) (
+                data_get($payload, 'status')
+                ?: data_get($payload, 'questionStatus')
+                ?: 'open'
+            )),
+            'product_name' => data_get($payload, 'product.productTitle')
+                ?: data_get($payload, 'product.title')
+                ?: data_get($payload, 'productName'),
+            'external_product_id' => data_get($payload, 'product.id')
+                ?: data_get($payload, 'productId'),
+            'product_sku' => data_get($payload, 'product.stockCode')
+                ?: data_get($payload, 'stockCode'),
+            'asked_at' => $this->questionDate(
+                data_get($payload, 'questionDate')
+                ?: data_get($payload, 'createdDate')
+            ),
+        ]);
+    }
+
+    protected function n11QuestionStatus(mixed $status): string
+    {
+        $normalized = Str::of((string) $status)
+            ->trim()
+            ->upper()
+            ->replace([' ', '-'], '_')
+            ->toString();
+
+        return match ($normalized) {
+            '', 'OPEN', 'PENDING', 'WAITING', 'WAITING_FOR_ANSWER', 'UNANSWERED' => 'OPEN',
+            'ANSWERED', 'CLOSED', 'CLOSE' => 'CLOSED',
+            default => $normalized,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<int, array<string, mixed>>
+     */
+    protected function claimRowsFromPayload(array $payload): array
+    {
+        foreach ([
+            'claimReturns.claimReturn',
+            'claimReturnList.claimReturn',
+            'returnList.return',
+            'returns.return',
+            'items.item',
+            'items',
+            'data',
+        ] as $path) {
+            $rows = data_get($payload, $path);
+
+            if (is_array($rows) && $rows !== []) {
+                $rows = array_is_list($rows) ? $rows : [$rows];
+
+                return collect($rows)
+                    ->filter(fn ($row) => is_array($row))
+                    ->values()
+                    ->all();
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function normalizeClaim(array $payload): array
+    {
+        $claimId = (string) (
+            data_get($payload, 'claimReturnId')
+            ?: data_get($payload, 'claimId')
+            ?: data_get($payload, 'id')
+            ?: data_get($payload, 'returnId')
+            ?: ''
+        );
+
+        return [
+            'external_claim_id' => $claimId,
+            'order_number' => data_get($payload, 'orderNumber'),
+            'cargo_tracking_number' => data_get($payload, 'cargoTrackingNumber') ?: data_get($payload, 'cargoSenderNumber'),
+            'cargo_provider' => data_get($payload, 'cargoCompany') ?: data_get($payload, 'cargoProviderName'),
+            'status' => data_get($payload, 'status') ?: data_get($payload, 'claimStatus'),
+            'type' => data_get($payload, 'claimType') ?: 'return',
+            'reason' => data_get($payload, 'reason') ?: data_get($payload, 'claimReason'),
+            'reason_detail' => data_get($payload, 'description') ?: data_get($payload, 'reasonDetail'),
+            'customer_note' => data_get($payload, 'customerNote'),
+            'customer_name' => data_get($payload, 'buyerName') ?: data_get($payload, 'customerName'),
+            'created_date' => data_get($payload, 'claimDate') ?: data_get($payload, 'createdDate'),
+            'items' => collect(Arr::wrap(
+                data_get($payload, 'items.item')
+                ?: data_get($payload, 'items')
+                ?: data_get($payload, 'claimReturnItems.claimReturnItem')
+                ?: data_get($payload, 'claimReturnItems')
+                ?: []
+            ))
+                ->filter(fn ($row) => is_array($row))
+                ->values()
+                ->all(),
+            'raw_payload' => $payload,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    protected function claimActionPayload(string $externalClaimId, array $context): array
+    {
+        $itemIds = collect(Arr::wrap($context['claim_item_ids'] ?? $context['external_item_ids'] ?? []))
+            ->filter(fn ($value) => filled($value))
+            ->values()
+            ->all();
+
+        return array_filter([
+            'claimReturnId' => $externalClaimId,
+            'claimId' => $externalClaimId,
+            'claimReturnItemIdList' => $itemIds !== [] ? ['claimReturnItemId' => $itemIds] : null,
+            'reason' => $context['reason'] ?? null,
+            'description' => $context['description'] ?? null,
+        ], fn ($value) => $value !== null && $value !== '');
+    }
+
     protected function stockCode(ChannelListing $listing): string
     {
         $stockCode = trim((string) (
@@ -442,6 +910,24 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
             ->first(fn (array $row) => Str::lower(trim((string) data_get($row, 'status'))) === Str::lower($status));
 
         return $history ? $this->normalizeDate(data_get($history, 'createdDate')) : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function resolveOrderCreatedAt(array $payload): ?string
+    {
+        $directDate = data_get($payload, 'orderDate')
+            ?: data_get($payload, 'createdDate')
+            ?: data_get($payload, 'createDate')
+            ?: data_get($payload, 'orderCreatedDate');
+
+        if (filled($directDate)) {
+            return $this->normalizeDate($directDate);
+        }
+
+        return $this->historyDate($payload, 'Created')
+            ?: $this->normalizeDate(data_get($payload, 'lastModifiedDate'));
     }
 
     protected function normalizeDate(mixed $value): ?string

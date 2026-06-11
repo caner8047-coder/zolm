@@ -53,7 +53,9 @@ class MarketplaceManualSyncDispatchServiceTest extends TestCase
             'status' => 'queued',
         ]);
 
-        Queue::assertPushed(SyncMarketplaceDataJob::class, 1);
+        Queue::assertPushed(SyncMarketplaceDataJob::class, function (SyncMarketplaceDataJob $job): bool {
+            return $job->queue === config('marketplace.queues.sync', 'default');
+        });
     }
 
     public function test_it_debounces_when_active_run_exists_for_same_store_and_sync_type(): void
@@ -128,10 +130,33 @@ class MarketplaceManualSyncDispatchServiceTest extends TestCase
         ]);
     }
 
+    public function test_it_dispatches_claim_sync_for_supported_marketplace(): void
+    {
+        Queue::fake();
+
+        $store = $this->createStore('trendyol');
+
+        $result = app(MarketplaceManualSyncDispatchService::class)->dispatch($store, 'claims', [
+            'source' => 'test',
+        ]);
+
+        $this->assertTrue($result['created']);
+        $this->assertDatabaseHas('integration_sync_runs', [
+            'store_id' => $store->id,
+            'sync_type' => 'claims',
+            'trigger_type' => 'manual',
+            'status' => 'queued',
+        ]);
+
+        Queue::assertPushed(SyncMarketplaceDataJob::class);
+    }
+
     protected function createStore(string $marketplace = 'trendyol', array $profileOverrides = []): MarketplaceStore
     {
-        $user = User::factory()->create();
         $suffix = (string) random_int(100000, 999999);
+        $user = User::factory()->create([
+            'email' => 'sync-dispatch-'.$suffix.'@example.test',
+        ]);
 
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
