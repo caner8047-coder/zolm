@@ -1428,7 +1428,7 @@ class MarketplaceOrders extends Component
                 'Sipariş No', 'Paket No', 'Barkod', 'Stok Kodu', 'Marka', 'Ürün Adı', 'Miktar',
                 'Birim Fiyat', 'Satış Tutarı', 'İndirim', 'Trendyol İndirimi', 'Faturalanacak Tutar',
                 'Komisyon Oranı %', 'Müşteri', 'Telefon', 'E-Posta', 'Şehir', 'İlçe', 'Kargo',
-                'Takip No', 'Sipariş Tarihi', 'Durum', 'Muhasebe: Net Hakediş', 'Muhasebe: Net Kâr',
+                'Takip No', 'Sipariş Tarihi', 'Durum', 'Ödeme: Net Kesin Ödeme', 'Muhasebe: Net Kâr',
             ], ';');
 
             foreach ($orders as $order) {

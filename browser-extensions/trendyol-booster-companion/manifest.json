@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "ZOLM Trendyol Booster Companion",
+  "version": "0.10.12",
+  "description": "Trendyol ürünlerini ZOLM Booster Radar'a ekler ve takip sinyallerini ürün sayfasında gösterir.",
+  "permissions": ["storage", "activeTab", "tabs", "scripting", "alarms"],
+  "host_permissions": [
+    "http://localhost/*",
+    "https://localhost/*",
+    "http://127.0.0.1/*",
+    "https://127.0.0.1/*",
+    "http://localhost:*/*",
+    "https://localhost:*/*",
+    "http://127.0.0.1:*/*",
+    "https://127.0.0.1:*/*",
+    "https://www.trendyol.com/*",
+    "https://*.trendyol.com/*",
+    "https://ty.gl/*",
+    "https://www.google.com/*",
+    "https://google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.trendyol.com/*", "https://*.trendyol.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost/*",
+        "https://localhost/*",
+        "http://127.0.0.1/*",
+        "https://127.0.0.1/*",
+        "http://localhost:*/*",
+        "https://localhost:*/*",
+        "http://127.0.0.1:*/*",
+        "https://127.0.0.1:*/*"
+      ],
+      "js": ["zolm-bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "ZOLM Booster",
+    "default_popup": "popup.html"
+  }
+}

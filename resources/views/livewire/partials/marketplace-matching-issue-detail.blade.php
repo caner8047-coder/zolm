@@ -84,7 +84,7 @@
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">
-                    @if($issue->match_status === 'pending' && $listing && $recommended && $this->candidateScore($recommended) > 0)
+                    @if($issue->match_status === 'pending' && $listing && $this->canAutoRecommend($recommended))
                         <button type="button"
                                 wire:click="manualMatchRecommended({{ $issue->id }})"
                                 wire:loading.attr="disabled"
@@ -134,8 +134,8 @@
                                             Skor {{ $this->candidateScore($candidate) }}
                                         </x-zolm.status-badge>
                                         @if($recommended && $recommended->id === $candidate->id && $this->candidateScore($candidate) > 0)
-                                            <x-zolm.status-badge tone="info">
-                                                Önerilen
+                                            <x-zolm.status-badge :tone="$this->canAutoRecommend($candidate) ? 'info' : 'warning'">
+                                                {{ $this->canAutoRecommend($candidate) ? 'Önerilen' : 'Yakın aday' }}
                                             </x-zolm.status-badge>
                                         @endif
                                     </div>

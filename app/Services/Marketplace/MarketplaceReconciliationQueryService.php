@@ -5,6 +5,7 @@ namespace App\Services\Marketplace;
 use App\Models\ChannelOrderItem;
 use App\Models\OrderFinancialEvent;
 use App\Models\OrderProfitSnapshot;
+use App\Services\Marketplace\Support\FinancialEventClassifier;
 use Illuminate\Database\Eloquent\Builder;
 
 class MarketplaceReconciliationQueryService
@@ -17,14 +18,16 @@ class MarketplaceReconciliationQueryService
             ->leftJoin('marketplace_stores', 'marketplace_stores.id', '=', 'channel_order_items.store_id')
             ->leftJoin('channel_listings', 'channel_listings.id', '=', 'channel_order_items.channel_listing_id')
             ->leftJoin('mp_products', 'mp_products.id', '=', 'channel_order_items.mp_product_id')
+            ->join('channel_orders', 'channel_orders.id', '=', 'channel_order_items.channel_order_id')
             ->selectRaw('
                 channel_order_items.channel_order_id,
                 COUNT(*) as item_lines_count,
                 COALESCE(SUM(channel_order_items.quantity), 0) as total_quantity,
                 COALESCE(SUM(CASE WHEN channel_order_items.is_matched = 1 THEN 1 ELSE 0 END), 0) as matched_lines_count,
-                COALESCE(SUM(channel_order_items.gross_amount), 0) as gross_items_total,
+                COALESCE(SUM(channel_order_items.gross_amount * COALESCE(channel_orders.exchange_rate, 1.0)), 0) as gross_items_total,
                 COALESCE(SUM((
                     COALESCE(NULLIF(channel_order_items.billable_amount, 0), NULLIF(channel_order_items.gross_amount, 0), (COALESCE(channel_order_items.unit_price, 0) * COALESCE(channel_order_items.quantity, 0)))
+                    * COALESCE(channel_orders.exchange_rate, 1.0)
                     * CASE
                         WHEN LOWER(marketplace_stores.marketplace) = \'koctas\' THEN ?
                         ELSE COALESCE(channel_order_items.commission_rate, channel_listings.commission_rate, mp_products.commission_rate, 0)
@@ -37,19 +40,26 @@ class MarketplaceReconciliationQueryService
     public function financialAggregate(): Builder
     {
         $signedAmountSql = "CASE WHEN direction = 'credit' THEN ABS(amount) ELSE -ABS(amount) END";
+        $sellerRevenueTypesSql = FinancialEventClassifier::quotedTypes(FinancialEventClassifier::SELLER_REVENUE_EVENT_TYPES);
+        $commissionTypesSql = FinancialEventClassifier::quotedTypes(FinancialEventClassifier::COMMISSION_EVENT_TYPES);
+        $cargoTypesSql = FinancialEventClassifier::quotedTypes(FinancialEventClassifier::CARGO_EVENT_TYPES);
+        $overheadTypesSql = FinancialEventClassifier::quotedTypes(FinancialEventClassifier::OVERHEAD_EVENT_TYPES);
+        $withholdingTypesSql = FinancialEventClassifier::quotedTypes(FinancialEventClassifier::WITHHOLDING_EVENT_TYPES);
+        $settledEventSql = FinancialEventClassifier::settledEventSql();
 
         return OrderFinancialEvent::query()
+            ->join('channel_orders', 'channel_orders.id', '=', 'order_financial_events.channel_order_id')
             ->selectRaw("
-                channel_order_id,
-                COUNT(*) as financial_event_count,
-                MAX(COALESCE(settlement_date, event_date)) as last_financial_event_at,
-                COALESCE(SUM(CASE WHEN event_type = 'seller_revenue' THEN {$signedAmountSql} ELSE 0 END), 0) as seller_revenue_metric,
-                COALESCE(SUM(CASE WHEN event_type = 'commission' THEN {$signedAmountSql} ELSE 0 END), 0) as commission_net_metric,
-                COALESCE(SUM(CASE WHEN event_type = 'cargo' THEN {$signedAmountSql} ELSE 0 END), 0) as cargo_net_metric,
-                COALESCE(SUM(CASE WHEN event_type IN ('service_fee', 'deduction_invoice') THEN {$signedAmountSql} ELSE 0 END), 0) as service_fee_net_metric,
-                COALESCE(SUM(CASE WHEN event_type = 'withholding' THEN {$signedAmountSql} ELSE 0 END), 0) as withholding_net_metric
+                order_financial_events.channel_order_id,
+                COUNT(CASE WHEN {$settledEventSql} THEN 1 END) as financial_event_count,
+                MAX(CASE WHEN {$settledEventSql} THEN COALESCE(settlement_date, event_date) ELSE NULL END) as last_financial_event_at,
+                COALESCE(SUM(CASE WHEN {$settledEventSql} AND event_type IN ({$sellerRevenueTypesSql}) THEN {$signedAmountSql} * COALESCE(channel_orders.exchange_rate, 1.0) ELSE 0 END), 0) as seller_revenue_metric,
+                COALESCE(SUM(CASE WHEN {$settledEventSql} AND event_type IN ({$commissionTypesSql}) THEN {$signedAmountSql} * COALESCE(channel_orders.exchange_rate, 1.0) ELSE 0 END), 0) as commission_net_metric,
+                COALESCE(SUM(CASE WHEN {$settledEventSql} AND event_type IN ({$cargoTypesSql}) THEN {$signedAmountSql} * COALESCE(channel_orders.exchange_rate, 1.0) ELSE 0 END), 0) as cargo_net_metric,
+                COALESCE(SUM(CASE WHEN {$settledEventSql} AND event_type IN ({$overheadTypesSql}) THEN {$signedAmountSql} * COALESCE(channel_orders.exchange_rate, 1.0) ELSE 0 END), 0) as service_fee_net_metric,
+                COALESCE(SUM(CASE WHEN {$settledEventSql} AND event_type IN ({$withholdingTypesSql}) THEN {$signedAmountSql} * COALESCE(channel_orders.exchange_rate, 1.0) ELSE 0 END), 0) as withholding_net_metric
             ")
-            ->groupBy('channel_order_id');
+            ->groupBy('order_financial_events.channel_order_id');
     }
 
     public function snapshotAggregate(): Builder
@@ -63,6 +73,11 @@ class MarketplaceReconciliationQueryService
                 'commission_total',
                 'cargo_total',
                 'service_fee_total',
+                'advertising_total',
+                'penalty_total',
+                'early_payment_total',
+                'discount_total',
+                'other_cost_total',
                 'withholding_total',
                 'packaging_cost',
                 'own_cargo_cost',
@@ -128,6 +143,11 @@ class MarketplaceReconciliationQueryService
             'commission_total' => $commissionTotalSql,
             'cargo_total' => $cargoTotalSql,
             'service_fee_total' => $serviceFeeTotalSql,
+            'advertising_total' => 'COALESCE(order_snapshot.advertising_total, 0)',
+            'penalty_total' => 'COALESCE(order_snapshot.penalty_total, 0)',
+            'early_payment_total' => 'COALESCE(order_snapshot.early_payment_total, 0)',
+            'discount_total' => 'COALESCE(order_snapshot.discount_total, 0)',
+            'other_cost_total' => 'COALESCE(order_snapshot.other_cost_total, 0)',
             'withholding_total' => $withholdingTotalSql,
             'deduction_total' => $deductionTotalSql,
             'profit_state' => $profitStateSql,
@@ -141,4 +161,5 @@ class MarketplaceReconciliationQueryService
             'reconciliation_abs_delta' => $reconciliationAbsDeltaSql,
         ];
     }
+
 }

@@ -7,12 +7,14 @@ use App\Models\ChannelOrder;
 use App\Models\ChannelOrderItem;
 use App\Models\ChannelProduct;
 use App\Models\IntegrationConnection;
+use App\Models\IntegrationSyncProfile;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
 use App\Models\MpProduct;
 use App\Models\ProductMatchIssue;
 use App\Models\User;
 use App\Services\Marketplace\MarketplaceManualMatchService;
+use App\Services\Marketplace\MarketplaceProductMatcher;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -63,6 +65,138 @@ class MarketplaceManualMatchServiceTest extends TestCase
             'match_status' => 'resolved',
             'resolved_by' => $user->id,
         ]);
+
+        $this->assertDatabaseHas('order_profit_snapshots', [
+            'store_id' => $store->id,
+            'channel_order_id' => $order->id,
+            'profit_state' => 'estimated',
+        ]);
+    }
+
+    public function test_order_item_without_listing_gets_actionable_issue_and_can_be_matched(): void
+    {
+        $user = User::factory()->create();
+        $suffix = (string) random_int(100000, 999999);
+
+        $entity = LegalEntity::query()->create([
+            'user_id' => $user->id,
+            'name' => 'Zem Listing Fallback Ltd.',
+            'tax_number' => '6' . $suffix,
+            'company_type' => 'limited',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+
+        $store = MarketplaceStore::query()->create([
+            'user_id' => $user->id,
+            'legal_entity_id' => $entity->id,
+            'marketplace' => 'trendyol',
+            'store_name' => 'ZEM LISTING FALLBACK',
+            'store_code' => 'ZEM-FALLBACK-' . $suffix,
+            'seller_id' => 'F' . $suffix,
+            'status' => 'active',
+            'timezone' => 'Europe/Istanbul',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+
+        IntegrationConnection::query()->create([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'auth_type' => 'api_key_secret',
+            'credentials_encrypted' => [
+                'seller_id' => 'F' . $suffix,
+                'api_key' => 'key',
+                'api_secret' => 'secret',
+            ],
+            'api_base_url' => 'https://apigw.trendyol.com',
+            'status' => 'configured',
+        ]);
+
+        $store->syncProfile()->create(array_merge(
+            IntegrationSyncProfile::defaults(),
+            [
+                'auto_match_enabled' => true,
+                'barcode_fallback_enabled' => true,
+            ]
+        ));
+        $store->refresh()->load('syncProfile');
+
+        $product = MpProduct::query()->create([
+            'user_id' => $user->id,
+            'product_name' => 'Master Manuel Koltuk ' . $suffix,
+            'stock_code' => 'MASTER-' . $suffix,
+            'barcode' => '868' . $suffix,
+            'brand' => 'ZEM',
+            'category_name' => 'Mobilya',
+            'sale_price' => 3499.90,
+            'cogs' => 1500,
+            'packaging_cost' => 90,
+            'cargo_cost' => 150,
+            'stock_quantity' => 4,
+        ]);
+
+        $order = ChannelOrder::query()->create([
+            'store_id' => $store->id,
+            'legal_entity_id' => $entity->id,
+            'external_order_id' => 'ORD-FALLBACK-' . $suffix,
+            'order_number' => 'ORD-FALLBACK-' . $suffix,
+            'order_status' => 'Created',
+            'customer_name' => 'Ayse Demir',
+            'ordered_at' => now(),
+        ]);
+
+        $item = ChannelOrderItem::query()->create([
+            'store_id' => $store->id,
+            'channel_order_id' => $order->id,
+            'external_line_id' => 'LINE-FALLBACK-' . $suffix,
+            'stock_code' => 'CHANNEL-' . $suffix,
+            'barcode' => '869' . $suffix,
+            'product_name' => 'Kanalda Farklı Başlık ' . $suffix,
+            'quantity' => 1,
+            'unit_price' => 3499.90,
+            'gross_amount' => 3499.90,
+            'billable_amount' => 3499.90,
+            'commission_rate' => 12,
+            'is_matched' => false,
+        ]);
+
+        $storeLevelIssue = ProductMatchIssue::query()->create([
+            'store_id' => $store->id,
+            'channel_listing_id' => null,
+            'match_status' => 'pending',
+            'match_reason' => 'not_found',
+            'candidate_ids_json' => [],
+        ]);
+
+        app(MarketplaceProductMatcher::class)->applyToOrderItem($item, $item->stock_code, $item->barcode);
+
+        $item->refresh();
+        $this->assertNotNull($item->channel_listing_id);
+        $this->assertNull($item->mp_product_id);
+        $this->assertFalse((bool) $item->is_matched);
+
+        $listing = ChannelListing::query()->with('channelProduct')->findOrFail($item->channel_listing_id);
+        $this->assertStringStartsWith('order-item:stock:', $listing->listing_id);
+        $this->assertSame('CHANNEL-' . $suffix, $listing->channelProduct?->stock_code);
+
+        $issue = ProductMatchIssue::query()
+            ->where('store_id', $store->id)
+            ->where('channel_listing_id', $listing->id)
+            ->where('match_status', 'pending')
+            ->first();
+
+        $this->assertNotNull($issue);
+        $this->assertSame('not_found', $issue->match_reason);
+        $this->assertSame('resolved', $storeLevelIssue->fresh()->match_status);
+
+        $result = app(MarketplaceManualMatchService::class)->manualMatch($issue, $product, $user->id);
+
+        $this->assertSame(1, $result['updated_items']);
+        $this->assertSame(1, $result['impacted_orders']);
+        $this->assertSame($product->id, (int) $listing->fresh()->mp_product_id);
+        $this->assertSame($product->id, (int) $item->fresh()->mp_product_id);
+        $this->assertTrue((bool) $item->fresh()->is_matched);
 
         $this->assertDatabaseHas('order_profit_snapshots', [
             'store_id' => $store->id,

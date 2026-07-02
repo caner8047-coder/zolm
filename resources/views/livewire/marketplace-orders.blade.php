@@ -339,7 +339,7 @@
                 <div class="orders-stat-card rounded-[10px] border border-slate-200 p-4 shadow-sm">
                     <div class="flex items-center gap-1.5">
                         <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Finans Bekliyor</p>
-                        <x-zolm.help-tip title="Finans bekliyor" summary="Sipariş gelmiş ama kesin hakediş, kesinti veya finans akışı henüz tamamlanmamış kayıtları gösterir." source="Channel order ve financial event eşleşme durumu." refresh="Yeni finans olayı düştüğünde veya tekrar hesaplandığında." impact="Muhasebe ve finans modülünde önce hangi siparişlere bakılacağını belirler." />
+                        <x-zolm.help-tip title="Ödeme bekliyor" summary="Siparişi teslim etmiş olmanıza rağmen henüz hesabınıza pazar yerinden ödemesi geçmeyen kayıtları gösterir." source="Channel order ve financial event eşleşme durumu." refresh="Yeni finans olayı düştüğünde veya tekrar hesaplandığında." impact="Muhasebe ve finans modülünde önce hangi siparişlere bakılacağını belirler." />
                     </div>
                     <p class="mt-3 text-2xl font-bold tracking-tight text-slate-950">{{ $formatCount($stats['finance_waiting_orders']) }}</p>
                     <p class="mt-2 text-xs text-amber-600">Henüz net muhasebe akışı oluşmayanlar</p>
@@ -1170,7 +1170,7 @@
 
                                 <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                                     <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 px-3 py-2">
-                                        <p class="text-[10px] uppercase tracking-[0.16em] text-slate-500">Hakediş</p>
+                                        <p class="text-[10px] uppercase tracking-[0.16em] text-slate-500">Ödeme</p>
                                         <p class="mt-1 text-sm font-medium text-slate-900">{{ $formatMoney($netReceivable) }}</p>
                                     </div>
                                     <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 px-3 py-2">
@@ -1248,7 +1248,7 @@
                             'musteri' => ['label' => 'Müşteri', 'width' => '130px'],
                             'lojistik' => ['label' => 'Lojistik', 'width' => '124px'],
                             'ciro' => ['label' => 'Ciro', 'width' => '90px'],
-                            'muhasebe' => ['label' => 'Muhasebe', 'width' => '106px'],
+                            'muhasebe' => ['label' => 'Ödeme', 'width' => '106px'],
                             'kar' => ['label' => 'Kârlılık', 'width' => '112px'],
                             'durum' => ['label' => 'Durum', 'width' => '92px'],
                         ];
@@ -1261,15 +1261,15 @@
                                 'impact' => 'Kâr ve sepet büyüklüğü analizlerinde temel referanstır.',
                             ],
                             'muhasebe' => [
-                                'title' => 'Muhasebe',
-                                'summary' => 'Hakediş, net alacak ve tahmini görünümün sipariş bazlı muhasebe özetidir.',
-                                'source' => 'Finans olayları, anlık kayıt ve eski veri yansıtma etkileri.',
-                                'refresh' => 'Yeni finans olayı işlendiğinde veya yeniden hesap sonrası.',
-                                'impact' => 'Tahsilat ve mutabakat odağını belirler.',
+                                'title' => 'Ödeme Özeti',
+                                'summary' => 'Siparişinizden beklediğiniz ödemenin, kesintilerin ve yatacak net tutarın özetidir.',
+                                'source' => 'Sipariş, fatura, komisyon ve kargo verileri.',
+                                'refresh' => 'Yeni finansal olay işlendiğinde.',
+                                'impact' => 'Siparişin hesabınıza eksiksiz yatıp yatmadığını kontrol etmenizi sağlar.',
                             ],
                             'kar' => [
                                 'title' => 'Kârlılık',
-                                'summary' => 'Hakedişten kargo etkisi düşüldükten sonra kalan tutarın ürün maliyetine oranıdır.',
+                                'summary' => 'Tüm kesintiler (kargo vb.) yapıldıktan sonra üründen kazandığınız net kâr oranıdır.',
                                 'source' => 'Sipariş kalemleri, maliyet, kargo ve finans kesintileri.',
                                 'refresh' => 'Maliyet veya finans verisi değiştiğinde.',
                                 'impact' => 'Ürün maliyetine göre net kâr yüzdesini gösterir.',
@@ -1500,11 +1500,11 @@
                                             $withholdingImpact > 0 ? ['label' => 'Stopaj', 'value' => $formatSignedMoney(-1 * $withholdingImpact), 'tone' => 'danger'] : null,
                                         ]));
                                         $receivableFormula = $legacyHasFinancial
-                                            ? 'Net hakediş = Brüt satış - komisyon - kargo - diğer kesintiler'
-                                            : 'Net hakediş = Satıcı geliri - komisyon - kargo - hizmet - stopaj';
+                                            ? 'Net ödeme = Brüt satış - komisyon - kargo - diğer kesintiler'
+                                            : 'Net ödeme = Satıcı geliri - komisyon - kargo - hizmet - stopaj';
                                         $profitRows = array_values(array_filter([
                                             ($legacyHasFinancial || (int) ($order->financial_event_count ?? 0) > 0)
-                                                ? ['label' => 'Net hakediş', 'value' => $formatMoney($netReceivable), 'tone' => 'default']
+                                                ? ['label' => 'Net ödeme', 'value' => $formatMoney($netReceivable), 'tone' => 'default']
                                                 : ['label' => 'Ciro', 'value' => $formatMoney($grossRevenue), 'tone' => 'default'],
                                             (!$legacyHasFinancial && (int) ($order->financial_event_count ?? 0) === 0 && $commissionImpact > 0)
                                                 ? ['label' => 'Tahmini komisyon / kesinti', 'value' => $formatSignedMoney(-1 * $commissionImpact), 'tone' => 'danger']
@@ -1513,7 +1513,7 @@
                                             $estimatedCargo > 0 ? ['label' => 'Kargo maliyeti', 'value' => $formatSignedMoney(-1 * $estimatedCargo), 'tone' => 'warning'] : null,
                                         ]));
                                         $profitFormula = ($legacyHasFinancial || (int) ($order->financial_event_count ?? 0) > 0)
-                                            ? 'Kâr = Net hakediş - (maliyet + ambalaj) - kargo maliyeti'
+                                            ? 'Kâr = Net ödeme - (maliyet + ambalaj) - kargo maliyeti'
                                             : 'Kâr = Ciro - komisyon / kesinti - (maliyet + ambalaj) - kargo maliyeti';
                                         $costProfitPercent = $estimatedCogs > 0
                                             ? \App\Services\ProfitabilityMetric::profitPercent($profitValue, $estimatedCogs)
@@ -1769,9 +1769,9 @@
                                                         title="Hakediş hesabı"
                                                         :subtitle="($legacyHasFinancial || (int) ($order->financial_event_count ?? 0) > 0)
                                                             ? 'Bu tutar finans hareketlerinden ve kesinti kalemlerinden oluşur.'
-                                                            : 'Kesin finans akışı gelmediğinde hakediş alanı sınırlı veriyle görünür.'"
+                                                            : 'Pazar yeri ödeme işlemini tamamlamadığı için bu alandaki veriler sınırlı görünüyor.'"
                                                         :rows="$receivableRows"
-                                                        result-label="Net hakediş"
+                                                        result-label="Net Ödeme"
                                                         :result-value="$formatMoney($netReceivable)"
                                                         result-tone="default"
                                                         :formulas="[
@@ -1804,7 +1804,7 @@
                                             <td class="order-metric-cell px-2.5 py-3.5 align-top text-right">
                                                 <x-zolm.metric-breakdown
                                                     title="Kârlılık hesabı"
-                                                    subtitle="Kârlılık, hakedişten kargo etkisi çıktıktan sonra kalan net kârın ürün maliyetine oranıdır."
+                                                    subtitle="Kârlılık, tüm kesintiler (kargo vb.) yapıldıktan sonra kazandığınız net kârın ürün maliyetine oranıdır."
                                                     :rows="$profitRows"
                                                     result-label="Net kâr"
                                                     :result-value="$formatSignedMoney($profitValue)"

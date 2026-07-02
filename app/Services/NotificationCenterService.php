@@ -55,6 +55,14 @@ class NotificationCenterService
             'listing_push_failed' => ['label' => 'Gönderim', 'tone' => 'danger'],
             'product_match_risk' => ['label' => 'Eşleşme', 'tone' => 'warning'],
             'question_received' => ['label' => 'Soru', 'tone' => 'info'],
+            'risk_critical' => ['label' => 'Kritik risk', 'tone' => 'danger'],
+            'risk_warning' => ['label' => 'Risk uyarısı', 'tone' => 'warning'],
+            'booster_price_drop' => ['label' => 'Booster fiyat', 'tone' => 'info'],
+            'booster_price_rise' => ['label' => 'Booster fiyat', 'tone' => 'warning'],
+            'booster_stock_sales' => ['label' => 'Booster stok', 'tone' => 'warning'],
+            'booster_stock_change' => ['label' => 'Booster stok', 'tone' => 'info'],
+            'booster_store_change' => ['label' => 'Booster rakip', 'tone' => 'warning'],
+            'booster_keyword_change' => ['label' => 'Booster kelime', 'tone' => 'warning'],
         ];
     }
 
@@ -68,6 +76,12 @@ class NotificationCenterService
         }
 
         if ($userId <= 0) {
+            return null;
+        }
+
+        $type = trim((string) ($attributes['type'] ?? ''));
+
+        if ($type !== '' && $this->isTypeMutedForUser($userId, $type)) {
             return null;
         }
 
@@ -376,9 +390,12 @@ class NotificationCenterService
             return [];
         }
 
+        $mutedTypes = $this->mutedTypesForUser($userId);
+
         return AppNotification::query()
             ->with('store:id,store_name,marketplace')
             ->where('user_id', $userId)
+            ->when($mutedTypes !== [], fn ($query) => $query->whereNotIn('type', $mutedTypes))
             ->latest('id')
             ->limit($limit)
             ->get()
@@ -392,9 +409,12 @@ class NotificationCenterService
             return 0;
         }
 
+        $mutedTypes = $this->mutedTypesForUser($userId);
+
         return AppNotification::query()
             ->where('user_id', $userId)
             ->whereNull('read_at')
+            ->when($mutedTypes !== [], fn ($query) => $query->whereNotIn('type', $mutedTypes))
             ->count();
     }
 
@@ -448,6 +468,7 @@ class NotificationCenterService
             'user_id' => $userId,
         ], [
             'sound_enabled' => false,
+            'muted_types_json' => [],
         ]);
     }
 
@@ -461,6 +482,52 @@ class NotificationCenterService
         }
 
         return $preference;
+    }
+
+    /**
+     * @param  array<int, string>  $types
+     */
+    public function setMutedTypes(int $userId, array $types): UserNotificationPreference
+    {
+        $preference = $this->preferencesForUser($userId);
+        $preference->forceFill([
+            'muted_types_json' => collect($types)
+                ->map(fn ($type) => trim((string) $type))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all(),
+        ]);
+
+        if ($preference->exists) {
+            $preference->save();
+        }
+
+        return $preference;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function mutedTypesForUser(int $userId): array
+    {
+        if (!$this->isAvailable() || $userId <= 0) {
+            return [];
+        }
+
+        $preference = $this->preferencesForUser($userId);
+
+        return collect((array) ($preference->muted_types_json ?? []))
+            ->map(fn ($type) => trim((string) $type))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    public function isTypeMutedForUser(int $userId, string $type): bool
+    {
+        return in_array($type, $this->mutedTypesForUser($userId), true);
     }
 
     /**

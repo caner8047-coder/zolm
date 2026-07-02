@@ -93,8 +93,15 @@
     {{-- ═══════════════════════════════════════════════════════════════ --}}
     {{-- HEADER + DÖNEM SEÇİCİ --}}
     {{-- ═══════════════════════════════════════════════════════════════ --}}
-    <section class="accounting-header-surface rounded-[10px] border border-slate-200 p-4 shadow-sm lg:p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+    <section class="accounting-header-surface rounded-[10px] border border-slate-200 p-4 shadow-sm lg:p-6 relative overflow-hidden">
+        {{-- LEGACY BANNER --}}
+        <div class="absolute top-0 left-0 right-0 bg-amber-500 text-white text-xs font-semibold py-1.5 text-center uppercase tracking-wider shadow-sm z-10 flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            Bu sayfa eski dönem verileri için korunmaktadır. Yeni veriler için Kâr Kokpiti'ni kullanın.
+            <a href="{{ route('mp.profit-center') }}" class="underline hover:text-amber-100 ml-2">Kâr Kokpiti'ne Git →</a>
+        </div>
+        
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 mt-6">
             <div>
                 <div class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Accounting Control</div>
                 <h1 class="mt-3 text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Pazaryeri Muhasebe</h1>
@@ -138,7 +145,7 @@
                             Kilitli
                         </button>
                     @else
-                        <button type="button" wire:click="lockPeriod" wire:confirm="Bu dönemi kilitlemek istediğinize emin misiniz? Dönem kilitlendiğinde yeni excel verisi yüklenemez." class="px-4 py-3 sm:py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm" title="Mutabakatı Kapat / Kilitle">
+                        <button type="button" wire:click="lockPeriod" wire:confirm="Bu dönemi kilitlemek istediğinize emin misiniz? Dönem kilitlendiğinde yeni excel verisi yüklenemez." class="px-4 py-3 sm:py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm" title="Dönemi Kapat">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                             Kilitle
                         </button>
@@ -244,7 +251,7 @@
                                         <x-zolm.help-tip title="Dönem özeti" summary="Seçili dönemin satış, tahsilat, vergi ve denetim baskısını tek bakışta toplar." source="Sipariş, cari, fatura, stopaj ve ödeme detay yüklemeleri." refresh="Dönem değiştiğinde veya yeni Excel işlendiğinde." impact="Muhasebe ekibinin ilk bakışta nereye eğilmesi gerektiğini belirler." />
                                     </div>
                                     <p class="mt-2 text-sm lg:text-base text-slate-500">
-                                        {{ $periodLabel }} dönemi için finansal görünüm, mutabakat durumu ve beklenen tahsilat akışını tek yerde görün.
+                                        {{ $periodLabel }} dönemi için finansal görünüm, fatura kontrolleri ve beklenen ödeme akışını tek yerde görün.
                                     </p>
                                     <div class="mt-4 flex flex-wrap gap-2">
                                         <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
@@ -316,8 +323,8 @@
                                 </div>
                                 <div class="h-full rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                                     <div class="flex items-center gap-1.5">
-                                        <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Net Hakediş</p>
-                                        <x-zolm.help-tip title="Net hakediş" summary="Pazaryerinden satıcıya beklenen net tahsilat toplamını gösterir." source="Ödeme detay / hakediş kayıtları ve teslim edilen siparişler." refresh="Hakediş dosyası veya teslim bilgisi değiştiğinde." impact="Tahsilat beklentisini ve nakit akışı planını yönlendirir." />
+                                        <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Net Kesin Ödeme</p>
+                                        <x-zolm.help-tip title="Net Ödeme" summary="Pazar yerinden bankanıza yatması beklenen net tutar." source="Ödeme detay / hakediş kayıtları ve teslim edilen siparişler." refresh="Hakediş dosyası veya teslim bilgisi değiştiğinde." impact="Tahsilat beklentisini ve nakit akışı planını yönlendirir." />
                                     </div>
                                     <p class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{{ $formatMoney($stats['total_hakedis']) }}</p>
                                     <p class="mt-2 text-xs text-slate-500">Teslim edilen siparişlerden beklenen net tahsilat</p>
@@ -385,8 +392,8 @@
                         <x-zolm.section-card
                             class="h-full"
                             eyebrow="Aylık Kontrol"
-                            title="Fatura mutabakat durumu"
-                            helpTitle="Fatura mutabakat durumu"
+                            title="Fatura kontrol durumu"
+                            helpTitle="Fatura kontrol durumu"
                             helpSummary="Komisyon ve kargo faturalarının sipariş toplamlarıyla uyumunu gösterir."
                             helpSource="Fatura/cari yüklemeleri ve sipariş bazlı finans toplamları."
                             helpRefresh="Fatura veya sipariş verisi değiştiğinde."
@@ -459,7 +466,7 @@
                                 </div>
                             @else
                                 <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
-                                    Bu dönem için fatura mutabakatı gösterecek veri bulunmuyor.
+                                    Bu dönem için fatura kontrolü gösterecek veri bulunmuyor.
                                 </div>
                             @endif
                         </x-zolm.section-card>
@@ -709,9 +716,9 @@
                                 <p class="accounting-tooltip-title mb-1 font-bold">📍 Nereden İndirilir?</p>
                                 <p>Trendyol Satıcı Paneli → Sipariş → Siparişlerim → "Tümü" seçip Excel İndir</p>
                                 <p class="accounting-tooltip-title mt-2 mb-1 font-bold">📊 Ne İçerir?</p>
-                                <p>Sipariş No, Tarih, Tutar, Komisyon, Kargo Bedeli, Hizmet Bedeli, Net Hakediş, Sipariş Durumu</p>
+                                <p>Sipariş No, Tarih, Tutar, Komisyon, Kargo Bedeli, Hizmet Bedeli, Net Ödeme, Sipariş Durumu</p>
                                 <p class="accounting-tooltip-title mt-2 mb-1 font-bold">🔗 Neyle Bağlantılı?</p>
-                                <p>Dashboard KPI'ları (Brüt Ciro, Lojistik Zararı, Net Hakediş), Denetim Motoru, Kârlılık Analizi</p>
+                                <p>Dashboard KPI'ları (Brüt Ciro, Lojistik Zararı, Net Ödeme), Denetim Motoru, Kârlılık Analizi</p>
                             </div>
                         </div>
                     </div>
@@ -745,7 +752,7 @@
                                 <p class="accounting-tooltip-title mt-2 mb-1 font-bold">📊 Ne İçerir?</p>
                                 <p>İşlem Tarihi, Fiş Türü, Dekont No, Borç/Alacak, Barkod, Sipariş No, Açıklama</p>
                                 <p class="accounting-tooltip-title mt-2 mb-1 font-bold">🔗 Neyle Bağlantılı?</p>
-                                <p>Siparişlerdeki eksik barkodu tamamlar → Ürün maliyeti eşleşir → Kârlılık hesaplanır. Fatura Mutabakat Sistemi bu veriyi kullanır.</p>
+                                <p>Siparişlerdeki eksik barkodu tamamlar → Ürün maliyeti eşleşir → Kârlılık hesaplanır. Fatura Kontrol Sistemi bu veriyi kullanır.</p>
                             </div>
                         </div>
                     </div>
@@ -813,7 +820,7 @@
                                 <p class="accounting-tooltip-title mt-2 mb-1 font-bold">📊 Ne İçerir?</p>
                                 <p>Fatura No, Tarih, Tip (Komisyon/Kargo/Hizmet), KDV Tutarı, KDV Hariç ve Dahil Tutarlar</p>
                                 <p class="accounting-tooltip-title mt-2 mb-1 font-bold">🔗 Neyle Bağlantılı?</p>
-                                <p>Dashboard "Net KDV" kartı, Aylık Fatura Mutabakat paneli (Komisyon ve Kargo eşleştirmesi), Vergi hesaplamaları</p>
+                                <p>Dashboard "Net KDV" kartı, Aylık Fatura Kontrol paneli (Komisyon ve Kargo eşleştirmesi), Vergi hesaplamaları</p>
                             </div>
                         </div>
                     </div>
@@ -834,7 +841,7 @@
                     <div class="mt-4 flex justify-end"><button wire:click="importInvoices" x-on:click="startProcessing()" wire:loading.attr="disabled" wire:target="invoicesFile,importInvoices,importAll" class="w-full sm:w-auto px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 transition-colors shadow relative overflow-hidden"><div class="relative z-10"><span wire:loading.remove wire:target="importInvoices">Sadece Bunu Kaydet</span><span wire:loading wire:target="importInvoices">⏳ Kaydediliyor</span></div></button></div>
                 </div>
 
-                {{-- Ödeme Detay (Hakedişler) --}}
+                {{-- Ödeme Detay --}}
                 <div class="accounting-upload-card rounded-xl p-4 lg:p-6 transition-all duration-500"
                      :class="hasType('settlements') ? 'is-detected' : ''">
                     <div class="flex items-center justify-between mb-1">
@@ -1182,7 +1189,7 @@
                                     </th>
                                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
                                         wire:click="sortProfit('total_hakedis')">
-                                        Hakediş {{ $profitSortBy === 'total_hakedis' ? ($profitSortDir === 'asc' ? '↑' : '↓') : '' }}
+                                        Ödeme {{ $profitSortBy === 'total_hakedis' ? ($profitSortDir === 'asc' ? '↑' : '↓') : '' }}
                                     </th>
                                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Maliyet</th>
                                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
@@ -1586,7 +1593,7 @@
                                     @endif
                                     @if(in_array('hakedis', $visibleColumns))
                                     <div class="flex justify-between">
-                                        <span class="text-gray-400">Hakediş</span>
+                                        <span class="text-gray-400">Ödeme</span>
                                         <span class="font-medium {{ $isFuturePayment ? 'text-amber-600' : 'text-gray-700' }}">{{ number_format($order->net_hakedis, 2, ',', '.') }} ₺</span>
                                     </div>
                                     @endif

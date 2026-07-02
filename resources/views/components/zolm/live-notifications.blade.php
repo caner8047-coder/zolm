@@ -207,6 +207,7 @@
                 connected: false,
                 ringing: false,
                 soundEnabled: false,
+                mutedTypes: [],
                 notifications: [],
                 unreadCount: 0,
                 latestId: 0,
@@ -222,31 +223,43 @@
                     { key: 'critical', label: 'Kritik' },
                     { key: 'orders', label: 'Sipariş' },
                     { key: 'stock', label: 'Stok' },
+                    { key: 'booster', label: 'Booster' },
+                    { key: 'risk', label: 'Risk' },
                     { key: 'questions', label: 'Sorular' },
                     { key: 'returns', label: 'İade' },
                 ],
                 get filteredNotifications() {
+                    const visible = this.notifications.filter((item) => !this.mutedTypes.includes(item.type));
+
                     if (this.filter === 'critical') {
-                        return this.notifications.filter((item) => ['critical', 'warning'].includes(item.severity));
+                        return visible.filter((item) => ['critical', 'warning'].includes(item.severity));
                     }
 
                     if (this.filter === 'orders') {
-                        return this.notifications.filter((item) => ['new_order', 'order_cancelled'].includes(item.type));
+                        return visible.filter((item) => ['new_order', 'order_cancelled'].includes(item.type));
                     }
 
                     if (this.filter === 'stock') {
-                        return this.notifications.filter((item) => ['stock_out', 'stock_critical'].includes(item.type));
+                        return visible.filter((item) => ['stock_out', 'stock_critical'].includes(item.type));
+                    }
+
+                    if (this.filter === 'booster') {
+                        return visible.filter((item) => String(item.type || '').startsWith('booster_'));
+                    }
+
+                    if (this.filter === 'risk') {
+                        return visible.filter((item) => ['risk_critical', 'risk_warning'].includes(item.type));
                     }
 
                     if (this.filter === 'questions') {
-                        return this.notifications.filter((item) => item.type === 'question_received');
+                        return visible.filter((item) => item.type === 'question_received');
                     }
 
                     if (this.filter === 'returns') {
-                        return this.notifications.filter((item) => item.type === 'order_returned');
+                        return visible.filter((item) => item.type === 'order_returned');
                     }
 
-                    return this.notifications;
+                    return visible;
                 },
                 init() {
                     if (!this.available) {
@@ -303,6 +316,7 @@
                         this.unreadCount = Number(payload.unread_count || 0);
                         this.latestId = Number(payload.latest_id || this.notifications[0]?.id || 0);
                         this.soundEnabled = Boolean(payload.preferences?.sound_enabled);
+                        this.mutedTypes = Array.isArray(payload.preferences?.muted_types) ? payload.preferences.muted_types : [];
                     } catch (error) {
                         this.connected = false;
                     } finally {
@@ -386,6 +400,10 @@
                     }
                 },
                 pushNotification(notification) {
+                    if (this.mutedTypes.includes(notification.type)) {
+                        return;
+                    }
+
                     const exists = this.notifications.some((item) => Number(item.id) === Number(notification.id));
 
                     if (!exists) {

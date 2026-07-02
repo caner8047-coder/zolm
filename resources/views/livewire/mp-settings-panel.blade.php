@@ -216,6 +216,35 @@
                 </div>
                 @endif
             </div>
+
+            {{-- Teorik Stopaj Tahmini Toggle --}}
+            <div class="p-5 rounded-xl border-2 transition-all {{ $settingsEstimatedWithholdingEnabled ? 'border-amber-300 bg-amber-50/60' : 'border-gray-200 bg-gray-50/50' }}">
+                <label class="flex items-center justify-between cursor-pointer gap-4">
+                    <div class="flex items-center gap-4 min-w-0">
+                        <div class="text-2xl">{{ $settingsEstimatedWithholdingEnabled ? '✅' : '⬜' }}</div>
+                        <div class="min-w-0">
+                            <p class="font-bold text-gray-900 text-sm">Teorik Stopaj Tahmini</p>
+                            <p class="text-xs text-gray-500 mt-0.5">Gerçek stopaj finans hareketi yoksa KDV hariç matrah üzerinden tahmini kesinti üret</p>
+                        </div>
+                    </div>
+                    <div class="relative flex-shrink-0">
+                        <input type="checkbox" wire:model.live="settingsEstimatedWithholdingEnabled" class="sr-only peer">
+                        <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-200 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-500 shadow-inner"></div>
+                    </div>
+                </label>
+
+                @if(!$settingsEstimatedWithholdingEnabled)
+                <div class="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 flex items-start gap-2">
+                    <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span>Teorik stopaj şu anda <strong>kapalı</strong>. Kâr snapshot'larında yalnızca pazaryerinden gelen gerçek stopaj hareketi dikkate alınır.</span>
+                </div>
+                @else
+                <div class="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 flex items-start gap-2">
+                    <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l2 2 4-6M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7l8-4z"></path></svg>
+                    <span>Teorik stopaj <strong>aktif</strong>. Gerçek stopaj hareketi yoksa brüt satış KDV hariç matraha çevrilir ve stopaj oranına göre tahmini kesinti hesaplanır.</span>
+                </div>
+                @endif
+            </div>
         </div>
         @endif
     </div>
@@ -455,14 +484,14 @@
         @endif
     </div>
 
-    {{-- ═══════════════ BÖLÜM 5: DENETİM TOLERANSLARI ═══════════════ --}}
+    {{-- ═══════════════ BÖLÜM 5: DENETİM LİMİTLERİ ═══════════════ --}}
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <button wire:click="toggleSettingsSection('audit')" type="button"
                 class="w-full px-6 py-4 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white hover:from-gray-100 transition-all">
             <div class="flex items-center gap-3">
                 <span class="text-2xl">🛡️</span>
                 <div class="text-left">
-                    <h3 class="text-base font-bold text-gray-900">Denetim Toleransları</h3>
+                    <h3 class="text-base font-bold text-gray-900">Denetim Limitleri</h3>
                     <p class="text-xs text-gray-500">Audit Engine kurallarının hassasiyet eşikleri</p>
                 </div>
             </div>
@@ -471,7 +500,7 @@
         @if($settingsActiveSection === 'audit')
         <div class="p-4 lg:p-6 border-t border-gray-100 space-y-6">
             <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-                Toleransları düşürmek daha fazla alarm üretir, örneklem eşiklerini yükseltmek gürültüyü azaltır. Kural aç/kapa ve bilgi logu tercihleri anlık kaydedilir; sayısal eşikler alttaki kaydet butonuyla saklanır.
+                Limitleri düşürmek daha fazla alarm üretir, örneklem eşiklerini yükseltmek gürültüyü azaltır. Kural aç/kapa ve bilgi logu tercihleri anlık kaydedilir; sayısal eşikler alttaki kaydet butonuyla saklanır.
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
@@ -485,14 +514,14 @@
                 <label class="rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
                     <div>
                         <p class="text-sm font-semibold text-gray-900">Cari-Komisyon Kontrolü</p>
-                        <p class="text-xs text-gray-500 mt-1">Cari-Hakediş Uyumu denetiminde komisyon toplamını da karşılaştırır.</p>
+                        <p class="text-xs text-gray-500 mt-1">Cari-Ödeme Uyumu denetiminde komisyon toplamını da karşılaştırır.</p>
                     </div>
                     <input type="checkbox" wire:model.live="settingsTransactionCheckCommissionEnabled" class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-200 w-4 h-4">
                 </label>
                 <label class="rounded-xl border border-gray-200 p-4 flex items-start justify-between gap-3">
                     <div>
                         <p class="text-sm font-semibold text-gray-900">Cari-Kargo Kontrolü</p>
-                        <p class="text-xs text-gray-500 mt-1">Cari-Hakediş Uyumu denetiminde kargo toplamını da karşılaştırır.</p>
+                        <p class="text-xs text-gray-500 mt-1">Cari-Ödeme Uyumu denetiminde kargo toplamını da karşılaştırır.</p>
                     </div>
                     <input type="checkbox" wire:model.live="settingsTransactionCheckCargoEnabled" class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-200 w-4 h-4">
                 </label>
@@ -547,16 +576,16 @@
             </div>
 
             <div class="pt-1">
-                <h4 class="text-sm font-bold text-gray-700 mb-3">Temel Toleranslar</h4>
+                <h4 class="text-sm font-bold text-gray-700 mb-3">Temel Kabul Edilebilir Farklar</h4>
                 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
                     @php
                         $toleranceFields = [
-                            ['model' => 'settingsStopajTolerance', 'label' => 'Stopaj Toleransı', 'unit' => 'TL', 'hint' => 'Brüt×oran hesabı ile kesilen stopaj arasındaki kabul edilebilir fark', 'step' => '0.01'],
-                            ['model' => 'settingsCommissionMismatchTolerance', 'label' => 'Komisyon Toleransı', 'unit' => 'TL', 'hint' => 'Komisyon kuruş farkları için alarm eşiği', 'step' => '0.01'],
+                            ['model' => 'settingsStopajTolerance', 'label' => 'Stopaj Farkı', 'unit' => 'TL', 'hint' => 'Brüt×oran hesabı ile kesilen stopaj arasındaki kabul edilebilir fark', 'step' => '0.01'],
+                            ['model' => 'settingsCommissionMismatchTolerance', 'label' => 'Komisyon Farkı', 'unit' => 'TL', 'hint' => 'Komisyon kuruş farkları için alarm eşiği', 'step' => '0.01'],
                             ['model' => 'settingsBaremExcessTolerance', 'label' => 'Barem Aşımı', 'unit' => 'TL', 'hint' => 'Barem üzeri kargo farkı bu değeri geçerse alarm üretir', 'step' => '0.01'],
                             ['model' => 'settingsCommissionRefundTolerance', 'label' => 'Komisyon İadesi', 'unit' => 'TL', 'hint' => 'İade siparişte eksik komisyon iadesi eşiği', 'step' => '0.01'],
                             ['model' => 'settingsCommissionRefundTrackingTolerance', 'label' => 'Komisyon İade Takip', 'unit' => 'TL', 'hint' => 'Toplu iade takibinde sipariş bazlı açık fark eşiği', 'step' => '0.01'],
-                            ['model' => 'settingsHakedisTolerance', 'label' => 'Hakediş Farkı', 'unit' => 'TL', 'hint' => 'Beklenen hakediş ile raporlanan hakediş farkı', 'step' => '0.01'],
+                            ['model' => 'settingsHakedisTolerance', 'label' => 'Ödeme Farkı', 'unit' => 'TL', 'hint' => 'Beklenen ödeme ile raporlanan ödeme farkı', 'step' => '0.01'],
                             ['model' => 'settingsMissingPaymentTolerance', 'label' => 'Eksik Ödeme', 'unit' => 'TL', 'hint' => 'Beklenen ödeme ile yatan ödeme farkı bu değeri aşarsa alarm', 'step' => '0.01'],
                             ['model' => 'settingsDelayedPaymentDays', 'label' => 'Geciken Ödeme', 'unit' => 'gün', 'hint' => 'Teslimattan sonra kaç gün geçince kayıp ödeme sayılacağı', 'step' => '1'],
                             ['model' => 'settingsHeavyCargoTolerance', 'label' => 'Ağır Kargo', 'unit' => 'TL', 'hint' => 'Bilinen ağır kargo ceza tutarına yakınlık eşiği', 'step' => '0.01'],
@@ -581,11 +610,11 @@
                     @php
                         $criticalFields = [
                             ['model' => 'settingsSunkCostCriticalThreshold', 'label' => 'Yanık Maliyet Kritik Eşiği', 'unit' => 'TL', 'hint' => 'Bu toplam lojistik zarar üstü kritik sayılır', 'step' => '1'],
-                            ['model' => 'settingsHakedisCriticalThreshold', 'label' => 'Hakediş Kritik Eşiği', 'unit' => 'TL', 'hint' => 'Hakediş farkı bu değeri aşarsa kritik işaretlenir', 'step' => '1'],
+                            ['model' => 'settingsHakedisCriticalThreshold', 'label' => 'Kritik Ödeme Eşiği', 'unit' => 'TL', 'hint' => 'Ödeme farkı bu değeri aşarsa kritik işaretlenir', 'step' => '1'],
                             ['model' => 'settingsMissingPaymentCriticalThreshold', 'label' => 'Eksik Ödeme Kritik Eşiği', 'unit' => 'TL', 'hint' => 'Eksik ödeme farkı bu değeri aşarsa kritik olur', 'step' => '1'],
                             ['model' => 'settingsOperationalPenaltyCriticalThreshold', 'label' => 'Operasyonel Ceza Kritik Eşiği', 'unit' => 'TL', 'hint' => 'Ceza tutarı bu değeri aşarsa kritik işaretlenir', 'step' => '1'],
                             ['model' => 'settingsCargoOverCostRatio', 'label' => 'Kargo/Brüt Kâr Oranı', 'unit' => 'oran', 'hint' => 'Kendi kargo maliyeti, brüt kârın bu oranını aşarsa alarm üretir. %50 için 0.50', 'step' => '0.05'],
-                            ['model' => 'settingsNegativeHakedisThreshold', 'label' => 'Negatif Hakediş Eşiği', 'unit' => 'TL', 'hint' => 'Bu değerin altındaki net hakedişler alarm üretir. Her negatif için 0 bırakın', 'step' => '0.50'],
+                            ['model' => 'settingsNegativeHakedisThreshold', 'label' => 'Negatif Ödeme Eşiği', 'unit' => 'TL', 'hint' => 'Bu değerin altındaki net ödemeler alarm üretir. Her negatif için 0 bırakın', 'step' => '0.50'],
                             ['model' => 'settingsExtremeMarginPositiveThreshold', 'label' => 'Aşırı Pozitif Marj', 'unit' => '%', 'hint' => 'Bu marj üstü siparişler veri hatası şüphesiyle işaretlenir', 'step' => '1'],
                             ['model' => 'settingsExtremeMarginNegativeThreshold', 'label' => 'Aşırı Negatif Marj', 'unit' => '%', 'hint' => 'Bu marj altı siparişler veri hatası şüphesiyle işaretlenir', 'step' => '1'],
                             ['model' => 'settingsCampaignLossMinTotalLoss', 'label' => 'Kampanya Zarar Min.', 'unit' => 'TL', 'hint' => 'Toplam zarar bu tutarın altındaysa kampanya alarmı üretmez', 'step' => '1'],
@@ -640,15 +669,15 @@
         @endif
     </div>
 
-    {{-- ═══════════════ BÖLÜM 6: MUTABAKAT & FATURA ═══════════════ --}}
+    {{-- ═══════════════ BÖLÜM 6: FATURA KONTROL ═══════════════ --}}
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <button wire:click="toggleSettingsSection('reconciliation')" type="button"
                 class="w-full px-6 py-4 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white hover:from-gray-100 transition-all">
             <div class="flex items-center gap-3">
                 <span class="text-2xl">📋</span>
                 <div class="text-left">
-                    <h3 class="text-base font-bold text-gray-900">Mutabakat & Fatura Ayarları</h3>
-                    <p class="text-xs text-gray-500">Fatura doğrulama toleransları ve KDV hesaplama parametreleri</p>
+                    <h3 class="text-base font-bold text-gray-900">Fatura Kontrol Ayarları</h3>
+                    <p class="text-xs text-gray-500">Fatura doğrulama sapmaları ve KDV hesaplama parametreleri</p>
                 </div>
             </div>
             <svg class="w-5 h-5 text-gray-400 transition-transform {{ $settingsActiveSection === 'reconciliation' ? 'rotate-180' : '' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>

@@ -21,6 +21,7 @@ use App\Services\Marketplace\MarketplaceHealthRetryService;
 use App\Services\Marketplace\LegacyFinancialProjectionService;
 use App\Services\Marketplace\LegacyFinancialProjectionInsightsService;
 use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
+use App\Services\Marketplace\MarketplaceOnboardingGuideService;
 use App\Services\Marketplace\MarketplaceOrderActionService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Services\Marketplace\MarketplaceReconciliationQueryService;
@@ -159,6 +160,16 @@ class MarketplaceOverview extends Component
             'hours' => 168,
             'limit' => 200,
         ]);
+    }
+
+    #[Computed]
+    public function onboardingGuide(): array
+    {
+        if (! config('marketplace.features.onboarding_guide_enabled', true)) {
+            return ['enabled' => false];
+        }
+
+        return app(MarketplaceOnboardingGuideService::class)->summaryForUser($this->userId());
     }
 
     #[Computed]
@@ -1463,6 +1474,7 @@ class MarketplaceOverview extends Component
             'connectionReadinessSummary' => $this->connectionReadinessSummary,
             'diagnosticsSummary' => $this->diagnosticsSummary,
             'diagnosticsGuidance' => $this->diagnosticsGuidance,
+            'onboardingGuide' => $this->onboardingGuide,
             'legacyProjectionSummary' => $this->legacyProjectionSummary,
             'legacyProjectionStoreRows' => $this->legacyProjectionStoreRows,
             'pilotRolloutRows' => $this->pilotRolloutRows,

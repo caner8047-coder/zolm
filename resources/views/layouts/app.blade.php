@@ -59,6 +59,11 @@
     @php
         $marketplaceFeatures = config('marketplace.features', []);
         $showMarketplaceV2 = (bool) ($marketplaceFeatures['v2_enabled'] ?? true);
+        $marketplaceNavigationActive = request()->routeIs('mp.*', 'marketplace-messages', 'reports')
+            && ! request()->routeIs('mp.trendyol-booster');
+        $activeBoosterModule = (string) request()->query('booster', 'analysis');
+        $boosterFavoritesOnly = $activeBoosterModule === 'tracking' && request()->boolean('favorites');
+        $boosterMenuGroups = \App\Services\Marketplace\TrendyolBoosterModuleConfig::getGroups();
     @endphp
     <div class="min-h-full flex">
         
@@ -99,10 +104,10 @@
             <!-- Navigation -->
             <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
                 {{-- Pazaryeri Dropdown --}}
-                <div x-data="{ pazaryeriOpen: {{ request()->routeIs('mp.*', 'marketplace-messages', 'reports') ? 'true' : 'false' }} }">
+                <div x-data="{ pazaryeriOpen: {{ $marketplaceNavigationActive ? 'true' : 'false' }} }" data-testid="marketplace-sidebar-menu">
                     <button @click="pazaryeriOpen = !pazaryeriOpen"
                         class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                               {{ request()->routeIs('mp.*', 'marketplace-messages', 'reports') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                               {{ $marketplaceNavigationActive ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
                         <span class="flex items-center">
                             <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
@@ -119,6 +124,52 @@
                                class="block px-4 py-2 text-sm rounded-lg transition-colors
                                       {{ request()->routeIs('mp.overview') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
                                 Özet
+                            </a>
+                        @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['profit_center_enabled'] ?? true))
+                            <a href="{{ route('mp.profit-center') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.profit-center') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Sipariş Kârlılığı
+                            </a>
+                        @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['pricing_simulator_enabled'] ?? false))
+                            <a href="{{ route('mp.pricing-simulator') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.pricing-simulator') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Kâr Hesaplayıcı
+                            </a>
+                        @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['settlement_audit_enabled'] ?? false))
+                            <a href="{{ route('mp.settlement-audit') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.settlement-audit') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Eksik Ödeme Takibi
+                            </a>
+                        @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['risk_center_enabled'] ?? false))
+                            @php
+                                $openRiskCount = \App\Models\MarketplaceRiskSignalState::query()
+                                    ->where('user_id', auth()->id() ?? 1)
+                                    ->where('status', \App\Models\MarketplaceRiskSignalState::STATUS_OPEN)
+                                    ->count();
+                            @endphp
+                            <a href="{{ route('mp.risk-center') }}" @click="sidebarOpen = false"
+                               class="flex items-center justify-between px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.risk-center') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                <span>Günlük Görevler</span>
+                                @if($openRiskCount > 0)
+                                    <span class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold text-white bg-rose-500 rounded-full">
+                                        {{ $openRiskCount > 99 ? '99+' : $openRiskCount }}
+                                    </span>
+                                @endif
+                            </a>
+                        @endif
+                        @if($showMarketplaceV2 && ($marketplaceFeatures['report_digest_enabled'] ?? false))
+                            <a href="{{ route('mp.report-digests') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('mp.report-digests') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Otomatik Raporlar
                             </a>
                         @endif
                         @if($showMarketplaceV2 && ($marketplaceFeatures['integrations_enabled'] ?? true))
@@ -170,6 +221,10 @@
                         </a>
                     </div>
                 </div>
+
+                @if($showMarketplaceV2 && ($marketplaceFeatures['trendyol_booster_enabled'] ?? true))
+                    @include('layouts.partials.trendyol-booster-menu')
+                @endif
 
                 @if(($marketplaceFeatures['crm_enabled'] ?? true) && auth()->user()->canAccessCrm())
                     <div x-data="{ crmOpen: {{ request()->routeIs('crm.*') ? 'true' : 'false' }} }">
@@ -338,6 +393,14 @@
                         </button>
                     </div>
                     <div x-show="campaignsOpen" x-collapse class="ml-8 mt-1 space-y-1">
+                        @if($marketplaceFeatures['campaign_decision_center_enabled'] ?? false)
+                        <a href="{{ route('campaigns.decision-center') }}"
+                           @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('campaigns.decision-center') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Karar Merkezi
+                        </a>
+                        @endif
                         <a href="{{ route('campaigns.product-commission') }}"
                            @click="sidebarOpen = false"
                            class="block px-4 py-2 text-sm rounded-lg transition-colors
@@ -470,6 +533,66 @@
         </main>
     </div>
 
+    <script>
+        window.columnResize = window.columnResize || function () {
+            return {
+                listeners: [],
+                init() {
+                    const table = this.$el.tagName === 'TABLE'
+                        ? this.$el
+                        : this.$el.querySelector('table');
+
+                    if (!table) {
+                        return;
+                    }
+
+                    table.querySelectorAll('thead th').forEach((header) => {
+                        if (header.querySelector('[data-column-resizer]')) {
+                            return;
+                        }
+
+                        header.style.position = 'relative';
+                        const handle = document.createElement('button');
+                        handle.type = 'button';
+                        handle.dataset.columnResizer = 'true';
+                        handle.title = 'Kolonu yeniden boyutlandır';
+                        handle.setAttribute('aria-label', 'Kolonu yeniden boyutlandır');
+                        handle.className = 'absolute inset-y-0 right-0 z-10 w-2 cursor-col-resize touch-none border-0 bg-transparent p-0';
+
+                        const start = (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+
+                            const startX = event.clientX;
+                            const startWidth = header.getBoundingClientRect().width;
+                            const move = (moveEvent) => {
+                                const width = Math.max(72, startWidth + moveEvent.clientX - startX);
+                                header.style.width = width + 'px';
+                                header.style.minWidth = width + 'px';
+                            };
+                            const stop = () => {
+                                document.removeEventListener('pointermove', move);
+                                document.removeEventListener('pointerup', stop);
+                            };
+
+                            document.addEventListener('pointermove', move);
+                            document.addEventListener('pointerup', stop, { once: true });
+                        };
+
+                        handle.addEventListener('pointerdown', start);
+                        handle.addEventListener('click', (event) => event.stopPropagation());
+                        header.appendChild(handle);
+                        this.listeners.push([handle, start]);
+                    });
+                },
+                destroy() {
+                    this.listeners.forEach(([handle, start]) => {
+                        handle.removeEventListener('pointerdown', start);
+                    });
+                },
+            };
+        };
+    </script>
     @livewireScripts
 </body>
 </html>

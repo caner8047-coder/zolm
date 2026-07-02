@@ -24,6 +24,8 @@ class ChannelOrderPackage extends Model
         'shipment_provider',
         'shipped_at',
         'delivered_at',
+        'label_printed_at',
+        'label_print_count',
         'last_synced_at',
         'raw_payload',
     ];
@@ -35,6 +37,7 @@ class ChannelOrderPackage extends Model
             'shipped_at' => 'datetime',
             'delivered_at' => 'datetime',
             'label_printed_at' => 'datetime',
+            'label_print_count' => 'integer',
             'last_synced_at' => 'datetime',
             'raw_payload' => 'array',
         ];

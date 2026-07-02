@@ -26,6 +26,7 @@ class AppNotification extends Model
         'read_at',
         'seen_at',
         'triggered_at',
+        'email_digest_sent_at',
     ];
 
     protected function casts(): array
@@ -35,6 +36,7 @@ class AppNotification extends Model
             'read_at' => 'datetime',
             'seen_at' => 'datetime',
             'triggered_at' => 'datetime',
+            'email_digest_sent_at' => 'datetime',
         ];
     }
 

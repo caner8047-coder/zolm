@@ -209,6 +209,8 @@
             this.applySearchNavigation(this.searchDraft);
         }
      }">
+    <x-zolm.risk-guidance :guidance="$this->riskGuidance" context-label="Ürünler" />
+
     @once
         <style>
             .products-page-shell {

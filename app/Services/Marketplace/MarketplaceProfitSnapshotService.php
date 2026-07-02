@@ -8,23 +8,22 @@ use App\Models\OrderFinancialEvent;
 use App\Models\OrderProfitSnapshot;
 use App\Models\Shipment;
 use App\Services\MpSettingsService;
+use App\Services\Marketplace\Support\FinancialEventClassifier;
 use App\Services\Marketplace\Support\OrderLifecycleResolver;
 use App\Services\ProfitabilityMetric;
 use App\Services\ProductCompositionResolver;
-use Illuminate\Support\Collection;
+use App\Services\CurrencyExchangeService;
 use Illuminate\Support\Facades\Schema;
 
 class MarketplaceProfitSnapshotService
 {
-    protected const SELLER_REVENUE_EVENT_TYPES = ['seller_revenue', 'sale', 'capture', 'refund', 'void'];
-
-    protected const SERVICE_FEE_EVENT_TYPES = ['service_fee', 'deduction_invoice', 'fee'];
-
-    protected const CONFIRMING_EVENT_TYPES = ['seller_revenue', 'sale', 'capture', 'refund', 'void', 'commission', 'cargo', 'service_fee', 'deduction_invoice', 'withholding', 'fee'];
-
     public function __construct(
         protected OrderLifecycleResolver $lifecycleResolver,
         protected ProductCompositionResolver $compositionResolver,
+        protected MarketplaceVatEffectService $vatEffectService,
+        protected MarketplaceWithholdingEffectService $withholdingEffectService,
+        protected MarketplaceCostBreakdownService $costBreakdownService,
+        protected CurrencyExchangeService $exchangeService,
     ) {
     }
 
@@ -50,6 +49,16 @@ class MarketplaceProfitSnapshotService
         $items = $order->items;
         $financialEvents = $order->financialEvents;
 
+        $currency = strtoupper((string) ($order->currency ?: 'TRY'));
+        $exchangeRate = (float) ($order->exchange_rate ?: 1.0);
+        
+        // Ensure exchange rate is updated if missing
+        if ($currency !== 'TRY' && $exchangeRate <= 1.0) {
+            $date = $order->ordered_at?->format('Y-m-d') ?: now()->format('Y-m-d');
+            $exchangeRate = $this->exchangeService->getExchangeRate($currency, 'TRY', $date);
+            $order->update(['exchange_rate' => $exchangeRate]);
+        }
+
         $grossRevenue = round((float) $items->sum(fn ($item) => (float) ($item->billable_amount ?: $item->gross_amount ?: ((float) $item->unit_price * (int) $item->quantity))), 2);
         $estimatedCommission = round((float) $items->sum(function ($item) use ($store) {
             $baseAmount = (float) ($item->billable_amount ?: $item->gross_amount ?: ((float) $item->unit_price * (int) $item->quantity));
@@ -64,21 +73,48 @@ class MarketplaceProfitSnapshotService
         $estimatedOwnCargoCost = (float) $compositionTotals['own_cargo_cost'];
         $actualOwnCargoCost = $this->actualOwnCargoCost($order);
         $ownCargoCost = $actualOwnCargoCost > 0 ? $actualOwnCargoCost : $estimatedOwnCargoCost;
+        $settledFinancialEvents = $financialEvents
+            ->filter(fn (OrderFinancialEvent $event) => FinancialEventClassifier::isSettledConfirmingEvent($event));
+        $costBreakdown = $this->costBreakdownService->summarize($settledFinancialEvents, false);
+        $commissionTotal = $this->costBreakdownService->costTotal($costBreakdown, 'commission');
+        $cargoTotal = $this->costBreakdownService->costTotal($costBreakdown, 'cargo');
+        $serviceFeeOnly = $this->costBreakdownService->costTotal($costBreakdown, 'service_fee');
+        $advertisingTotal = $this->costBreakdownService->costTotal($costBreakdown, 'advertising');
+        $penaltyTotal = $this->costBreakdownService->costTotal($costBreakdown, 'penalty');
+        $earlyPaymentTotal = $this->costBreakdownService->costTotal($costBreakdown, 'early_payment');
+        $discountTotal = $this->costBreakdownService->costTotal($costBreakdown, 'discount');
+        $otherCostTotal = $this->costBreakdownService->costTotal($costBreakdown, 'other');
+        // Backward compatible: service_fee_total toplam overhead olarak kalır
+        $serviceFeeTotal = round($serviceFeeOnly + $advertisingTotal + $penaltyTotal + $earlyPaymentTotal + $discountTotal + $otherCostTotal, 2);
+        $actualWithholdingTotal = $this->costBreakdownService->costTotal($costBreakdown, 'withholding');
+        $withholding = $this->withholdingEffectService->calculate(
+            store: $store,
+            order: $order,
+            items: $items,
+            grossRevenue: $grossRevenue,
+            actualWithholdingTotal: $actualWithholdingTotal,
+        );
+        $withholdingTotal = (float) $withholding['amount'];
+        $sellerRevenueNet = (float) $costBreakdown['seller_revenue_net'];
+        $hasFinancials = $settledFinancialEvents->isNotEmpty();
 
-        $commissionTotal = $this->costTotal($financialEvents, ['commission']);
-        $cargoTotal = $this->costTotal($financialEvents, ['cargo']);
-        $serviceFeeTotal = $this->costTotal($financialEvents, self::SERVICE_FEE_EVENT_TYPES);
-        $withholdingTotal = $this->costTotal($financialEvents, ['withholding']);
-        $sellerRevenueNet = $this->netAmount($financialEvents, self::SELLER_REVENUE_EVENT_TYPES);
-        $hasFinancials = $financialEvents->whereIn('event_type', self::CONFIRMING_EVENT_TYPES)->isNotEmpty();
-
-        $estimatedNetReceivable = round($grossRevenue - $estimatedCommission, 2);
+        $estimatedNetReceivable = round($grossRevenue - $estimatedCommission - $withholdingTotal, 2);
         $netReceivable = $hasFinancials
-            ? round($sellerRevenueNet - $cargoTotal - $serviceFeeTotal - $withholdingTotal, 2)
+            ? round($sellerRevenueNet - $commissionTotal - $cargoTotal - $serviceFeeTotal - $withholdingTotal, 2)
             : $estimatedNetReceivable;
-        $estimatedProfit = round($estimatedNetReceivable - $cogsCost - $packagingCost - $ownCargoCost, 2);
+        $vat = $this->vatEffectService->calculate(
+            store: $store,
+            order: $order,
+            items: $items,
+            grossRevenue: $grossRevenue,
+            commissionTotal: $commissionTotal > 0 ? $commissionTotal : $estimatedCommission,
+            cargoTotal: $hasFinancials ? $cargoTotal : 0.0,
+        );
+        $vatEffect = (float) $vat['net_vat'];
+
+        $estimatedProfit = round($estimatedNetReceivable - $cogsCost - $packagingCost - $ownCargoCost - $vatEffect, 2);
         $confirmedProfit = $hasFinancials
-            ? round($netReceivable - $cogsCost - $packagingCost - $ownCargoCost, 2)
+            ? round($netReceivable - $cogsCost - $packagingCost - $ownCargoCost - $vatEffect, 2)
             : $estimatedProfit;
 
         // OrderLifecycleResolver ile iade/iptal zarar hesaplaması
@@ -108,22 +144,29 @@ class MarketplaceProfitSnapshotService
 
         $snapshot->fill([
             'profit_state' => $profitState,
-            'gross_revenue' => $grossRevenue,
-            'net_receivable' => $netReceivable,
-            'commission_total' => $commissionTotal > 0 ? $commissionTotal : $estimatedCommission,
-            'cargo_total' => $cargoTotal,
-            'service_fee_total' => $serviceFeeTotal,
-            'withholding_total' => $withholdingTotal,
-            'packaging_cost' => $packagingCost,
-            'own_cargo_cost' => $ownCargoCost,
-            'cogs_cost' => $cogsCost,
-            'return_effect' => $returnEffect,
-            'vat_effect' => 0,
-            'estimated_profit' => $estimatedProfit,
-            'confirmed_profit' => $confirmedProfit,
+            'gross_revenue' => $grossRevenue * $exchangeRate,
+            'net_receivable' => $netReceivable * $exchangeRate,
+            'commission_total' => ($commissionTotal > 0 ? $commissionTotal : $estimatedCommission) * $exchangeRate,
+            'cargo_total' => $cargoTotal * $exchangeRate,
+            'service_fee_total' => $serviceFeeTotal * $exchangeRate,
+            'advertising_total' => $advertisingTotal * $exchangeRate,
+            'penalty_total' => $penaltyTotal * $exchangeRate,
+            'early_payment_total' => $earlyPaymentTotal * $exchangeRate,
+            'discount_total' => $discountTotal * $exchangeRate,
+            'other_cost_total' => $otherCostTotal * $exchangeRate,
+            'withholding_total' => $withholdingTotal * $exchangeRate,
+            'packaging_cost' => $packagingCost * $exchangeRate,
+            'own_cargo_cost' => $ownCargoCost * $exchangeRate,
+            'cogs_cost' => $cogsCost * $exchangeRate,
+            'return_effect' => $returnEffect * $exchangeRate,
+            'vat_effect' => $vatEffect * $exchangeRate,
+            'estimated_profit' => $estimatedProfit * $exchangeRate,
+            'confirmed_profit' => $confirmedProfit * $exchangeRate,
             'margin_percent' => $marginPercent,
             'calculated_at' => now(),
             'version' => ((int) $snapshot->version) + 1,
+            'currency' => $currency,
+            'exchange_rate' => $exchangeRate,
         ]);
         $snapshot->save();
     }
@@ -140,35 +183,6 @@ class MarketplaceProfitSnapshotService
             ?? $item->product?->commission_rate
             ?? 0
         ), 2);
-    }
-
-    /**
-     * @param  Collection<int, OrderFinancialEvent>  $events
-     * @param  array<int, string>  $types
-     */
-    protected function netAmount(Collection $events, array $types): float
-    {
-        return round((float) $events
-            ->whereIn('event_type', $types)
-            ->sum(fn (OrderFinancialEvent $event) => $this->signedAmount($event)), 2);
-    }
-
-    /**
-     * @param  Collection<int, OrderFinancialEvent>  $events
-     * @param  array<int, string>  $types
-     */
-    protected function costTotal(Collection $events, array $types): float
-    {
-        $net = $this->netAmount($events, $types);
-
-        return round(abs(min($net, 0)), 2);
-    }
-
-    protected function signedAmount(OrderFinancialEvent $event): float
-    {
-        $amount = abs((float) $event->amount);
-
-        return $event->direction === 'credit' ? $amount : -$amount;
     }
 
     protected function actualOwnCargoCost(ChannelOrder $order): float

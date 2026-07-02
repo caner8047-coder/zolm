@@ -115,7 +115,7 @@ class LegacyFinancialProjectionService
         $withholding = abs((float) $row->withholding_tax);
         $commission = abs((float) $row->commission_amount);
         $netHakedis = round((float) $row->net_hakedis, 2);
-        $sellerRevenueBasis = round($netHakedis + $cargo + $serviceFee + $withholding, 2);
+        $sellerRevenueBasis = round($netHakedis + $commission + $cargo + $serviceFee + $withholding, 2);
 
         $baseMeta = [
             'order_number' => $orderNumber,

@@ -9,10 +9,12 @@ use App\Models\MpOperationalOrder;
 use App\Models\MpOperationalOrderItem;
 use App\Models\MpProduct;
 use App\Models\Product;
+use App\Models\ProductReferenceHistory;
 use App\Services\CargoComparisonEngine;
 use App\Services\ExcelService;
 use App\Services\MpSettingsService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Attributes\Computed;
@@ -127,6 +129,7 @@ class CargoChecker extends Component
     // Ürün Düzenleme Modalı
     public bool $showEditModal = false;
     public string $editStokKodu = '';
+    public string $editUrunAdi = '';
     public float $editDesi = 0;
     public int $editParca = 1;
     public float $editTutar = 0;
@@ -918,9 +921,10 @@ class CargoChecker extends Component
     /**
      * Ürün düzenleme modalını aç
      */
-    public function openProductEditModal(string $stokKodu, float $desi, float $tutar, int $parca)
+    public function openProductEditModal(string $stokKodu, float $desi, float $tutar, int $parca, string $urunAdi = '')
     {
-        $this->editStokKodu = $stokKodu;
+        $this->editStokKodu = trim($stokKodu);
+        $this->editUrunAdi = trim($urunAdi);
         $this->editDesi = $desi;
         $this->editTutar = $tutar;
         $this->editParca = max(1, $parca);
@@ -934,6 +938,7 @@ class CargoChecker extends Component
     {
         $this->showEditModal = false;
         $this->editStokKodu = '';
+        $this->editUrunAdi = '';
         $this->editDesi = 0;
         $this->editTutar = 0;
         $this->editParca = 1;
@@ -951,39 +956,101 @@ class CargoChecker extends Component
             return;
         }
 
+        $validated = $this->validate([
+            'editStokKodu' => ['required', 'string', 'max:30'],
+            'editUrunAdi' => ['nullable', 'string', 'max:255'],
+            'editDesi' => ['required', 'numeric', 'min:0'],
+            'editParca' => ['required', 'integer', 'min:1', 'max:99'],
+            'editTutar' => ['required', 'numeric', 'min:0'],
+        ], [
+            'editStokKodu.required' => 'Stok kodu boş olamaz.',
+            'editStokKodu.max' => 'Stok kodu en fazla 30 karakter olmalı.',
+            'editDesi.min' => 'Desi negatif olamaz.',
+            'editParca.min' => 'Parça en az 1 olmalı.',
+            'editTutar.min' => 'Tutar negatif olamaz.',
+        ]);
+
         try {
             $userId = auth()->id() ?? 1;
+            $stockCode = trim((string) $validated['editStokKodu']);
+            $productName = trim((string) ($validated['editUrunAdi'] ?? '')) ?: $stockCode;
+            $desi = round((float) $validated['editDesi'], 2);
+            $pieces = max(1, (int) $validated['editParca']);
+            $cargoCost = round((float) $validated['editTutar'], 2);
 
-            $mpProduct = MpProduct::query()
-                ->where('user_id', $userId)
-                ->where('stock_code', $this->editStokKodu)
-                ->first();
+            [$mpProduct, $product, $createdMpProduct, $createdReference] = DB::transaction(function () use ($userId, $stockCode, $productName, $desi, $pieces, $cargoCost) {
+                $matchingMpProducts = $this->matchingMarketplaceProducts($userId, $stockCode);
+                $mpProduct = $matchingMpProducts->first();
+                $createdMpProduct = false;
 
-            if ($mpProduct) {
-                $mpProduct->update([
-                    'desi' => $this->editDesi,
-                    'pieces' => $this->editParca,
-                    'cargo_cost' => $this->editTutar,
-                ]);
+                if (!$mpProduct) {
+                    $mpProduct = MpProduct::query()->create([
+                        'user_id' => $userId,
+                        'barcode' => $stockCode,
+                        'stock_code' => $stockCode,
+                        'product_name' => $productName,
+                        'desi' => $desi,
+                        'pieces' => $pieces,
+                        'cargo_cost' => $cargoCost,
+                        'status' => 'active',
+                        'import_source' => 'cargo_checker_manual',
+                        'logistics_source' => 'manual',
+                    ]);
+                    $createdMpProduct = true;
+                } else {
+                    $matchingMpProducts->each(function (MpProduct $product) use ($stockCode, $productName, $desi, $pieces, $cargoCost): void {
+                        $product->update([
+                            'stock_code' => $product->stock_code ?: $stockCode,
+                            'product_name' => $product->product_name ?: $productName,
+                            'desi' => $desi,
+                            'pieces' => $pieces,
+                            'cargo_cost' => $cargoCost,
+                            'logistics_source' => 'manual',
+                        ]);
+                    });
+                }
 
-                $this->showMessage("✅ {$this->editStokKodu} pazaryeri ürün kartında güncellendi.", 'success');
-                $this->closeProductEditModal();
-                return;
-            }
+                $product = $this->matchingReferenceProduct($stockCode);
+                $before = $product?->toReferenceSnapshot();
+                $createdReference = false;
 
-            $product = Product::where('stok_kodu', $this->editStokKodu)->first();
-            if (!$product) {
-                $this->showMessage("Ürün bulunamadı: {$this->editStokKodu}", 'error');
-                return;
-            }
+                if (!$product) {
+                    $product = Product::query()->create([
+                        'stok_kodu' => $stockCode,
+                        'urun_adi' => $productName,
+                        'parca' => $pieces,
+                        'desi' => $desi,
+                        'tutar' => $cargoCost,
+                        'is_active' => true,
+                        'updated_by' => $userId,
+                    ]);
+                    $createdReference = true;
+                } else {
+                    $product->update([
+                        'urun_adi' => $product->urun_adi ?: $productName,
+                        'parca' => $pieces,
+                        'desi' => $desi,
+                        'tutar' => $cargoCost,
+                        'is_active' => true,
+                        'updated_by' => $userId,
+                    ]);
+                }
 
-            $product->update([
-                'desi' => $this->editDesi,
-                'parca' => $this->editParca,
-                'tutar' => $this->editTutar,
-            ]);
+                $this->logProductHistory(
+                    $product->fresh(),
+                    $before,
+                    $createdReference ? 'cargo_checker_create' : 'cargo_checker_update',
+                    $createdReference
+                        ? 'Desi ve tutar check ekranından eksik referans oluşturuldu.'
+                        : 'Desi ve tutar check ekranından referans güncellendi.'
+                );
 
-            $this->showMessage("✅ {$this->editStokKodu} güncellendi! Desi: {$this->editDesi}, Parça: {$this->editParca}, Tutar: {$this->editTutar}₺", 'success');
+                return [$mpProduct->fresh(), $product->fresh(), $createdMpProduct, $createdReference];
+            });
+
+            $action = $createdMpProduct || $createdReference ? 'oluşturuldu ve güncellendi' : 'güncellendi';
+
+            $this->showMessage("✅ {$stockCode} ürün referansı {$action}. Desi: {$desi}, Parça: {$pieces}, Tutar: {$cargoCost}₺", 'success');
             $this->closeProductEditModal();
 
         } catch (\Exception $e) {
@@ -1002,6 +1069,66 @@ class CargoChecker extends Component
     {
         $this->message = $message;
         $this->messageType = $type;
+    }
+
+    protected function logProductHistory(?Product $product, ?array $beforeSnapshot, string $source, ?string $note = null): void
+    {
+        if (!Schema::hasTable('product_reference_histories')) {
+            return;
+        }
+
+        ProductReferenceHistory::create([
+            'product_id' => $product?->id,
+            'stok_kodu' => $product?->stok_kodu ?? ($beforeSnapshot['stok_kodu'] ?? ''),
+            'change_source' => $source,
+            'note' => $note,
+            'previous_snapshot' => $beforeSnapshot,
+            'new_snapshot' => $product?->toReferenceSnapshot(),
+            'changed_by' => auth()->id(),
+        ]);
+    }
+
+    protected function matchingMarketplaceProducts(int $userId, string $stockCode)
+    {
+        $normalizedStockCode = $this->normalizeReferenceCode($stockCode);
+
+        if ($normalizedStockCode === '') {
+            return collect();
+        }
+
+        return MpProduct::query()
+            ->where('user_id', $userId)
+            ->where(function ($query) {
+                $query->whereNotNull('stock_code')
+                    ->orWhereNotNull('barcode');
+            })
+            ->get()
+            ->filter(function (MpProduct $product) use ($normalizedStockCode): bool {
+                return $this->normalizeReferenceCode($product->stock_code) === $normalizedStockCode
+                    || $this->normalizeReferenceCode($product->barcode) === $normalizedStockCode;
+            })
+            ->values();
+    }
+
+    protected function matchingReferenceProduct(string $stockCode): ?Product
+    {
+        $normalizedStockCode = $this->normalizeReferenceCode($stockCode);
+
+        if ($normalizedStockCode === '') {
+            return null;
+        }
+
+        return Product::query()
+            ->get()
+            ->first(fn(Product $product): bool => $this->normalizeReferenceCode($product->stok_kodu) === $normalizedStockCode);
+    }
+
+    protected function normalizeReferenceCode(mixed $value): string
+    {
+        $value = trim((string) $value);
+        $value = preg_replace('/\s+/u', '', $value) ?? $value;
+
+        return mb_strtoupper($value, 'UTF-8');
     }
 
     public function render()

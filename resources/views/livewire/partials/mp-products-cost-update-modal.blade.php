@@ -15,7 +15,7 @@
 
                 <div class="border-b border-slate-100 bg-white px-4 pb-4 pt-5 sm:px-6">
                     <h3 class="text-lg font-semibold text-slate-900">Excel ile Maliyet Güncelle</h3>
-                    <p class="mt-1 text-sm text-slate-500">Stok Kodu veya Barkod eşleşen ürünlerde yalnızca birim maliyet alanı güncellenir.</p>
+                    <p class="mt-1 text-sm text-slate-500">Stok Kodu veya Barkod eşleşen ürünlerde birim maliyet ve ambalaj maliyeti güncellenir.</p>
                 </div>
 
                 <div class="px-4 py-5 sm:px-6">
@@ -48,7 +48,7 @@
                                    class="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-200">
                             <span class="min-w-0">
                                 <span class="block text-sm font-medium text-slate-800">0 maliyetleri de uygula</span>
-                                <span class="mt-0.5 block text-xs leading-5 text-slate-500">Kapalıyken boş ve 0 maliyet satırları atlanır.</span>
+                                <span class="mt-0.5 block text-xs leading-5 text-slate-500">Kapalıyken boş ve 0 maliyet/ambalaj satırları atlanır.</span>
                             </span>
                         </label>
 
@@ -56,7 +56,7 @@
                             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Beklenen kolonlar</p>
                             <div class="mt-2 grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-2">
                                 <span class="rounded-[6px] bg-slate-50 px-2 py-1">Stok Kodu veya Barkod</span>
-                                <span class="rounded-[6px] bg-slate-50 px-2 py-1">Maliyet veya MF Fiyatı</span>
+                                <span class="rounded-[6px] bg-slate-50 px-2 py-1">Maliyet/MF Fiyatı veya Ambalaj</span>
                             </div>
                         </div>
                     @else

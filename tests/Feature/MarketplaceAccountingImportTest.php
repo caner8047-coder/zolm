@@ -879,11 +879,28 @@ class MarketplaceAccountingImportTest extends TestCase
 
         Livewire::test(MarketplaceAccounting::class)
             ->set('settingsHelpTipsEnabled', false)
+            ->set('settingsEstimatedWithholdingEnabled', true)
             ->call('saveSettings');
 
         $settings = MpAccountingSetting::where('user_id', $user->id)->firstOrFail();
 
         $this->assertFalse((bool) data_get($settings->settings, 'ui.help_tips_enabled', true));
+        $this->assertTrue((bool) data_get($settings->settings, 'tax.estimated_withholding_enabled', false));
+        $this->assertTrue((new MpSettingsService($user->id))->isEstimatedWithholdingEnabled());
+    }
+
+    public function test_accounting_tax_settings_render_estimated_withholding_toggle(): void
+    {
+        $user = User::factory()->create();
+        $this->createPeriod($user, 2025, 12);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceAccounting::class)
+            ->set('activeTab', 'settings')
+            ->call('toggleSettingsSection', 'tax')
+            ->assertSee('Teorik Stopaj Tahmini')
+            ->assertSee('Gerçek stopaj finans hareketi yoksa');
     }
 
     private function createPeriod(User $user, int $year, int $month): MpPeriod

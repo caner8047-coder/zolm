@@ -30,7 +30,10 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Livewire::setUpdateRoute(function ($handle) {
-            return Route::post('/livewire/update', $handle)->middleware(['web', 'auth']);
+            return Route::post('/livewire/update', $handle)->middleware([
+                'web',
+                \App\Http\Middleware\EnsureLivewireAuthenticatedUnlessPublic::class,
+            ]);
         });
     }
 

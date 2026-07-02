@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Report extends Model
 {
@@ -34,6 +35,11 @@ class Report extends Model
     public function conversations(): HasMany
     {
         return $this->hasMany(AIConversation::class);
+    }
+
+    public function marketplaceDigestRun(): HasOne
+    {
+        return $this->hasOne(MarketplaceReportDigestRun::class);
     }
 
     public function isSuccessful(): bool

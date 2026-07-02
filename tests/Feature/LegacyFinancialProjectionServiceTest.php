@@ -64,7 +64,7 @@ class LegacyFinancialProjectionServiceTest extends TestCase
             $events->firstWhere('event_type', 'seller_revenue')?->channel_order_item_id
         );
         $this->assertSame(
-            '2080.00',
+            '2260.00',
             (string) $events->firstWhere('event_type', 'seller_revenue')?->amount
         );
 

@@ -543,7 +543,7 @@
                                                     <td class="px-1 py-2 text-center">
                                                         @if(auth()->user()?->isAdmin() && $editableStockCode && !$item->is_iade)
                                                             <button
-                                                                wire:click="openProductEditModal('{{ $editableStockCode }}', {{ $item->gercek_desi }}, {{ $item->gercek_tutar }}, {{ $item->gercek_parca }})"
+                                                                wire:click="openProductEditModal(@js($editableStockCode), {{ $item->gercek_desi }}, {{ $item->gercek_tutar }}, {{ $item->gercek_parca }}, @js($item->urun_adi ?? ''))"
                                                                 class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
                                                                 title="{{ $item->error_type === 'referans_eksik' ? 'Eksik referansı tamamla' : 'Güncelle' }}"
                                                             >
@@ -616,7 +616,7 @@
                                     @endif
                                     @if(in_array('actions', $visibleColumns, true) && auth()->user()?->isAdmin() && $editableStockCode && !$item->is_iade)
                                         <button
-                                            wire:click="openProductEditModal('{{ $editableStockCode }}', {{ $item->gercek_desi }}, {{ $item->gercek_tutar }}, {{ $item->gercek_parca }})"
+                                            wire:click="openProductEditModal(@js($editableStockCode), {{ $item->gercek_desi }}, {{ $item->gercek_tutar }}, {{ $item->gercek_parca }}, @js($item->urun_adi ?? ''))"
                                             class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500"
                                             title="{{ $item->error_type === 'referans_eksik' ? 'Eksik referansı tamamla' : 'Güncelle' }}"
                                         >

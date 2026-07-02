@@ -74,6 +74,7 @@ class MarketplaceAccounting extends Component
     public float $settingsDefaultProductVatRate = 0.10;
     public float $settingsExpenseVatRate = 0.20;
     public bool $settingsKdvHesaplamaAktif = false;
+    public bool $settingsEstimatedWithholdingEnabled = false;
 
     // Bölüm 2: Kargo & Barem
     public float $settingsBaremLimit = 300;
@@ -211,7 +212,7 @@ class MarketplaceAccounting extends Component
         'urun'     => 'Ürün',
         'durum'    => 'Durum',
         'brut'     => 'Brüt',
-        'hakedis'  => 'Hakediş',
+        'hakedis'  => 'Ödeme',
         'komisyon' => 'Komisyon',
         'kargo'    => 'Kargo',
         'cogs'     => 'Maliyet',
@@ -328,6 +329,7 @@ class MarketplaceAccounting extends Component
         $this->settingsDefaultProductVatRate   = (float) ($all['tax']['default_product_vat_rate'] ?? 0.10);
         $this->settingsExpenseVatRate           = (float) ($all['tax']['expense_vat_rate'] ?? 0.20);
         $this->settingsKdvHesaplamaAktif        = (bool) ($all['tax']['kdv_hesaplama_aktif'] ?? false);
+        $this->settingsEstimatedWithholdingEnabled = (bool) ($all['tax']['estimated_withholding_enabled'] ?? false);
 
         // Kargo
         $this->settingsUsesOwnCargo              = (bool) ($all['cargo']['uses_own_cargo'] ?? false);
@@ -466,10 +468,11 @@ class MarketplaceAccounting extends Component
         $svc = new MpSettingsService();
         $svc->save([
             'tax' => [
-                'stopaj_rate'              => (float) $this->settingsStopajRate,
-                'default_product_vat_rate' => (float) $this->settingsDefaultProductVatRate,
-                'expense_vat_rate'         => (float) $this->settingsExpenseVatRate,
-                'kdv_hesaplama_aktif'      => (bool) $this->settingsKdvHesaplamaAktif,
+                'stopaj_rate'                   => (float) $this->settingsStopajRate,
+                'default_product_vat_rate'      => (float) $this->settingsDefaultProductVatRate,
+                'expense_vat_rate'              => (float) $this->settingsExpenseVatRate,
+                'kdv_hesaplama_aktif'           => (bool) $this->settingsKdvHesaplamaAktif,
+                'estimated_withholding_enabled' => (bool) $this->settingsEstimatedWithholdingEnabled,
             ],
             'cargo' => [
                 'barem_limit'           => (float) $this->settingsBaremLimit,
@@ -1090,7 +1093,7 @@ class MarketplaceAccounting extends Component
             $period = MpPeriod::findOrFail($this->selectedPeriodId);
 
             if ($period->is_locked) {
-                session()->flash('import_error', 'Bu dönem kilitli! Mutabakatı sağlanan aylara yeni veri aktarılamaz. Önce kilidi açınız.');
+                session()->flash('import_error', 'Bu dönem kilitli! Kapatılan aylara yeni veri aktarılamaz. Önce kilidi açınız.');
                 return ['processed' => 0, 'read' => 0];
             }
 

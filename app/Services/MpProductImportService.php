@@ -92,6 +92,13 @@ class MpProductImportService
         'Mf Fiyatı' => 'cogs',
         'M.F Fiyatı' => 'cogs',
         'MF Fiyati' => 'cogs',
+        'Ambalaj' => 'packaging_cost',
+        'Ambalaj Gideri' => 'packaging_cost',
+        'Ambalaj Maliyeti' => 'packaging_cost',
+        'Paketleme Maliyeti' => 'packaging_cost',
+        'Paketleme Gideri' => 'packaging_cost',
+        'Packaging Cost' => 'packaging_cost',
+        'packaging_cost' => 'packaging_cost',
     ];
 
     // ─── Trendyol Excel Sütun Eşleştirme ───────────────────
@@ -187,7 +194,7 @@ class MpProductImportService
 
         if ($headerMatch === null) {
             return $this->result(
-                'Maliyet güncelleme formatı tanınamadı. Dosyada Stok Kodu/Barkod ve Maliyet/MF Fiyatı sütunları olmalı.',
+                'Maliyet güncelleme formatı tanınamadı. Dosyada Stok Kodu/Barkod ve Maliyet/MF Fiyatı/Ambalaj sütunlarından en az biri olmalı.',
                 'cost_update'
             );
         }
@@ -206,22 +213,45 @@ class MpProductImportService
                 $stockCode = trim((string) ($this->clean($data['stock_code'] ?? null) ?? ''));
                 $barcode = trim((string) ($this->clean($data['barcode'] ?? null) ?? ''));
                 $rawCost = $data['cogs'] ?? null;
+                $rawPackagingCost = $data['packaging_cost'] ?? null;
 
                 if ($stockCode === '' && $barcode === '') {
                     $this->skipped++;
                     continue;
                 }
 
-                if ($rawCost === null || trim((string) $rawCost) === '') {
+                $hasRawCost = $rawCost !== null && trim((string) $rawCost) !== '';
+                $hasRawPackagingCost = $rawPackagingCost !== null && trim((string) $rawPackagingCost) !== '';
+
+                if (! $hasRawCost && ! $hasRawPackagingCost) {
                     $blankCost++;
                     $this->skipped++;
                     continue;
                 }
 
-                $cost = $this->parseNumber($rawCost);
+                $updates = [];
 
-                if ($cost <= 0 && !$applyZeroValues) {
-                    $zeroCost++;
+                if ($hasRawCost) {
+                    $cost = $this->parseNumber($rawCost);
+
+                    if ($cost <= 0 && !$applyZeroValues) {
+                        $zeroCost++;
+                    } else {
+                        $updates['cogs'] = round($cost, 2);
+                    }
+                }
+
+                if ($hasRawPackagingCost) {
+                    $packagingCost = $this->parseNumber($rawPackagingCost);
+
+                    if ($packagingCost <= 0 && !$applyZeroValues) {
+                        $zeroCost++;
+                    } else {
+                        $updates['packaging_cost'] = round($packagingCost, 2);
+                    }
+                }
+
+                if ($updates === []) {
                     $this->skipped++;
                     continue;
                 }
@@ -242,9 +272,7 @@ class MpProductImportService
 
                 $logger = app(MpProductChangeLogger::class);
                 $beforeSnapshot = $logger->productSnapshot($product);
-                $product->update([
-                    'cogs' => round($cost, 2),
-                ]);
+                $product->update($updates);
                 $logger->logProductSnapshotChanges(
                     $product->fresh() ?: $product,
                     $beforeSnapshot,
@@ -765,7 +793,7 @@ class MpProductImportService
             $columnMap = $this->buildColumnMap((array) $row, $mapping);
             $fields = array_values($columnMap);
 
-            if (in_array('cogs', $fields, true)
+            if ((in_array('cogs', $fields, true) || in_array('packaging_cost', $fields, true))
                 && (in_array('stock_code', $fields, true) || in_array('barcode', $fields, true))) {
                 return [$index, $columnMap];
             }
@@ -833,26 +861,53 @@ class MpProductImportService
     }
 
     /**
-     * Türkçe formattaki sayıyı parse et: "1.049,90" → 1049.90
+     * Türkçe ve İngilizce ayraclı sayıları parse et:
+     * "1.049,90" ve "1,049.90" → 1049.90
      */
     protected function parseNumber($value): float
     {
         if ($value === null || $value === '') return 0;
-        if (is_numeric($value)) return (float) $value;
+        if (is_int($value) || is_float($value)) return (float) $value;
 
-        $str = (string) $value;
-        $str = str_replace(' ', '', $str);
-        $str = str_replace('%', '', $str);
+        $str = $this->cleanString($value) ?? '';
+        $str = str_replace(["\xc2\xa0", ' ', "\t", "\n", "\r"], '', $str);
+        $str = str_replace(['%', '₺', 'TL', 'tl'], '', $str);
+        $str = preg_replace('/[^\d,.\-+]/u', '', $str) ?? '';
 
-        // Türkçe format: nokta = binlik, virgül = ondalık
-        if (preg_match('/^\d{1,3}(\.\d{3})*(,\d+)?$/', $str)) {
-            $str = str_replace('.', '', $str);
-            $str = str_replace(',', '.', $str);
-        } else {
-            $str = str_replace(',', '.', $str);
+        if ($str === '' || $str === '-' || $str === '+') {
+            return 0;
+        }
+
+        $lastComma = strrpos($str, ',');
+        $lastDot = strrpos($str, '.');
+
+        if ($lastComma !== false && $lastDot !== false) {
+            if ($lastComma > $lastDot) {
+                $str = str_replace('.', '', $str);
+                $str = str_replace(',', '.', $str);
+            } else {
+                $str = str_replace(',', '', $str);
+            }
+        } elseif ($lastComma !== false) {
+            $str = $this->normalizeSingleSeparatorNumber($str, ',');
+        } elseif ($lastDot !== false) {
+            $str = $this->normalizeSingleSeparatorNumber($str, '.');
         }
 
         return is_numeric($str) ? (float) $str : 0;
+    }
+
+    protected function normalizeSingleSeparatorNumber(string $value, string $separator): string
+    {
+        $escapedSeparator = preg_quote($separator, '/');
+
+        if (preg_match('/^[+-]?\d{1,3}(?:' . $escapedSeparator . '\d{3})+$/', $value)) {
+            return str_replace($separator, '', $value);
+        }
+
+        return $separator === ','
+            ? str_replace(',', '.', $value)
+            : $value;
     }
 
     /**

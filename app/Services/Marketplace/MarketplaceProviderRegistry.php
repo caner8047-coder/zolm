@@ -57,7 +57,7 @@ class MarketplaceProviderRegistry
                 'supports' => [
                     'orders' => true,
                     'products' => true,
-                    'finance' => false,
+                    'finance' => true,
                     'webhooks' => false,
                     'price_push' => true,
                     'stock_push' => true,
@@ -75,7 +75,7 @@ class MarketplaceProviderRegistry
                 'supports' => [
                     'orders' => true,
                     'products' => true,
-                    'finance' => false,
+                    'finance' => 'excel_only',
                     'webhooks' => false,
                     'price_push' => true,
                     'stock_push' => true,
@@ -93,7 +93,7 @@ class MarketplaceProviderRegistry
                 'supports' => [
                     'orders' => true,
                     'products' => true,
-                    'finance' => false,
+                    'finance' => 'excel_only',
                     'webhooks' => false,
                     'price_push' => false,
                     'stock_push' => false,
@@ -106,12 +106,12 @@ class MarketplaceProviderRegistry
             'amazon' => [
                 'label' => 'Amazon',
                 'group' => 'Pazaryeri',
-                'status' => 'pilot',
+                'status' => 'ready',
                 'default_api_base_url' => config('marketplace.amazon.base_url'),
                 'supports' => [
-                    'orders' => false,
+                    'orders' => true,
                     'products' => false,
-                    'finance' => false,
+                    'finance' => true,
                     'webhooks' => false,
                     'price_push' => false,
                     'stock_push' => false,
@@ -129,7 +129,7 @@ class MarketplaceProviderRegistry
                 'supports' => [
                     'orders' => true,
                     'products' => true,
-                    'finance' => false,
+                    'finance' => 'excel_only',
                     'webhooks' => false,
                     'price_push' => false,
                     'stock_push' => false,

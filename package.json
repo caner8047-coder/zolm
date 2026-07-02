@@ -4,7 +4,9 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "extension:check": "node scripts/package-trendyol-booster-extension.mjs --check",
+        "extension:package": "node scripts/package-trendyol-booster-extension.mjs"
     },
     "devDependencies": {
         "@rollup/rollup-darwin-arm64": "^4.55.2",

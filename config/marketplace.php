@@ -60,6 +60,15 @@ return [
         'overview_enabled' => (bool) env('MARKETPLACE_OVERVIEW_ENABLED', true),
         'integrations_enabled' => (bool) env('MARKETPLACE_INTEGRATIONS_ENABLED', true),
         'orders_v2_enabled' => (bool) env('MARKETPLACE_ORDERS_V2_ENABLED', true),
+        'profit_center_enabled' => (bool) env('MARKETPLACE_PROFIT_CENTER_ENABLED', true),
+        'trendyol_booster_enabled' => (bool) env('MARKETPLACE_TRENDYOL_BOOSTER_ENABLED', true),
+        'onboarding_guide_enabled' => (bool) env('MARKETPLACE_ONBOARDING_GUIDE_ENABLED', true),
+        'public_trendyol_profit_tool_enabled' => (bool) env('PUBLIC_TRENDYOL_PROFIT_TOOL_ENABLED', false),
+        'pricing_simulator_enabled' => (bool) env('MARKETPLACE_PRICING_SIMULATOR_ENABLED', false),
+        'settlement_audit_enabled' => (bool) env('MARKETPLACE_SETTLEMENT_AUDIT_ENABLED', false),
+        'campaign_decision_center_enabled' => (bool) env('MARKETPLACE_CAMPAIGN_DECISION_CENTER_ENABLED', false),
+        'risk_center_enabled' => (bool) env('MARKETPLACE_RISK_CENTER_ENABLED', false),
+        'report_digest_enabled' => (bool) env('MARKETPLACE_REPORT_DIGEST_ENABLED', false),
         'products_v2_enabled' => (bool) env('MARKETPLACE_PRODUCTS_V2_ENABLED', true),
         'matching_center_enabled' => (bool) env('MARKETPLACE_MATCHING_CENTER_ENABLED', true),
         'finance_v2_enabled' => (bool) env('MARKETPLACE_FINANCE_V2_ENABLED', true),
@@ -73,6 +82,36 @@ return [
         'listing_push_enabled' => (bool) env('MARKETPLACE_LISTING_PUSH_ENABLED', true),
         'order_action_retry_enabled' => (bool) env('MARKETPLACE_ORDER_ACTION_RETRY_ENABLED', true),
         'notifications_enabled' => (bool) env('MARKETPLACE_NOTIFICATIONS_ENABLED', true),
+    ],
+
+    'report_digest' => [
+        'default_send_time' => env('MARKETPLACE_REPORT_DIGEST_DEFAULT_SEND_TIME', '08:30'),
+        'max_subscriptions_per_run' => (int) env('MARKETPLACE_REPORT_DIGEST_MAX_SUBSCRIPTIONS_PER_RUN', 100),
+    ],
+
+    'trendyol_booster' => [
+        'email_digest_enabled' => (bool) env('MARKETPLACE_TRENDYOL_BOOSTER_EMAIL_DIGEST_ENABLED', false),
+        'email_digest_max_notifications' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_EMAIL_DIGEST_MAX_NOTIFICATIONS', 100),
+        'request_timeout' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_REQUEST_TIMEOUT', 12),
+        'request_retries' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_REQUEST_RETRIES', 1),
+        'request_retry_delay_ms' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_REQUEST_RETRY_DELAY_MS', 250),
+        'tracking_interval_minutes' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_TRACKING_INTERVAL_MINUTES', 60),
+        'market_research' => [
+            'google_api_key' => env('GOOGLE_SEARCH_API_KEY', ''),
+            'google_engine_id' => env('GOOGLE_SEARCH_ENGINE_ID', ''),
+            'max_results' => (int) env('GOOGLE_SEARCH_MAX_RESULTS', 10),
+        ],
+        'sync' => [
+            'product_limit' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_SYNC_PRODUCT_LIMIT', 50),
+            'analysis_limit' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_SYNC_ANALYSIS_LIMIT', 100),
+            'competitor_limit' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_SYNC_COMPETITOR_LIMIT', 50),
+            'keyword_limit' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_SYNC_KEYWORD_LIMIT', 50),
+            'store_limit' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_SYNC_STORE_LIMIT', 25),
+            'product_stale_minutes' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_SYNC_PRODUCT_STALE_MINUTES', 60),
+            'competitor_stale_minutes' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_SYNC_COMPETITOR_STALE_MINUTES', 240),
+            'keyword_stale_minutes' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_SYNC_KEYWORD_STALE_MINUTES', 360),
+            'store_stale_minutes' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_SYNC_STORE_STALE_MINUTES', 720),
+        ],
     ],
 
     'trendyol' => [

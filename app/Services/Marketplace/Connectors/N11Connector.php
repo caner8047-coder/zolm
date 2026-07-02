@@ -135,6 +135,51 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
         ];
     }
 
+    public function pullFinancialEvents(MarketplaceStore $store, array $options = []): array
+    {
+        $page = 0;
+        $pageSize = min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.n11.finance_page_size', 100))));
+        $maxPages = max(1, (int) config('marketplace.n11.max_finance_pages_per_sync', 20));
+        $startDate = CarbonImmutable::parse($options['start_date'] ?? now()->subDays(7))->setTimezone('Europe/Istanbul');
+        $endDate = CarbonImmutable::parse($options['end_date'] ?? now())->setTimezone('Europe/Istanbul');
+        $items = [];
+
+        do {
+            $response = $this->settlementSoapCall($store, 'GetSettlementList', [
+                'startDate' => $startDate->format('d/m/Y'),
+                'endDate' => $endDate->format('d/m/Y'),
+                'pagingData' => [
+                    'currentPage' => $page,
+                    'pageSize' => $pageSize,
+                ],
+            ]);
+
+            $rows = $this->settlementRowsFromPayload($response);
+
+            foreach ($rows as $row) {
+                $items[] = $this->normalizeSettlementEvent($row);
+            }
+
+            $totalPages = (int) (
+                data_get($response, 'pagingData.pageCount')
+                ?: data_get($response, 'pagingData.totalPages')
+                ?: data_get($response, 'pageCount')
+                ?: 1
+            );
+            $page++;
+        } while ($rows !== [] && $page < min(max(1, $totalPages), $maxPages));
+
+        return [
+            'items' => $items,
+            'meta' => [
+                'items_received' => count($items),
+                'cursor_after' => $endDate->toIso8601String(),
+                'pages_processed' => $page,
+                'more_pages_available' => $page < ($totalPages ?? 1),
+            ],
+        ];
+    }
+
     public function pullProducts(MarketplaceStore $store, array $options = []): array
     {
         $page = 0;
@@ -609,6 +654,29 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
      * @param  array<string, mixed>  $body
      * @return array<string, mixed>
      */
+    protected function settlementSoapCall(MarketplaceStore $store, string $operation, array $body): array
+    {
+        $xml = $this->buildSoapEnvelope($operation, [
+            'auth' => [
+                'appKey' => $this->appKey($store),
+                'appSecret' => $this->appSecret($store),
+            ],
+            ...$body,
+        ]);
+
+        $response = Http::timeout((int) config('marketplace.n11.request_timeout', 45))
+            ->withHeaders(['Content-Type' => 'text/xml; charset=utf-8'])
+            ->withBody($xml, 'text/xml')
+            ->post($this->settlementSoapUrl($store))
+            ->throw();
+
+        return $this->parseSoapResponse($response->body(), $operation);
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
     protected function returnSoapCall(MarketplaceStore $store, string $operation, array $body): array
     {
         $xml = $this->buildSoapEnvelope($operation, [
@@ -635,6 +703,18 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
 
         if ($url === '') {
             throw new \RuntimeException('N11 soru servisi SOAP URL boş.');
+        }
+
+        return $url;
+    }
+
+    protected function settlementSoapUrl(MarketplaceStore $store): string
+    {
+        $credentials = $store->connection?->credentials_encrypted ?? [];
+        $url = trim((string) ($credentials['settlement_soap_url'] ?? config('marketplace.n11.settlement_soap_url', 'https://api.n11.com/ws/SettlementService/')));
+
+        if ($url === '') {
+            throw new \RuntimeException('N11 mutabakat servisi SOAP URL boş.');
         }
 
         return $url;
@@ -798,16 +878,62 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
             $rows = data_get($payload, $path);
 
             if (is_array($rows) && $rows !== []) {
-                $rows = array_is_list($rows) ? $rows : [$rows];
-
-                return collect($rows)
-                    ->filter(fn ($row) => is_array($row))
-                    ->values()
-                    ->all();
+                return array_is_list($rows) ? $rows : [$rows];
             }
         }
 
         return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<int, array<string, mixed>>
+     */
+    protected function settlementRowsFromPayload(array $payload): array
+    {
+        foreach ([
+            'settlementList.settlement',
+            'settlements.settlement',
+            'items.item',
+            'items',
+            'data',
+        ] as $path) {
+            $rows = data_get($payload, $path);
+
+            if (is_array($rows) && $rows !== []) {
+                return array_is_list($rows) ? $rows : [$rows];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function normalizeSettlementEvent(array $payload): array
+    {
+        $orderNumber = (string) (data_get($payload, 'order.id') ?: data_get($payload, 'orderNumber') ?: '');
+        $date = $this->normalizeDate(data_get($payload, 'date') ?: data_get($payload, 'settlementDate'));
+        $amount = $this->toDecimal(data_get($payload, 'amount') ?: data_get($payload, 'sellerHakedis'));
+        $commission = $this->toDecimal(data_get($payload, 'commission') ?: data_get($payload, 'commissionAmount'));
+        
+        // Return event instead of mutating items directly
+        return [
+            'order_number' => $orderNumber,
+            'event_source' => 'settlements',
+            'external_event_id' => (string) (data_get($payload, 'id') ?: md5($orderNumber . '|' . ($amount ?? 0))),
+            'event_type' => 'settlement',
+            'reference_number' => (string) data_get($payload, 'id'),
+            'settlement_date' => $date,
+            'amount' => abs((float) $amount),
+            'currency' => 'TRY',
+            'direction' => ((float) $amount < 0) ? 'debit' : 'credit',
+            'status' => 'posted',
+            'notes' => 'N11 Hakediş',
+            'raw_payload' => $payload,
+        ];
     }
 
     /**

@@ -163,6 +163,11 @@ class MpSettingsService
         return (bool) $this->get('tax.kdv_hesaplama_aktif', false);
     }
 
+    public function isEstimatedWithholdingEnabled(): bool
+    {
+        return (bool) $this->get('tax.estimated_withholding_enabled', false);
+    }
+
     /**
      * Firma kendi kargo anlaşması ile mi çalışıyor?
      * Açıksa, MpProduct.cargo_cost sipariş kâr hesabına dahil edilir.
@@ -325,6 +330,7 @@ class MpSettingsService
                 'default_product_vat_rate' => 0.10,
                 'expense_vat_rate'         => 0.20,
                 'kdv_hesaplama_aktif'      => false,
+                'estimated_withholding_enabled' => false,
             ],
             'cargo' => [
                 'barem_limit'           => 300,

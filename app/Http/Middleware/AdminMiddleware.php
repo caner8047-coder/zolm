@@ -26,8 +26,8 @@ class AdminMiddleware
                 ->withErrors(['email' => 'Hesabınız devre dışı bırakılmış.']);
         }
 
-        // Admin değilse
-        if (!$user->isAdmin()) {
+        // Operator veya üstü değilse erişim yok
+        if (!$user->isOperator()) {
             abort(403, 'Bu sayfaya erişim yetkiniz yok.');
         }
 

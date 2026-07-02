@@ -83,6 +83,34 @@ Schedule::call(fn () => $runInlineCommand('notifications:prune-expired'))
     ->hourly()
     ->withoutOverlapping();
 
+Schedule::call(fn () => $runInlineCommand('marketplace:sync-risk-signals'))
+    ->name('marketplace-sync-risk-signals')
+    ->hourlyAt(10)
+    ->withoutOverlapping();
+
+Schedule::call(fn () => $runInlineCommand('marketplace:sync-trendyol-booster', [
+    '--product-limit' => (int) config('marketplace.trendyol_booster.sync.product_limit', 50),
+    '--analysis-limit' => (int) config('marketplace.trendyol_booster.sync.analysis_limit', 25),
+    '--competitor-limit' => (int) config('marketplace.trendyol_booster.sync.competitor_limit', 50),
+    '--keyword-limit' => (int) config('marketplace.trendyol_booster.sync.keyword_limit', 50),
+    '--store-limit' => (int) config('marketplace.trendyol_booster.sync.store_limit', 25),
+]))
+    ->name('marketplace-sync-trendyol-booster')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(55);
+
+Schedule::call(fn () => $runInlineCommand('marketplace:send-report-digests'))
+    ->name('marketplace-send-report-digests')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping();
+
+Schedule::call(fn () => $runInlineCommand('marketplace:send-trendyol-booster-digests', [
+    '--limit' => (int) config('marketplace.trendyol_booster.email_digest_max_notifications', 100),
+]))
+    ->name('marketplace-send-trendyol-booster-digests')
+    ->hourlyAt(35)
+    ->withoutOverlapping();
+
 // Sürat Kargo takip hareketleri: aktif gönderileri düzenli yeniler.
 Schedule::call(fn () => $runInlineCommand('cargo:sync-tracking', ['--limit' => 100, '--stale-minutes' => 120]))
     ->name('cargo-sync-tracking')

@@ -13,6 +13,7 @@ use App\Services\Marketplace\LegacyFinancialProjectionInsightsService;
 use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Services\Marketplace\MarketplaceReconciliationQueryService;
+use App\Services\Marketplace\MarketplaceRiskSignalService;
 use App\Services\MpSettingsService;
 use App\Services\ProfitabilityMetric;
 use Illuminate\Database\Eloquent\Builder;
@@ -36,7 +37,7 @@ class MarketplaceFinance extends Component
         'kar' => 'Kâr',
         'varyans' => 'Kâr Farkı',
         'durum' => 'Durum',
-        'mutabakat' => 'Mutabakat',
+        'mutabakat' => 'Mutabakat Durumu',
         'sync' => 'Son Finans',
     ];
 
@@ -376,6 +377,12 @@ class MarketplaceFinance extends Component
             ],
             'items' => $items->all(),
         ];
+    }
+
+    #[Computed]
+    public function riskGuidance(): array
+    {
+        return app(MarketplaceRiskSignalService::class)->guidanceForContext($this->userId(), 'finance');
     }
 
     public function sortTable(string $columnKey): void
@@ -1183,7 +1190,7 @@ class MarketplaceFinance extends Component
             $this->orderStatusFilter !== '' ? 'Sipariş: ' . $this->humanStatus($this->orderStatusFilter) : null,
             $this->profitStateFilter !== '' ? 'Kâr: ' . $this->profitStateLabel($this->profitStateFilter) : null,
             $this->financialStateFilter !== '' ? 'Finans: ' . $this->financialStateLabel($this->financialStateFilter) : null,
-            $this->deltaStateFilter !== '' ? 'Mutabakat: ' . $this->reconciliationStateLabel($this->deltaStateFilter) : null,
+            $this->deltaStateFilter !== '' ? 'Mutabakat Durumu: ' . $this->reconciliationStateLabel($this->deltaStateFilter) : null,
             $this->legacyProjectionFilter !== '' ? 'Eski veri: ' . $this->legacyProjectionFilterLabel($this->legacyProjectionFilter) : null,
             $this->eventTypeFilter !== '' ? 'Olay: ' . $this->humanEventType($this->eventTypeFilter) : null,
         ]));

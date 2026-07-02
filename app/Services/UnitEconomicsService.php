@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * Pazaryeri Muhasebe — Birim İktisadı (Unit Economics) Servisi
  *
+ * @deprecated V2'de MarketplaceProfitSnapshotService kullanın.
+ *
  * Her sipariş ve SKU/Barkod bazında gerçek net kâr hesaplar.
  * Formül: Gerçek Net Kâr = Hakediş - (COGS + Ambalaj) + Net KDV Avantajı/Yükü
  *

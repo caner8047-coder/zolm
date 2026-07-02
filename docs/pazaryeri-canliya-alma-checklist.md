@@ -7,6 +7,7 @@ Amaç:
 - siparisler v2
 - urunler v2
 - finans v2
+- kar merkezi, risk merkezi ve otomatik rapor katmani
 - webhook + polling + queue akislari
 
 tek tek degil, kontrollu sekilde birlikte devreye alinsin.
@@ -64,6 +65,13 @@ Oneri:
 - deploy sonrasi `php artisan queue:restart`
 - ornek dosyalar: `deploy/production/`
 
+Kar Merkezi ve raporlama surecleri:
+
+- `marketplace:sync-risk-signals` scheduler ile saatlik calisir; `MARKETPLACE_RISK_CENTER_ENABLED=true` olmadan veri yazmadan uyarir
+- `marketplace:send-report-digests` scheduler ile her 30 dakikada calisir; `MARKETPLACE_REPORT_DIGEST_ENABLED=true` olmadan veri yazmadan uyarir
+- `marketplace:backfill-profit-snapshots` scheduler'a bagli degildir; ilk geciste filtreli veya `--all` onayli manuel calistirilir
+- ilk backfill mutlaka `--dry-run` ile aday siparis sayisi gorulerek baslatilmalidir
+
 ## 4. Gerekli Entegrasyon Alanlari
 
 Her magaza icin minimum bilgiler:
@@ -83,6 +91,30 @@ Her magaza icin minimum bilgiler:
 - `MARKETPLACE_LISTING_PUSH_ACTIVE_RUN_BLOCK_SECONDS`
 - `MARKETPLACE_ORDER_ACTION_DEBOUNCE_SECONDS`
 - `MARKETPLACE_ORDER_ACTION_ACTIVE_RUN_BLOCK_SECONDS`
+
+Kar Merkezi feature flag env ayarlari:
+
+- `MARKETPLACE_PROFIT_CENTER_ENABLED`
+- `MARKETPLACE_ONBOARDING_GUIDE_ENABLED`
+- `MARKETPLACE_PRICING_SIMULATOR_ENABLED`
+- `PUBLIC_TRENDYOL_PROFIT_TOOL_ENABLED`
+- `MARKETPLACE_SETTLEMENT_AUDIT_ENABLED`
+- `MARKETPLACE_CAMPAIGN_DECISION_CENTER_ENABLED`
+- `MARKETPLACE_RISK_CENTER_ENABLED`
+- `MARKETPLACE_REPORT_DIGEST_ENABLED`
+
+Onerilen ilk rollout ayari:
+
+- `MARKETPLACE_PROFIT_CENTER_ENABLED=true`
+- `MARKETPLACE_ONBOARDING_GUIDE_ENABLED=true`
+- `MARKETPLACE_PRICING_SIMULATOR_ENABLED=false`
+- `PUBLIC_TRENDYOL_PROFIT_TOOL_ENABLED=false`
+- `MARKETPLACE_SETTLEMENT_AUDIT_ENABLED=false`
+- `MARKETPLACE_CAMPAIGN_DECISION_CENTER_ENABLED=false`
+- `MARKETPLACE_RISK_CENTER_ENABLED=false`
+- `MARKETPLACE_REPORT_DIGEST_ENABLED=false`
+
+Pilot magaza karlilik verisi kanitlandikca simulator, mutabakat, risk ve rapor modulleri kademeli acilmalidir.
 
 Trendyol icin:
 - varsayilan base URL `https://apigw.trendyol.com`
@@ -317,6 +349,13 @@ Her yeni magaza icin:
 11. Finans destekleyen kanallarda `Finans V2` ekranı kontrol edilir
 12. `Özet` ekranı kontrol edilir
 13. `Eşleştirme Merkezi` kontrol edilir
+14. `php artisan marketplace:backfill-profit-snapshots --store={id} --missing --dry-run` ile snapshot adaylari kontrol edilir
+15. Adaylar dogruysa `php artisan marketplace:backfill-profit-snapshots --store={id} --missing` calistirilir
+16. `Veri Hazırlık Rehberi` bloklari tamamlanma durumuna gore kontrol edilir
+17. `Kâr Merkezi` ekraninda ciro, maliyet, net kar ve hazirlik rozetleri kontrol edilir
+18. `Hakediş Kontrolü`, `Risk Merkezi` ve `Otomatik Raporlar` yalniz ilgili feature flag aciksa smoke edilir
+19. Public Trendyol kar hesaplama araci kullanilacaksa `PUBLIC_TRENDYOL_PROFIT_TOOL_ENABLED=true` ile `/tools/trendyol-kar-hesaplama` route'u ayrica kontrol edilir
+20. Lokal sertlestirme paketinde Kar Merkezi, Fiyat Simulatoru, Hakediş Kontrolü, Risk Merkezi, Otomatik Raporlar, Kampanya Karar Merkezi ve public Livewire middleware route/feature flag testleri gecer
 
 Kontrol sorulari:
 - siparisler geliyor mu
@@ -326,6 +365,10 @@ Kontrol sorulari:
 - finans event kayitlari geliyor mu
 - tahmini / kesin kar durumu dogru mu
 - eslesmeyen satirlar issue olarak dusuyor mu
+- profit snapshot adaylari beklenen magaza ve tarih araligiyla sinirli mi
+- urun maliyeti eksikleri `Veri Hazırlık Rehberi` ve `Kâr Merkezi` icinde gorunuyor mu
+- risk sinyali ve rapor aboneligi feature flag kapaliyken sessiz, acikken gorunur calisiyor mu
+- Kar Merkezi dahil yeni ekranlar feature flag kapaliyken URL uzerinden 404 veriyor mu
 
 Not:
 - smoke test artik baglanti alanlarini da once kontrol eder
@@ -378,11 +421,17 @@ Kontrol:
 Canliya alimin ilk gunlerinde su ekranlar aktif izlenmeli:
 
 - `Pazaryeri > Özet`
+- `Pazaryeri > Veri Hazırlık Rehberi`
 - `Pazaryeri > Entegrasyonlar`
 - `Pazaryeri > Siparişler`
 - `Pazaryeri > Sorular`
 - `Pazaryeri > Finans`
 - `Pazaryeri > Eşleştirme`
+- `Pazaryeri > Kâr Merkezi`
+- `Pazaryeri > Fiyat Simülatörü`
+- `Pazaryeri > Hakediş Kontrolü`
+- `Pazaryeri > Risk Merkezi`
+- `Pazaryeri > Otomatik Raporlar`
 
 Ozellikle takip edilmesi gerekenler:
 
@@ -395,6 +444,9 @@ Ozellikle takip edilmesi gerekenler:
 - failed webhook sayisi
 - gecersiz webhook imza sayisi
 - open match issue sayisi
+- profit snapshot eksigi ve urun maliyeti eksigi sayisi
+- risk sinyali sayisi ve yeni bildirim uretimi
+- rapor digest sonucunda failed abonelik sayisi
 
 ## 12. Rollout Stratejisi
 
@@ -402,10 +454,20 @@ Ilk rollout onerisi:
 
 1. Tek firma + tek Trendyol mağazası
 2. Sadece okuma sync acik
-3. Push acik ama tek kullanıcı ile test
-4. Paket operasyonları sadece iç ekipte test
-5. Sonra ikinci mağaza
-6. Sonra ikinci pazaryeri connector
+3. Kar Merkezi ve Veri Hazırlık Rehberi sadece okuma/yol gosterici olarak acik
+4. Profit snapshot backfill tek magaza ve sinirli tarih araligiyla yapilmis
+5. Push acik ama tek kullanıcı ile test
+6. Paket operasyonları sadece iç ekipte test
+7. Hakediş Kontrolü, Risk Merkezi ve Otomatik Raporlar pilot veri dogrulamasindan sonra acik
+8. Sonra ikinci mağaza
+9. Sonra ikinci pazaryeri connector
+
+Pilot veri karar kapisi:
+
+- Snapshot backfill dry-run 0 eksik aday gosteriyorsa yeni snapshot yazmadan Kar Merkezi okunabilir.
+- Finans ledger bos ise kâr tahmini kabul edilir; Hakediş Kontrolü, Risk Merkezi ve Otomatik Raporlar kesin finans iddiasi ile acilmaz.
+- Maliyet hazirligi %80 altindaysa once `cogs`, `packaging_cost`, `cargo_cost/desi` ve eslesmeyen satirlar tamamlanir.
+- Pilot aday `store_id=4462` icin lokal kanit: snapshot kapsami tam, finans ledger bos, maliyet hazirligi %0; bu magaza once maliyet/ambalaj ve finans import/sync temizligi ister.
 
 ## 13. Rollback Planı
 
@@ -423,6 +485,7 @@ Geri donus senaryosu:
 - `finance_enabled=false`
 - `products_enabled=false`
 - `webhook_enabled=false`
+- gerekirse Kar Merkezi feature flagleri tekrar false yapilir
 - ekranlar okunur halde kalir
 - import fallback korunur
 
@@ -437,10 +500,24 @@ Geri donus senaryosu:
 - SSL aktif
 - webhook URL dogru
 - webhook secret dogru
+- Kar Merkezi feature flagleri hedef rollout seviyesinde
 - `php artisan marketplace:health-check --fail-on-warning` temiz donuyor
 - bir test magazada siparis/urun/soru sync gecti
 - finans destekleyen kanallarda finans sync gecti
+- `marketplace:backfill-profit-snapshots --store={id} --missing --dry-run` beklenen adaylari gosteriyor
+- gerekiyorsa profit snapshot backfill sinirli kapsamda tamamlandi
+- `marketplace:repair-match-issues --store={id} --dry-run` eslesmemis siparis satirlarini gosteriyor
+- dry-run sonucu dogruysa `marketplace:repair-match-issues --store={id}` ile listing'siz satirlar Eslestirme Merkezi'ne aksiyonlanabilir issue olarak tasindi
+- onarimdan sonra `channel_order_items` icinde `mp_product_id IS NULL OR is_matched = 0` kalan satirlarin `channel_listing_id` degeri bos degil
+- fuzzy/model ailesi adaylari `candidate_found` olarak listelenir; bu adaylar otomatik onerilen baglama butonu yerine manuel operator karariyla kapatilmalidir
+- `marketplace:sync-risk-signals --user={id} --limit=1` feature flag durumuna gore beklenen sonucu veriyor
+- `marketplace:send-report-digests --user={id} --dry-run` feature flag durumuna gore beklenen sonucu veriyor
 - bir test siparisinde order action gecti
 - bir test listinginde push gecti
+- public hesaplama araci acilacaksa route ve middleware ayri feature flag ile dogrulandi
+- lokal route/feature flag sertlestirme paketi gecti: 39 test, 683 assertion
+- Kar Merkezi yonetici raporundaki `Maliyet Eksikleri` sayfasi pilot maliyet temizligi icin indirildi ve kontrol edildi
+- `Maliyet Eksikleri` sayfasindaki `Maliyet` ve `Ambalaj Gideri` kolonlari doldurulduktan sonra Urunler > Maliyet Guncelle import akisi ile geri yuklenebilir
+- Urunler maliyet import'u COGS yaninda ambalaj maliyeti kolonlarini da guncelleyebilir
 
 Bu maddeler tamamlanmadan tum kullanicilar icin rollout yapilmasi onerilmez.

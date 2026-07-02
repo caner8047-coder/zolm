@@ -334,7 +334,7 @@ class MarketplaceMatchingCenter extends Component
         $candidates = $this->resolveCandidatesForIssue($issue, $prefetchedProducts);
         $recommended = $candidates->first();
 
-        if (!$recommended || $this->candidateScore($recommended) <= 0) {
+        if (!$this->canAutoRecommend($recommended)) {
             session()->flash('warning', 'Bu sorun için güvenilir bir öneri bulunamadı.');
 
             return;
@@ -469,6 +469,7 @@ class MarketplaceMatchingCenter extends Component
     {
         return match ($reason) {
             'not_found' => 'Eşleşme bulunamadı',
+            'candidate_found' => 'Aday ürün bulundu',
             'ambiguous_stock_code' => 'Stok kodu birden fazla ürüne gidiyor',
             'ambiguous_barcode' => 'Barkod birden fazla ürüne gidiyor',
             'auto_match_disabled' => 'Otomatik eşleşme kapalı',
@@ -601,6 +602,11 @@ class MarketplaceMatchingCenter extends Component
             $score >= 40 => 'warning',
             default => 'default',
         };
+    }
+
+    public function canAutoRecommend(?MpProduct $candidate): bool
+    {
+        return $candidate instanceof MpProduct && $this->candidateScore($candidate) >= 100;
     }
 
     /**
@@ -852,7 +858,10 @@ class MarketplaceMatchingCenter extends Component
         $title = trim((string) ($channelProduct?->title ?? ''));
 
         if ($stockCode !== '' || $barcode !== '' || $title !== '') {
-            $fallbackQuery->where(function (Builder $query) use ($stockCode, $barcode, $title) {
+            $modelVariants = $this->modelCodeVariantsFromText($title);
+            $titleTokens = $this->candidateLookupTokens($title);
+
+            $fallbackQuery->where(function (Builder $query) use ($stockCode, $barcode, $title, $modelVariants, $titleTokens) {
                 if ($stockCode !== '') {
                     $query->orWhere('stock_code', $stockCode);
                 }
@@ -864,6 +873,18 @@ class MarketplaceMatchingCenter extends Component
                 if ($title !== '') {
                     $needle = Str::limit($title, 30, '');
                     $query->orWhere('product_name', 'like', '%' . $needle . '%');
+                }
+
+                foreach ($modelVariants as $variant) {
+                    $query
+                        ->orWhere('model_code', $variant)
+                        ->orWhere('model_code', 'like', $variant . '%');
+                }
+
+                foreach (array_slice($titleTokens, 0, 6) as $token) {
+                    $query
+                        ->orWhere('product_name', 'like', '%' . $token . '%')
+                        ->orWhere('model_code', 'like', '%' . $token . '%');
                 }
             });
         } else {
@@ -928,9 +949,10 @@ class MarketplaceMatchingCenter extends Component
         $channelTitle = $this->normalizeText($channelProduct?->title);
         $channelBrand = $this->normalizeText($channelProduct?->brand);
         $channelCategory = $this->normalizeText($channelProduct?->category_name);
+        $channelModelVariants = $this->modelCodeVariantsFromText($channelProduct?->title);
 
         return $candidates
-            ->map(function (MpProduct $candidate) use ($channelStockCode, $channelBarcode, $channelTitle, $channelBrand, $channelCategory) {
+            ->map(function (MpProduct $candidate) use ($channelStockCode, $channelBarcode, $channelTitle, $channelBrand, $channelCategory, $channelModelVariants) {
                 $score = 0;
                 $reasons = [];
 
@@ -952,6 +974,25 @@ class MarketplaceMatchingCenter extends Component
                 if ($channelCategory !== '' && $this->normalizeText($candidate->category_name) === $channelCategory) {
                     $score += 8;
                     $reasons[] = 'Kategori aynı';
+                }
+
+                $candidateModel = $this->normalizeCode($candidate->model_code);
+                foreach ($channelModelVariants as $variant) {
+                    if ($candidateModel === '') {
+                        continue;
+                    }
+
+                    if ($candidateModel === $variant) {
+                        $score += 90;
+                        $reasons[] = 'Model kodu birebir uyumlu';
+                        break;
+                    }
+
+                    if (str_starts_with($candidateModel, $variant) || str_starts_with($variant, $candidateModel)) {
+                        $score += 70;
+                        $reasons[] = 'Model kodu ailesi uyumlu';
+                        break;
+                    }
                 }
 
                 $titleOverlap = $this->titleTokenOverlapScore($channelTitle, $this->normalizeText($candidate->product_name));
@@ -1016,6 +1057,77 @@ class MarketplaceMatchingCenter extends Component
             ->replaceMatches('/\s+/u', ' ')
             ->trim()
             ->toString();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function modelCodeVariantsFromText(?string $text): array
+    {
+        $upper = strtoupper((string) $text);
+        preg_match_all('/ZEM[A-Z0-9]+/', $upper, $matches);
+
+        $variants = [];
+
+        foreach ($matches[0] ?? [] as $token) {
+            $token = $this->normalizeCode($token);
+
+            if ($token === '') {
+                continue;
+            }
+
+            $variants[] = $token;
+            $withoutDigits = preg_replace('/\d+$/', '', $token) ?: $token;
+            $variants[] = $withoutDigits;
+
+            while (strlen($withoutDigits) > 6) {
+                $withoutDigits = substr($withoutDigits, 0, -1);
+                $variants[] = $withoutDigits;
+            }
+        }
+
+        return array_values(array_unique(array_filter($variants, fn (string $variant) => strlen($variant) >= 6)));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function candidateLookupTokens(?string $text): array
+    {
+        $normalized = $this->normalizeLookupText($text);
+
+        if ($normalized === '') {
+            return [];
+        }
+
+        $stopWords = [
+            'adet', 'one', 'size', 'olan', 'icin', 'için', 'ile', 've', 'bir', 'iki',
+            'tak', 'takim', 'takimi', 'takımı', 'urun', 'ürün', 'seti',
+        ];
+
+        return collect(preg_split('/\s+/', $normalized) ?: [])
+            ->map(fn ($token) => trim((string) $token))
+            ->filter(fn ($token) => mb_strlen($token) >= 4)
+            ->reject(fn ($token) => in_array($token, $stopWords, true))
+            ->unique()
+            ->take(10)
+            ->values()
+            ->all();
+    }
+
+    protected function normalizeCode(?string $value): string
+    {
+        return preg_replace('/[^A-Z0-9]/', '', strtoupper((string) $value)) ?: '';
+    }
+
+    protected function normalizeLookupText(?string $value): string
+    {
+        $value = mb_strtolower((string) $value, 'UTF-8');
+        $value = str_replace(['ı', 'İ'], ['i', 'i'], $value);
+        $value = preg_replace('/[^[:alnum:]\s]+/u', ' ', $value) ?: '';
+        $value = preg_replace('/\s+/u', ' ', $value) ?: '';
+
+        return trim($value);
     }
 
     protected function normalizeVisibleColumns(array $columns): array

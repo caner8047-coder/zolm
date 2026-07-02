@@ -22,6 +22,7 @@ class LiveNotificationController extends Controller
             'unread_count' => $notificationCenter->unreadCountForUser($userId),
             'preferences' => [
                 'sound_enabled' => (bool) $preference->sound_enabled,
+                'muted_types' => array_values((array) ($preference->muted_types_json ?? [])),
             ],
             'latest_id' => $available
                 ? (AppNotification::query()
@@ -37,8 +38,9 @@ class LiveNotificationController extends Controller
     {
         $userId = (int) Auth::id();
         $lastId = max(0, (int) $request->query('last_id', 0));
+        $mutedTypes = $notificationCenter->mutedTypesForUser($userId);
 
-        return response()->stream(function () use ($userId, $lastId, $notificationCenter): void {
+        return response()->stream(function () use ($userId, $lastId, $mutedTypes, $notificationCenter): void {
             if (function_exists('session_write_close')) {
                 @session_write_close();
             }
@@ -56,6 +58,7 @@ class LiveNotificationController extends Controller
                     ->with('store:id,store_name,marketplace')
                     ->where('user_id', $userId)
                     ->where('id', '>', $cursor)
+                    ->when($mutedTypes !== [], fn ($query) => $query->whereNotIn('type', $mutedTypes))
                     ->orderBy('id')
                     ->limit(10)
                     ->get();
@@ -125,18 +128,34 @@ class LiveNotificationController extends Controller
     public function preferences(Request $request, NotificationCenterService $notificationCenter): JsonResponse
     {
         $validated = $request->validate([
-            'sound_enabled' => ['required', 'boolean'],
+            'sound_enabled' => ['sometimes', 'boolean'],
+            'muted_types' => ['sometimes', 'array'],
+            'muted_types.*' => ['string', 'max:100'],
         ]);
 
-        $preference = $notificationCenter->setSoundEnabled(
-            (int) Auth::id(),
-            (bool) $validated['sound_enabled'],
-        );
+        abort_if($validated === [], 422, 'En az bir bildirim tercihi gönderilmelidir.');
+
+        $preference = $notificationCenter->preferencesForUser((int) Auth::id());
+
+        if (array_key_exists('sound_enabled', $validated)) {
+            $preference = $notificationCenter->setSoundEnabled(
+                (int) Auth::id(),
+                (bool) $validated['sound_enabled'],
+            );
+        }
+
+        if (array_key_exists('muted_types', $validated)) {
+            $preference = $notificationCenter->setMutedTypes(
+                (int) Auth::id(),
+                $validated['muted_types'],
+            );
+        }
 
         return response()->json([
             'ok' => true,
             'preferences' => [
                 'sound_enabled' => (bool) $preference->sound_enabled,
+                'muted_types' => array_values((array) ($preference->muted_types_json ?? [])),
             ],
         ]);
     }

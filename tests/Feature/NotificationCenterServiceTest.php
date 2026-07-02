@@ -122,6 +122,54 @@ class NotificationCenterServiceTest extends TestCase
         $this->assertStringContainsString('storeFilter=' . $store->id, (string) $notification->action_url);
     }
 
+    public function test_muted_notification_types_are_not_created_or_counted(): void
+    {
+        [$user] = $this->createStoreGraph('trendyol');
+        $service = app(NotificationCenterService::class);
+        $service->setMutedTypes($user->id, ['booster_price_drop']);
+
+        $muted = $service->createForUser($user->id, [
+            'type' => 'booster_price_drop',
+            'title' => 'Fiyat düştü',
+            'body' => 'Sessize alınmış Booster bildirimi',
+            'event_key' => 'booster-price-muted',
+        ]);
+        $visible = $service->createForUser($user->id, [
+            'type' => 'booster_stock_sales',
+            'title' => 'Stok eridi',
+            'body' => 'Görünür Booster bildirimi',
+            'event_key' => 'booster-stock-visible',
+        ]);
+
+        $this->assertNull($muted);
+        $this->assertNotNull($visible);
+        $this->assertSame(1, $service->unreadCountForUser($user->id));
+        $this->assertCount(1, $service->feedForUser($user->id));
+        $this->assertSame('booster_stock_sales', $service->feedForUser($user->id)[0]['type']);
+    }
+
+    public function test_existing_muted_notifications_are_hidden_from_feed(): void
+    {
+        [$user] = $this->createStoreGraph('trendyol');
+        $service = app(NotificationCenterService::class);
+        AppNotification::query()->create([
+            'user_id' => $user->id,
+            'type' => 'booster_price_drop',
+            'severity' => 'info',
+            'title' => 'Fiyat düştü',
+            'body' => 'Eski Booster bildirimi',
+            'event_key' => 'booster-price-existing',
+            'triggered_at' => now(),
+        ]);
+
+        $this->assertSame(1, $service->unreadCountForUser($user->id));
+
+        $service->setMutedTypes($user->id, ['booster_price_drop']);
+
+        $this->assertSame(0, $service->unreadCountForUser($user->id));
+        $this->assertSame([], $service->feedForUser($user->id));
+    }
+
     public function test_stock_notification_payload_shows_marketplace_and_links_to_product_edit(): void
     {
         [$user, $store] = $this->createStoreGraph('trendyol');

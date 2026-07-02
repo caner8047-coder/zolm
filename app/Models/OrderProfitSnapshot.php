@@ -20,6 +20,11 @@ class OrderProfitSnapshot extends Model
         'commission_total',
         'cargo_total',
         'service_fee_total',
+        'advertising_total',
+        'penalty_total',
+        'early_payment_total',
+        'discount_total',
+        'other_cost_total',
         'withholding_total',
         'packaging_cost',
         'own_cargo_cost',
@@ -31,6 +36,9 @@ class OrderProfitSnapshot extends Model
         'margin_percent',
         'calculated_at',
         'version',
+        'currency',
+        'exchange_rate',
+        'profit_try',
     ];
 
     protected function casts(): array
@@ -41,6 +49,11 @@ class OrderProfitSnapshot extends Model
             'commission_total' => 'decimal:2',
             'cargo_total' => 'decimal:2',
             'service_fee_total' => 'decimal:2',
+            'advertising_total' => 'decimal:2',
+            'penalty_total' => 'decimal:2',
+            'early_payment_total' => 'decimal:2',
+            'discount_total' => 'decimal:2',
+            'other_cost_total' => 'decimal:2',
             'withholding_total' => 'decimal:2',
             'packaging_cost' => 'decimal:2',
             'own_cargo_cost' => 'decimal:2',
@@ -50,6 +63,8 @@ class OrderProfitSnapshot extends Model
             'estimated_profit' => 'decimal:2',
             'confirmed_profit' => 'decimal:2',
             'margin_percent' => 'decimal:2',
+            'profit_try' => 'decimal:2',
+            'exchange_rate' => 'decimal:6',
             'calculated_at' => 'datetime',
             'version' => 'integer',
         ];

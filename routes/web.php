@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\LiveNotificationController;
 use App\Http\Controllers\MarketplaceOrderDocumentController;
+use App\Http\Controllers\TrendyolBoosterCompanionController;
 use App\Livewire\AIChat;
 use App\Livewire\CustomMotor;
 use App\Livewire\CustomMotorWizard;
@@ -18,6 +19,10 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return redirect()->route('login');
 });
+
+Route::get('/tools/trendyol-kar-hesaplama', \App\Livewire\PublicTrendyolProfitCalculator::class)
+    ->name('tools.trendyol-profit-calculator')
+    ->middleware('mp.feature:public_trendyol_profit_tool_enabled');
 
 // Auth routes
 Route::middleware('guest')->group(function () {
@@ -37,9 +42,12 @@ Route::middleware('auth')->group(function () {
         Route::post('/{notification}/read', [LiveNotificationController::class, 'markRead'])->name('read');
     });
 
+    Route::get('/onboarding', \App\Livewire\OnboardingWizard::class)->name('mp.onboarding');
+
     // Dashboard (redirect to mp.orders by default)
     Route::get('/dashboard', function () {
         $preferredRoute = match (true) {
+            config('marketplace.features.v2_enabled') && config('marketplace.features.profit_center_enabled') => 'mp.profit-center',
             config('marketplace.features.v2_enabled') && config('marketplace.features.orders_v2_enabled') => 'mp.orders',
             config('marketplace.features.v2_enabled') && config('marketplace.features.overview_enabled') => 'mp.overview',
             default => 'marketplace-accounting',
@@ -94,6 +102,11 @@ Route::middleware('auth')->group(function () {
     // Trendyol Kampanya Modülleri
     Route::get('/campaigns', \App\Livewire\CampaignReports::class)->name('campaigns.index');
     Route::prefix('campaigns')->group(function () {
+        Route::get('/decision-center', \App\Livewire\CampaignDecisionCenter::class)
+            ->name('campaigns.decision-center')
+            ->middleware('mp.feature:campaign_decision_center_enabled');
+        Route::get('/simulator', \App\Livewire\MarketplaceCampaignSimulator::class)
+            ->name('campaigns.simulator');
         Route::get('/product-commission', \App\Livewire\TariffOptimizer::class)->name('campaigns.product-commission');
         Route::get('/plus-commission', \App\Livewire\PlusCommission::class)->name('campaigns.plus-commission');
         Route::get('/badge-pricing', \App\Livewire\BadgePricing::class)->name('campaigns.badge-pricing');
@@ -148,6 +161,52 @@ Route::middleware('auth')->group(function () {
     Route::get('/marketplace-overview', \App\Livewire\MarketplaceOverview::class)
         ->name('mp.overview')
         ->middleware('mp.feature:overview_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-profit-center', \App\Livewire\MarketplaceProfitCenter::class)
+        ->name('mp.profit-center')
+        ->middleware('mp.feature:profit_center_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-trendyol-booster', \App\Livewire\TrendyolBooster::class)
+        ->name('mp.trendyol-booster')
+        ->middleware('mp.feature:trendyol_booster_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::prefix('/marketplace-trendyol-booster/companion')
+        ->name('mp.trendyol-booster.companion.')
+        ->middleware('mp.feature:trendyol_booster_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class)
+        ->group(function () {
+            Route::get('/session', [TrendyolBoosterCompanionController::class, 'session'])->name('session');
+            Route::get('/status', [TrendyolBoosterCompanionController::class, 'status'])->name('status');
+            Route::post('/preview', [TrendyolBoosterCompanionController::class, 'preview'])->name('preview');
+            Route::post('/product-analysis', [TrendyolBoosterCompanionController::class, 'productAnalysis'])->name('product-analysis');
+            Route::post('/track', [TrendyolBoosterCompanionController::class, 'track'])->name('track');
+            Route::post('/stock-check', [TrendyolBoosterCompanionController::class, 'stockCheck'])->name('stock-check');
+            Route::post('/store-scan', [TrendyolBoosterCompanionController::class, 'storeScan'])->name('store-scan');
+            Route::get('/pending-jobs', [TrendyolBoosterCompanionController::class, 'pendingJobs'])->name('pending-jobs');
+            Route::post('/market-research', [TrendyolBoosterCompanionController::class, 'marketResearch'])->name('market-research');
+        });
+
+    Route::get('/marketplace-pricing-simulator', \App\Livewire\MarketplacePricingSimulator::class)
+        ->name('mp.pricing-simulator')
+        ->middleware('mp.feature:pricing_simulator_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-settlement-audit', \App\Livewire\MarketplaceSettlementAudit::class)
+        ->name('mp.settlement-audit')
+        ->middleware('mp.feature:settlement_audit_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-risk-center', \App\Livewire\MarketplaceRiskCenter::class)
+        ->name('mp.risk-center')
+        ->middleware('mp.feature:risk_center_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/marketplace-report-digests', \App\Livewire\MarketplaceReportDigestSettings::class)
+        ->name('mp.report-digests')
+        ->middleware('mp.feature:report_digest_enabled')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
     Route::get('/marketplace-integrations', \App\Livewire\MarketplaceIntegrations::class)

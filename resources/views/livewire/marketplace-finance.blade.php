@@ -9,7 +9,7 @@
         $orderStatusFilter !== '' ? 'Sipariş durumu seçili' : null,
         $profitStateFilter !== '' ? 'Kâr durumu seçili' : null,
         $financialStateFilter !== '' ? 'Finans akışı seçili' : null,
-        $deltaStateFilter !== '' ? 'Mutabakat seçili' : null,
+        $deltaStateFilter !== '' ? 'Ödeme Kontrolü seçili' : null,
         $eventTypeFilter !== '' ? 'Olay tipi seçili' : null,
         $legacyProjectionFilter !== '' ? 'Eski veri köprüsü seçili' : null,
         $dateFrom !== '' ? 'Başlangıç: ' . $dateFrom : null,
@@ -78,15 +78,17 @@
         </div>
     @endif
 
+    <x-zolm.risk-guidance :guidance="$this->riskGuidance" context-label="Finans" />
+
     <section class="mp-finance-surface rounded-2xl border border-slate-200 p-4 lg:p-6 shadow-sm">
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-12">
             <div class="xl:col-span-5 rounded-2xl border border-slate-200 bg-white p-5 lg:p-6">
                 <div class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase finance-kicker text-slate-500">
                     Nakit Kontrolü
                 </div>
-                <h1 class="mt-4 text-3xl font-bold tracking-tight text-slate-900 lg:text-4xl">Finans ve Mutabakat</h1>
-                <p class="mt-3 text-sm leading-6 text-slate-500 lg:text-base">
-                    Sipariş anlık kayıtlarını, hakediş, kesinti ve kâr hareketlerini tek kayıt defteri mantığında izleyin. Amaç hızlı karar, temiz odak ve güvenilir fark yönetimi.
+                <h1 class="mt-4 text-3xl font-bold tracking-tight text-slate-900 lg:text-4xl">Finans Defteri</h1>
+                <p class="mt-4 text-base leading-7 text-slate-500">
+                    Sipariş kayıtlarını, ödemeleri, kesintileri ve kâr durumunu tek defterden izleyin. Siparişten beklediğiniz tutar ile gelen parayı kolayca eşleştirin.
                 </p>
 
                 <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -113,11 +115,11 @@
                     </div>
                     <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <p class="uppercase tracking-[0.18em] text-slate-400">Bekleyen</p>
-                        <p class="mt-1 font-semibold text-slate-900">{{ $formatCount($stats['finance_waiting_orders']) }}</p>
+                        <p class="mt-1 font-semibold {{ $stats['finance_waiting_orders'] > 0 ? 'text-amber-700' : 'text-slate-900' }}">{{ $formatCount($stats['finance_waiting_orders']) }}</p>
                     </div>
                     <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <p class="uppercase tracking-[0.18em] text-slate-400">Anlık kayıt</p>
-                        <p class="mt-1 font-semibold text-slate-900">{{ $formatCount($stats['snapshot_missing_orders']) }}</p>
+                        <p class="uppercase tracking-[0.18em] text-slate-400">Kayıt eksik</p>
+                        <p class="mt-1 font-semibold {{ $stats['snapshot_missing_orders'] > 0 ? 'text-amber-700' : 'text-slate-900' }}">{{ $formatCount($stats['snapshot_missing_orders']) }}</p>
                     </div>
                 </div>
             </div>
@@ -126,10 +128,10 @@
                 <div class="finance-soft-card rounded-2xl border border-slate-200 p-4 lg:p-5 min-w-0">
                     <div class="flex items-center gap-1.5">
                         <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Net alacak</p>
-                        <x-zolm.help-tip title="Net alacak" summary="Kesin hakedişlerden komisyon, kargo, hizmet ve iade etkileri sonrası beklenen net tahsilatı gösterir." source="Financial events, order snapshots ve kesinti kırılımları." refresh="Yeni finans olayı işlendiğinde veya mutabakat tekrarlandığında." impact="Tahsilat odağı ve riskli sipariş önceliğini belirler." />
+                        <x-zolm.help-tip title="Net alacak" summary="Sipariş tutarından tüm pazar yeri kesintileri düşüldükten sonra bankanıza yatması beklenen net paradır." source="Financial events, order snapshots ve kesinti kırılımları." refresh="Yeni finans olayı işlendiğinde veya mutabakat tekrarlandığında." impact="Tahsilat odağı ve riskli sipariş önceliğini belirler." />
                     </div>
                     <p class="mt-3 truncate text-3xl font-bold text-emerald-600">{{ $formatMoney($stats['total_receivable']) }}</p>
-                    <p class="mt-2 text-sm text-slate-500">{{ $stats['finance_ready_orders'] }} siparişte finans hazır</p>
+                    <p class="mt-2 text-sm text-slate-500">{{ $stats['finance_ready_orders'] }} sipariş ödemeye hazır</p>
                 </div>
                 <div class="finance-soft-card rounded-2xl border border-slate-200 p-4 lg:p-5 min-w-0">
                     <div class="flex items-center gap-1.5">
@@ -137,23 +139,23 @@
                         <x-zolm.help-tip title="Toplam kesinti" summary="Komisyon, kargo, hizmet, kampanya ve diğer finansal düşümler toplamını verir." source="Kesinti tipli financial event kayıtları." refresh="Kesinti satırı işlendiğinde veya legacy etkisi taşındığında." impact="Kârı aşağı çeken baskının kaynağını görmenizi sağlar." />
                     </div>
                     <p class="mt-3 truncate text-3xl font-bold text-amber-600">{{ $formatMoney($stats['total_deductions']) }}</p>
-                    <p class="mt-2 text-sm text-slate-500">{{ $formatMoney($stats['total_commission']) }} komisyon</p>
+                    <p class="mt-2 text-sm text-slate-500">{{ $formatMoney($stats['total_commission']) }} komisyon tutarı</p>
                 </div>
                 <div class="finance-soft-card rounded-2xl border border-slate-200 p-4 lg:p-5 min-w-0">
                     <div class="flex items-center gap-1.5">
                         <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Kesin kâr</p>
-                        <x-zolm.help-tip title="Kesin kâr" summary="Tahmini değil, finansı tamamlanmış siparişlerde kârın kesinleşmiş toplamıdır." source="Kesinleşmiş hakediş, maliyet, kesinti ve KDV etkileri." refresh="Sipariş finans akışı tamamlandığında." impact="Gerçek performansı tahminden ayırarak karar kalitesini yükseltir." />
+                        <x-zolm.help-tip title="Kesin kâr" summary="Ödemesi tamamlanmış siparişlerde tüm maliyetleriniz çıkıldıktan sonra cebinize giren net kârdır." source="Kesinleşmiş hakediş, maliyet, kesinti ve KDV etkileri." refresh="Sipariş finans akışı tamamlandığında." impact="Gerçek performansı tahminden ayırarak karar kalitesini yükseltir." />
                     </div>
                     <p class="mt-3 truncate text-3xl font-bold {{ $stats['confirmed_profit_total'] >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $formatMoney($stats['confirmed_profit_total']) }}</p>
-                    <p class="mt-2 text-sm text-slate-500">{{ $stats['confirmed_orders'] }} sipariş kesinleşti</p>
+                    <p class="mt-2 text-sm text-slate-500">{{ $stats['confirmed_orders'] }} sipariş tamamlandı</p>
                 </div>
                 <div class="rounded-2xl border {{ $stats['material_variance_orders'] > 0 ? 'border-rose-200 bg-rose-50/80' : 'border-slate-200 bg-white/90' }} p-4 lg:p-5 min-w-0">
                     <div class="flex items-center gap-1.5">
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] {{ $stats['material_variance_orders'] > 0 ? 'text-rose-700' : 'text-slate-400' }}">Mutabakat</p>
-                        <x-zolm.help-tip title="Mutabakat" summary="Tahmini snapshot ile kesin finans sonucu aynı çizgide mi sorusunun özetidir." source="Kâr delta hesabı, snapshot ve kesin olay toplamları." refresh="Her yeni event ve yeniden hesap sonrası." impact="Fark yönetimi gereken siparişleri izole eder." />
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] {{ $stats['material_variance_orders'] > 0 ? 'text-rose-700' : 'text-slate-400' }}">Ödeme Kontrolü</p>
+                        <x-zolm.help-tip title="Ödeme Kontrolü" summary="Beklediğiniz ödeme ile pazar yerinin gönderdiği paranın aynı olup olmadığını gösterir." source="Kâr delta hesabı, snapshot ve kesin olay toplamları." refresh="Her yeni event ve yeniden hesap sonrası." impact="Fark yönetimi gereken siparişleri izole eder." />
                     </div>
                     <p class="mt-3 truncate text-3xl font-bold {{ $stats['material_variance_orders'] > 0 ? 'text-rose-700' : ($stats['snapshot_missing_orders'] > 0 ? 'text-amber-600' : 'text-slate-900') }}">{{ $formatCount($stats['aligned_orders']) }}</p>
-                    <p class="mt-2 text-sm {{ $stats['material_variance_orders'] > 0 ? 'text-rose-800/80' : 'text-slate-500' }}">{{ $stats['minor_variance_orders'] }} izleme · {{ $stats['snapshot_missing_orders'] }} eksik</p>
+                    <p class="mt-2 text-sm {{ $stats['material_variance_orders'] > 0 ? 'text-rose-800/80' : 'text-slate-500' }}">{{ $stats['minor_variance_orders'] }} küçük fark · {{ $stats['snapshot_missing_orders'] }} kayıt eksik</p>
                 </div>
             </div>
 
@@ -162,15 +164,15 @@
                 <div class="mt-4 space-y-2">
                     <a href="{{ route('mp.finance', ['deltaStateFilter' => 'waiting']) }}" class="block rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 transition hover:bg-white">
                         <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Bekleyen akış</p>
-                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ $formatCount($stats['finance_waiting_orders']) }} sipariş finans bekliyor</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ $formatCount($stats['finance_waiting_orders']) }} sipariş ödeme bekliyor</p>
                     </a>
                     <a href="{{ route('mp.finance', ['deltaStateFilter' => 'material']) }}" class="block rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 transition hover:bg-white">
                         <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Fark yönetimi</p>
-                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ $formatCount($stats['material_variance_orders']) }} materyal fark var</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ $formatCount($stats['material_variance_orders']) }} sorunlu sipariş</p>
                     </a>
                     <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Anlık kayıt açığı</p>
-                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ $formatCount($stats['snapshot_missing_orders']) }} siparişte snapshot eksik</p>
+                        <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Veri eksikliği</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ $formatCount($stats['snapshot_missing_orders']) }} sipariş kaydı eksik</p>
                     </div>
                 </div>
             </div>
@@ -189,11 +191,11 @@
                     <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 lg:gap-4">
                         <div>
                             <div class="flex items-center gap-2">
-                                <h2 class="text-lg font-bold text-slate-900">Mutabakat Listesi</h2>
-                                <x-zolm.help-tip title="Mutabakat Listesi" summary="Sipariş bazında tahmini ve kesin finans verisini aynı kayıt defteri üzerinde karşılaştırır." source="Kanal siparişleri, finans olayları, kâr anlık kayıtları ve eski veri yansıtma etkileri." refresh="Filtre, senkron ve finans olayları sonrası anlık." impact="Fark, bekleme ve risk kümelerini hızlıca ayıklamanızı sağlar." />
+                                <h2 class="text-lg font-bold text-slate-900">Ödeme Kontrol Listesi</h2>
+                                <x-zolm.help-tip title="Ödeme Kontrol Listesi" summary="Her bir sipariş için beklediğiniz ödeme tutarıyla hesabınıza geçecek kesin tutarı yan yana karşılaştırır." source="Kanal siparişleri, finans olayları, kâr anlık kayıtları ve eski veri yansıtma etkileri." refresh="Filtre, senkron ve finans olayları sonrası anlık." impact="Fark, bekleme ve risk kümelerini hızlıca ayıklamanızı sağlar." />
                             </div>
                             <p class="mt-1 text-sm text-slate-500">
-                                Hakediş, kesinti ve kâr snapshot’larını sipariş bazında filtreleyin.
+                                Ödeme durumlarını, kesintileri ve kârlılığı sipariş bazında inceleyin.
                             </p>
                         </div>
 
@@ -507,7 +509,7 @@
                                 </div>
 
                                 <div>
-                                    <label class="block text-xs sm:text-sm font-medium text-slate-500">Mutabakat</label>
+                                    <label class="block text-xs sm:text-sm font-medium text-slate-500">Mutabakat Durumu</label>
                                     <select wire:model.live="deltaStateFilter"
                                             class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
                                         <option value="">Tümü</option>
@@ -515,7 +517,7 @@
                                         <option value="snapshot_missing">Anlık kayıt eksik</option>
                                         <option value="aligned">Uyumlu</option>
                                         <option value="minor">İzlenecek</option>
-                                        <option value="material">Materyal fark</option>
+                                        <option value="material">Eksik / hatalı ödeme</option>
                                     </select>
                                 </div>
 
@@ -678,7 +680,7 @@
                                 'kar' => ['label' => 'Kâr', 'width' => '8%'],
                                 'varyans' => ['label' => 'Fark', 'width' => '9%'],
                                 'durum' => ['label' => 'Durum', 'width' => '8%'],
-                                'mutabakat' => ['label' => 'Mutabakat', 'width' => '10%'],
+                                'mutabakat' => ['label' => 'Mutabakat Durumu', 'width' => '10%'],
                                 'sync' => ['label' => 'Son senkron', 'width' => '8%'],
                             ];
                         @endphp
@@ -856,7 +858,7 @@
                 <div class="flex items-center justify-between gap-3 cursor-pointer" @click="readinessOpen = !readinessOpen">
                     <div>
                         <h2 class="text-lg font-bold text-slate-900">Finans Hazırlığı</h2>
-                        <p class="mt-1 text-sm text-slate-500">Bekleyen {{ $formatCount($sidebarSummary['pending_financial_events']) }} · Materyal fark {{ $formatCount($stats['material_variance_orders']) }} · Anlık kayıt eksik {{ $formatCount($stats['snapshot_missing_orders']) }}</p>
+                        <p class="mt-1 text-sm text-slate-500">Bekleyen {{ $formatCount($sidebarSummary['pending_financial_events']) }} · Sorunlu sipariş {{ $formatCount($stats['material_variance_orders']) }} · Veri eksik {{ $formatCount($stats['snapshot_missing_orders']) }}</p>
                     </div>
                     <svg class="h-5 w-5 shrink-0 text-slate-400 transition" :class="{ 'rotate-180': readinessOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 9l-7 7-7-7" /></svg>
                 </div>
@@ -871,7 +873,7 @@
                             <p class="mt-2 text-lg font-semibold {{ $sidebarSummary['pending_financial_events'] > 0 ? 'text-amber-600' : 'text-emerald-600' }}">{{ $formatCount($sidebarSummary['pending_financial_events']) }}</p>
                         </div>
                         <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-                            <p class="text-xs uppercase tracking-[0.12em] text-slate-500">Materyal fark</p>
+                            <p class="text-xs uppercase tracking-[0.12em] text-slate-500">Sorunlu Siparişler</p>
                             <p class="mt-2 text-lg font-semibold {{ $stats['material_variance_orders'] > 0 ? 'text-rose-600' : 'text-emerald-600' }}">{{ $formatCount($stats['material_variance_orders']) }}</p>
                         </div>
                         <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
@@ -925,11 +927,11 @@
                 </div>
             </section>
 
-            {{-- MUTABAKAT SEGMENTLERİ --}}
+            {{-- ÖDEME KONTROL SEGMENTLERİ --}}
             <section x-data="{ segmentsOpen: false }" class="rounded-2xl border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
                 <div class="flex items-center justify-between gap-3 cursor-pointer" @click="segmentsOpen = !segmentsOpen">
                     <div>
-                        <h2 class="text-lg font-bold text-slate-900">Mutabakat Segmentleri</h2>
+                        <h2 class="text-lg font-bold text-slate-900">Ödeme Kontrol Segmentleri</h2>
                         <p class="mt-1 text-sm text-slate-500">{{ $formatCount(count($marketplaceBreakdown)) }} kanal</p>
                     </div>
                     <svg class="h-5 w-5 shrink-0 text-slate-400 transition" :class="{ 'rotate-180': segmentsOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 9l-7 7-7-7" /></svg>
@@ -940,7 +942,7 @@
                             <div class="flex items-start justify-between gap-3">
                                 <div class="min-w-0">
                                     <p class="text-sm font-semibold text-slate-900">{{ $this->humanMarketplace($segment->marketplace_alias) }}</p>
-                                    <p class="mt-1 text-xs text-slate-500">{{ $formatCount($segment->order_count) }} sipariş · {{ $formatCount($segment->waiting_orders) }} finans bekliyor · {{ $formatCount($segment->material_orders) }} materyal fark</p>
+                                    <p class="mt-1 text-xs text-slate-500">{{ $formatCount($segment->order_count) }} sipariş · {{ $formatCount($segment->waiting_orders) }} ödeme bekliyor · {{ $formatCount($segment->material_orders) }} sorunlu ödeme</p>
                                 </div>
                                 <div class="text-right">
                                     <p class="text-sm font-semibold text-slate-900">{{ $formatMoney($segment->total_receivable) }}</p>

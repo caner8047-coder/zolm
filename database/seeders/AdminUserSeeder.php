@@ -13,13 +13,17 @@ class AdminUserSeeder extends Seeder
     {
         $adminRole = Role::where('slug', 'admin')->first();
 
-        User::firstOrCreate(
-            ['email' => 'admin@zolm.test'],
-            [
-                'name' => 'Admin',
-                'password' => Hash::make('password'),
-                'role_id' => $adminRole?->id,
-            ]
-        );
+        $admin = User::firstOrNew(['email' => 'admin@zolm.test']);
+
+        if (! $admin->exists) {
+            $admin->name = 'Admin';
+            $admin->password = Hash::make('password');
+        }
+
+        $admin->forceFill([
+            'role' => 'admin',
+            'role_id' => $adminRole?->id,
+            'is_active' => true,
+        ])->save();
     }
 }

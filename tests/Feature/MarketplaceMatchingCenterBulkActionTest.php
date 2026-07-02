@@ -131,8 +131,8 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
         $channelProduct = ChannelProduct::query()->create([
             'store_id' => $store->id,
             'external_product_id' => 'CP-REC-' . $suffix,
-            'stock_code' => 'CHANNEL-' . $suffix,
-            'barcode' => '869' . $suffix,
+            'stock_code' => $product->stock_code,
+            'barcode' => $product->barcode,
             'title' => 'Pazaryeri Farkli Baslik ' . $suffix,
             'brand' => 'Zem',
             'category_name' => 'Mobilya',

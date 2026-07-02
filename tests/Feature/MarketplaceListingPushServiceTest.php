@@ -40,12 +40,12 @@ class MarketplaceListingPushServiceTest extends TestCase
     {
         Queue::fake();
 
-        [, , , $listing] = $this->createListingGraph();
+        [$user, , , $listing] = $this->createListingGraph();
 
         $result = app(MarketplaceListingPushService::class)->queuePricePush($listing, 1549.90, [
             'list_price' => 1699.90,
             'quantity' => 9,
-        ], 1);
+        ], $user->id);
 
         $this->assertTrue($result['created']);
         $this->assertFalse($result['coalesced']);
@@ -66,13 +66,13 @@ class MarketplaceListingPushServiceTest extends TestCase
     {
         Queue::fake();
 
-        [, , , $listing] = $this->createListingGraph();
+        [$user, , , $listing] = $this->createListingGraph();
 
         $existing = IntegrationPushRun::query()->create([
             'store_id' => $listing->store_id,
             'channel_listing_id' => $listing->id,
             'mp_product_id' => $listing->mp_product_id,
-            'triggered_by' => 1,
+            'triggered_by' => $user->id,
             'push_type' => 'price',
             'status' => 'queued',
             'target_price' => 1499.90,
@@ -87,7 +87,7 @@ class MarketplaceListingPushServiceTest extends TestCase
         $result = app(MarketplaceListingPushService::class)->queuePricePush($listing, 1649.90, [
             'list_price' => 1799.90,
             'quantity' => 11,
-        ], 2);
+        ], $user->id);
 
         $existing->refresh();
 
@@ -96,7 +96,7 @@ class MarketplaceListingPushServiceTest extends TestCase
         $this->assertSame($existing->id, $result['push_run']->id);
         $this->assertSame('1649.90', $existing->target_price);
         $this->assertSame(11, $existing->target_quantity);
-        $this->assertSame(2, $existing->triggered_by);
+        $this->assertSame($user->id, $existing->triggered_by);
         $this->assertSame(1, (int) data_get($existing->request_context_json, '_merged_push_count'));
 
         Queue::assertNothingPushed();
@@ -106,13 +106,13 @@ class MarketplaceListingPushServiceTest extends TestCase
     {
         Queue::fake();
 
-        [, , , $listing] = $this->createListingGraph();
+        [$user, , , $listing] = $this->createListingGraph();
 
         $processing = IntegrationPushRun::query()->create([
             'store_id' => $listing->store_id,
             'channel_listing_id' => $listing->id,
             'mp_product_id' => $listing->mp_product_id,
-            'triggered_by' => 1,
+            'triggered_by' => $user->id,
             'push_type' => 'stock',
             'status' => 'processing',
             'target_price' => 1499.90,
@@ -128,7 +128,7 @@ class MarketplaceListingPushServiceTest extends TestCase
         $result = app(MarketplaceListingPushService::class)->queueStockPush($listing, 12, [
             'sale_price' => 1599.90,
             'list_price' => 1699.90,
-        ], 3);
+        ], $user->id);
 
         $this->assertFalse($result['created']);
         $this->assertFalse($result['coalesced']);
@@ -143,13 +143,13 @@ class MarketplaceListingPushServiceTest extends TestCase
     {
         Queue::fake();
 
-        [, , , $listing] = $this->createListingGraph();
+        [$user, , , $listing] = $this->createListingGraph();
 
         $completed = IntegrationPushRun::query()->create([
             'store_id' => $listing->store_id,
             'channel_listing_id' => $listing->id,
             'mp_product_id' => $listing->mp_product_id,
-            'triggered_by' => 1,
+            'triggered_by' => $user->id,
             'push_type' => 'stock',
             'status' => 'completed',
             'target_price' => 1499.90,
@@ -167,7 +167,7 @@ class MarketplaceListingPushServiceTest extends TestCase
 
         $result = app(MarketplaceListingPushService::class)->queueStockPush($listing, 8, [
             'sale_price' => 1499.90,
-        ], 4);
+        ], $user->id);
 
         $this->assertFalse($result['created']);
         $this->assertFalse($result['coalesced']);

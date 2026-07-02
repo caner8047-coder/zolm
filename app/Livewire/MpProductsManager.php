@@ -19,6 +19,7 @@ use App\Services\Marketplace\MarketplaceManualMatchService;
 use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceListingPushService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
+use App\Services\Marketplace\MarketplaceRiskSignalService;
 use App\Services\MpProductChangeLogger;
 use App\Services\MpProductImportService;
 use App\Services\MpSettingsService;
@@ -752,6 +753,12 @@ class MpProductsManager extends Component
             ],
             'items' => $items->all(),
         ];
+    }
+
+    #[Computed]
+    public function riskGuidance(): array
+    {
+        return app(MarketplaceRiskSignalService::class)->guidanceForContext($this->userId(), 'products');
     }
 
     protected function buildProductsQuery(): Builder

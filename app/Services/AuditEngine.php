@@ -15,6 +15,8 @@ use Carbon\Carbon;
 /**
  * Pazaryeri Muhasebe — Hata Denetim Motoru (Audit Engine)
  *
+ * @deprecated V2 MarketplaceSettlementAuditQueryService kullanın.
+ *
  * Import sonrası sipariş ve ekstre verilerini karşılaştırarak
  * hatalı kesintileri, barem aşımlarını ve kayıpları tespit eder.
  * Sonuçları mp_audit_logs tablosuna yazar.

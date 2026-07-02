@@ -276,10 +276,26 @@ class MpProductsManagerActionsTest extends TestCase
             ->assertSee('Excel ile Maliyet Güncelle');
     }
 
-    public function test_cost_update_import_only_updates_cogs_by_stock_code(): void
+    public function test_cost_update_import_updates_cogs_and_packaging_by_stock_code(): void
     {
         $user = User::factory()->create();
         $product = MpProduct::query()->create($this->productPayload($user->id));
+        $packagingOnlyProduct = MpProduct::query()->create(array_merge($this->productPayload($user->id), [
+            'barcode' => '8691234567802',
+            'stock_code' => 'PKG-STK',
+            'product_name' => 'Ambalaj Ürün',
+            'cogs' => 75,
+            'packaging_cost' => 0,
+            'cargo_cost' => 9,
+        ]));
+        $englishFormatProduct = MpProduct::query()->create(array_merge($this->productPayload($user->id), [
+            'barcode' => '8691234567803',
+            'stock_code' => 'EN-STK',
+            'product_name' => 'İngilizce Format Ürün',
+            'cogs' => 80,
+            'packaging_cost' => 0,
+            'cargo_cost' => 11,
+        ]));
         $zeroProduct = MpProduct::query()->create(array_merge($this->productPayload($user->id), [
             'barcode' => '8691234567801',
             'stock_code' => 'ZERO-STK',
@@ -292,27 +308,37 @@ class MpProductsManagerActionsTest extends TestCase
         $this->actingAs($user);
 
         $file = $this->makeExcelUpload([
-            [null, null, null],
-            ['Kartlardan Dökümler', null, null],
-            ['Stok Kodu', 'Açıklama', 'MF Fiyatı'],
-            ['TEST-STK-001', 'Test Ürün', '345,67'],
-            ['ZERO-STK', 'Zero Ürün', '0'],
-            ['MISSING-STK', 'Eksik Ürün', '111,11'],
+            [null, null, null, null],
+            ['Kartlardan Dökümler', null, null, null],
+            ['Stok Kodu', 'Açıklama', 'MF Fiyatı', 'Ambalaj Gideri'],
+            ['TEST-STK-001', 'Test Ürün', '345,67', '22,50'],
+            ['PKG-STK', 'Ambalaj Ürün', null, '13,25'],
+            ['EN-STK', 'İngilizce Format Ürün', '2,580.4500', '1,234.5600'],
+            ['ZERO-STK', 'Zero Ürün', '0', null],
+            ['MISSING-STK', 'Eksik Ürün', '111,11', '5'],
         ], 'maliyet-guncelleme.xlsx');
 
         $result = app(MpProductImportService::class)->importCostUpdates($file);
 
         $product->refresh();
+        $packagingOnlyProduct->refresh();
+        $englishFormatProduct->refresh();
         $zeroProduct->refresh();
 
         $this->assertTrue($result['success']);
-        $this->assertSame(1, $result['updated']);
+        $this->assertSame(3, $result['updated']);
         $this->assertSame(1, $result['not_found']);
         $this->assertSame(1, $result['zero_cost']);
         $this->assertEqualsWithDelta(345.67, (float) $product->cogs, 0.001);
-        $this->assertEqualsWithDelta(10.0, (float) $product->packaging_cost, 0.001);
+        $this->assertEqualsWithDelta(22.50, (float) $product->packaging_cost, 0.001);
         $this->assertEqualsWithDelta(15.0, (float) $product->cargo_cost, 0.001);
+        $this->assertEqualsWithDelta(75.0, (float) $packagingOnlyProduct->cogs, 0.001);
+        $this->assertEqualsWithDelta(13.25, (float) $packagingOnlyProduct->packaging_cost, 0.001);
+        $this->assertEqualsWithDelta(2580.45, (float) $englishFormatProduct->cogs, 0.001);
+        $this->assertEqualsWithDelta(1234.56, (float) $englishFormatProduct->packaging_cost, 0.001);
+        $this->assertEqualsWithDelta(11.0, (float) $englishFormatProduct->cargo_cost, 0.001);
         $this->assertEqualsWithDelta(55.0, (float) $zeroProduct->cogs, 0.001);
+        $this->assertEqualsWithDelta(12.0, (float) $zeroProduct->packaging_cost, 0.001);
     }
 
     public function test_product_list_marks_stock_code_matches_with_recipe_verified_badge(): void

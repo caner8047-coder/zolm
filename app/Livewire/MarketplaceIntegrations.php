@@ -17,6 +17,7 @@ use App\Services\Marketplace\MarketplaceConnectorManager;
 use App\Services\Marketplace\MarketplaceDiagnosticsGuidanceService;
 use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
+use App\Services\Marketplace\MarketplaceRiskSignalService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -1155,6 +1156,17 @@ class MarketplaceIntegrations extends Component
             'hours' => 168,
             'limit' => 200,
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getRiskGuidanceProperty(): array
+    {
+        return app(MarketplaceRiskSignalService::class)->guidanceForContext(
+            (int) (Auth::id() ?? 1),
+            'integrations'
+        );
     }
 
     /**

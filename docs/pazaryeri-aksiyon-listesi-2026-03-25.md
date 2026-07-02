@@ -244,6 +244,47 @@ Ozellikle:
 - poll araliklari
 - debounce sureleri
 
+### P1.6 - Kar Merkezi Rollout Kaniti
+
+Durum: Iceride baslandi
+
+19.06.2026 notu:
+
+- `Veri Hazırlık Rehberi` pilot operator akisini tek ekranda toplar
+- `PUBLIC_TRENDYOL_PROFIT_TOOL_ENABLED` public hesaplama aracini ic simulator flag'inden ayirir
+- risk sinyali ve otomatik rapor komutlari scheduler'a baglidir, feature flag kapaliyken sessiz uyarir
+- Kar Merkezi route feature flag testi eklendi; Kar Merkezi, Fiyat Simulatoru, Hakediş Kontrolü, Risk Merkezi, Otomatik Raporlar, Kampanya Karar Merkezi ve public Livewire middleware sertlestirme paketi 39 test / 683 assertion ile gecti
+- Lokal pilot adayinda `store_id=4462` Trendyol `ZEM HOME` icin `marketplace:backfill-profit-snapshots --store=4462 --missing --dry-run` sonucu 0 aday verdi; order-level snapshot kapsami tam.
+- Ayni pilot adayinda 1.450 siparisin tamaminda finans ledger eksik gorundu; Kar Merkezi kâri tahmini kalir, kesin finans/settlement kapsamasi henuz yok.
+- Maliyet hazirligi pilot adayinda %0: 1.507 satirin 1.502'si eslesmis olsa da 1.502 satir maliyet/ambalaj hazir degil, 5 satir eslesmemis.
+- Ilk veri aksiyonu `packaging_cost` ve eksik `cogs` alanlarini toplu tamamlamak; ikinci aksiyon 5 eslesmeyen siparis satirini master urune baglamak; ucuncu aksiyon Trendyol finans event import/sync ile kesin kâra gecmek.
+- Kar Merkezi yonetici raporuna `Maliyet Eksikleri` Excel sayfasi eklendi; stok kodu, barkod, etkilenen ciro, eksik COGS/ambalaj ve onerilen aksiyon tek listede verilir.
+- `Maliyet Eksikleri` sayfasi `Stok Kodu`, `Barkod`, `Maliyet`, `Ambalaj Gideri` kolonlariyla Urunler > Maliyet Guncelle import akisiyle uyumlu hale getirildi.
+- Urunler maliyet import'u artik `Ambalaj`, `Ambalaj Gideri`, `Ambalaj Maliyeti`, `Paketleme Maliyeti/Gideri` ve `Packaging Cost` kolonlarini `packaging_cost` olarak gunceller.
+- `MarketplaceProductMatcher` listeleme bagi olmayan siparis satirlarindan guvenli `order-item:*` kanal urun/listing kaydi uretir; boylece satirlar magaza-geneli kor issue yerine Eslestirme Merkezi'nde tek tek aksiyonlanabilir hale gelir.
+- Yeni `marketplace:repair-match-issues --store={id}` komutu gecmis eslesmemis siparis satirlarini ayni matcher akisiyle onarir; once `--dry-run` ile aday satir sayisi gorulmelidir.
+- Lokal pilot `store_id=4462` icin komut once 5 aday satir gosterdi, gercek calistirmada 5 satir isledi: 4 satira listing bagi olusturdu, 1 satiri master urune otomatik esledi, listing'siz acik issue sayisini 0'a indirdi.
+- Pilot sonrasi kalan eslesme aksiyonu 4 satira dustu; bu satirlar artik `product_match_issues` uzerinden listeleme bagli `not_found` kaydi olarak Eslestirme Merkezi'nde cozulebilir.
+- Eslesme aday uretimi model kodu ailesi ve urun adi token'lariyla guclendirildi; `ZEMRMS`, `ZEMBNT`, `ZEMBOEY` gibi kod koklerinden aday listesi dolar, ancak fuzzy adaylar otomatik `Onerileni bagla` aksiyonuna acilmaz.
+- Pilot `store_id=4462` tekrar onarimindan sonra kalan 4 satirin tamami `candidate_found` durumuna gecti ve 8'er adayla Eslestirme Merkezi'nde manuel karar bekliyor.
+- Kar Merkezi pilot olcumu: snapshot eksigi 0, finans bekleyen siparis 1.450, maliyet hazirligi %0; 1.507 satirin 1.503'u master urune bagli ama maliyet/ambalaj eksigi tasiyor, kalan eslesme aksiyonu 4 satir.
+
+Kontrol edilecek:
+
+- tek pilot magazada profit snapshot backfill dry-run sonucu
+- `Kâr Merkezi` ciro, maliyet, net kar ve hazirlik rozetleri
+- maliyet eksigi olan urunun rehber ve Kar Merkezi icinde gorunmesi
+- `marketplace:repair-match-issues --store={id} --dry-run` sonucunda listing'siz eslesme kor noktasi kalmamasi
+- fuzzy adaylarin otomatik baglanmadigi, yalniz manuel secimle kapandigi
+- `Hakediş Kontrolü`, `Risk Merkezi` ve `Otomatik Raporlar` icin feature flag bazli erisim
+- public Trendyol kar hesaplama route'unun sadece `PUBLIC_TRENDYOL_PROFIT_TOOL_ENABLED=true` iken acilmasi
+
+Tamamlanma kriteri:
+
+- pilot magaza icin okuma/yol gosterici ekranlar guvenle acik
+- aksiyon ureten veya disariya acik araclar ayri feature flag ile kontrollu
+- [Canlıya Alma Checklist](./pazaryeri-canliya-alma-checklist.md) Kar Merkezi adimlariyla guncel
+
 ---
 
 ## P2 - Ikinci Dalga Genisleme

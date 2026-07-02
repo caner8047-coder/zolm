@@ -20,6 +20,8 @@ class ChannelOrder extends Model
         'order_status',
         'color_label_key',
         'commercial_type',
+        'currency',
+        'exchange_rate',
         'customer_name',
         'customer_email',
         'customer_phone',
