@@ -361,6 +361,9 @@ Route::middleware('auth')->group(function () {
             Route::get('/templates', \App\Livewire\WhatsApp\WhatsAppTemplateManager::class)->name('templates');
             Route::get('/shipping', \App\Livewire\WhatsApp\WhatsAppShippingSettings::class)->name('shipping');
             Route::get('/inbox', \App\Livewire\WhatsApp\WhatsAppInbox::class)->name('inbox');
+            Route::get('/campaigns', \App\Livewire\WhatsApp\WhatsAppCampaigns::class)->name('campaigns');
+            Route::get('/campaigns/create', \App\Livewire\WhatsApp\WhatsAppCampaignCreate::class)->name('campaign-create');
+            Route::get('/segments', \App\Livewire\WhatsApp\WhatsAppSegments::class)->name('segments');
         });
 
     Route::middleware(\App\Http\Middleware\AdminMiddleware::class)->prefix('admin')->group(function () {

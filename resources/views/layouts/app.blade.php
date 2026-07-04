@@ -492,9 +492,19 @@
                             Kargo Bildirimleri
                         </a>
                         <a href="{{ route('whatsapp.inbox') }}" @click="sidebarOpen = false"
-                           class="block px-4 py-2 text-sm rounded-lg transition-colors
-                                  {{ request()->routeIs('whatsapp.inbox') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                   {{ request()->routeIs('whatsapp.inbox') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
                             Gelen Kutusu
+                        </a>
+                        <a href="{{ route('whatsapp.campaigns') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('whatsapp.campaigns*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Kampanyalar
+                        </a>
+                        <a href="{{ route('whatsapp.segments') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('whatsapp.segments') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Segmentler
                         </a>
                     </div>
                 </div>
