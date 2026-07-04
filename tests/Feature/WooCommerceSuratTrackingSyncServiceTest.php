@@ -234,6 +234,8 @@ class WooCommerceSuratTrackingSyncServiceTest extends TestCase
             'marketplace_stores',
             'legal_entities',
             'users',
+            'wa_suppressions',
+            'wa_contacts',
         ] as $table) {
             Schema::dropIfExists($table);
         }
@@ -454,6 +456,31 @@ class WooCommerceSuratTrackingSyncServiceTest extends TestCase
             $table->timestamp('received_at')->nullable();
             $table->boolean('is_terminal')->default(false);
             $table->json('raw_payload')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('wa_contacts', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('store_id');
+            $table->string('wc_customer_id', 80)->nullable();
+            $table->foreignId('zolm_customer_id')->nullable();
+            $table->text('phone_e164_encrypted');
+            $table->string('phone_hash', 64);
+            $table->string('first_name', 120)->nullable();
+            $table->string('last_name', 120)->nullable();
+            $table->string('status', 20)->default('active');
+            $table->timestamp('last_seen_at')->nullable();
+            $table->timestamps();
+            $table->unique(['store_id', 'phone_hash']);
+        });
+
+        Schema::create('wa_suppressions', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('contact_id');
+            $table->string('reason', 40);
+            $table->text('details')->nullable();
+            $table->timestamp('suppressed_at');
+            $table->timestamp('expires_at')->nullable();
             $table->timestamps();
         });
     }
