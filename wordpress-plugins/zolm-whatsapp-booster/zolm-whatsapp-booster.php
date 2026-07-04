@@ -644,3 +644,6 @@ ZOLM_WhatsApp_Booster::instance();
 
 // Stok bildirim formu shortcode'u (WC bağımlılığı yok, her zaman yükle)
 require_once ZOLM_WHATSAPP_BOOSTER_PATH . 'stock-notify-form.php';
+
+// Yüzen WhatsApp butonu widget'ı
+require_once ZOLM_WHATSAPP_BOOSTER_PATH . 'whatsapp-floating-button.php';
