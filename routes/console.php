@@ -153,3 +153,9 @@ Schedule::call(fn () => $runInlineCommand('whatsapp:process-stock-alerts'))
     ->name('whatsapp-process-stock-alerts')
     ->everyTenMinutes()
     ->withoutOverlapping(9);
+
+// Kampanya gönderimi: her 2 dakikada
+Schedule::call(fn () => $runInlineCommand('whatsapp:process-campaigns'))
+    ->name('whatsapp-process-campaigns')
+    ->everyTwoMinutes()
+    ->withoutOverlapping(1);

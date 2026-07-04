@@ -163,4 +163,29 @@ return [
             'return_needs_info' => ['enabled' => false, 'template_id' => null],
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Kampanya Ayarları
+    |--------------------------------------------------------------------------
+    */
+    'campaigns' => [
+        'allow_self_approval' => false,
+        'default_batch_size' => 50,
+        'default_batch_delay_seconds' => 5,
+        'default_attribution_window_days' => 7,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Frekans Limitleri (wa_automation_configs'den override edilir)
+    |--------------------------------------------------------------------------
+    */
+    'frequency_cap' => [
+        'marketing_max_per_24h' => 2,
+        'marketing_max_per_7d' => 5,
+        'marketing_max_per_30d' => 15,
+        'exclude_active_cart_recovery' => true,
+        'exclude_recent_order_days' => 30,
+    ],
 ];
