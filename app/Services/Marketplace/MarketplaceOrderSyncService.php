@@ -403,6 +403,16 @@ class MarketplaceOrderSyncService
         if ($currentStatus === 'returned' && $previousStatus !== 'returned' && $this->shouldNotifyStatusTransition($order, $orderDirty, $context, 'returned_at')) {
             $notificationCenter->notifyOrder($store, $order, 'returned', $context);
         }
+
+        // WhatsApp sipariş onayı için domain event
+        if ($order->isDirty('order_status') && $previousOrderStatus !== null && $previousOrderStatus !== $order->order_status) {
+            \App\Events\OrderStatusChanged::dispatch(
+                $order,
+                $previousOrderStatus,
+                $order->order_status,
+                'sync',
+            );
+        }
     }
 
     /**

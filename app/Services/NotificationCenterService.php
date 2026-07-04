@@ -63,6 +63,8 @@ class NotificationCenterService
             'booster_stock_change' => ['label' => 'Booster stok', 'tone' => 'info'],
             'booster_store_change' => ['label' => 'Booster rakip', 'tone' => 'warning'],
             'booster_keyword_change' => ['label' => 'Booster kelime', 'tone' => 'warning'],
+            'booster_review_sync_complete' => ['label' => 'Yorum sync', 'tone' => 'info'],
+            'booster_review_sync_failed' => ['label' => 'Yorum sync', 'tone' => 'warning'],
         ];
     }
 

@@ -82,5 +82,20 @@ class AppServiceProvider extends ServiceProvider
             \App\Events\ShipmentStatusChanged::class,
             \App\Listeners\WhatsApp\SendShippingNotificationListener::class,
         );
+
+        Event::listen(
+            \App\Events\ProductStockChanged::class,
+            \App\Listeners\WhatsApp\ProcessStockAlertListener::class,
+        );
+
+        Event::listen(
+            \App\Events\OrderStatusChanged::class,
+            \App\Listeners\WhatsApp\ProcessOrderNotificationListener::class,
+        );
+
+        Event::listen(
+            \App\Events\ReturnStatusChanged::class,
+            \App\Listeners\WhatsApp\ProcessReturnNotificationListener::class,
+        );
     }
 }

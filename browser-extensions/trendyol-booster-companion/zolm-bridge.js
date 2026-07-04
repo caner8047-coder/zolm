@@ -36,6 +36,14 @@
       resultType: 'STORE_SCAN_RESULT',
       backgroundType: 'ZOLM_BOOSTER_STORE_SCAN_FROM_URL',
     },
+    REVIEW_SCAN_QUERY: {
+      resultType: 'REVIEW_SCAN_RESULT',
+      backgroundType: 'ZOLM_BOOSTER_REVIEW_SCAN_START',
+    },
+    REVIEW_STORE_PREVIEW_QUERY: {
+      resultType: 'REVIEW_STORE_PREVIEW_RESULT',
+      backgroundType: 'ZOLM_BOOSTER_REVIEW_STORE_PREVIEW',
+    },
   };
   let readyAnnounced = false;
 
@@ -124,6 +132,7 @@
         keywords: Array.isArray(data.keywords) ? data.keywords : [],
         min_price: data.min_price ?? null,
         max_price: data.max_price ?? null,
+        options: data.options || {},
       });
 
       if (!backgroundResponse?.ok) {
@@ -280,6 +289,10 @@
       store_scan: 'store-scan',
       market_research: 'market-research',
       pending_jobs: 'pending-jobs',
+      review_scan_start: 'review-scan/start',
+      review_scan_ingest: 'review-scan/ingest',
+      review_scan_status: 'review-scan/status',
+      review_scan_verify: 'review-scan/verify',
     }[action] || action;
   }
 

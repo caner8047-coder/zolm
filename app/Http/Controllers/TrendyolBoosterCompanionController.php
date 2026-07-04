@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\TrendyolBoosterProduct;
+use App\Models\TrendyolBoosterReviewSync;
 use App\Services\Marketplace\TrendyolBoosterAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterProductAnalysisService;
+use App\Services\Marketplace\TrendyolBoosterReviewService;
 use App\Services\Marketplace\TrendyolBoosterStockService;
 use App\Services\Marketplace\TrendyolBoosterStoreWatchService;
 use App\Services\Marketplace\TrendyolBoosterSupplierResearchService;
@@ -13,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class TrendyolBoosterCompanionController extends Controller
 {
@@ -22,6 +25,7 @@ class TrendyolBoosterCompanionController extends Controller
         protected TrendyolBoosterStockService $stockService,
         protected TrendyolBoosterStoreWatchService $storeWatchService,
         protected TrendyolBoosterSupplierResearchService $supplierResearchService,
+        protected TrendyolBoosterReviewService $reviewService,
         protected TrendyolProductPageReader $reader,
     ) {}
 
@@ -75,23 +79,28 @@ class TrendyolBoosterCompanionController extends Controller
     public function pendingJobs(): JsonResponse
     {
         $userId = Auth::id();
-        
+
         $dueKeywords = \App\Models\TrendyolBoosterKeyword::query()
             ->where('user_id', $userId)
             ->where('is_active', true)
             ->where(function ($query) {
                 $query->whereNull('last_checked_at')
-                      ->orWhere('last_checked_at', '<=', now()->subHours(12));
+                    ->orWhere('last_checked_at', '<=', now()->subHours(12));
             })
             ->limit(5)
-            ->get(['id', 'keyword', 'search_url']);
+            ->get(['id', 'keyword'])
+            ->map(fn ($keyword): array => [
+                'id' => $keyword->id,
+                'keyword' => $keyword->keyword,
+                'search_url' => 'https://www.trendyol.com/sr?q='.rawurlencode((string) $keyword->keyword),
+            ]);
 
         $dueStores = \App\Models\TrendyolBoosterStoreWatch::query()
             ->where('user_id', $userId)
             ->where('is_active', true)
             ->where(function ($query) {
                 $query->whereNull('last_checked_at')
-                      ->orWhere('last_checked_at', '<=', now()->subHours(12));
+                    ->orWhere('last_checked_at', '<=', now()->subHours(12));
             })
             ->limit(3)
             ->get(['id', 'store_url']);
@@ -354,6 +363,8 @@ class TrendyolBoosterCompanionController extends Controller
 
     public function stockCheck(Request $request): JsonResponse
     {
+        $maxSellers = $this->companionLimit('max_stock_sellers', 30);
+
         $validated = $request->validate([
             'source_url' => ['required', 'string', 'max:1000', function (string $attribute, mixed $value, \Closure $fail): void {
                 if (! $this->isValidTrendyolUrl((string) $value)) {
@@ -366,9 +377,13 @@ class TrendyolBoosterCompanionController extends Controller
             'page.brand' => ['nullable', 'string', 'max:120'],
             'page.image_url' => ['nullable', 'string', 'max:1000'],
             'page.sale_price' => ['nullable', 'numeric', 'min:0'],
+            'page.total_stock' => ['nullable', 'integer', 'min:0'],
+            'page.favorite_count' => ['nullable', 'integer', 'min:0'],
+            'page.seller_id' => ['nullable', 'string', 'max:80'],
+            'page.seller_name' => ['nullable', 'string', 'max:180'],
             'barcode' => ['nullable', 'string', 'max:120'],
             'total_stock' => ['nullable', 'integer', 'min:0'],
-            'sellers' => ['nullable', 'array'],
+            'sellers' => ['nullable', 'array', 'max:'.$maxSellers],
             'sellers.*.seller_name' => ['nullable', 'string', 'max:1000'],
             'sellers.*.seller_id' => ['nullable', 'string', 'max:1000'],
             'sellers.*.stock' => ['nullable', 'integer', 'min:0'],
@@ -404,6 +419,8 @@ class TrendyolBoosterCompanionController extends Controller
 
     public function storeScan(Request $request): JsonResponse
     {
+        $maxItems = $this->companionLimit('max_store_items', 200);
+
         $validated = $request->validate([
             'store_url' => ['required', 'string', 'max:1000', function (string $attribute, mixed $value, \Closure $fail): void {
                 if (! $this->isValidTrendyolUrl((string) $value)) {
@@ -442,7 +459,7 @@ class TrendyolBoosterCompanionController extends Controller
             'store.product_preview.stock_status' => ['nullable', 'string', 'max:80'],
             'store.product_preview.seller_id' => ['nullable', 'string', 'max:80'],
             'store.product_preview.seller_name' => ['nullable', 'string', 'max:180'],
-            'store.items' => ['nullable', 'array'],
+            'store.items' => ['nullable', 'array', 'max:'.$maxItems],
             'store.items.*.trendyol_product_id' => ['nullable', 'string', 'max:80'],
             'store.items.*.source_url' => ['nullable', 'string', 'max:1000'],
             'store.items.*.title' => ['nullable', 'string', 'max:500'],
@@ -719,8 +736,197 @@ class TrendyolBoosterCompanionController extends Controller
         ])->save();
     }
 
+    protected function companionLimit(string $key, int $default): int
+    {
+        return max(1, (int) config("marketplace.trendyol_booster.companion.{$key}", $default));
+    }
+
     protected function userId(): int
     {
         return (int) Auth::id();
+    }
+
+    // ===== Trendyol Yorum Senkronizasyonu =====
+
+    /**
+     * Yeni bir yorum tarama çalışması başlatır.
+     * Chrome eklentisine bridge event tetikler.
+     */
+    public function reviewScanStart(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'sync_run_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('trendyol_booster_review_syncs', 'id')
+                    ->where(fn ($query) => $query->where('user_id', $this->userId())),
+            ],
+            'sync_type' => ['nullable', 'in:full,delta'],
+            'review_source_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('trendyol_booster_review_sources', 'id')
+                    ->where(fn ($query) => $query->where('user_id', $this->userId())),
+            ],
+            'total_products' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $syncType = $validated['sync_type'] ?? 'delta';
+        $syncRun = isset($validated['sync_run_id'])
+            ? TrendyolBoosterReviewSync::where('user_id', $this->userId())
+                ->whereKey($validated['sync_run_id'])
+                ->whereIn('status', ['queued', 'running'])
+                ->firstOrFail()
+            : $this->reviewService->createSyncRun(
+                $this->userId(),
+                $syncType,
+                isset($validated['review_source_id']) ? (int) $validated['review_source_id'] : null,
+            );
+
+        if (isset($validated['total_products'])) {
+            $syncRun->update(['total_products' => $validated['total_products']]);
+        }
+
+        // Eklentiye başlatma bilgisi döner (bridge event için)
+        return response()->json([
+            'ok' => true,
+            'sync_run_id' => $syncRun->id,
+            'sync_type' => $syncRun->sync_type,
+            'review_source_id' => $syncRun->review_source_id,
+            'last_synced_at' => $syncRun->last_synced_at?->toIso8601String(),
+            'total_products' => $syncRun->total_products,
+            'status_endpoint' => route('mp.trendyol-booster.companion.review-scan.status', $syncRun->id),
+            'ingest_endpoint' => route('mp.trendyol-booster.companion.review-scan.ingest'),
+        ]);
+    }
+
+    /**
+     * Chrome eklentisinden gelen batch yorum verisini DB'ye kaydeder.
+     */
+    public function reviewScanIngest(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'sync_run_id' => [
+                'required',
+                'integer',
+                Rule::exists('trendyol_booster_review_syncs', 'id')
+                    ->where(fn ($query) => $query->where('user_id', $this->userId())),
+            ],
+            'reviews' => ['present', 'array', 'max:100'],
+            'total_products' => ['nullable', 'integer', 'min:0', 'max:10000'],
+            'processed_products' => ['nullable', 'integer', 'min:0', 'max:10000'],
+            'completed' => ['nullable', 'boolean'],
+            'reviews.*.trendyol_product_id' => ['required', 'string', 'max:80'],
+            'reviews.*.trendyol_review_id' => ['required', 'string', 'max:80'],
+            'reviews.*.trendyol_product_barcode' => ['nullable', 'string', 'max:120'],
+            'reviews.*.product_title' => ['nullable', 'string', 'max:500'],
+            'reviews.*.product_image_url' => ['nullable', 'string', 'max:1000'],
+            'reviews.*.reviewer_name' => ['nullable', 'string', 'max:180'],
+            'reviews.*.reviewer_avatar_url' => ['nullable', 'string', 'max:1000'],
+            'reviews.*.rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'reviews.*.comment' => ['required', 'string', 'max:3000'],
+            'reviews.*.review_media' => ['nullable', 'array'],
+            'reviews.*.review_media.*.url' => ['nullable', 'string', 'max:1000'],
+            'reviews.*.helpful_count' => ['nullable', 'integer', 'min:0'],
+            'reviews.*.seller_name' => ['nullable', 'string', 'max:180'],
+            'reviews.*.reviewed_at' => ['nullable', 'date'],
+        ]);
+
+        $result = $this->reviewService->ingestReviews(
+            $this->userId(),
+            $validated['reviews'],
+            $validated['sync_run_id'],
+            [
+                'total_products' => $validated['total_products'] ?? null,
+                'processed_products' => $validated['processed_products'] ?? null,
+            ],
+        );
+
+        if (! empty($validated['completed'])) {
+            $this->reviewService->completeSyncRun(
+                $validated['sync_run_id'],
+                null,
+                $this->userId(),
+            );
+        }
+
+        return response()->json([
+            'ok' => true,
+            'new' => $result['new'],
+            'updated' => $result['updated'],
+            'spam' => $result['spam'],
+            'progress_percent' => $result['progress_percent'],
+            'processed_products' => $result['processed_products'],
+            'total_products' => $result['total_products'],
+            'status' => ! empty($validated['completed']) ? 'completed' : 'running',
+        ]);
+    }
+
+    /**
+     * Senkronizasyon çalışmasının durumunu döner (Livewire polling için).
+     */
+    public function reviewScanStatus(int $syncRunId): JsonResponse
+    {
+        $syncRun = TrendyolBoosterReviewSync::where('user_id', $this->userId())
+            ->where('id', $syncRunId)
+            ->first();
+
+        if (! $syncRun) {
+            return response()->json(['ok' => false, 'message' => 'Senkronizasyon bulunamadı.'], 404);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'status' => $syncRun->status,
+            'sync_type' => $syncRun->sync_type,
+            'progress_percent' => $syncRun->progress_percent,
+            'total_products' => $syncRun->total_products,
+            'processed_products' => $syncRun->processed_products,
+            'total_reviews' => $syncRun->total_reviews,
+            'new_reviews' => $syncRun->new_reviews,
+            'updated_reviews' => $syncRun->updated_reviews,
+            'spam_detected' => $syncRun->spam_detected,
+            'started_at' => $syncRun->started_at?->toIso8601String(),
+            'completed_at' => $syncRun->completed_at?->toIso8601String(),
+            'error_message' => $syncRun->error_message,
+        ]);
+    }
+
+    /**
+     * Trendyol'da silinen/düzenlenen yorumları doğrular (orphan cleanup).
+     * Eklenti belirtilen review_id'leri Trendyol'da kontrol eder.
+     */
+    public function reviewScanVerify(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'trendyol_product_id' => ['required', 'string', 'max:80'],
+            'checked_review_ids' => ['required', 'array', 'max:100'],
+            'checked_review_ids.*' => ['string', 'max:80'],
+            'existing_review_ids' => ['present', 'array', 'max:100'],
+            'existing_review_ids.*' => ['string', 'max:80'],
+        ]);
+
+        $checkedIds = collect($validated['checked_review_ids'])->unique();
+        $existingIds = collect($validated['existing_review_ids'])->unique();
+        $missingIds = $checkedIds->diff($existingIds)->values();
+
+        $deleted = \App\Models\TrendyolBoosterReview::where('user_id', $this->userId())
+            ->where('trendyol_product_id', $validated['trendyol_product_id'])
+            ->whereIn('trendyol_review_id', $missingIds)
+            ->where('status', '!=', 'deleted')
+            ->get();
+
+        $count = 0;
+        foreach ($deleted as $review) {
+            $review->markDeleted('orphan_cleanup');
+            $count++;
+        }
+
+        return response()->json([
+            'ok' => true,
+            'checked' => $checkedIds->count(),
+            'verified' => $existingIds->count(),
+            'marked_deleted' => $count,
+        ]);
     }
 }

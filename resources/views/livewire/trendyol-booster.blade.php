@@ -1225,11 +1225,16 @@
                 init() {
                     window.postMessage({ source: 'zolm-booster-page', type: 'PING' }, window.location.origin);
                 },
-                queryStock(wire) {
-                    const sourceUrl = this.$refs.stockUrl.value.trim();
-                    const manualStock = this.$refs.stockTotalStock.value.trim();
+                async queryStock(wire, sourceUrl = null) {
+                    const effectiveUrl = (sourceUrl || this.$refs.stockUrl.value || '').trim();
 
-                    if (!sourceUrl || manualStock !== '') {
+                    if (sourceUrl) {
+                        this.$refs.stockUrl.value = effectiveUrl;
+                        this.$refs.stockUrl.dispatchEvent(new Event('input', { bubbles: true }));
+                        await wire.set('stockUrl', effectiveUrl, false);
+                    }
+
+                    if (!effectiveUrl) {
                         wire.runStockQuery();
                         return;
                     }
@@ -1246,7 +1251,7 @@
                         source: 'zolm-booster-page',
                         type: 'STOCK_QUERY',
                         request_id: this.bridgeRequestId,
-                        source_url: sourceUrl,
+                        source_url: effectiveUrl,
                     }, window.location.origin);
 
                     this.bridgeTimer = window.setTimeout(() => {
@@ -1295,101 +1300,400 @@
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div class="min-w-0">
                         <p class="text-xs font-semibold uppercase text-slate-500">Stok sorgulama</p>
-                        <h2 class="mt-1 text-lg font-semibold text-slate-900">Satıcı bazlı stok erime takibi</h2>
-                        <p class="mt-1 text-sm text-slate-500">Linki sorgulayın; sonraki sorgularda toplam stok düşüşü tahmini satış olarak işaretlenir.</p>
+                        <h2 class="mt-1 text-lg font-semibold text-slate-900">Stok ve satıcı takibi</h2>
                     </div>
                     <div class="flex flex-col items-stretch gap-2 sm:items-end">
                         <span x-show="extensionReady" x-cloak class="text-right text-xs font-medium text-emerald-700">
                             Chrome köprüsü hazır<span x-show="extensionVersion" x-text="` · v${extensionVersion}`"></span>
                         </span>
                         <span x-show="extensionMessage" x-cloak x-text="extensionMessage" class="text-right text-xs font-medium text-rose-700"></span>
-                    <button type="button" x-on:click="queryStock($wire)" x-bind:disabled="bridgeBusy" wire:loading.attr="disabled" wire:target="runStockQuery"
-                            @disabled(!$stockReady)
-                            class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] bg-slate-900 px-4 py-3 text-base font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2 sm:text-sm">
-                        <x-lucide.icon name="boxes" class="h-4 w-4" />
-                        <span x-show="!bridgeBusy" wire:loading.remove wire:target="runStockQuery">Stok sorgula</span>
-                        <span x-show="bridgeBusy" x-cloak>Tarayıcıdan okunuyor...</span>
-                        <span wire:loading wire:target="runStockQuery">Sorgulanıyor...</span>
-                    </button>
                     </div>
                 </div>
             </div>
 
             <div class="space-y-4 p-4 lg:p-6">
-                <div class="grid grid-cols-1 gap-3 lg:grid-cols-12 lg:gap-4">
-                    <label class="lg:col-span-6">
-                        <span class="text-xs font-medium text-slate-600">Trendyol ürün linki</span>
-                        <input type="url" x-ref="stockUrl" wire:model.defer="stockUrl" placeholder="https://www.trendyol.com/...-p-123456"
-                               class="mt-1.5 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 outline-none focus:border-slate-400 sm:py-2 sm:text-sm">
-                        @error('stockUrl') <p class="mt-1.5 text-xs text-rose-600">{{ $message }}</p> @enderror
-                    </label>
-                    <label class="lg:col-span-2">
-                        <span class="text-xs font-medium text-slate-600">Toplam stok</span>
-                        <input type="number" min="0" x-ref="stockTotalStock" wire:model.defer="stockTotalStock" placeholder="Otomatik okunur"
-                               class="mt-1.5 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 outline-none focus:border-slate-400 sm:py-2 sm:text-sm">
-                    </label>
-                    <label class="lg:col-span-2">
-                        <span class="text-xs font-medium text-slate-600">Barkod</span>
-                        <input type="text" wire:model.defer="stockBarcode" placeholder="Opsiyonel"
-                               class="mt-1.5 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 outline-none focus:border-slate-400 sm:py-2 sm:text-sm">
-                    </label>
-                    <label class="lg:col-span-2">
-                        <span class="text-xs font-medium text-slate-600">Satıcı</span>
-                        <input type="text" wire:model.defer="stockSellerName" placeholder="Ana satıcı"
-                               class="mt-1.5 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 outline-none focus:border-slate-400 sm:py-2 sm:text-sm">
-                    </label>
+                <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                    <div class="flex flex-col gap-3 lg:flex-row lg:items-end">
+                        <label class="block min-w-0 flex-1">
+                            <span class="text-xs font-medium text-slate-600">Trendyol ürün linki</span>
+                            <input type="url" x-ref="stockUrl" wire:model.defer="stockUrl" placeholder="https://www.trendyol.com/...-p-123456"
+                                   class="mt-1.5 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 outline-none focus:border-slate-400 sm:py-2 sm:text-sm">
+                            @error('stockUrl') <p class="mt-1.5 text-xs text-rose-600">{{ $message }}</p> @enderror
+                        </label>
+                        <button type="button" x-on:click="queryStock($wire)" x-bind:disabled="bridgeBusy" wire:loading.attr="disabled" wire:target="runStockQuery"
+                                @disabled(!$stockReady)
+                                class="inline-flex min-h-[44px] w-full shrink-0 items-center justify-center gap-2 rounded-[6px] bg-slate-900 px-4 py-3 text-base font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:py-2 sm:text-sm lg:w-auto">
+                            <x-lucide.icon name="boxes" class="h-4 w-4" />
+                            <span x-show="!bridgeBusy" wire:loading.remove wire:target="runStockQuery">Stok sorgula</span>
+                            <span x-show="bridgeBusy" x-cloak>Tarayıcıdan okunuyor...</span>
+                            <span wire:loading wire:target="runStockQuery">Sorgulanıyor...</span>
+                        </button>
+                    </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                @php
+                    $latestStockCheck = $stockDashboard['latest_checks']->first();
+                    $selectedStockCheck = $stockDashboard['selected_check'] ?? $latestStockCheck;
+                    $selectedStockFavoriteCount = $selectedStockCheck ? data_get($selectedStockCheck->raw_payload, 'page.favorite_count') : null;
+                    $selectedStockSellerNames = $selectedStockCheck?->sellers?->pluck('seller_name')->filter()->join(', ');
+                    $selectedStockProduct = $selectedStockCheck?->trackedProduct;
+                    $selectedStockTrackingActive = $selectedStockProduct?->tracking_status === 'active' && $selectedStockProduct?->watch_stock;
+                    $stockTrend = collect($stockDashboard['trend'] ?? []);
+                    $stockProductGroups = collect($stockDashboard['product_groups'] ?? []);
+                    $stockCategoryOptions = collect($stockDashboard['stock_categories'] ?? []);
+                    $stockProductTotal = (int) ($stockDashboard['product_group_total'] ?? $stockProductGroups->count());
+                    $stockFilteredCheckCount = (int) ($stockDashboard['filtered_check_count'] ?? $stockProductGroups->sum('query_count'));
+                    $stockActiveFilterCount = collect([
+                        trim($stockHistorySearch) !== '',
+                        $stockHistoryCategory !== 'all',
+                        $stockHistoryStatus !== 'all',
+                    ])->filter()->count();
+                    $stockTrendData = $stockTrend->pluck('stock')->map(fn ($value) => (int) $value)->all();
+                    $favoriteTrendData = $stockTrend->pluck('favorites')->filter(fn ($value) => $value !== null)->map(fn ($value) => (int) $value)->all();
+                    $firstTrendPoint = $stockTrend->first();
+                    $lastTrendPoint = $stockTrend->last();
+                    $selectedStockDelta = $selectedStockCheck?->stock_delta;
+                    $selectedStockDeltaTone = $selectedStockDelta === null ? 'text-slate-900' : ((int) $selectedStockDelta < 0 ? 'text-emerald-700' : ((int) $selectedStockDelta > 0 ? 'text-rose-700' : 'text-slate-900'));
+                @endphp
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
-                        <p class="text-xs text-slate-500">Sorgu</p>
-                        <p class="mt-1 text-lg font-semibold text-slate-900">{{ $stockDashboard['total_checks'] }}</p>
-                    </div>
-                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
-                        <p class="text-xs text-slate-500">Güncel stok</p>
+                        <p class="text-xs text-slate-500">Stok</p>
                         <p class="mt-1 text-lg font-semibold text-slate-900">{{ number_format((int) $stockDashboard['last_total_stock'], 0, ',', '.') }}</p>
                     </div>
                     <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
-                        <p class="text-xs text-slate-500">Tahmini satış</p>
-                        <p class="mt-1 text-lg font-semibold text-emerald-700">{{ number_format((int) $stockDashboard['estimated_sales'], 0, ',', '.') }}</p>
+                        <p class="text-xs text-slate-500">Favori</p>
+                        <p class="mt-1 text-lg font-semibold text-slate-900">
+                            @if($selectedStockFavoriteCount !== null)
+                                {{ number_format((int) $selectedStockFavoriteCount, 0, ',', '.') }}
+                            @else
+                                -
+                            @endif
+                        </p>
                     </div>
                     <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
                         <p class="text-xs text-slate-500">Satıcı</p>
                         <p class="mt-1 text-lg font-semibold text-slate-900">{{ $stockDashboard['seller_count'] }}</p>
                     </div>
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                        <label class="block">
+                            <span class="text-xs text-slate-500">Sorgu zamanı</span>
+                            @if($stockDashboard['latest_checks']->isNotEmpty())
+                                <select wire:model.live.number="selectedStockCheckId"
+                                        class="mt-1 w-full rounded-[6px] border border-slate-200 bg-white px-2 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-slate-400">
+                                    <option value="">Son kayıt (otomatik)</option>
+                                    @foreach($stockDashboard['latest_checks'] as $optionCheck)
+                                        <option value="{{ $optionCheck->id }}">
+                                            {{ $optionCheck->checked_at?->format('d.m.Y H:i') ?: 'Tarihsiz kayıt' }} · {{ \Illuminate\Support\Str::limit($optionCheck->title ?: 'Trendyol ürünü', 34) }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            @else
+                                <p class="mt-1 text-sm font-semibold text-slate-900">-</p>
+                            @endif
+                        </label>
+                    </div>
                 </div>
 
-                <div class="space-y-3">
-                    @forelse($stockDashboard['latest_checks'] as $check)
-                        <article class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
-                            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                <div class="min-w-0">
-                                    <p class="truncate text-sm font-semibold text-slate-900">{{ $check->title ?: 'Trendyol ürünü' }}</p>
-                                    <p class="mt-1 text-xs text-slate-500">{{ $check->brand ?: 'Marka yok' }} · {{ $check->checked_at?->format('d.m.Y H:i') }}</p>
-                                </div>
-                                <div class="grid grid-cols-3 gap-2 text-xs sm:flex">
-                                    <span class="rounded-[6px] border border-slate-200 bg-white px-2 py-1">Stok: <strong>{{ number_format((int) $check->total_stock, 0, ',', '.') }}</strong></span>
-                                    <span class="rounded-[6px] border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">Satış: <strong>{{ number_format((int) $check->estimated_sales, 0, ',', '.') }}</strong></span>
-                                    <span class="rounded-[6px] border border-slate-200 bg-white px-2 py-1">Satıcı: <strong>{{ $check->seller_count }}</strong></span>
-                                </div>
-                            </div>
-                            <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-                                @forelse($check->sellers as $seller)
-                                    <div class="rounded-[6px] border border-slate-200 bg-white p-3">
-                                        <div class="flex items-start justify-between gap-2">
-                                            <p class="min-w-0 truncate text-sm font-medium text-slate-900">{{ $seller->seller_name }}</p>
-                                            <span class="font-mono text-xs text-slate-500">{{ $seller->stock }}</span>
-                                        </div>
-                                        <p class="mt-1 text-xs text-slate-500">Önceki: {{ $seller->previous_stock ?? '-' }} · Tahmini satış: {{ $seller->estimated_sales }}</p>
+                @if($selectedStockCheck)
+                    <section class="rounded-lg border border-slate-200 bg-white p-4">
+                        <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                            <div class="flex min-w-0 gap-3">
+                                @if($selectedStockCheck->image_url)
+                                    <div class="h-20 w-16 shrink-0 overflow-hidden rounded-[6px] border border-slate-100 bg-slate-50">
+                                        <img src="{{ $selectedStockCheck->image_url }}" alt="" loading="lazy" class="h-full w-full object-cover">
                                     </div>
-                                @empty
-                                    <div class="rounded-[6px] border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">Satıcı kırılımı yok.</div>
-                                @endforelse
+                                @else
+                                    <div class="flex h-20 w-16 shrink-0 items-center justify-center rounded-[6px] border border-slate-100 bg-slate-50">
+                                        <x-lucide.icon name="image" class="h-5 w-5 text-slate-300" />
+                                    </div>
+                                @endif
+                                <div class="min-w-0">
+                                    <p class="text-xs font-semibold uppercase text-slate-500">Seçilen kayıt</p>
+                                    <h3 class="mt-1 line-clamp-2 text-base font-semibold text-slate-900">{{ $selectedStockCheck->title ?: 'Trendyol ürünü' }}</h3>
+                                    <p class="mt-1 truncate text-xs text-slate-500">{{ $selectedStockSellerNames ?: 'Satıcı bilgisi yok' }}</p>
+                                    <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                                        <span class="rounded-[4px] border border-slate-200 bg-slate-50 px-2 py-1">Stok {{ number_format((int) $selectedStockCheck->total_stock, 0, ',', '.') }}</span>
+                                        <span class="rounded-[4px] border border-slate-200 bg-slate-50 px-2 py-1">Satıcı {{ (int) $selectedStockCheck->seller_count }}</span>
+                                        <span class="rounded-[4px] border border-slate-200 bg-slate-50 px-2 py-1">Tarih {{ $selectedStockCheck->checked_at?->format('d.m.Y H:i') ?: '-' }}</span>
+                                        @if($selectedStockFavoriteCount !== null)
+                                            <span class="rounded-[4px] border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">Favori {{ number_format((int) $selectedStockFavoriteCount, 0, ',', '.') }}</span>
+                                        @endif
+                                    </div>
+                                </div>
                             </div>
-                        </article>
+
+                            <div class="flex w-full items-center gap-2 xl:w-auto xl:justify-end">
+                                <a href="{{ $selectedStockCheck->source_url }}" target="_blank" rel="noopener noreferrer" title="Trendyol'da aç"
+                                   class="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50">
+                                    <x-lucide.icon name="external-link" class="h-4 w-4" />
+                                </a>
+                                <button type="button" x-on:click="queryStock($wire, @js($selectedStockCheck->source_url))" x-bind:disabled="bridgeBusy"
+                                        title="Yeniden stok sorgula" aria-label="Yeniden stok sorgula"
+                                        class="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-70">
+                                    <span x-show="!bridgeBusy"><x-lucide.icon name="refresh-cw" class="h-4 w-4" /></span>
+                                    <span x-show="bridgeBusy" x-cloak><x-lucide.icon name="refresh-cw" class="h-4 w-4 animate-spin" /></span>
+                                </button>
+                                <button type="button" wire:click="toggleStockCheckFavorite({{ $selectedStockCheck->id }})" wire:loading.attr="disabled" wire:target="toggleStockCheckFavorite({{ $selectedStockCheck->id }})"
+                                        title="{{ $selectedStockProduct?->is_favorite ? 'Favorilerden çıkar' : 'Favorile' }}" aria-label="{{ $selectedStockProduct?->is_favorite ? 'Favorilerden çıkar' : 'Favorile' }}"
+                                        class="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[6px] border {{ $selectedStockProduct?->is_favorite ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }} transition">
+                                    <x-lucide.icon name="heart" class="h-4 w-4" />
+                                </button>
+                                <button type="button" wire:click="followStockCheck({{ $selectedStockCheck->id }})" wire:loading.attr="disabled" wire:target="followStockCheck({{ $selectedStockCheck->id }})" @disabled($selectedStockTrackingActive)
+                                        class="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-[6px] bg-slate-900 px-4 py-3 text-base font-medium text-white transition hover:bg-slate-800 disabled:cursor-default disabled:bg-emerald-700 sm:flex-none sm:py-2 sm:text-sm">
+                                    <x-lucide.icon name="{{ $selectedStockTrackingActive ? 'check' : 'radar' }}" class="h-4 w-4" />
+                                    {{ $selectedStockTrackingActive ? 'Takipte' : 'Takibe al' }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.6fr)]">
+                            <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div>
+                                        <h4 class="text-sm font-semibold text-slate-900">Stok trendi</h4>
+                                        <p class="mt-0.5 text-xs text-slate-500">Son {{ $stockTrend->count() }} sorgu kaydı</p>
+                                    </div>
+                                    <span class="inline-flex items-center gap-1 rounded-[4px] border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium {{ $selectedStockDeltaTone }}">
+                                        <x-lucide.icon name="{{ (int) ($selectedStockDelta ?? 0) < 0 ? 'trending-down' : ((int) ($selectedStockDelta ?? 0) > 0 ? 'trending-up' : 'minus') }}" class="h-3 w-3" />
+                                        {{ $selectedStockDelta === null ? 'Baz kayıt' : (((int) $selectedStockDelta > 0 ? '+' : '').number_format((int) $selectedStockDelta, 0, ',', '.')) }}
+                                    </span>
+                                </div>
+                                <div class="mt-3 h-20 w-full">
+                                    <x-zolm.sparkline :data="$stockTrendData" width="420" height="80" color="text-indigo-500" :fill="true" />
+                                </div>
+                                <div class="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                                    <span>{{ data_get($firstTrendPoint, 'label', '-') }} · {{ number_format((int) data_get($firstTrendPoint, 'stock', 0), 0, ',', '.') }}</span>
+                                    <span>{{ data_get($lastTrendPoint, 'label', '-') }} · {{ number_format((int) data_get($lastTrendPoint, 'stock', 0), 0, ',', '.') }}</span>
+                                </div>
+                            </div>
+
+                            <div class="rounded-[8px] border border-slate-200 bg-white p-3">
+                                <h4 class="text-sm font-semibold text-slate-900">Favori ve satış sinyali</h4>
+                                <div class="mt-3 h-14 w-full">
+                                    <x-zolm.sparkline :data="$favoriteTrendData" width="260" height="56" color="text-emerald-500" :fill="true" />
+                                </div>
+                                <div class="mt-3 space-y-2 text-xs">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <span class="text-slate-500">Stok düşüşü</span>
+                                        <span class="font-semibold text-slate-900">{{ number_format((int) $selectedStockCheck->estimated_sales, 0, ',', '.') }}</span>
+                                    </div>
+                                    <div class="flex items-center justify-between gap-3">
+                                        <span class="text-slate-500">Önceki stok</span>
+                                        <span class="font-semibold text-slate-900">{{ $selectedStockCheck->previous_total_stock !== null ? number_format((int) $selectedStockCheck->previous_total_stock, 0, ',', '.') : '-' }}</span>
+                                    </div>
+                                    <div class="flex items-center justify-between gap-3">
+                                        <span class="text-slate-500">Durum</span>
+                                        <span class="font-semibold {{ $selectedStockCheck->stock_status === 'in_stock' ? 'text-emerald-700' : 'text-rose-700' }}">{{ $selectedStockCheck->stock_status === 'in_stock' ? 'Stokta' : 'Stok dışı' }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                @endif
+
+                <div class="rounded-lg border border-slate-200 bg-white">
+                    <div class="flex flex-col gap-2 border-b border-slate-200 bg-slate-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="flex min-w-0 items-center gap-2">
+                            <h3 class="text-sm font-semibold text-slate-900">Kayıt geçmişi</h3>
+                            @if($stockActiveFilterCount > 0)
+                                <span class="rounded-[4px] border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-600">{{ $stockActiveFilterCount }} filtre aktif</span>
+                            @endif
+                        </div>
+                        <span class="text-xs text-slate-500">{{ $stockProductGroups->count() }} / {{ $stockProductTotal }} ürün · {{ $stockFilteredCheckCount }} kayıt</span>
+                    </div>
+                    <div class="border-b border-slate-200 bg-white p-3">
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_190px_180px_190px_44px]">
+                            <label class="relative min-w-0">
+                                <span class="sr-only">Kayıt geçmişinde ara</span>
+                                <x-lucide.icon name="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                <input type="search" wire:model.live.debounce.300ms="stockHistorySearch"
+                                       placeholder="Ürün, marka, satıcı veya ürün no ara"
+                                       class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white py-2 pl-9 pr-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 sm:text-sm">
+                            </label>
+                            <label class="min-w-0">
+                                <span class="sr-only">Kategori filtresi</span>
+                                <select wire:model.live="stockHistoryCategory" class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-base text-slate-700 outline-none focus:border-slate-400 sm:text-sm">
+                                    <option value="all">Tüm kategoriler</option>
+                                    @foreach($stockCategoryOptions as $stockCategoryOption)
+                                        <option value="{{ $stockCategoryOption }}">{{ $stockCategoryOption }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <label class="min-w-0">
+                                <span class="sr-only">Durum filtresi</span>
+                                <select wire:model.live="stockHistoryStatus" class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-base text-slate-700 outline-none focus:border-slate-400 sm:text-sm">
+                                    <option value="all">Tüm durumlar</option>
+                                    <option value="favorites">Favorilenenler</option>
+                                    <option value="tracking">Takiptekiler</option>
+                                    <option value="declining">Stoku azalanlar</option>
+                                    <option value="out_of_stock">Tükenenler</option>
+                                </select>
+                            </label>
+                            <label class="min-w-0">
+                                <span class="sr-only">Kayıt sıralaması</span>
+                                <select wire:model.live="stockHistorySort" class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-base text-slate-700 outline-none focus:border-slate-400 sm:text-sm">
+                                    <option value="latest">Son sorgulanan</option>
+                                    <option value="name_asc">Ürün adı A-Z</option>
+                                    <option value="stock_asc">Stok: azdan çoğa</option>
+                                    <option value="stock_desc">Stok: çoktan aza</option>
+                                    <option value="favorites_desc">Favori: çoktan aza</option>
+                                    <option value="queries_desc">En çok sorgulanan</option>
+                                </select>
+                            </label>
+                            <button type="button" wire:click="resetStockHistoryFilters" title="Filtreleri temizle" aria-label="Filtreleri temizle"
+                                    @disabled($stockActiveFilterCount === 0 && $stockHistorySort === 'latest')
+                                    class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-2 sm:w-11 sm:justify-self-end xl:col-span-1 xl:justify-self-auto">
+                                <x-lucide.icon name="rotate-ccw" class="h-4 w-4" />
+                                <span class="sm:hidden">Filtreleri temizle</span>
+                            </button>
+                        </div>
+                        @if(!empty($stockDashboard['history_truncated']))
+                            <p class="mt-2 text-[11px] text-amber-700">Performans için son 500 sorgu içinde filtreleniyor.</p>
+                        @endif
+                    </div>
+                    <div class="grid grid-cols-1 gap-3 p-3 lg:grid-cols-2 xl:grid-cols-3">
+                    @forelse($stockProductGroups as $stockGroup)
+                        @php
+                            $groupLatestCheck = $stockGroup['latest_check'];
+                            $groupChecks = collect($stockGroup['checks'] ?? []);
+                            $groupTrend = collect($stockGroup['trend'] ?? []);
+                            $groupStockTrendData = $groupTrend->pluck('stock')->map(fn ($value) => (int) $value)->all();
+                            $groupFirstTrendPoint = $groupTrend->first();
+                            $groupLastTrendPoint = $groupTrend->last();
+                            $groupFavoriteCount = $stockGroup['latest_favorite_count'];
+                            $groupCategoryName = $stockGroup['category_name'] ?? '';
+                            $groupSellerNames = $stockGroup['seller_names'] ?: $groupLatestCheck?->sellers?->pluck('seller_name')->filter()->join(', ');
+                            $groupTrackedProduct = $groupLatestCheck?->trackedProduct;
+                            $groupTrackingActive = $groupTrackedProduct?->tracking_status === 'active' && $groupTrackedProduct?->watch_stock;
+                            $groupIsSelected = $groupChecks->contains(fn ($groupCheck) => (int) $groupCheck->id === (int) ($stockDashboard['selected_check_id'] ?? 0));
+                            $groupStockDelta = (int) ($groupLatestCheck?->stock_delta ?? 0);
+                            $groupQueryCount = (int) ($stockGroup['query_count'] ?? $groupChecks->count());
+                        @endphp
+                        @if($groupLatestCheck)
+                            <article x-data="{ datesOpen: false }" wire:key="stock-product-group-{{ $stockGroup['key_hash'] }}" class="rounded-[8px] border {{ $groupIsSelected ? 'border-slate-900 bg-white shadow-sm' : 'border-slate-200 bg-white' }} p-3 transition hover:shadow-sm">
+                                <div class="flex gap-3">
+                                    @if($groupLatestCheck->image_url)
+                                        <div class="h-20 w-14 shrink-0 overflow-hidden rounded-[6px] border border-slate-100 bg-slate-50">
+                                            <img src="{{ $groupLatestCheck->image_url }}" alt="" loading="lazy" class="h-full w-full object-cover">
+                                        </div>
+                                    @else
+                                        <div class="flex h-20 w-14 shrink-0 items-center justify-center rounded-[6px] border border-slate-100 bg-slate-50">
+                                            <x-lucide.icon name="image" class="h-5 w-5 text-slate-300" />
+                                        </div>
+                                    @endif
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex items-start justify-between gap-2">
+                                            <div class="min-w-0">
+                                                <p class="line-clamp-2 text-sm font-semibold leading-snug text-slate-900">{{ $groupLatestCheck->title ?: 'Trendyol ürünü' }}</p>
+                                                <p class="mt-1 truncate text-xs text-slate-500">{{ collect([$groupSellerNames ?: 'Satıcı bilgisi yok', $groupCategoryName ?: 'Kategori yok'])->join(' · ') }}</p>
+                                            </div>
+                                            <div class="relative shrink-0" x-on:click.outside="datesOpen = false" x-on:keydown.escape.window="datesOpen = false">
+                                                <button type="button" x-on:click="datesOpen = !datesOpen" x-bind:aria-expanded="datesOpen" title="Sorgu tarihlerini göster"
+                                                        class="inline-flex items-center gap-1 rounded-[6px] border {{ $groupIsSelected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white' }} px-2 py-1 text-[11px] font-medium transition">
+                                                    <x-lucide.icon name="clock-3" class="h-3 w-3" />
+                                                    {{ $groupLatestCheck->checked_at?->format('d.m H:i') ?: '-' }}
+                                                    <x-lucide.icon name="chevron-down" class="h-3 w-3 transition" x-bind:class="datesOpen ? 'rotate-180' : ''" />
+                                                </button>
+
+                                                <div x-show="datesOpen" x-cloak x-transition.origin.top.right
+                                                     class="absolute right-0 z-50 mt-1.5 w-44 overflow-hidden rounded-[8px] border border-slate-200 bg-white p-1 shadow-md">
+                                                    <div class="max-h-56 space-y-0.5 overflow-y-auto overscroll-contain">
+                                                        @foreach($groupChecks as $groupCheck)
+                                                            @php
+                                                                $dateIsSelected = (int) ($stockDashboard['selected_check_id'] ?? 0) === (int) $groupCheck->id;
+                                                            @endphp
+                                                            <button type="button" wire:click="$set('selectedStockCheckId', {{ $groupCheck->id }})" x-on:click="datesOpen = false"
+                                                                    class="flex min-h-9 w-full items-center justify-between gap-2 rounded-[6px] px-2.5 py-2 text-left text-xs font-medium transition {{ $dateIsSelected ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900' }}">
+                                                                <span class="truncate">{{ $groupCheck->checked_at?->format('d.m.Y H:i') ?: 'Tarihsiz' }}</span>
+                                                                @if($dateIsSelected)
+                                                                    <x-lucide.icon name="check" class="h-3.5 w-3.5 shrink-0" />
+                                                                @endif
+                                                            </button>
+                                                        @endforeach
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
+                                    <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 p-2">
+                                        <p class="text-[10px] text-slate-500">Son stok</p>
+                                        <p class="mt-0.5 font-semibold text-slate-900">{{ number_format((int) $groupLatestCheck->total_stock, 0, ',', '.') }}</p>
+                                    </div>
+                                    <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 p-2">
+                                        <p class="text-[10px] text-slate-500">Son favori</p>
+                                        <p class="mt-0.5 font-semibold text-slate-900">{{ $groupFavoriteCount !== null ? number_format((int) $groupFavoriteCount, 0, ',', '.') : '-' }}</p>
+                                    </div>
+                                    <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 p-2">
+                                        <p class="text-[10px] text-slate-500">Sorgu</p>
+                                        <p class="mt-0.5 font-semibold text-slate-900">{{ $groupQueryCount }}</p>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3 rounded-[8px] border border-slate-200 bg-slate-50/60 p-2.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="min-w-0">
+                                            <p class="text-xs font-semibold text-slate-900">Ürün stok trendi</p>
+                                            <p class="mt-0.5 text-[11px] text-slate-500">Son {{ $groupTrend->count() }} sorgu</p>
+                                        </div>
+                                        <span class="inline-flex shrink-0 items-center gap-1 rounded-[4px] border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium {{ $groupStockDelta < 0 ? 'text-emerald-700' : ($groupStockDelta > 0 ? 'text-rose-700' : 'text-slate-500') }}">
+                                            <x-lucide.icon name="{{ $groupStockDelta < 0 ? 'trending-down' : ($groupStockDelta > 0 ? 'trending-up' : 'minus') }}" class="h-3 w-3" />
+                                            {{ $groupStockDelta > 0 ? '+' : '' }}{{ number_format($groupStockDelta, 0, ',', '.') }}
+                                        </span>
+                                    </div>
+                                    <div class="mt-2 h-14 w-full">
+                                        <x-zolm.sparkline :data="$groupStockTrendData" width="260" height="56" color="text-indigo-500" :fill="true" />
+                                    </div>
+                                    <div class="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                                        <span class="truncate">{{ data_get($groupFirstTrendPoint, 'label', '-') }} · {{ number_format((int) data_get($groupFirstTrendPoint, 'stock', 0), 0, ',', '.') }}</span>
+                                        <span class="truncate text-right">{{ data_get($groupLastTrendPoint, 'label', '-') }} · {{ number_format((int) data_get($groupLastTrendPoint, 'stock', 0), 0, ',', '.') }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3 flex items-center justify-between gap-2">
+                                    <span class="inline-flex min-w-0 items-center gap-1 rounded-[4px] border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                                        <x-lucide.icon name="calendar-days" class="h-3 w-3" />
+                                        {{ $groupQueryCount }} tarih
+                                    </span>
+                                    <div class="ml-auto flex shrink-0 items-center gap-1">
+                                        <a href="{{ $groupLatestCheck->source_url }}" target="_blank" rel="noopener noreferrer" title="Trendyol'da aç"
+                                           class="inline-flex h-9 w-9 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900">
+                                            <x-lucide.icon name="external-link" class="h-3.5 w-3.5" />
+                                        </a>
+                                        <button type="button" x-on:click="queryStock($wire, @js($groupLatestCheck->source_url))" x-bind:disabled="bridgeBusy"
+                                                title="Yeniden stok sorgula" aria-label="Yeniden stok sorgula"
+                                                class="inline-flex h-9 w-9 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-wait disabled:opacity-70">
+                                            <span x-show="!bridgeBusy"><x-lucide.icon name="refresh-cw" class="h-3.5 w-3.5" /></span>
+                                            <span x-show="bridgeBusy" x-cloak><x-lucide.icon name="refresh-cw" class="h-3.5 w-3.5 animate-spin" /></span>
+                                        </button>
+                                        <button type="button" wire:click="toggleStockCheckFavorite({{ $groupLatestCheck->id }})" wire:loading.attr="disabled" wire:target="toggleStockCheckFavorite({{ $groupLatestCheck->id }})"
+                                                title="{{ $groupTrackedProduct?->is_favorite ? 'Favorilerden çıkar' : 'Favorile' }}"
+                                                class="inline-flex h-9 w-9 items-center justify-center rounded-[6px] border {{ $groupTrackedProduct?->is_favorite ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900' }} transition">
+                                            <x-lucide.icon name="heart" class="h-3.5 w-3.5" />
+                                        </button>
+                                        <button type="button" wire:click="followStockCheck({{ $groupLatestCheck->id }})" wire:loading.attr="disabled" wire:target="followStockCheck({{ $groupLatestCheck->id }})" @disabled($groupTrackingActive)
+                                                title="{{ $groupTrackingActive ? 'Takipte' : 'Takibe al' }}"
+                                                class="inline-flex h-9 w-9 items-center justify-center rounded-[6px] bg-slate-900 text-white transition hover:bg-slate-800 disabled:cursor-default disabled:bg-emerald-700">
+                                            <x-lucide.icon name="{{ $groupTrackingActive ? 'check' : 'radar' }}" class="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </article>
+                        @endif
                     @empty
-                        <div class="rounded-[8px] border border-dashed border-slate-300 bg-slate-50/70 p-4 text-sm text-slate-500">Henüz stok sorgusu yok.</div>
+                        <div class="flex flex-col items-start gap-3 rounded-[8px] border border-dashed border-slate-300 bg-slate-50/70 p-4 text-sm text-slate-500 lg:col-span-2 xl:col-span-3 sm:flex-row sm:items-center sm:justify-between">
+                            <span>{{ $stockProductTotal > 0 ? 'Filtrelerle eşleşen ürün bulunamadı.' : 'Henüz stok kaydı yok.' }}</span>
+                            @if($stockProductTotal > 0)
+                                <button type="button" wire:click="resetStockHistoryFilters" class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 sm:w-auto sm:py-2">
+                                    <x-lucide.icon name="rotate-ccw" class="h-4 w-4" />
+                                    Filtreleri temizle
+                                </button>
+                            @endif
+                        </div>
                     @endforelse
+                    </div>
                 </div>
             </div>
         </section>
@@ -2130,6 +2434,9 @@
         </section>    @elseif($activeModule === 'shipping_rates')
         @include('livewire.partials.trendyol-booster-shipping-rates')
         
+    @elseif($activeModule === 'reviews')
+        @include('livewire.partials.trendyol-booster-reviews')
+
     @elseif($activeModule === 'notifications')
         <section class="rounded-[10px] border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 p-4 lg:p-6">

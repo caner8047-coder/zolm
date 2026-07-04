@@ -14,14 +14,14 @@ class TrendyolBoosterNotificationService
 {
     public function __construct(
         protected NotificationCenterService $notificationCenter,
-    ) {
-    }
+    ) {}
 
     public function notifyPriceSnapshot(TrendyolBoosterSnapshot $snapshot): ?AppNotification
     {
         $delta = (float) $snapshot->price_delta;
+        $deltaPercent = (float) $snapshot->price_delta_percent;
 
-        if (abs($delta) < 0.01 || (float) $snapshot->previous_sale_price <= 0) {
+        if ((float) $snapshot->previous_sale_price <= 0 || ! $this->passesPriceThreshold($delta, $deltaPercent)) {
             return null;
         }
 
@@ -36,7 +36,7 @@ class TrendyolBoosterNotificationService
             'title' => $isDrop ? 'Booster fiyat düşüşü yakaladı' : 'Booster fiyat artışı yakaladı',
             'body' => $this->joinBody([
                 $tracked?->title ?: 'Trendyol ürünü',
-                $this->money((float) $snapshot->previous_sale_price) . ' -> ' . $this->money((float) $snapshot->sale_price),
+                $this->money((float) $snapshot->previous_sale_price).' -> '.$this->money((float) $snapshot->sale_price),
                 $this->signedMoney($delta),
                 $this->signedPercent((float) $snapshot->price_delta_percent),
             ]),
@@ -49,7 +49,7 @@ class TrendyolBoosterNotificationService
                 'sale_price' => (float) $snapshot->sale_price,
                 'previous_sale_price' => (float) $snapshot->previous_sale_price,
                 'price_delta' => $delta,
-                'price_delta_percent' => (float) $snapshot->price_delta_percent,
+                'price_delta_percent' => $deltaPercent,
             ],
             'action_url' => $this->boosterUrl('price', $tracked?->id),
             'triggered_at' => $snapshot->checked_at ?: now(),
@@ -69,6 +69,10 @@ class TrendyolBoosterNotificationService
             return null;
         }
 
+        if (! $this->passesStockThreshold($delta, $estimatedSales)) {
+            return null;
+        }
+
         $check->loadMissing('trackedProduct');
         $type = $estimatedSales > 0 ? 'booster_stock_sales' : 'booster_stock_change';
         $title = $estimatedSales > 0 ? 'Booster stok erimesi yakaladı' : 'Booster stok değişimi yakaladı';
@@ -80,8 +84,8 @@ class TrendyolBoosterNotificationService
             'title' => $title,
             'body' => $this->joinBody([
                 $check->title ?: $check->trackedProduct?->title ?: 'Trendyol ürünü',
-                'stok ' . (int) $check->previous_total_stock . ' -> ' . (int) $check->total_stock,
-                $estimatedSales > 0 ? "tahmini {$estimatedSales} satış" : 'değişim ' . $this->signedNumber($delta),
+                'stok '.(int) $check->previous_total_stock.' -> '.(int) $check->total_stock,
+                $estimatedSales > 0 ? "tahmini {$estimatedSales} satış" : 'değişim '.$this->signedNumber($delta),
                 $check->seller_count > 0 ? "{$check->seller_count} satıcı" : null,
             ]),
             'subject_type' => get_class($check),
@@ -106,7 +110,7 @@ class TrendyolBoosterNotificationService
         $newProducts = (int) $watch->new_product_count;
         $priceChanges = (int) $watch->price_change_count;
 
-        if ((int) $watch->scan_count <= 1 || ($newProducts === 0 && $priceChanges === 0)) {
+        if ((int) $watch->scan_count <= 1 || ! $this->passesStoreThreshold($newProducts, $priceChanges)) {
             return null;
         }
 
@@ -155,18 +159,22 @@ class TrendyolBoosterNotificationService
             return null;
         }
 
+        if (! $this->passesKeywordThreshold($previousRank, $currentRank, $previousStatus, $currentStatus)) {
+            return null;
+        }
+
         $keyword->loadMissing('trackedProduct');
         $worse = $this->keywordBecameRiskier($previousRank, $currentRank, $previousStatus, $currentStatus);
 
         return $this->notificationCenter->createForUser((int) $keyword->user_id, [
             'type' => 'booster_keyword_change',
             'severity' => $worse ? 'warning' : 'info',
-            'event_key' => 'trendyol-booster-keyword:' . $keyword->id . ':' . ($keyword->last_checked_at?->format('YmdHis') ?: now()->format('YmdHis')),
+            'event_key' => 'trendyol-booster-keyword:'.$keyword->id.':'.($keyword->last_checked_at?->format('YmdHis') ?: now()->format('YmdHis')),
             'title' => 'Booster kelime sırası değişti',
             'body' => $this->joinBody([
                 $keyword->keyword,
                 $keyword->trackedProduct?->title,
-                'sıra ' . $this->rankLabel($previousRank) . ' -> ' . $this->rankLabel($currentRank),
+                'sıra '.$this->rankLabel($previousRank).' -> '.$this->rankLabel($currentRank),
                 $keyword->visibility_note,
             ]),
             'subject_type' => get_class($keyword),
@@ -208,26 +216,69 @@ class TrendyolBoosterNotificationService
 
     protected function money(float $value): string
     {
-        return number_format($value, 2, ',', '.') . ' TL';
+        return number_format($value, 2, ',', '.').' TL';
     }
 
     protected function signedMoney(float $value): string
     {
         $prefix = $value > 0 ? '+' : '';
 
-        return $prefix . $this->money($value);
+        return $prefix.$this->money($value);
     }
 
     protected function signedPercent(float $value): string
     {
         $prefix = $value > 0 ? '+' : '';
 
-        return $prefix . number_format($value, 2, ',', '.') . '%';
+        return $prefix.number_format($value, 2, ',', '.').'%';
     }
 
     protected function signedNumber(int $value): string
     {
-        return ($value > 0 ? '+' : '') . (string) $value;
+        return ($value > 0 ? '+' : '').(string) $value;
+    }
+
+    protected function passesPriceThreshold(float $delta, float $deltaPercent): bool
+    {
+        $minAmount = max(0.01, (float) config('marketplace.trendyol_booster.notifications.price_min_delta_amount', 0.01));
+        $minPercent = max(0.0, (float) config('marketplace.trendyol_booster.notifications.price_min_delta_percent', 0));
+
+        if (abs($delta) >= $minAmount) {
+            return true;
+        }
+
+        return $minPercent > 0 && abs($deltaPercent) >= $minPercent;
+    }
+
+    protected function passesStockThreshold(int $delta, int $estimatedSales): bool
+    {
+        $minDelta = max(1, (int) config('marketplace.trendyol_booster.notifications.stock_min_delta_units', 1));
+        $minSales = max(1, (int) config('marketplace.trendyol_booster.notifications.stock_min_estimated_sales', 1));
+
+        return abs($delta) >= $minDelta || $estimatedSales >= $minSales;
+    }
+
+    protected function passesStoreThreshold(int $newProducts, int $priceChanges): bool
+    {
+        $minNewProducts = max(1, (int) config('marketplace.trendyol_booster.notifications.store_min_new_products', 1));
+        $minPriceChanges = max(1, (int) config('marketplace.trendyol_booster.notifications.store_min_price_changes', 1));
+
+        return $newProducts >= $minNewProducts || $priceChanges >= $minPriceChanges;
+    }
+
+    protected function passesKeywordThreshold(?int $previousRank, ?int $currentRank, ?string $previousStatus, ?string $currentStatus): bool
+    {
+        if ($previousStatus !== $currentStatus) {
+            return true;
+        }
+
+        if ($previousRank === null || $currentRank === null) {
+            return true;
+        }
+
+        $minRankDelta = max(1, (int) config('marketplace.trendyol_booster.notifications.keyword_min_rank_delta', 1));
+
+        return abs($currentRank - $previousRank) >= $minRankDelta;
     }
 
     protected function rankLabel(?int $rank): string

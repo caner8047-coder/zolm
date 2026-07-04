@@ -38,12 +38,22 @@ class MarketplaceClaimSyncService
                 ]);
 
                 $wasRecentlyCreated = !$claim->exists;
+                $previousClaimStatus = $claim->exists ? (string) $claim->status : null;
 
                 $claim->fill($normalized);
                 $claim->last_synced_at = now();
                 $claim->save();
 
                 $this->syncItems($claim, $item);
+
+                // İade durumu değişikliği → WhatsApp bildirimi
+                if (!$wasRecentlyCreated && $previousClaimStatus !== null && $previousClaimStatus !== $claim->status) {
+                    \App\Events\ReturnStatusChanged::dispatch(
+                        $claim,
+                        $previousClaimStatus,
+                        $claim->status,
+                    );
+                }
 
                 $wasRecentlyCreated ? $created++ : $updated++;
 

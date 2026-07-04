@@ -141,3 +141,15 @@ Schedule::call(fn () => $runInlineCommand('whatsapp:retention-cleanup'))
     ->name('whatsapp-retention-cleanup')
     ->dailyAt('04:00')
     ->withoutOverlapping();
+
+// Sepet kurtarma: her 5 dakikada
+Schedule::call(fn () => $runInlineCommand('whatsapp:process-cart-recovery'))
+    ->name('whatsapp-process-cart-recovery')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(4);
+
+// Stok hatırlatıcı: her 10 dakikada
+Schedule::call(fn () => $runInlineCommand('whatsapp:process-stock-alerts'))
+    ->name('whatsapp-process-stock-alerts')
+    ->everyTenMinutes()
+    ->withoutOverlapping(9);

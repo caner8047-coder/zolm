@@ -114,6 +114,13 @@ class MpProduct extends Model
     protected static function booted(): void
     {
         static::saved(function (MpProduct $product): void {
+            // Stok değişikliği → domain event
+            if ($product->wasChanged('stock_quantity')) {
+                $old = $product->getOriginal('stock_quantity');
+                $new = $product->stock_quantity;
+                \App\Events\ProductStockChanged::dispatch($product, (int) $old, (int) $new);
+            }
+
             if (static::$refreshingSetParents || !$product->wasChanged(static::SET_PARENT_REFRESH_FIELDS)) {
                 return;
             }

@@ -97,6 +97,7 @@ class MarketplaceIntegrationsConnectionSaveTest extends TestCase
             ->set('connectionForm.webhookSecret', '')
             ->set('connectionForm.apiKey', 'ck_test')
             ->set('connectionForm.apiSecret', 'cs_test')
+            ->set('connectionForm.zolmBoosterApiKey', 'zbt_test_key')
             ->set('connectionForm.storeFrontCode', '')
             ->set('connectionForm.extraUser', '')
             ->set('connectionForm.extraPassword', '')
@@ -109,6 +110,7 @@ class MarketplaceIntegrationsConnectionSaveTest extends TestCase
 
         $this->assertSame('https://shop.example.com', $connection->api_base_url);
         $this->assertSame('https://shop.example.com', data_get($connection->credentials_encrypted, 'store_url'));
+        $this->assertSame('zbt_test_key', data_get($connection->credentials_encrypted, 'zolm_booster_api_key'));
         $this->assertSame('configured', $connection->status);
     }
 

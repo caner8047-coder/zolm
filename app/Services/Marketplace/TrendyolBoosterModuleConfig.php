@@ -49,6 +49,7 @@ class TrendyolBoosterModuleConfig
                     ['label' => 'Stok Sorgulama', 'icon' => 'boxes', 'module' => 'stock'],
                     ['label' => 'Rakip Takibi', 'icon' => 'users', 'module' => 'competitor'],
                     ['label' => 'Trend Kelimeler', 'icon' => 'bar-chart-2', 'module' => 'trends'],
+                    ['label' => 'Trendyol Yorumlar', 'icon' => 'star', 'module' => 'reviews'],
                 ],
             ],
             [
@@ -91,7 +92,7 @@ class TrendyolBoosterModuleConfig
     public static function getGroupOfModule(string $item): string
     {
         return match ($item) {
-            'bestseller', 'supplier_finder', 'keyword_tracking', 'keyword', 'stock', 'competitor', 'trends' => 'market',
+            'bestseller', 'supplier_finder', 'keyword_tracking', 'keyword', 'stock', 'competitor', 'trends', 'reviews' => 'market',
             'sell_decision', 'profit_loss', 'gross_profit', 'net_profit', 'target_planner', 'commissions', 'shipping_rates' => 'calculation',
             'favorites', 'price', 'history', 'notifications' => 'tracking',
             default => 'product',
@@ -127,6 +128,7 @@ class TrendyolBoosterModuleConfig
             'keyword' => ['eyebrow' => 'Pazar araçları', 'title' => 'Anahtar Kelime Aratma', 'description' => 'Satmak istediğiniz ürünü yazın; Trendyol arama sonuçlarından popüler kelime, ürün başlığı ve açıklama ipuçları çıkarın.'],
             'competitor' => ['eyebrow' => 'Pazar araçları', 'title' => 'Rakip Takibi', 'description' => 'Rakip mağazaları izleyin; yeni ürün ve katalog değişimlerini yakalayın.'],
             'trends' => ['eyebrow' => 'Pazar araçları', 'title' => 'Trend Kelimeler', 'description' => 'Rakip mağaza başlıklarından yükselen kelimeleri keşfedin ve kendi ürününüzün arama sırasını takibe alın.'],
+            'reviews' => ['eyebrow' => 'Pazar araçları', 'title' => 'Trendyol Yorumlar', 'description' => 'Mağazanızdaki Trendyol yorumlarını toplayın, filtreleyin ve WooCommerce ürün sayfalarında modern bir widget ile gösterin.'],
             'price' => ['eyebrow' => 'Takip araçları', 'title' => 'Fiyat Takibi', 'description' => 'Takip ürünlerinin fiyat geçmişini ve son fiyat değişimlerini inceleyin.'],
             'history' => ['eyebrow' => 'Takip araçları', 'title' => 'Analiz Geçmişi', 'description' => 'Booster araçlarında oluşan karar, sorgu ve takip hareketlerini zaman sırasıyla görün.'],
             'commissions' => ['eyebrow' => 'Hesaplama', 'title' => 'Komisyon Oranları', 'description' => 'Kategori bazlı komisyon oranlarını araştırın ve karar hesaplarında kullanın.'],

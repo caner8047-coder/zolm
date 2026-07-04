@@ -1,11 +1,13 @@
 (function () {
   const PANEL_ID = 'zolm-trendyol-booster-panel';
+  const CONTENT_VERSION = chrome.runtime.getManifest().version;
 
-  if (window[PANEL_ID]) {
+  if (window[PANEL_ID] === CONTENT_VERSION) {
     return;
   }
 
-  window[PANEL_ID] = true;
+  window[PANEL_ID] = CONTENT_VERSION;
+  document.getElementById(PANEL_ID)?.remove();
 
   // Bestseller listener unconditionally registered — search result pages
   // (/sr?q=...) have context 'unknown' and hit the early return below,
@@ -25,6 +27,37 @@
     });
 
     return false;
+  });
+
+  chrome.runtime.onMessage.addListener(function reviewSyncHandler(message, sender, sendResponse) {
+    if (message?.type === 'ZOLM_BOOSTER_REVIEW_PRODUCT_LIST') {
+      const store = extractStoreData().store;
+      sendResponse({
+        ok: true,
+        store,
+        products: extractStoreProductListForReviews(message.max_products || 500),
+      });
+
+      return false;
+    }
+
+    if (message?.type !== 'ZOLM_BOOSTER_REVIEW_FETCH') {
+      return false;
+    }
+
+    fetchReviewsForSync(message.product_id, {
+      since: message.since || null,
+      maxPages: message.max_pages || 50,
+    })
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({
+        ok: false,
+        message: error instanceof Error ? error.message : 'Yorumlar okunamadı.',
+        reviews: [],
+        summary: {},
+      }));
+
+    return true;
   });
 
   const context = pageContext();
@@ -537,6 +570,7 @@ function extractProductData() {
       image_url: clean(envoyProduct?.images?.[0]) || meta('og:image'),
       barcode,
       total_stock: totalStock,
+      favorite_count: metrics.favorite_count,
       sellers,
       stock_source: structuredStock !== null ? 'envoy_shared_props' : 'visible_dom',
       availability: winner?.inStock === true ? 'InStock' : (winner?.inStock === false ? 'OutOfStock' : ''),
@@ -685,13 +719,18 @@ async function fetchRecentReviews(productId) {
   endpoint.searchParams.set('contentId', String(productId));
   endpoint.searchParams.set('page', '0');
   endpoint.searchParams.set('pageSize', '10');
+  endpoint.searchParams.set('channelId', '1');
   endpoint.searchParams.set('order', 'DESC');
   endpoint.searchParams.set('orderBy', 'LastModifiedDate');
 
   const response = await fetch(endpoint.href, {
     method: 'GET',
     credentials: 'include',
-    headers: { Accept: 'application/json' },
+    headers: {
+      Accept: 'application/json, text/plain, */*',
+      'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+      'x-agentname': 'web',
+    },
   });
 
   if (!response.ok) {
@@ -699,9 +738,8 @@ async function fetchRecentReviews(productId) {
   }
 
   const json = await response.json();
-  const result = json?.result || json || {};
-  const summary = result?.summary || {};
-  const reviews = Array.isArray(result?.reviews) ? result.reviews : [];
+  const summary = extractTrendyolReviewSummary(json);
+  const reviews = extractTrendyolReviewArray(json);
 
   return {
     metrics: {
@@ -710,14 +748,180 @@ async function fetchRecentReviews(productId) {
       average_rating: numericValue(summary?.averageRating),
     },
     reviews: reviews.slice(0, 10).map((review) => ({
-      review_id: String(review?.id || ''),
-      user_name: clean(review?.userFullName || 'Anonim').slice(0, 180),
-      rate: Math.max(0, Math.min(5, Number.parseInt(review?.rate || 0, 10))),
-      comment: clean(review?.comment || '').slice(0, 2000),
-      seller_name: clean(review?.seller?.name || '').slice(0, 180),
-      reviewed_at: review?.lastModifiedAt || review?.lastModifiedDate || null,
+      review_id: String(review?.id || review?.reviewId || review?.commentId || ''),
+      user_name: clean(review?.userFullName || review?.userName || review?.customerName || 'Anonim').slice(0, 180),
+      rate: Math.max(0, Math.min(5, Number.parseInt(review?.rate ?? review?.rating ?? review?.score ?? review?.starCount ?? 0, 10))),
+      comment: clean(review?.comment || review?.commentText || review?.text || review?.reviewText || '').slice(0, 2000),
+      seller_name: clean(review?.seller?.name || review?.sellerName || '').slice(0, 180),
+      reviewed_at: normalizeTrendyolReviewDate(review?.lastModifiedAt || review?.lastModifiedDate || review?.createdAt || review?.creationDate || review?.createdDate || review?.date),
     })).filter((review) => review.comment),
   };
+}
+
+// ===== Trendyol Yorum Senkronizasyonu (Faz 2) =====
+
+/**
+ * Pagination + delta sync ile tüm yorumları çeker.
+ */
+async function fetchReviewsForSync(productId, options = {}) {
+  const since = options.since ? new Date(options.since) : null;
+  const maxPages = options.maxPages || 50;
+  const pageSize = 50;
+  const allReviews = [];
+  let summary = null;
+
+  for (let page = 0; page < maxPages; page++) {
+    const endpoint = new URL('https://apigw.trendyol.com/discovery-storefront-trproductgw-service/api/review-read/product-reviews/detailed');
+    endpoint.searchParams.set('contentId', String(productId));
+    endpoint.searchParams.set('page', String(page));
+    endpoint.searchParams.set('pageSize', String(pageSize));
+    endpoint.searchParams.set('channelId', '1');
+    endpoint.searchParams.set('order', 'DESC');
+    endpoint.searchParams.set('orderBy', 'LastModifiedDate');
+
+    const response = await fetch(endpoint.href, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'x-agentname': 'web',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Trendyol yorum servisi ${response.status} yanıtı verdi.`);
+    }
+
+    const json = await response.json();
+    summary = summary || extractTrendyolReviewSummary(json);
+    const reviews = extractTrendyolReviewArray(json);
+
+    if (reviews.length === 0) break;
+
+    let reachedOld = false;
+    for (const review of reviews) {
+      const reviewedAt = review?.lastModifiedAt
+        ? new Date(review.lastModifiedAt)
+        : (review?.lastModifiedDate ? new Date(review.lastModifiedDate) : null);
+
+      if (since && reviewedAt && reviewedAt < since) {
+        reachedOld = true;
+        break;
+      }
+      allReviews.push(normalizeReviewForSync(review, productId));
+    }
+
+    if (reachedOld || reviews.length < pageSize) break;
+  }
+
+  return { reviews: allReviews, summary: summary || {} };
+}
+
+function extractTrendyolReviewArray(payload) {
+  const candidates = [
+    payload?.result?.productReviews?.content,
+    payload?.result?.productReviews?.reviews,
+    payload?.result?.productReviews,
+    payload?.result?.reviews,
+    payload?.result?.comments,
+    payload?.result?.data,
+    payload?.reviews,
+    payload?.comments,
+    payload?.content,
+    payload?.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+}
+
+function extractTrendyolReviewSummary(payload) {
+  return payload?.result?.summary
+    || payload?.result?.productReviews?.summary
+    || payload?.summary
+    || {};
+}
+
+/**
+ * Trendyol review verisini ZOLM ingest formatına normalize eder.
+ */
+function normalizeReviewForSync(review, productId) {
+  return {
+    trendyol_product_id: String(productId),
+    trendyol_review_id: String(review?.id || review?.reviewId || review?.commentId || ''),
+    reviewer_name: clean(review?.userFullName || review?.userName || review?.customerName || 'Anonim').slice(0, 180),
+    reviewer_avatar_url: review?.userImage ? String(review.userImage).slice(0, 1000) : null,
+    rating: Math.max(1, Math.min(5, Number.parseInt(review?.rate ?? review?.rating ?? review?.score ?? review?.starCount ?? 0, 10) || 1)),
+    comment: clean(review?.comment || review?.commentText || review?.text || review?.reviewText || '').slice(0, 3000),
+    review_media: extractReviewMedia(review),
+    helpful_count: nonNegativeInteger(review?.likeCount ?? review?.helpfulCount ?? review?.likes),
+    seller_name: clean(review?.seller?.name || review?.sellerName || '').slice(0, 180),
+    seller_id: String(review?.seller?.id || review?.sellerId || review?.merchantId || '').slice(0, 80),
+    reviewed_at: normalizeTrendyolReviewDate(review?.lastModifiedAt || review?.lastModifiedDate || review?.createdAt || review?.creationDate || review?.createdDate || review?.date),
+  };
+}
+
+function normalizeTrendyolReviewDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const timestamp = value > 9999999999 ? value : value * 1000;
+    const date = new Date(timestamp);
+
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  return String(value);
+}
+
+/**
+ * Trendyol review fotoğraflarını çeker.
+ */
+function extractReviewMedia(review) {
+  const photos = Array.isArray(review?.photos)
+    ? review.photos
+    : (Array.isArray(review?.reviewPhotos) ? review.reviewPhotos : []);
+  const media = [];
+
+  for (const photo of photos) {
+    const url = photo?.url || photo?.imageUrl || photo?.path || '';
+    if (url) {
+      media.push({ url: String(url).slice(0, 1000), width: photo?.width || null, height: photo?.height || null, type: 'photo' });
+    }
+  }
+
+  return media;
+}
+
+function extractStoreProductListForReviews(maxProducts = 500) {
+  const products = new Map();
+  const anchors = document.querySelectorAll('a[href*="-p-"]');
+
+  for (const anchor of anchors) {
+    if (products.size >= maxProducts) break;
+
+    const href = String(anchor.href || '');
+    const match = href.match(/-p-(\d+)/);
+    if (!match || products.has(match[1])) continue;
+
+    const card = anchor.closest('.p-card-wrppr, [data-testid="product-card"], .prdct-cntnr-wrppr, li, article') || anchor;
+    const image = card.querySelector('img');
+    const titleNode = card.querySelector('.prdct-desc-cntnr-name, .product-name, [data-testid="product-name"], [title]');
+    const title = clean(titleNode?.textContent || image?.alt || anchor.getAttribute('title') || '').slice(0, 500);
+    const barcode = clean(card.getAttribute('data-barcode') || anchor.getAttribute('data-barcode') || '').slice(0, 120);
+
+    products.set(match[1], {
+      trendyol_product_id: match[1],
+      product_title: title,
+      product_image_url: image?.src ? String(image.src).slice(0, 1000) : '',
+      trendyol_product_barcode: barcode || null,
+    });
+  }
+
+  return Array.from(products.values());
 }
 
 function readEnvoyProduct() {
@@ -803,11 +1007,20 @@ function sellersFromEnvoyProduct(product, defaultPrice) {
   const sellers = [];
   const seen = new Set();
 
-  const walk = (node) => {
-    if (!node || typeof node !== 'object' || sellers.length >= 20) return;
+  const collections = [
+    product?.merchantListing,
+    ...(Array.isArray(product?.merchantListings) ? product.merchantListings : []),
+    ...(Array.isArray(product?.otherMerchantListings) ? product.otherMerchantListings : []),
+    ...(Array.isArray(product?.otherMerchants) ? product.otherMerchants : []),
+    ...(Array.isArray(product?.sellers) ? product.sellers : []),
+  ].filter(Boolean);
 
-    const merchant = node.merchant;
-    const winner = node.winnerVariant;
+  for (const candidate of collections) {
+    if (sellers.length >= 20) break;
+
+    const listing = candidate?.merchantListing || candidate;
+    const merchant = listing?.merchant;
+    const winner = listing?.winnerVariant;
 
     if (merchant && winner && (merchant.id || merchant.name)) {
       const sellerId = String(merchant.id || '');
@@ -828,13 +1041,8 @@ function sellersFromEnvoyProduct(product, defaultPrice) {
         });
       }
     }
+  }
 
-    Object.values(node).forEach((child) => {
-      if (child && typeof child === 'object') walk(child);
-    });
-  };
-
-  walk(product);
   return sellers;
 }
 
@@ -866,7 +1074,7 @@ function mergeSellers(...groups) {
   return sellers.filter((seller) => {
     const key = String(seller.seller_id || seller.seller_name || '').trim().toLocaleLowerCase('tr-TR');
 
-    if (!key || seen.has(key)) {
+    if (!key || isBadSellerName(seller.seller_name) || (!seller.seller_id && seller.stock <= 0) || seen.has(key)) {
       return false;
     }
 
@@ -1119,12 +1327,12 @@ function extractSellerStocks(defaultPrice) {
         seller_name: sellerName || parseSellerName(text),
         seller_id: extractStoreId(node.querySelector('a[href*="/magaza/"]')?.href || ''),
         stock,
-        sale_price: parsePrice(text) || defaultPrice || 0,
+        sale_price: parsePrice(text) || 0,
         seller_score: parseSellerScore(text),
         shipping_note: parseShippingNote(text),
       };
     })
-    .filter((seller, index, list) => seller.seller_name && (seller.stock > 0 || seller.sale_price > 0) && list.findIndex((item) => item.seller_name === seller.seller_name) === index)
+    .filter((seller, index, list) => seller.seller_name && !isBadSellerName(seller.seller_name) && (seller.seller_id || seller.stock > 0) && list.findIndex((item) => item.seller_name === seller.seller_name) === index)
     .slice(0, 20);
 }
 
@@ -1178,12 +1386,12 @@ function extractVisibleProductSellers(defaultPrice) {
         seller_name: sellerName,
         seller_id: extractStoreId(node.querySelector('a[href*="/magaza/"]')?.href || ''),
         stock: parseStock(text),
-        sale_price: parsePrice(text) || defaultPrice || 0,
+        sale_price: parsePrice(text) || 0,
         seller_score: parseSellerScore(text),
         shipping_note: parseShippingNote(text),
       };
     })
-    .filter((seller) => seller.seller_name && !isBadSellerName(seller.seller_name) && (seller.sale_price > 0 || seller.stock > 0 || seller.seller_score !== null))
+    .filter((seller) => seller.seller_name && !isBadSellerName(seller.seller_name) && (seller.seller_id || seller.stock > 0))
     .filter((seller, index, list) => list.findIndex((item) => item.seller_name.toLocaleLowerCase('tr-TR') === seller.seller_name.toLocaleLowerCase('tr-TR')) === index)
     .slice(0, 20);
 }
@@ -1240,10 +1448,11 @@ function isBadSellerName(value) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 
-  return !normalized || [
+  return !normalized || normalized.length > 80 || [
     'urun', 'urunun diger saticilari', 'satici sorulari', 'satici', 'ana satici',
     'magazaya git', 'takip et', 'takip et kazan', 'kargo bedava', 'trendyol pazaryeri',
-  ].includes(normalized);
+    'yarin', 'tahmini', 'kampanyali fiyat',
+  ].includes(normalized) || /window|envoy|tanimlama bilgileri|reklam ortaklarimiz|trendyol da satis yap|trendyol plus|satici sorulari|sorulari \d|siparis verirsen|takipci|icerigimizi arkadaslarinizla|videolar ile canli sohbet/i.test(normalized);
 }
 
 function parseStock(text) {
@@ -1603,8 +1812,16 @@ function extractProductId(value) {
 }
 
 function extractStoreId(value) {
-  const match = String(value || '').match(/-m-(\d+)/i);
-  return match ? match[1] : '';
+  const text = String(value || '');
+  const pathMatch = text.match(/-m-(\d+)/i);
+  if (pathMatch) return pathMatch[1];
+
+  try {
+    const url = new URL(text, location.origin);
+    return url.searchParams.get('mid') || url.searchParams.get('merchantId') || '';
+  } catch (error) {
+    return '';
+  }
 }
 
 function storeUrlForSeller(storeName, storeId) {

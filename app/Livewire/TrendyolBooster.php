@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\AppNotification;
+use App\Models\MarketplaceStore;
 use App\Models\MpProduct;
 use App\Models\TrendyolBestsellerReport;
 use App\Models\TrendyolBoosterActivityLog;
@@ -11,6 +12,9 @@ use App\Models\TrendyolBoosterCompetitor;
 use App\Models\TrendyolBoosterCostPreset;
 use App\Models\TrendyolBoosterKeyword;
 use App\Models\TrendyolBoosterProduct;
+use App\Models\TrendyolBoosterReview;
+use App\Models\TrendyolBoosterReviewSource;
+use App\Models\TrendyolBoosterReviewSync;
 use App\Models\TrendyolBoosterStoreWatchItem;
 use App\Models\TrendyolBoosterTrendKeyword;
 use App\Services\Marketplace\TrendyolBestsellerReader;
@@ -28,13 +32,20 @@ use App\Services\Marketplace\TrendyolBoosterKeywordService;
 use App\Services\Marketplace\TrendyolBoosterModuleConfig;
 use App\Services\Marketplace\TrendyolBoosterModuleInsightService;
 use App\Services\Marketplace\TrendyolBoosterMonitorService;
+use App\Services\Marketplace\TrendyolBoosterOperationalAlertService;
+use App\Services\Marketplace\TrendyolBoosterPriorityActionService;
 use App\Services\Marketplace\TrendyolBoosterProductAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterResearchService;
+use App\Services\Marketplace\TrendyolBoosterRetentionReportService;
+use App\Services\Marketplace\TrendyolBoosterReviewMatchEngine;
+use App\Services\Marketplace\TrendyolBoosterReviewPushService;
+use App\Services\Marketplace\TrendyolBoosterReviewService;
 use App\Services\Marketplace\TrendyolBoosterScheduledAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterSellDecisionService;
 use App\Services\Marketplace\TrendyolBoosterStockService;
 use App\Services\Marketplace\TrendyolBoosterStoreWatchService;
 use App\Services\Marketplace\TrendyolBoosterSupplierResearchService;
+use App\Services\Marketplace\TrendyolBoosterSyncHealthService;
 use App\Services\Marketplace\TrendyolBoosterTrendKeywordService;
 use App\Services\Marketplace\TrendyolCategoryDictionary;
 use App\Services\Marketplace\TrendyolCommissionPdfParser;
@@ -250,6 +261,16 @@ class TrendyolBooster extends Component
 
     public $stockTotalStock = null;
 
+    public ?int $selectedStockCheckId = null;
+
+    public string $stockHistorySearch = '';
+
+    public string $stockHistoryCategory = 'all';
+
+    public string $stockHistoryStatus = 'all';
+
+    public string $stockHistorySort = 'latest';
+
     public string $keywordLookupInput = '';
 
     public string $storeWatchUrl = '';
@@ -342,6 +363,32 @@ class TrendyolBooster extends Component
 
     public string $messageType = 'success';
 
+    // ===== Trendyol Yorumlar Modülü =====
+    public string $reviewSearch = '';
+
+    public string $reviewFilterRating = 'all';
+
+    public string $reviewFilterStatus = 'all';
+
+    public ?bool $reviewFilterHasPhoto = null;
+
+    public string $reviewSortBy = 'reviewed_at_desc';
+
+    public ?int $activeReviewSyncRunId = null;
+
+    public ?int $reviewSyncProgress = null;
+
+    public ?int $reviewSourceId = null;
+
+    public string $reviewSourceName = '';
+
+    public string $reviewSourceUrl = '';
+
+    public string $reviewSourceMerchantId = '';
+
+    /** @var array<string, mixed> */
+    public array $reviewSourcePreview = [];
+
     protected $queryString = [
         'activeModule' => ['except' => 'analysis', 'as' => 'booster'],
         'favoritesOnly' => ['except' => false, 'as' => 'favorites'],
@@ -369,6 +416,8 @@ class TrendyolBooster extends Component
         if ($this->selectedProductId) {
             $this->loadProduct($this->selectedProductId);
         }
+
+        $this->loadDefaultReviewSource();
     }
 
     #[Computed]
@@ -715,11 +764,25 @@ class TrendyolBooster extends Component
                 'last_total_stock' => 0,
                 'estimated_sales' => 0,
                 'seller_count' => 0,
+                'selected_check' => null,
+                'selected_check_id' => null,
+                'trend' => collect(),
+                'product_groups' => collect(),
+                'product_group_total' => 0,
+                'product_group_count' => 0,
+                'filtered_check_count' => 0,
+                'stock_categories' => collect(),
+                'history_truncated' => false,
                 'latest_checks' => collect(),
             ];
         }
 
-        return app(TrendyolBoosterStockService::class)->dashboard($this->userId());
+        return app(TrendyolBoosterStockService::class)->dashboard($this->userId(), $this->selectedStockCheckId, [
+            'search' => $this->stockHistorySearch,
+            'category' => $this->stockHistoryCategory,
+            'status' => $this->stockHistoryStatus,
+            'sort' => $this->stockHistorySort,
+        ]);
     }
 
     #[Computed]
@@ -1010,9 +1073,25 @@ class TrendyolBooster extends Component
 
         if ($result['ok']) {
             $this->stockTotalStock = null;
+            $this->selectedStockCheckId = null;
         }
 
         unset($this->stockDashboard, $this->marketInsightDashboard, $this->activityDashboard);
+    }
+
+    public function updatedSelectedStockCheckId(mixed $value): void
+    {
+        $this->selectedStockCheckId = $value ? (int) $value : null;
+        unset($this->stockDashboard);
+    }
+
+    public function resetStockHistoryFilters(): void
+    {
+        $this->stockHistorySearch = '';
+        $this->stockHistoryCategory = 'all';
+        $this->stockHistoryStatus = 'all';
+        $this->stockHistorySort = 'latest';
+        unset($this->stockDashboard);
     }
 
     public function stockBridgeCompleted(string $message, bool $ok): void
@@ -1022,9 +1101,29 @@ class TrendyolBooster extends Component
 
         if ($ok) {
             $this->stockTotalStock = null;
+            $this->selectedStockCheckId = null;
         }
 
         unset($this->stockDashboard, $this->marketInsightDashboard, $this->activityDashboard);
+    }
+
+    public function followStockCheck(int $stockCheckId): void
+    {
+        $product = app(TrendyolBoosterStockService::class)->followCheck($this->userId(), $stockCheckId);
+
+        $this->message = ($product->title ?: 'Ürün').' stok takibine alındı.';
+        $this->messageType = 'success';
+        $this->forgetTrackingHealthCache();
+        unset($this->stockDashboard, $this->dashboard, $this->trackingDashboard);
+    }
+
+    public function toggleStockCheckFavorite(int $stockCheckId): void
+    {
+        $product = app(TrendyolBoosterStockService::class)->toggleCheckFavorite($this->userId(), $stockCheckId);
+
+        $this->message = $product->is_favorite ? 'Ürün favorilere eklendi.' : 'Ürün favorilerden çıkarıldı.';
+        $this->messageType = 'success';
+        unset($this->stockDashboard, $this->dashboard, $this->trackingDashboard);
     }
 
     public function runKeywordLookup(): void
@@ -1209,6 +1308,9 @@ class TrendyolBooster extends Component
                 ? $successCount.'/'.count($keywords).' anahtar kelime sunucu okuyucusu ile takibe alındı.'
                 : ($lastMessage ?: 'Anahtar kelime takibi sunucu okuyucusu ile tamamlanamadı.');
             $this->messageType = $successCount > 0 ? 'success' : 'error';
+            if ($successCount > 0) {
+                $this->forgetTrackingHealthCache();
+            }
             unset($this->marketInsightDashboard, $this->activityDashboard, $this->keywordTrackingCurrentProduct);
         } catch (\Throwable $exception) {
             report($exception);
@@ -1310,6 +1412,9 @@ class TrendyolBooster extends Component
             $this->messageType = $successCount > 0 ? 'success' : 'warning';
             $this->keywordTrackingKeyword = '';
 
+            if ($successCount > 0) {
+                $this->forgetTrackingHealthCache();
+            }
             unset($this->marketInsightDashboard, $this->activityDashboard, $this->keywordTrackingCurrentProduct);
         } catch (\Throwable $exception) {
             report($exception);
@@ -1340,8 +1445,10 @@ class TrendyolBooster extends Component
                 $this->message = $backendResult['message'] ?? 'Rakip mağaza tarandı.';
                 $this->messageType = 'success';
                 unset($this->storeWatchDashboard, $this->marketInsightDashboard, $this->activityDashboard);
+                $this->forgetTrackingHealthCache();
                 // Chrome eklentisi varsa daha derin tarama için yine dispatch et
                 $this->dispatch('booster:store-scan-bridge', url: $this->storeWatchUrl, optional: true);
+
                 return;
             }
         } catch (\Throwable) {
@@ -1357,6 +1464,7 @@ class TrendyolBooster extends Component
         if (isset($payload['ok']) && $payload['ok'] === false) {
             $this->message = $payload['message'] ?? 'Chrome Eklentisi mağazayı okuyamadı.';
             $this->messageType = 'error';
+
             return;
         }
 
@@ -1373,9 +1481,10 @@ class TrendyolBooster extends Component
             $this->message = $result['message'] ?? 'Rakip mağaza tarandı.';
             $this->messageType = $result['ok'] ? 'success' : 'error';
             unset($this->storeWatchDashboard, $this->marketInsightDashboard, $this->activityDashboard);
+            $this->forgetTrackingHealthCache();
         } catch (\Exception $e) {
-             $this->message = 'Kaydedilirken hata oluştu: ' . $e->getMessage();
-             $this->messageType = 'error';
+            $this->message = 'Kaydedilirken hata oluştu: '.$e->getMessage();
+            $this->messageType = 'error';
         }
     }
 
@@ -2207,6 +2316,7 @@ class TrendyolBooster extends Component
             ->track($this->userId(), $results[$index], $kind, $groupKey)['product'];
         $this->message = ($tracked->title ?: 'Ürün').' Booster Radar takibine alındı.';
         $this->messageType = 'success';
+        $this->forgetTrackingHealthCache();
         unset($this->dashboard, $this->trackingDashboard);
     }
 
@@ -2225,6 +2335,7 @@ class TrendyolBooster extends Component
 
         $this->message = count($results).' ürün Booster Radar takibine alındı.';
         $this->messageType = 'success';
+        $this->forgetTrackingHealthCache();
         unset($this->dashboard, $this->trackingDashboard);
     }
 
@@ -2248,6 +2359,7 @@ class TrendyolBooster extends Component
 
         $this->message = 'Ürün Booster Radar takibine alındı. İlk otomatik tarama sıraya eklendi.';
         $this->messageType = 'success';
+        $this->forgetTrackingHealthCache();
         unset($this->productAnalysis, $this->dashboard, $this->trackingDashboard);
     }
 
@@ -2266,6 +2378,7 @@ class TrendyolBooster extends Component
 
         $this->message = 'Ürün takibi duraklatıldı; geçmiş veriler korunuyor.';
         $this->messageType = 'success';
+        $this->forgetTrackingHealthCache();
         unset($this->dashboard, $this->trackingDashboard);
     }
 
@@ -2303,6 +2416,15 @@ class TrendyolBooster extends Component
         unset($this->productAnalysis);
     }
 
+    public function openTrackedProductAnalysis(int $trackedProductId): void
+    {
+        $this->loadTrackedProduct($trackedProductId);
+        $this->activeModule = 'analysis';
+        $this->favoritesOnly = false;
+        $this->dispatchBoosterModuleChanged('analysis');
+        unset($this->productAnalysis, $this->dashboard, $this->trackingDashboard);
+    }
+
     public function refreshProductAnalysisNow(int $trackedProductId): void
     {
         if (! $this->analysisRefreshReady()) {
@@ -2328,6 +2450,7 @@ class TrendyolBooster extends Component
         }
 
         unset($this->productAnalysis, $this->dashboard);
+        $this->forgetTrackingHealthCache();
     }
 
     public function toggleAnalysisAutoRefresh(int $trackedProductId): void
@@ -2354,6 +2477,7 @@ class TrendyolBooster extends Component
             ? 'Otomatik analiz açıldı. İlk yenileme sıraya alındı.'
             : 'Otomatik analiz kapatıldı.';
         $this->messageType = 'success';
+        $this->forgetTrackingHealthCache();
         unset($this->dashboard, $this->trackingDashboard);
     }
 
@@ -2379,6 +2503,7 @@ class TrendyolBooster extends Component
 
         $this->message = 'Otomatik analiz aralığı güncellendi.';
         $this->messageType = 'success';
+        $this->forgetTrackingHealthCache();
         unset($this->dashboard);
     }
 
@@ -2390,21 +2515,87 @@ class TrendyolBooster extends Component
     #[Computed]
     public function trackingSchedulerState(): array
     {
-        $value = Cache::get('marketplace:trendyol-booster:last-scheduler-run-at');
+        return $this->rememberTrackingHealth('scheduler', fn (): array => app(TrendyolBoosterSyncHealthService::class)->dashboard($this->userId()));
+    }
 
-        try {
-            $lastRunAt = filled($value) ? Carbon::parse((string) $value) : null;
-        } catch (\Throwable) {
-            $lastRunAt = null;
-        }
-
-        $healthy = $lastRunAt !== null && $lastRunAt->greaterThanOrEqualTo(now()->subMinutes(15));
+    #[Computed]
+    public function trackingRetentionState(): array
+    {
+        $report = $this->trackingRetentionReport();
+        $datasets = collect($report['datasets'] ?? [])->where('available', true);
+        $summary = $report['summary'] ?? [];
+        $totalCount = (int) ($summary['total_count'] ?? 0);
+        $candidateCount = (int) ($summary['candidate_count'] ?? 0);
+        $topCandidate = $datasets
+            ->sortByDesc(fn (array $dataset): int => (int) ($dataset['candidate_count'] ?? 0))
+            ->first();
 
         return [
-            'healthy' => $healthy,
-            'last_run_at' => $lastRunAt,
-            'label' => $healthy ? 'Tarama motoru çalışıyor' : 'Tarama motoru bekliyor',
+            'healthy' => $candidateCount === 0,
+            'tone' => $candidateCount > 0 ? 'amber' : 'emerald',
+            'label' => $candidateCount > 0 ? 'Geçmiş veri adayı var' : 'Geçmiş veri dengeli',
+            'total_count' => $totalCount,
+            'candidate_count' => $candidateCount,
+            'candidate_ratio' => $totalCount > 0 ? round(($candidateCount / $totalCount) * 100, 2) : 0.0,
+            'dataset_count' => (int) ($summary['available_dataset_count'] ?? $datasets->count()),
+            'top_candidate' => $topCandidate,
+            'command' => 'php artisan marketplace:trendyol-booster-retention-report --user='.$this->userId(),
+            'cleanup_enabled' => (bool) config('marketplace.trendyol_booster.retention.cleanup_enabled', false),
         ];
+    }
+
+    #[Computed]
+    public function trackingOperationalAlertState(): array
+    {
+        return $this->rememberTrackingHealth(
+            'operational-alert',
+            fn (): array => app(TrendyolBoosterOperationalAlertService::class)->summarize(
+                $this->trackingSchedulerState,
+                $this->trackingRetentionReport(),
+            ),
+        );
+    }
+
+    #[Computed]
+    public function trackingPriorityActionState(): array
+    {
+        return $this->rememberTrackingHealth(
+            'priority-actions',
+            fn (): array => app(TrendyolBoosterPriorityActionService::class)->dashboard($this->userId()),
+        );
+    }
+
+    protected function trackingRetentionReport(): array
+    {
+        return $this->rememberTrackingHealth('retention', fn (): array => app(TrendyolBoosterRetentionReportService::class)->report($this->userId()));
+    }
+
+    protected function rememberTrackingHealth(string $key, callable $callback): array
+    {
+        $seconds = $this->trackingHealthCacheSeconds();
+
+        if ($seconds <= 0) {
+            return $callback();
+        }
+
+        return Cache::remember($this->trackingHealthCacheKey($key), now()->addSeconds($seconds), $callback);
+    }
+
+    protected function forgetTrackingHealthCache(): void
+    {
+        foreach (['scheduler', 'retention', 'operational-alert', 'priority-actions'] as $key) {
+            Cache::forget($this->trackingHealthCacheKey($key));
+        }
+    }
+
+    protected function trackingHealthCacheKey(string $key): string
+    {
+        return 'trendyol-booster:tracking-health:'.$this->userId().':'.$key;
+    }
+
+    protected function trackingHealthCacheSeconds(): int
+    {
+        return max(0, min(300, (int) config('marketplace.trendyol_booster.alerts.cache_seconds', 30)));
     }
 
     public function analyzeAndTrack(): void
@@ -2444,6 +2635,7 @@ class TrendyolBooster extends Component
             ['tracked_product_id' => $tracked->id, 'decision' => $tracked->decision_status],
             $tracked->id,
         );
+        $this->forgetTrackingHealthCache();
         unset($this->dashboard, $this->preview, $this->activityDashboard);
     }
 
@@ -2489,6 +2681,7 @@ class TrendyolBooster extends Component
 
         $this->message = 'Takip kaydı silindi.';
         $this->messageType = 'success';
+        $this->forgetTrackingHealthCache();
         unset($this->dashboard);
     }
 
@@ -2528,6 +2721,7 @@ class TrendyolBooster extends Component
         }
 
         unset($this->dashboard, $this->preview, $this->priceDashboard, $this->activityDashboard);
+        $this->forgetTrackingHealthCache();
     }
 
     public function addCompetitor(int $trackedProductId): void
@@ -2571,6 +2765,7 @@ class TrendyolBooster extends Component
         }
 
         unset($this->dashboard, $this->marketInsightDashboard, $this->activityDashboard);
+        $this->forgetTrackingHealthCache();
     }
 
     public function refreshCompetitor(int $competitorId): void
@@ -2587,6 +2782,7 @@ class TrendyolBooster extends Component
         $this->message = $result['message'];
         $this->messageType = $result['ok'] ? 'success' : 'error';
         unset($this->dashboard, $this->marketInsightDashboard);
+        $this->forgetTrackingHealthCache();
     }
 
     public function removeCompetitor(int $competitorId): void
@@ -2599,6 +2795,7 @@ class TrendyolBooster extends Component
         $this->message = 'Rakip kaydı silindi.';
         $this->messageType = 'success';
         unset($this->dashboard, $this->marketInsightDashboard);
+        $this->forgetTrackingHealthCache();
     }
 
     public function addKeyword(int $trackedProductId): void
@@ -2643,6 +2840,7 @@ class TrendyolBooster extends Component
         }
 
         unset($this->dashboard, $this->marketInsightDashboard, $this->activityDashboard);
+        $this->forgetTrackingHealthCache();
     }
 
     public function refreshKeyword(int $keywordId): void
@@ -2659,6 +2857,7 @@ class TrendyolBooster extends Component
         $this->message = $result['message'];
         $this->messageType = $result['ok'] ? 'success' : 'error';
         unset($this->dashboard, $this->marketInsightDashboard);
+        $this->forgetTrackingHealthCache();
     }
 
     public function removeKeyword(int $keywordId): void
@@ -2671,6 +2870,7 @@ class TrendyolBooster extends Component
         $this->message = 'Anahtar kelime kaydı silindi.';
         $this->messageType = 'success';
         unset($this->dashboard, $this->marketInsightDashboard);
+        $this->forgetTrackingHealthCache();
     }
 
     public function saveCostPreset(): void
@@ -2988,6 +3188,7 @@ class TrendyolBooster extends Component
         }
 
         $tracked->forceFill($trackingUpdates)->save();
+        $this->forgetTrackingHealthCache();
 
         $marketData = [];
         $marketMessage = '';
@@ -3485,6 +3686,7 @@ class TrendyolBooster extends Component
             $this->bestsellerTrackedProductIds = array_values(array_unique($this->bestsellerTrackedProductIds));
             $this->message = ($tracked->title ?: 'Ürün').' Booster Radar takibine alındı.';
             $this->messageType = 'success';
+            $this->forgetTrackingHealthCache();
             unset($this->dashboard, $this->trackingDashboard, $this->bestsellerReportDashboard);
         } catch (\Throwable $exception) {
             report($exception);
@@ -3521,6 +3723,7 @@ class TrendyolBooster extends Component
         $this->bestsellerTrackedProductIds = array_values(array_unique($this->bestsellerTrackedProductIds));
         $this->message = $message ?: ($tracked->title ?: 'Ürün').' Booster Radar takibine alındı.';
         $this->messageType = 'success';
+        $this->forgetTrackingHealthCache();
         unset($this->dashboard, $this->trackingDashboard, $this->bestsellerReportDashboard);
     }
 
@@ -4222,5 +4425,635 @@ class TrendyolBooster extends Component
         $rate = (float) $value;
 
         return round($rate > 0 && $rate <= 1 ? $rate * 100 : $rate, 2);
+    }
+
+    // ===== Trendyol Yorumlar Modülü =====
+
+    #[Computed]
+    public function reviewStats(): array
+    {
+        if ($this->activeModule !== 'reviews') {
+            return ['total' => 0, 'approved' => 0, 'pending' => 0, 'rejected' => 0, 'spam' => 0, 'pushed' => 0, 'matched' => 0, 'rating_distribution' => [], 'average_rating' => 0];
+        }
+
+        return app(TrendyolBoosterReviewService::class)->getStats($this->userId(), $this->reviewSourceId);
+    }
+
+    #[Computed]
+    public function reviewSources(): array
+    {
+        if ($this->activeModule !== 'reviews' || ! Schema::hasTable('trendyol_booster_review_sources')) {
+            return [];
+        }
+
+        return TrendyolBoosterReviewSource::query()
+            ->where('user_id', $this->userId())
+            ->where('is_active', true)
+            ->orderByDesc('verified_at')
+            ->get()
+            ->map(fn (TrendyolBoosterReviewSource $source): array => [
+                'id' => $source->id,
+                'store_name' => $source->store_name,
+                'merchant_id' => $source->merchant_id,
+                'store_url' => $source->store_url,
+                'verified_product_count' => $source->verified_product_count,
+                'verified_at' => $source->verified_at?->format('d.m.Y H:i'),
+                'last_scanned_at' => $source->last_scanned_at?->format('d.m.Y H:i'),
+            ])
+            ->all();
+    }
+
+    #[Computed]
+    public function reviewGroups(): array
+    {
+        if ($this->activeModule !== 'reviews') {
+            return [];
+        }
+
+        $query = TrendyolBoosterReview::where('user_id', $this->userId())
+            ->when($this->reviewSourceId !== null, fn (Builder $query) => $query->where('review_source_id', $this->reviewSourceId))
+            ->where('status', '!=', 'deleted');
+
+        if ($this->reviewFilterRating !== 'all') {
+            if ($this->reviewFilterRating === '4plus') {
+                $query->where('rating', '>=', 4);
+            } else {
+                $query->where('rating', (int) $this->reviewFilterRating);
+            }
+        }
+
+        if ($this->reviewFilterStatus !== 'all') {
+            $query->where('status', $this->reviewFilterStatus);
+        }
+
+        if ($this->reviewFilterHasPhoto === true) {
+            $query->whereNotNull('review_media')
+                ->where('review_media', '!=', '[]');
+        } elseif ($this->reviewFilterHasPhoto === false) {
+            $query->where(function ($q) {
+                $q->whereNull('review_media')
+                    ->orWhere('review_media', '[]');
+            });
+        }
+
+        if (mb_strlen(trim($this->reviewSearch)) >= 2) {
+            $search = trim($this->reviewSearch);
+            $query->where(function ($q) use ($search) {
+                $q->where('comment', 'like', "%{$search}%")
+                    ->orWhere('product_title', 'like', "%{$search}%")
+                    ->orWhere('reviewer_name_masked', 'like', "%{$search}%");
+            });
+        }
+
+        $sortMap = [
+            'reviewed_at_desc' => ['reviewed_at', 'desc'],
+            'reviewed_at_asc' => ['reviewed_at', 'asc'],
+            'rating_desc' => ['rating', 'desc'],
+            'rating_asc' => ['rating', 'asc'],
+            'helpful_desc' => ['helpful_count', 'desc'],
+        ];
+        [$sortField, $sortDir] = $sortMap[$this->reviewSortBy] ?? ['reviewed_at', 'desc'];
+        $query->orderBy($sortField, $sortDir);
+
+        $reviews = $query->limit(200)->get();
+
+        return $reviews->groupBy('trendyol_product_id')->map(function ($group) {
+            $first = $group->first();
+
+            return [
+                'trendyol_product_id' => $first->trendyol_product_id,
+                'product_title' => $first->product_title,
+                'product_image_url' => $first->product_image_url,
+                'trendyol_product_barcode' => $first->trendyol_product_barcode,
+                'wc_product_id' => $first->wc_product_id,
+                'wc_product_sku' => $first->wc_product_sku,
+                'match_status' => $first->match_status,
+                'match_score' => $first->match_score,
+                'reviews_count' => $group->count(),
+                'reviews' => $group,
+            ];
+        })->values()->all();
+    }
+
+    public function selectReviewSource(mixed $sourceId): void
+    {
+        $source = TrendyolBoosterReviewSource::query()
+            ->where('user_id', $this->userId())
+            ->find((int) $sourceId);
+
+        if (! $source) {
+            $this->reviewSourceId = null;
+            $this->reviewSourceName = '';
+            $this->reviewSourceUrl = '';
+            $this->reviewSourceMerchantId = '';
+            $this->reviewSourcePreview = [];
+
+            return;
+        }
+
+        $this->reviewSourceId = $source->id;
+        $this->reviewSourceName = $source->store_name;
+        $this->reviewSourceUrl = $source->store_url;
+        $this->reviewSourceMerchantId = $source->merchant_id;
+        $this->reviewSourcePreview = [
+            'store_name' => $source->store_name,
+            'store_id' => $source->merchant_id,
+            'product_count' => $source->verified_product_count,
+            'verified_at' => $source->verified_at?->format('d.m.Y H:i'),
+            'sample_products' => (array) data_get($source->meta, 'sample_products', []),
+        ];
+        unset($this->reviewStats, $this->reviewGroups);
+    }
+
+    public function verifyReviewSource(): void
+    {
+        $this->validate([
+            'reviewSourceName' => ['required', 'string', 'max:180'],
+            'reviewSourceMerchantId' => ['required', 'regex:/^\d{2,20}$/'],
+            'reviewSourceUrl' => ['required', 'string', 'max:1000', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (! $this->isValidTrendyolUrl((string) $value)) {
+                    $fail('Geçerli bir Trendyol mağaza bağlantısı girin.');
+                }
+            }],
+        ], attributes: [
+            'reviewSourceName' => 'mağaza adı',
+            'reviewSourceMerchantId' => 'merchant ID',
+            'reviewSourceUrl' => 'mağaza bağlantısı',
+        ]);
+
+        $urlMerchantId = $this->merchantIdFromTrendyolUrl($this->reviewSourceUrl);
+        if ($urlMerchantId !== '' && $urlMerchantId !== $this->reviewSourceMerchantId) {
+            $this->addError('reviewSourceMerchantId', "Bağlantıdaki merchant ID ({$urlMerchantId}) ile girilen değer eşleşmiyor.");
+
+            return;
+        }
+
+        $this->reviewSourcePreview = [];
+        $this->message = 'Mağaza kimliği ve ürün listesi doğrulanıyor...';
+        $this->messageType = 'success';
+        $this->dispatch('booster:review-store-preview-bridge', [
+            'store_url' => trim($this->reviewSourceUrl),
+            'store_name' => trim($this->reviewSourceName),
+            'merchant_id' => trim($this->reviewSourceMerchantId),
+        ]);
+    }
+
+    #[On('review-store-preview-completed')]
+    public function reviewStorePreviewCompleted(array $preview = []): void
+    {
+        $merchantId = trim((string) ($preview['store_id'] ?? ''));
+        $productCount = max(0, (int) ($preview['product_count'] ?? 0));
+
+        if ($merchantId === '' || $merchantId !== trim($this->reviewSourceMerchantId)) {
+            $this->reviewStorePreviewFailed('Trendyol mağaza kimliği doğrulanamadı veya merchant ID eşleşmedi.');
+
+            return;
+        }
+
+        if ($productCount < 1) {
+            $this->reviewStorePreviewFailed('Seçilen Trendyol mağazasında ürün bulunamadı; kaynak kaydedilmedi.');
+
+            return;
+        }
+
+        $storeUrl = trim((string) ($preview['store_url'] ?? $this->reviewSourceUrl));
+        $storeName = trim($this->reviewSourceName) ?: trim((string) ($preview['store_name'] ?? 'Trendyol Mağazası'));
+        $marketplaceStoreId = MarketplaceStore::query()
+            ->where('user_id', $this->userId())
+            ->where('marketplace', 'trendyol')
+            ->where('seller_id', $merchantId)
+            ->value('id');
+
+        $source = TrendyolBoosterReviewSource::query()
+            ->where('user_id', $this->userId())
+            ->where('merchant_id', $merchantId)
+            ->first() ?? new TrendyolBoosterReviewSource();
+        $source->fill([
+            'user_id' => $this->userId(),
+            'marketplace_store_id' => $marketplaceStoreId,
+            'store_name' => $storeName,
+            'store_url' => $storeUrl,
+            'store_url_hash' => hash('sha256', Str::lower(rtrim($storeUrl, '/'))),
+            'merchant_id' => $merchantId,
+            'is_active' => true,
+            'verified_at' => now(),
+            'verified_product_count' => $productCount,
+            'meta' => [
+                'sample_products' => array_slice((array) ($preview['sample_products'] ?? []), 0, 6),
+                'source' => 'chrome_companion',
+            ],
+        ]);
+        $source->save();
+
+        $this->reviewSourceId = $source->id;
+        $this->reviewSourceUrl = $source->store_url;
+        $this->reviewSourceName = $source->store_name;
+        $this->reviewSourcePreview = [
+            'store_name' => $source->store_name,
+            'store_id' => $source->merchant_id,
+            'product_count' => $source->verified_product_count,
+            'verified_at' => $source->verified_at?->format('d.m.Y H:i'),
+            'sample_products' => (array) data_get($source->meta, 'sample_products', []),
+        ];
+        $this->message = "{$source->store_name} doğrulandı: {$productCount} ürün taramaya hazır.";
+        $this->messageType = 'success';
+        unset($this->reviewSources, $this->reviewStats, $this->reviewGroups);
+    }
+
+    #[On('review-store-preview-failed')]
+    public function reviewStorePreviewFailed(string $message = 'Trendyol mağazası doğrulanamadı.'): void
+    {
+        $this->message = $message;
+        $this->messageType = 'error';
+        $this->reviewSourcePreview = [];
+    }
+
+    #[On('review-scan-poll')]
+    public function reviewScanPoll(): void
+    {
+        if (! $this->activeReviewSyncRunId) {
+            return;
+        }
+
+        $syncRun = TrendyolBoosterReviewSync::where('user_id', $this->userId())
+            ->whereKey($this->activeReviewSyncRunId)
+            ->first();
+        if (! $syncRun) {
+            $this->activeReviewSyncRunId = null;
+            $this->reviewSyncProgress = null;
+
+            return;
+        }
+
+        $this->reviewSyncProgress = $syncRun->progress_percent;
+
+        if ($syncRun->isCompleted()) {
+            $this->activeReviewSyncRunId = null;
+            $this->reviewSyncProgress = null;
+
+            if ($syncRun->status === 'failed') {
+                $this->message = 'Yorum taraması başarısız: '.($syncRun->error_message ?? 'Bilinmeyen hata');
+                $this->messageType = 'error';
+            } elseif ((int) $syncRun->total_reviews === 0 && (int) $syncRun->processed_products > 0) {
+                $this->message = "{$syncRun->processed_products} ürün tarandı ancak seçilen mağazaya ait yorum bulunamadı.";
+                $this->messageType = 'warning';
+            } else {
+                $this->message = "Yorum taraması tamamlandı: {$syncRun->new_reviews} yeni, {$syncRun->updated_reviews} güncellenen, {$syncRun->spam_detected} spam.";
+                $this->messageType = 'success';
+            }
+
+            unset($this->reviewStats);
+            unset($this->reviewGroups);
+        }
+    }
+
+    public function startReviewScan(string $type = 'delta'): void
+    {
+        try {
+            $source = TrendyolBoosterReviewSource::query()
+                ->where('user_id', $this->userId())
+                ->whereNotNull('verified_at')
+                ->find($this->reviewSourceId);
+            if (! $source) {
+                throw new \RuntimeException('Önce Trendyol mağazasını doğrulayın.');
+            }
+
+            $service = app(TrendyolBoosterReviewService::class);
+            $syncRun = $service->createSyncRun($this->userId(), $type, $source->id);
+            $this->activeReviewSyncRunId = $syncRun->id;
+            $this->reviewSyncProgress = 0;
+            $this->message = $type === 'delta' ? 'Delta tarama başlatıldı...' : 'Tam tarama başlatıldı...';
+            $this->messageType = 'success';
+
+            $this->dispatch('booster:review-scan-bridge', [
+                'sync_run_id' => $syncRun->id,
+                'sync_type' => $type,
+                'last_synced_at' => $syncRun->last_synced_at?->toIso8601String(),
+                'review_source_id' => $source->id,
+                'store_url' => $source->store_url,
+                'store_name' => $source->store_name,
+                'merchant_id' => $source->merchant_id,
+            ]);
+        } catch (\Exception $e) {
+            $this->message = 'Tarama başlatılamadı: '.$e->getMessage();
+            $this->messageType = 'error';
+        }
+    }
+
+    #[On('review-scan-bridge-error')]
+    public function reviewScanBridgeError(string $message = 'Chrome eklentisi yorum taramasını tamamlayamadı.'): void
+    {
+        if ($this->activeReviewSyncRunId) {
+            app(TrendyolBoosterReviewService::class)->completeSyncRun(
+                $this->activeReviewSyncRunId,
+                Str::limit($message, 1000, ''),
+                $this->userId(),
+            );
+        }
+
+        $this->activeReviewSyncRunId = null;
+        $this->reviewSyncProgress = null;
+        $this->message = $message;
+        $this->messageType = 'error';
+    }
+
+    protected function loadDefaultReviewSource(): void
+    {
+        if (! Schema::hasTable('trendyol_booster_review_sources')) {
+            return;
+        }
+
+        $source = TrendyolBoosterReviewSource::query()
+            ->where('user_id', $this->userId())
+            ->where('is_active', true)
+            ->orderByDesc('verified_at')
+            ->first();
+
+        if ($source) {
+            $this->selectReviewSource($source->id);
+        }
+    }
+
+    protected function merchantIdFromTrendyolUrl(string $url): string
+    {
+        if (preg_match('/-m-(\d+)/i', $url, $match)) {
+            return $match[1];
+        }
+
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+        return trim((string) ($query['mid'] ?? $query['merchantId'] ?? ''));
+    }
+
+    public function approveReview(int $reviewId): void
+    {
+        $review = TrendyolBoosterReview::where('user_id', $this->userId())
+            ->where('id', $reviewId)->first();
+        if (! $review) {
+            return;
+        }
+        $review->appendAudit('approve');
+        $review->update(['status' => 'approved']);
+        $this->message = 'Yorum onaylandı.';
+        $this->messageType = 'success';
+        unset($this->reviewStats, $this->reviewGroups);
+    }
+
+    public function rejectReview(int $reviewId): void
+    {
+        $review = TrendyolBoosterReview::where('user_id', $this->userId())
+            ->where('id', $reviewId)->first();
+        if (! $review) {
+            return;
+        }
+        $review->appendAudit('reject');
+        $review->update(['status' => 'rejected']);
+        $this->message = 'Yorum reddedildi.';
+        $this->messageType = 'success';
+        unset($this->reviewStats, $this->reviewGroups);
+    }
+
+    public function deleteReview(int $reviewId): void
+    {
+        $review = TrendyolBoosterReview::where('user_id', $this->userId())
+            ->where('id', $reviewId)->first();
+        if (! $review) {
+            return;
+        }
+        $review->markDeleted('manual');
+        $this->message = 'Yorum silindi (geri alınabilir).';
+        $this->messageType = 'success';
+        unset($this->reviewStats, $this->reviewGroups);
+    }
+
+    public function restoreReview(int $reviewId): void
+    {
+        $review = TrendyolBoosterReview::withTrashed()
+            ->where('user_id', $this->userId())
+            ->where('id', $reviewId)->first();
+        if (! $review) {
+            return;
+        }
+        if ($review->restoreReview()) {
+            $this->message = 'Yorum geri alındı (pending durumunda).';
+            $this->messageType = 'success';
+            unset($this->reviewStats, $this->reviewGroups);
+        } else {
+            $this->message = 'Yorum geri alınamadı (silinmiş değil).';
+            $this->messageType = 'error';
+        }
+    }
+
+    public function toggleReviewFeatured(int $reviewId): void
+    {
+        $review = TrendyolBoosterReview::where('user_id', $this->userId())
+            ->where('id', $reviewId)->first();
+        if (! $review) {
+            return;
+        }
+        $review->appendAudit('toggle_featured');
+        $review->update(['is_featured' => ! $review->is_featured]);
+        $this->message = $review->is_featured ? 'Yorum öne çıkarıldı.' : 'Öne çıkarma kaldırıldı.';
+        $this->messageType = 'success';
+        unset($this->reviewGroups);
+    }
+
+    public function pushReviewToWoo(int $reviewId): void
+    {
+        $review = TrendyolBoosterReview::where('user_id', $this->userId())
+            ->where('id', $reviewId)->where('status', 'approved')->first();
+        if (! $review) {
+            $this->message = 'Yorum bulunamadı veya onaylı değil.';
+            $this->messageType = 'error';
+
+            return;
+        }
+        if (! $review->wc_product_id && ! $review->wc_product_sku) {
+            $this->message = 'Bu yorumun WooCommerce ürünü eşleşmemiş. Önce "Ürün Eşleme" panelinden eşleştirin.';
+            $this->messageType = 'error';
+
+            return;
+        }
+        $pushService = app(TrendyolBoosterReviewPushService::class);
+        $result = $pushService->pushSingle($review);
+        $this->message = $result['success']
+            ? 'Yorum WooCommerce\'e gönderildi.'
+            : 'Gönderme başarısız: '.($result['error'] ?? 'Bilinmeyen hata').' (WordPress eklentisi henüz kurulu olmayabilir.)';
+        $this->messageType = $result['success'] ? 'success' : 'error';
+        unset($this->reviewStats, $this->reviewGroups);
+    }
+
+    public function pushAllApprovedToWoo(?int $wcProductId = null): void
+    {
+        $service = app(TrendyolBoosterReviewService::class);
+        $result = $service->pushApprovedToWooCommerce($this->userId(), $wcProductId);
+        $this->message = "{$result['pushed']} yorum gönderildi, {$result['failed']} başarısız.".
+            ($result['failed'] > 0 ? ' (WordPress eklentisi henüz kurulu olmayabilir.)' : '');
+        $this->messageType = $result['failed'] > 0 ? 'error' : 'success';
+        unset($this->reviewStats, $this->reviewGroups);
+    }
+
+    // ===== Yorum Eşleme Motoru =====
+
+    #[Computed]
+    public function productMatchGroups(): array
+    {
+        if ($this->activeModule !== 'reviews') {
+            return [];
+        }
+
+        return app(TrendyolBoosterReviewMatchEngine::class)
+            ->getProductMatchGroups($this->userId(), $this->reviewSourceId);
+    }
+
+    #[Computed]
+    public function wcProductList(): array
+    {
+        if ($this->activeModule !== 'reviews') {
+            return [];
+        }
+
+        $result = app(TrendyolBoosterReviewMatchEngine::class)
+            ->fetchWcProducts($this->userId());
+
+        return $result['products'] ?? [];
+    }
+
+    public function autoMatchReviews(): void
+    {
+        $engine = app(TrendyolBoosterReviewMatchEngine::class);
+        $result = $engine->autoMatchAll($this->userId());
+
+        $parts = [];
+        if ($result['matched'] > 0) {
+            $parts[] = "{$result['matched']} yorum otomatik eşlendi";
+        }
+        if ($result['suggested'] > 0) {
+            $parts[] = "{$result['suggested']} yorum önerildi (onay bekliyor)";
+        }
+        if ($result['unmatched'] > 0) {
+            $parts[] = "{$result['unmatched']} yorum eşleşmedi";
+        }
+        if (! empty($result['errors'])) {
+            $parts[] = 'Hatalar: '.implode(', ', $result['errors']);
+        }
+
+        $this->message = empty($parts) ? 'Eşlenecek yorum bulunamadı.' : implode('. ', $parts).'.';
+        $this->messageType = ($result['matched'] > 0 || $result['suggested'] > 0) ? 'success' : 'error';
+        unset($this->reviewStats, $this->reviewGroups, $this->productMatchGroups);
+    }
+
+    public function manualMatchProduct(string $trendyolProductId, int $wcProductId): void
+    {
+        $wcProducts = $this->wcProductList;
+        $wcProduct = collect($wcProducts)->firstWhere('id', $wcProductId);
+
+        $engine = app(TrendyolBoosterReviewMatchEngine::class);
+        $count = $engine->manualMatch(
+            $this->userId(),
+            $trendyolProductId,
+            $wcProductId,
+            $wcProduct['name'] ?? null,
+            $wcProduct['sku'] ?? null
+        );
+
+        $this->message = "{$count} yorum WC ürünü #{$wcProductId} ile eşlendi.";
+        $this->messageType = 'success';
+        unset($this->reviewStats, $this->reviewGroups, $this->productMatchGroups);
+    }
+
+    public function confirmMatchSuggestion(string $trendyolProductId): void
+    {
+        $engine = app(TrendyolBoosterReviewMatchEngine::class);
+        $count = $engine->confirmSuggestion($this->userId(), $trendyolProductId);
+
+        $this->message = "{$count} yorum eşlemesi onaylandı.";
+        $this->messageType = 'success';
+        unset($this->reviewStats, $this->reviewGroups, $this->productMatchGroups);
+    }
+
+    public function unmatchProduct(string $trendyolProductId): void
+    {
+        $engine = app(TrendyolBoosterReviewMatchEngine::class);
+        $count = $engine->unmatch($this->userId(), $trendyolProductId);
+
+        $this->message = "{$count} yorum eşlemesi kaldırıldı.";
+        $this->messageType = 'success';
+        unset($this->reviewStats, $this->reviewGroups, $this->productMatchGroups);
+    }
+
+    public function refreshWcProducts(): void
+    {
+        $engine = app(TrendyolBoosterReviewMatchEngine::class);
+        $result = $engine->fetchWcProducts($this->userId(), true);
+
+        $count = count($result['products'] ?? []);
+        if ($count > 0) {
+            $this->message = "WooCommerce'den {$count} ürün alındı.";
+            $this->messageType = 'success';
+        } else {
+            $this->message = 'WooCommerce ürün listesi alınamadı: '.($result['error'] ?? 'Bilinmeyen hata');
+            $this->messageType = 'error';
+        }
+        unset($this->wcProductList);
+    }
+
+    public function pushMatchedReviews(): void
+    {
+        $reviews = TrendyolBoosterReview::where('user_id', $this->userId())
+            ->where('status', 'approved')
+            ->where('match_status', 'matched')
+            ->whereNotNull('wc_product_id')
+            ->where('wc_push_status', '!=', 'pushed')
+            ->where('is_spam', false)
+            ->limit(200)
+            ->get();
+
+        if ($reviews->isEmpty()) {
+            $this->message = 'Gönderilecek eşleşmiş ve onaylı yorum bulunamadı.';
+            $this->messageType = 'error';
+
+            return;
+        }
+
+        $pushService = app(TrendyolBoosterReviewPushService::class);
+        $result = $pushService->pushBatch($reviews);
+
+        $this->message = "{$result['pushed']} yorum WooCommerce'e gönderildi.";
+        if ($result['failed'] > 0) {
+            $this->message .= " {$result['failed']} başarısız.";
+        }
+        $this->messageType = $result['failed'] > 0 ? 'error' : 'success';
+        unset($this->reviewStats, $this->reviewGroups, $this->productMatchGroups);
+    }
+
+    public function pushProductReviewsToWoo(string $trendyolProductId): void
+    {
+        $reviews = TrendyolBoosterReview::where('user_id', $this->userId())
+            ->where('trendyol_product_id', $trendyolProductId)
+            ->where('status', 'approved')
+            ->where('match_status', 'matched')
+            ->whereNotNull('wc_product_id')
+            ->where('wc_push_status', '!=', 'pushed')
+            ->where('is_spam', false)
+            ->limit(100)
+            ->get();
+
+        if ($reviews->isEmpty()) {
+            $this->message = 'Bu ürün için gönderilecek onaylı ve eşleşmiş yorum bulunamadı.';
+            $this->messageType = 'error';
+
+            return;
+        }
+
+        $pushService = app(TrendyolBoosterReviewPushService::class);
+        $result = $pushService->pushBatch($reviews);
+
+        $this->message = "{$result['pushed']} yorum WooCommerce'e gönderildi.";
+        if ($result['failed'] > 0) {
+            $this->message .= " {$result['failed']} başarısız.";
+        }
+        $this->messageType = $result['failed'] > 0 ? 'error' : 'success';
+        unset($this->reviewStats, $this->reviewGroups, $this->productMatchGroups);
     }
 }

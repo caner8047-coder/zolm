@@ -97,6 +97,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Sepet Kurtarma (wa_automation_configs'den override edilir)
+    |--------------------------------------------------------------------------
+    */
+    'cart_recovery' => [
+        'enabled' => false,
+        'stages' => [
+            ['delay_minutes' => 60, 'enabled' => true, 'template_id' => null, 'coupon_enabled' => false, 'coupon_type' => 'percent', 'coupon_value' => 0, 'minimum_spend' => 0, 'coupon_expiry_hours' => 48],
+            ['delay_minutes' => 1440, 'enabled' => true, 'template_id' => null, 'coupon_enabled' => true, 'coupon_type' => 'percent', 'coupon_value' => 10, 'minimum_spend' => 100, 'coupon_expiry_hours' => 48],
+            ['delay_minutes' => 4320, 'enabled' => true, 'template_id' => null, 'coupon_enabled' => false, 'coupon_type' => 'percent', 'coupon_value' => 0, 'minimum_spend' => 0, 'coupon_expiry_hours' => 48],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Stok Hatırlatıcı (wa_automation_configs'den override edilir)
+    |--------------------------------------------------------------------------
+    */
+    'stock_alert' => [
+        'enabled' => false,
+        'batch_size' => 10,
+        'minimum_sellable_quantity' => 1,
+        'template_id' => null,
+        'quiet_hours_enabled' => true,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Retention Policy (wa_settings'den override edilir)
     |--------------------------------------------------------------------------
     */
@@ -107,5 +134,33 @@ return [
         'outbox_completed_days' => 60,
         'delivery_logs_days' => 180,
         'anonymize_on_delete' => true,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sipariş Onayı (wa_automation_configs'den override edilir)
+    |--------------------------------------------------------------------------
+    */
+    'order_confirmation' => [
+        'enabled' => false,
+        'allowed_statuses' => ['processing', 'completed', 'on-hold'],
+        'template_id' => null,
+        'include_order_link' => false,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | İade Bildirimleri (wa_automation_configs'den override edilir)
+    |--------------------------------------------------------------------------
+    */
+    'returns' => [
+        'enabled' => false,
+        'stages' => [
+            'return_requested' => ['enabled' => true, 'template_id' => null],
+            'return_received' => ['enabled' => true, 'template_id' => null],
+            'return_approved' => ['enabled' => true, 'template_id' => null],
+            'return_rejected' => ['enabled' => false, 'template_id' => null],
+            'return_needs_info' => ['enabled' => false, 'template_id' => null],
+        ],
     ],
 ];

@@ -280,6 +280,14 @@
                                     <input type="url" wire:model.defer="connectionForm.storeUrl" class="{{ $inputClass }}" placeholder="https://magaza.com">
                                 </div>
                                 @endif
+                                @if($selectedStore->marketplace === 'woocommerce')
+                                <div class="col-span-1 sm:col-span-2 rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+                                    <label class="{{ $labelClass }}">ZOLM Booster API Anahtarı</label>
+                                    <input type="password" wire:model.defer="connectionForm.zolmBoosterApiKey" class="{{ $inputClass }}" placeholder="WordPress ZOLM Booster API anahtarı">
+                                    <p class="mt-2 text-xs leading-5 text-slate-500">WordPress yönetimindeki ZOLM Booster > Ayarlar ekranında üretilen anahtardır. Yorum gönderiminde X-ZOLM-API-Key olarak kullanılır; WooCommerce tüketici anahtarı değildir.</p>
+                                    @error('connectionForm.zolmBoosterApiKey') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
+                                </div>
+                                @endif
                             </div>
                             <div class="flex justify-end pt-4 border-t border-slate-100 gap-2">
                                 <button type="button" wire:click="verifyConnection" class="rounded-lg border border-slate-200 px-5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Doğrula</button>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ZOLM Trendyol Booster Companion",
-  "version": "0.10.12",
-  "description": "Trendyol ürünlerini ZOLM Booster Radar'a ekler ve takip sinyallerini ürün sayfasında gösterir.",
+  "version": "0.12.0",
+  "description": "Trendyol ürünlerini ZOLM Booster Radar'a ekler, takip sinyallerini gösterir ve mağaza yorumlarını senkronize eder.",
   "permissions": ["storage", "activeTab", "tabs", "scripting", "alarms"],
   "host_permissions": [
     "http://localhost/*",

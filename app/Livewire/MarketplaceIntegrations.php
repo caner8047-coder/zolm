@@ -254,6 +254,7 @@ class MarketplaceIntegrations extends Component
             'connectionForm.webhookSecret' => ['nullable', 'string', 'max:120'],
             'connectionForm.apiKey' => ['nullable', 'string', 'max:255'],
             'connectionForm.apiSecret' => ['nullable', 'string', 'max:255'],
+            'connectionForm.zolmBoosterApiKey' => ['nullable', 'string', 'max:255'],
             'connectionForm.storeFrontCode' => ['nullable', 'string', 'max:64'],
             'connectionForm.extraUser' => ['nullable', 'string', 'max:255'],
             'connectionForm.extraPassword' => ['nullable', 'string', 'max:255'],
@@ -269,6 +270,11 @@ class MarketplaceIntegrations extends Component
             ? $providedSecret
             : ($existingCredentials['api_secret'] ?? null);
 
+        $providedZolmBoosterApiKey = $validated['connectionForm']['zolmBoosterApiKey'] ?? null;
+        $zolmBoosterApiKey = ($providedZolmBoosterApiKey && $providedZolmBoosterApiKey !== '********')
+            ? $providedZolmBoosterApiKey
+            : ($existingCredentials['zolm_booster_api_key'] ?? null);
+
         $providedExtraPassword = $validated['connectionForm']['extraPassword'] ?? null;
         $extraPassword = ($providedExtraPassword && $providedExtraPassword !== '********')
             ? $providedExtraPassword
@@ -277,6 +283,7 @@ class MarketplaceIntegrations extends Component
         $credentials = [
             'api_key' => $validated['connectionForm']['apiKey'] ?: null,
             'api_secret' => $apiSecret,
+            'zolm_booster_api_key' => $store->marketplace === 'woocommerce' ? $zolmBoosterApiKey : null,
             'store_front_code' => $validated['connectionForm']['storeFrontCode'] ?: ($existingCredentials['store_front_code'] ?? null),
             'extra_user' => $validated['connectionForm']['extraUser'] ?: null,
             'extra_password' => $extraPassword,
@@ -1479,6 +1486,7 @@ class MarketplaceIntegrations extends Component
                 'store_url_placeholder' => 'https://magaza.example.com',
                 'hints' => [
                     'API anahtarı alanına WooCommerce tüketici anahtarı, gizli anahtar alanına tüketici gizli anahtarı girilir.',
+                    'ZOLM Booster yorum eklentisi için WordPress > ZOLM Booster > Ayarlar ekranındaki ayrı API anahtarı kullanılır.',
                     'API URL alanına site kök URL’sini veya doğrudan /wp-json/wc/v3 temel URL’ini yazabilirsiniz.',
                     'WooCommerce tarafında finans servisi yok; sipariş ve ürün senkronu ile fiyat/stok gönderimi aktiftir.',
                     'Webhook doğrulaması için mağaza tarafında tanımlanan gizli anahtar ile ZOLM webhook gizli anahtarı aynı olmalıdır.',
@@ -1624,6 +1632,7 @@ class MarketplaceIntegrations extends Component
             'webhookSecret' => $store->connection?->webhook_secret ?: Str::random(40),
             'apiKey' => $credentials['api_key'] ?? '',
             'apiSecret' => filled($credentials['api_secret'] ?? null) ? '********' : '',
+            'zolmBoosterApiKey' => filled($credentials['zolm_booster_api_key'] ?? null) ? '********' : '',
             'storeFrontCode' => $credentials['store_front_code'] ?? '',
             'extraUser' => $credentials['extra_user'] ?? '',
             'extraPassword' => filled($credentials['extra_password'] ?? null) ? '********' : '',
@@ -1719,6 +1728,7 @@ class MarketplaceIntegrations extends Component
             'webhookSecret' => Str::random(40),
             'apiKey' => '',
             'apiSecret' => '',
+            'zolmBoosterApiKey' => '',
             'storeFrontCode' => '',
             'extraUser' => '',
             'extraPassword' => '',

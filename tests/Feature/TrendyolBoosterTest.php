@@ -8,6 +8,7 @@ use App\Models\AppNotification;
 use App\Models\ChannelListing;
 use App\Models\ChannelOrder;
 use App\Models\ChannelOrderItem;
+use App\Models\ChannelProduct;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
 use App\Models\MpProduct;
@@ -18,6 +19,8 @@ use App\Models\TrendyolBoosterCompetitor;
 use App\Models\TrendyolBoosterCostPreset;
 use App\Models\TrendyolBoosterKeyword;
 use App\Models\TrendyolBoosterProduct;
+use App\Models\TrendyolBoosterReview;
+use App\Models\TrendyolBoosterReviewSync;
 use App\Models\TrendyolBoosterShippingRate;
 use App\Models\TrendyolBoosterSnapshot;
 use App\Models\TrendyolBoosterStockCheck;
@@ -40,14 +43,23 @@ use App\Services\Marketplace\TrendyolBoosterKeywordLookupService;
 use App\Services\Marketplace\TrendyolBoosterKeywordService;
 use App\Services\Marketplace\TrendyolBoosterModuleInsightService;
 use App\Services\Marketplace\TrendyolBoosterMonitorService;
+use App\Services\Marketplace\TrendyolBoosterNotificationService;
+use App\Services\Marketplace\TrendyolBoosterOperationalAlertService;
+use App\Services\Marketplace\TrendyolBoosterPriorityActionService;
 use App\Services\Marketplace\TrendyolBoosterProductAnalysisService;
+use App\Services\Marketplace\TrendyolBoosterReadinessService;
 use App\Services\Marketplace\TrendyolBoosterResearchService;
+use App\Services\Marketplace\TrendyolBoosterRetentionCleanupService;
+use App\Services\Marketplace\TrendyolBoosterRetentionReportService;
+use App\Services\Marketplace\TrendyolBoosterReviewPushService;
+use App\Services\Marketplace\TrendyolBoosterReviewService;
 use App\Services\Marketplace\TrendyolBoosterScheduledAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterSellDecisionService;
 use App\Services\Marketplace\TrendyolBoosterShippingRateService;
 use App\Services\Marketplace\TrendyolBoosterStockService;
 use App\Services\Marketplace\TrendyolBoosterStoreWatchService;
 use App\Services\Marketplace\TrendyolBoosterSupplierResearchService;
+use App\Services\Marketplace\TrendyolBoosterSyncHealthService;
 use App\Services\Marketplace\TrendyolBoosterTrendKeywordService;
 use App\Services\Marketplace\TrendyolCategoryDictionary;
 use App\Services\Marketplace\TrendyolProductPageReader;
@@ -56,9 +68,11 @@ use App\Services\Marketplace\TrendyolSellerLevelService;
 use App\Services\Marketplace\TrendyolStorePageReader;
 use App\Services\NotificationCenterService;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -1368,6 +1382,300 @@ class TrendyolBoosterTest extends TestCase
             ]);
     }
 
+    public function test_booster_reviews_module_renders_without_runtime_errors(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $this->actingAs($user);
+
+        $this->get(route('mp.trendyol-booster', ['booster' => 'reviews']))
+            ->assertOk()
+            ->assertSee('Trendyol Yorumlar')
+            ->assertSee('Henüz yorum yok');
+    }
+
+    public function test_companion_pending_jobs_builds_keyword_search_url_without_missing_column(): void
+    {
+        [$user, $product] = $this->createBoosterGraph();
+        $this->actingAs($user);
+
+        TrendyolBoosterKeyword::query()->create([
+            'user_id' => $user->id,
+            'trendyol_booster_product_id' => app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+                'user_id' => $user->id,
+                'source_url' => 'https://www.trendyol.com/zolm/pending-keyword-p-778899',
+                'trendyol_product_id' => '778899',
+                'mp_product_id' => $product->id,
+                'title' => 'Pending Keyword Test',
+                'brand' => 'ZOLM',
+                'sale_price' => 1500,
+            ])->id,
+            'keyword' => 'long line puf',
+            'keyword_hash' => hash('sha256', 'long line puf'),
+            'is_active' => true,
+            'last_checked_at' => null,
+        ]);
+
+        $this->getJson(route('mp.trendyol-booster.companion.pending-jobs'))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('jobs.keywords.0.keyword', 'long line puf')
+            ->assertJsonPath('jobs.keywords.0.search_url', 'https://www.trendyol.com/sr?q=long%20line%20puf');
+    }
+
+    public function test_review_scan_start_reuses_existing_sync_run_for_companion(): void
+    {
+        Queue::fake();
+        [$user] = $this->createBoosterGraph();
+        $this->actingAs($user);
+
+        $syncRun = app(TrendyolBoosterReviewService::class)->createSyncRun($user->id, 'full');
+
+        $this->postJson(route('mp.trendyol-booster.companion.review-scan.start'), [
+            'sync_run_id' => $syncRun->id,
+            'sync_type' => 'delta',
+            'total_products' => 9,
+        ])
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('sync_run_id', $syncRun->id)
+            ->assertJsonPath('sync_type', 'full')
+            ->assertJsonPath('last_synced_at', null)
+            ->assertJsonPath('total_products', 9);
+
+        $this->assertSame(1, TrendyolBoosterReviewSync::where('user_id', $user->id)->count());
+        $this->assertSame(9, $syncRun->refresh()->total_products);
+    }
+
+    public function test_full_review_scan_ignores_previous_sync_timestamp_while_delta_uses_it(): void
+    {
+        Queue::fake();
+        [$user] = $this->createBoosterGraph();
+
+        $previousCompletedAt = now()->subHour()->startOfSecond();
+        TrendyolBoosterReviewSync::query()->create([
+            'user_id' => $user->id,
+            'status' => 'completed',
+            'sync_type' => 'full',
+            'started_at' => $previousCompletedAt->copy()->subMinute(),
+            'completed_at' => $previousCompletedAt,
+            'progress_percent' => 100,
+        ]);
+
+        $service = app(TrendyolBoosterReviewService::class);
+        $fullSync = $service->createSyncRun($user->id, 'full');
+        $deltaSync = $service->createSyncRun($user->id, 'delta');
+
+        $this->assertNull($fullSync->last_synced_at);
+        $this->assertTrue($deltaSync->last_synced_at?->equalTo($previousCompletedAt));
+    }
+
+    public function test_review_scan_ingest_is_user_scoped_and_tracks_progress(): void
+    {
+        Queue::fake();
+        [$owner] = $this->createBoosterGraph();
+        [$otherUser] = $this->createBoosterGraph();
+        $syncRun = app(TrendyolBoosterReviewService::class)->createSyncRun($owner->id);
+
+        $payload = [
+            'sync_run_id' => $syncRun->id,
+            'reviews' => [$this->reviewPayload(['trendyol_review_id' => 'rv-scope-1'])],
+            'total_products' => 3,
+            'processed_products' => 1,
+        ];
+
+        $this->actingAs($otherUser)
+            ->postJson(route('mp.trendyol-booster.companion.review-scan.ingest'), $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('sync_run_id');
+
+        $this->actingAs($owner)
+            ->postJson(route('mp.trendyol-booster.companion.review-scan.ingest'), $payload)
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('new', 1)
+            ->assertJsonPath('processed_products', 1)
+            ->assertJsonPath('total_products', 3)
+            ->assertJsonPath('progress_percent', 33);
+
+        $syncRun->refresh();
+        $this->assertSame('running', $syncRun->status);
+        $this->assertSame(1, $syncRun->processed_products);
+        $this->assertSame(3, $syncRun->total_products);
+        $this->assertSame(33, $syncRun->progress_percent);
+
+        $this->assertDatabaseHas('trendyol_booster_reviews', [
+            'user_id' => $owner->id,
+            'trendyol_review_id' => 'rv-scope-1',
+            'sync_run_id' => $syncRun->id,
+        ]);
+        $this->assertDatabaseMissing('trendyol_booster_reviews', [
+            'user_id' => $otherUser->id,
+            'trendyol_review_id' => 'rv-scope-1',
+        ]);
+    }
+
+    public function test_review_scan_verify_marks_only_missing_checked_reviews_deleted(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $this->actingAs($user);
+
+        $kept = $this->createReviewRecord($user, [
+            'trendyol_product_id' => '76241080',
+            'trendyol_review_id' => 'rv-keep',
+        ]);
+        $missing = $this->createReviewRecord($user, [
+            'trendyol_product_id' => '76241080',
+            'trendyol_review_id' => 'rv-missing',
+        ]);
+
+        $this->postJson(route('mp.trendyol-booster.companion.review-scan.verify'), [
+            'trendyol_product_id' => '76241080',
+            'checked_review_ids' => ['rv-keep', 'rv-missing'],
+            'existing_review_ids' => ['rv-keep'],
+        ])
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('checked', 2)
+            ->assertJsonPath('verified', 1)
+            ->assertJsonPath('marked_deleted', 1);
+
+        $this->assertSame('pending', $kept->refresh()->status);
+        $deleted = TrendyolBoosterReview::withTrashed()->findOrFail($missing->id);
+        $this->assertSame('deleted', $deleted->status);
+        $this->assertTrue($deleted->trashed());
+    }
+
+    public function test_review_matching_uses_woocommerce_external_product_id_and_user_scope(): void
+    {
+        [$user, $product, $trendyolListing] = $this->createBoosterGraph();
+        $suffix = str_replace('-', '', (string) Str::uuid());
+        $wooStore = MarketplaceStore::query()->create([
+            'user_id' => $user->id,
+            'legal_entity_id' => $trendyolListing->store->legal_entity_id,
+            'marketplace' => 'woocommerce',
+            'store_name' => 'Woo Test Store',
+            'store_code' => 'WOO-'.$suffix,
+            'seller_id' => 'WOO-'.$suffix,
+            'status' => 'active',
+            'timezone' => 'Europe/Istanbul',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        $channelProduct = ChannelProduct::query()->create([
+            'store_id' => $wooStore->id,
+            'external_product_id' => '98765',
+            'stock_code' => $product->stock_code,
+            'barcode' => $product->barcode,
+            'title' => $product->product_name,
+        ]);
+        $wooListing = ChannelListing::query()->create([
+            'store_id' => $wooStore->id,
+            'channel_product_id' => $channelProduct->id,
+            'mp_product_id' => $product->id,
+            'listing_id' => 'WOO-LIST-'.$suffix,
+            'listing_status' => 'active',
+            'sale_price' => 1500,
+            'currency' => 'TRY',
+        ]);
+        $review = $this->createReviewRecord($user, [
+            'trendyol_product_barcode' => $product->barcode,
+        ]);
+
+        $result = app(TrendyolBoosterReviewService::class)->matchReviewWithWooCommerce($review);
+
+        $this->assertTrue($result['matched']);
+        $this->assertSame($wooListing->id, $result['listing_id']);
+        $this->assertSame(98765, $result['wc_product_id']);
+        $review->refresh();
+        $this->assertSame($product->id, $review->mp_product_id);
+        $this->assertSame(98765, $review->wc_product_id);
+        $this->assertSame($product->barcode, $review->wc_product_sku);
+        $this->assertSame('matched', $review->match_status);
+    }
+
+    public function test_review_push_uses_separate_zolm_booster_api_key_for_wordpress(): void
+    {
+        [$user, $product, $trendyolListing] = $this->createBoosterGraph();
+        $suffix = str_replace('-', '', (string) Str::uuid());
+        $wooStore = MarketplaceStore::query()->create([
+            'user_id' => $user->id,
+            'legal_entity_id' => $trendyolListing->store->legal_entity_id,
+            'marketplace' => 'woocommerce',
+            'store_name' => 'Woo Push Store',
+            'store_code' => 'WOO-PUSH-'.$suffix,
+            'seller_id' => 'WOO-PUSH-'.$suffix,
+            'status' => 'active',
+            'timezone' => 'Europe/Istanbul',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        $wooStore->connection()->create([
+            'provider' => 'woocommerce',
+            'auth_type' => 'consumer_key_secret',
+            'credentials_encrypted' => [
+                'api_key' => 'ck_live_consumer',
+                'api_secret' => 'cs_live_secret',
+                'zolm_booster_api_key' => 'zbt_wp_secret',
+            ],
+            'api_base_url' => 'https://www.zemhome.com.tr',
+            'status' => 'configured',
+        ]);
+        $review = $this->createReviewRecord($user, ['status' => 'approved']);
+        $review->forceFill([
+            'wc_product_id' => 98765,
+            'wc_product_sku' => 'ZEM-SKU-1',
+            'match_status' => 'matched',
+        ])->save();
+
+        Http::fake([
+            'https://www.zemhome.com.tr/*' => Http::response(['ok' => true], 200),
+        ]);
+
+        $result = app(TrendyolBoosterReviewPushService::class)->pushSingle($review);
+
+        $this->assertTrue($result['success']);
+        Http::assertSent(fn ($request) => $request->url() === 'https://www.zemhome.com.tr/wp-json/zolm-booster/v1/reviews'
+            && $request->hasHeader('X-ZOLM-API-Key', 'zbt_wp_secret'));
+        $this->assertSame('pushed', $review->fresh()->wc_push_status);
+    }
+
+    public function test_review_push_does_not_use_woocommerce_consumer_key_as_booster_key(): void
+    {
+        [$user, $product, $trendyolListing] = $this->createBoosterGraph();
+        $suffix = str_replace('-', '', (string) Str::uuid());
+        $wooStore = MarketplaceStore::query()->create([
+            'user_id' => $user->id,
+            'legal_entity_id' => $trendyolListing->store->legal_entity_id,
+            'marketplace' => 'woocommerce',
+            'store_name' => 'Woo Missing Booster Key',
+            'store_code' => 'WOO-MISS-'.$suffix,
+            'seller_id' => 'WOO-MISS-'.$suffix,
+            'status' => 'active',
+            'timezone' => 'Europe/Istanbul',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        $wooStore->connection()->create([
+            'provider' => 'woocommerce',
+            'auth_type' => 'consumer_key_secret',
+            'credentials_encrypted' => [
+                'api_key' => 'ck_live_consumer',
+                'api_secret' => 'cs_live_secret',
+            ],
+            'api_base_url' => 'https://www.zemhome.com.tr',
+            'status' => 'configured',
+        ]);
+        $review = $this->createReviewRecord($user, ['status' => 'approved']);
+
+        Http::fake();
+
+        $result = app(TrendyolBoosterReviewPushService::class)->pushSingle($review);
+
+        $this->assertFalse($result['success']);
+        $this->assertSame('missing_api_key', $result['error']);
+        Http::assertNothingSent();
+    }
+
     public function test_companion_track_endpoint_persists_booster_product(): void
     {
         [$user, $product, $listing] = $this->createBoosterGraph();
@@ -1908,6 +2216,218 @@ class TrendyolBoosterTest extends TestCase
         ]);
     }
 
+    public function test_stock_service_discards_unrelated_dom_texts_from_seller_results(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $sourceUrl = 'https://www.trendyol.com/zem/long-line-puf-kirik-beyaz-gold-p-76241080?boutiqueId=61&merchantId=121057';
+
+        $result = app(TrendyolBoosterStockService::class)->check($user->id, [
+            'source_url' => $sourceUrl,
+            'page' => [
+                'trendyol_product_id' => '76241080',
+                'title' => 'Long Line Puf, Kırık Beyaz Gold',
+                'brand' => 'Zem',
+                'total_stock' => 1947,
+                'favorite_count' => 152480,
+                'seller_id' => '121057',
+                'seller_name' => 'Zem Home',
+            ],
+            'total_stock' => 1947,
+            'sellers' => [
+                ['seller_name' => 'Zem Home', 'seller_id' => '121057', 'stock' => 1947, 'sale_price' => 1228.94],
+                ['seller_name' => 'window["__envoy_vas__CONDITION"]=false', 'stock' => 0, 'sale_price' => 1228.94],
+                ['seller_name' => 'Bu tanımlama bilgileri, sitemizde reklam ortaklarımız tarafından kullanılır', 'stock' => 0, 'sale_price' => 1228.94],
+                ['seller_name' => "Trendyol'da Satış Yap", 'stock' => 0, 'sale_price' => 1228.94],
+                ['seller_name' => 'YARIN', 'stock' => 0, 'sale_price' => 1228.94],
+                ['seller_name' => 'Kampanyalı Fiyat', 'stock' => 0, 'sale_price' => 1228.94],
+                ['seller_name' => 'Soruları (254)', 'stock' => 0, 'sale_price' => 1228.94],
+            ],
+        ]);
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame(1947, (int) $result['check']->total_stock);
+        $this->assertSame(1, (int) $result['check']->seller_count);
+        $this->assertSame(['Zem Home'], $result['check']->sellers->pluck('seller_name')->all());
+        $this->assertSame(1, DB::table('trendyol_booster_stock_sellers')
+            ->where('trendyol_booster_stock_check_id', $result['check']->id)
+            ->count());
+
+        $dashboard = app(TrendyolBoosterStockService::class)->dashboard($user->id);
+        $this->assertSame(1, $dashboard['seller_count']);
+        $this->assertSame(152480, (int) data_get($dashboard['latest_checks']->first()?->raw_payload, 'page.favorite_count'));
+    }
+
+    public function test_stock_dashboard_can_select_historical_snapshot_and_build_trend(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $sourceUrl = 'https://www.trendyol.com/zem/long-line-puf-kirik-beyaz-gold-p-76241080?merchantId=121057';
+
+        $first = app(TrendyolBoosterStockService::class)->check($user->id, [
+            'source_url' => $sourceUrl,
+            'page' => [
+                'trendyol_product_id' => '76241080',
+                'title' => 'Long Line Puf, Kırık Beyaz Gold',
+                'seller_id' => '121057',
+                'seller_name' => 'Zem Home',
+                'total_stock' => 2100,
+                'favorite_count' => 150000,
+            ],
+            'total_stock' => 2100,
+            'sellers' => [['seller_name' => 'Zem Home', 'seller_id' => '121057', 'stock' => 2100]],
+        ]);
+        $first['check']->forceFill(['checked_at' => now()->subHours(2)])->save();
+
+        app(TrendyolBoosterStockService::class)->check($user->id, [
+            'source_url' => $sourceUrl,
+            'page' => [
+                'trendyol_product_id' => '76241080',
+                'title' => 'Long Line Puf, Kırık Beyaz Gold',
+                'seller_id' => '121057',
+                'seller_name' => 'Zem Home',
+                'total_stock' => 1947,
+                'favorite_count' => 152480,
+            ],
+            'total_stock' => 1947,
+            'sellers' => [['seller_name' => 'Zem Home', 'seller_id' => '121057', 'stock' => 1947]],
+        ]);
+
+        $dashboard = app(TrendyolBoosterStockService::class)->dashboard($user->id, $first['check']->id);
+
+        $this->assertSame($first['check']->id, $dashboard['selected_check']->id);
+        $this->assertSame(2100, $dashboard['last_total_stock']);
+        $this->assertSame(1, $dashboard['seller_count']);
+        $this->assertSame([2100, 1947], $dashboard['trend']->pluck('stock')->all());
+        $this->assertSame([150000, 152480], $dashboard['trend']->pluck('favorites')->all());
+        $this->assertSame(1, $dashboard['product_groups']->count());
+        $productGroup = $dashboard['product_groups']->first();
+        $this->assertSame(2, $productGroup['query_count']);
+        $this->assertSame([2100, 1947], collect($productGroup['trend'])->pluck('stock')->all());
+    }
+
+    public function test_stock_history_can_filter_search_and_sort_grouped_products(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $pufUrl = 'https://www.trendyol.com/zem/lines-puf-p-1001';
+        $shirtUrl = 'https://www.trendyol.com/moda/erkek-tisort-p-1002';
+
+        TrendyolBoosterProduct::query()->create([
+            'user_id' => $user->id,
+            'source_url' => $pufUrl,
+            'source_url_hash' => hash('sha256', $pufUrl),
+            'trendyol_product_id' => '1001',
+            'title' => 'Lines Puf',
+            'brand' => 'Zem',
+            'category_name' => 'Ayakkabılık,Yemek Masası,Portmanto,Berjer,Dresuar,TV Koltuğu,Yemek Odası Sandalyesi,Şaraplık',
+            'is_favorite' => true,
+        ]);
+        TrendyolBoosterProduct::query()->create([
+            'user_id' => $user->id,
+            'source_url' => $shirtUrl,
+            'source_url_hash' => hash('sha256', $shirtUrl),
+            'trendyol_product_id' => '1002',
+            'title' => 'Erkek Tişört',
+            'brand' => 'Moda',
+            'category_name' => 'Gitar,Piyano,Plak,Org,Keman,DJ Ürünleri,Mikrofon ve Aksesuarlar,Bağlama,Kayıt Teknolojileri',
+            'watch_stock' => true,
+            'tracking_status' => 'active',
+        ]);
+
+        app(TrendyolBoosterStockService::class)->check($user->id, [
+            'source_url' => $pufUrl,
+            'page' => [
+                'trendyol_product_id' => '1001',
+                'title' => 'Lines Puf',
+                'brand' => 'Zem',
+                'category_name' => 'Ayakkabılık,Yemek Masası,Portmanto,Berjer,Dresuar,TV Koltuğu,Yemek Odası Sandalyesi,Şaraplık',
+                'seller_name' => 'Zem Home',
+                'favorite_count' => 6500,
+                'total_stock' => 845,
+            ],
+            'total_stock' => 845,
+            'sellers' => [['seller_name' => 'Zem Home', 'stock' => 845]],
+        ]);
+        app(TrendyolBoosterStockService::class)->check($user->id, [
+            'source_url' => $shirtUrl,
+            'page' => [
+                'trendyol_product_id' => '1002',
+                'title' => 'Erkek Tişört',
+                'brand' => 'Moda',
+                'category_name' => 'Gitar,Piyano,Plak,Org,Keman,DJ Ürünleri,Mikrofon ve Aksesuarlar,Bağlama,Kayıt Teknolojileri',
+                'seller_name' => 'Moda Mağazası',
+                'favorite_count' => 1200,
+                'total_stock' => 25,
+            ],
+            'total_stock' => 25,
+            'sellers' => [['seller_name' => 'Moda Mağazası', 'stock' => 25]],
+        ]);
+
+        $service = app(TrendyolBoosterStockService::class);
+        $all = $service->dashboard($user->id);
+
+        $this->assertSame(2, $all['product_group_total']);
+        $this->assertSame(['Erkek Giyim', 'Puf'], $all['stock_categories']->all());
+        $this->assertSame(['Erkek Tişört', 'Lines Puf'], $service->dashboard($user->id, null, ['sort' => 'stock_asc'])['product_groups']->pluck('latest_check.title')->all());
+        $this->assertSame(['Lines Puf'], $service->dashboard($user->id, null, ['search' => 'zem home'])['product_groups']->pluck('latest_check.title')->all());
+        $this->assertSame(['Lines Puf'], $service->dashboard($user->id, null, ['category' => 'Puf'])['product_groups']->pluck('latest_check.title')->all());
+        $this->assertSame(['Lines Puf'], $service->dashboard($user->id, null, ['status' => 'favorites'])['product_groups']->pluck('latest_check.title')->all());
+        $this->assertSame(['Erkek Tişört'], $service->dashboard($user->id, null, ['status' => 'tracking'])['product_groups']->pluck('latest_check.title')->all());
+    }
+
+    public function test_stock_history_can_favorite_and_follow_product_from_compact_screen(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $this->actingAs($user);
+        $result = app(TrendyolBoosterStockService::class)->check($user->id, [
+            'source_url' => 'https://www.trendyol.com/zem/long-line-puf-kirik-beyaz-gold-p-76241080?merchantId=121057',
+            'page' => [
+                'trendyol_product_id' => '76241080',
+                'title' => 'Long Line Puf, Kırık Beyaz Gold',
+                'seller_id' => '121057',
+                'seller_name' => 'Zem Home',
+                'total_stock' => 1947,
+            ],
+            'total_stock' => 1947,
+            'sellers' => [['seller_name' => 'Zem Home', 'seller_id' => '121057', 'stock' => 1947]],
+        ]);
+        $checkId = $result['check']->id;
+
+        Livewire::test(TrendyolBooster::class)
+            ->call('setActiveModule', 'stock')
+            ->assertSee('Stok ve satıcı takibi')
+            ->assertSee('Sorgu zamanı')
+            ->assertSee('Stok trendi')
+            ->assertSee('Ürün stok trendi')
+            ->assertSee('Son stok')
+            ->assertSee('Son favori')
+            ->assertSee('Kayıt geçmişi')
+            ->assertSee('Tüm kategoriler')
+            ->assertSee('Favorilenenler')
+            ->assertSee('En çok sorgulanan')
+            ->assertSee('Yeniden stok sorgula')
+            ->assertSee('Takibe al')
+            ->assertDontSee('Tahmini satış')
+            ->set('selectedStockCheckId', $checkId)
+            ->assertSet('selectedStockCheckId', $checkId)
+            ->call('toggleStockCheckFavorite', $checkId)
+            ->assertSee('Ürün favorilere eklendi.')
+            ->call('followStockCheck', $checkId)
+            ->assertSee('stok takibine alındı');
+
+        $tracked = TrendyolBoosterProduct::query()
+            ->where('user_id', $user->id)
+            ->where('trendyol_product_id', '76241080')
+            ->firstOrFail();
+
+        $this->assertTrue($tracked->is_favorite);
+        $this->assertTrue($tracked->watch_stock);
+        $this->assertSame('active', $tracked->tracking_status);
+        $this->assertContains('stock_query', $tracked->tracking_sources);
+        $this->assertDatabaseHas('trendyol_booster_stock_checks', [
+            'id' => $checkId,
+            'trendyol_booster_product_id' => $tracked->id,
+        ]);
+    }
+
     public function test_stock_service_does_not_create_false_zero_when_trendyol_blocks_page(): void
     {
         [$user] = $this->createBoosterGraph();
@@ -2373,6 +2893,41 @@ class TrendyolBoosterTest extends TestCase
         ]);
     }
 
+    public function test_booster_notification_thresholds_suppress_small_price_changes(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        config()->set('marketplace.trendyol_booster.notifications.price_min_delta_amount', 25);
+        config()->set('marketplace.trendyol_booster.notifications.price_min_delta_percent', 5);
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/booster-test-urunu-p-123456',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+
+        $snapshot = TrendyolBoosterSnapshot::query()->create([
+            'user_id' => $user->id,
+            'trendyol_booster_product_id' => $tracked->id,
+            'sale_price' => 1495,
+            'previous_sale_price' => 1500,
+            'price_delta' => -5,
+            'price_delta_percent' => -0.33,
+            'checked_at' => now(),
+        ]);
+
+        $notification = app(TrendyolBoosterNotificationService::class)->notifyPriceSnapshot($snapshot);
+
+        $this->assertNull($notification);
+        $this->assertSame(0, AppNotification::query()
+            ->where('user_id', $user->id)
+            ->where('type', 'booster_price_drop')
+            ->count());
+    }
+
     public function test_booster_email_digest_sends_pending_notifications_once(): void
     {
         Mail::fake();
@@ -2470,6 +3025,759 @@ class TrendyolBoosterTest extends TestCase
         $this->assertTrue($result['dry_run']);
         $this->assertSame(0, TrendyolBoosterSnapshot::query()->where('user_id', $user->id)->count());
         Http::assertNothingSent();
+    }
+
+    public function test_booster_sync_health_summarizes_scheduler_backlog(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        config()->set('marketplace.trendyol_booster.sync.product_stale_minutes', 60);
+        config()->set('marketplace.trendyol_booster.sync.keyword_stale_minutes', 60);
+        config()->set('marketplace.trendyol_booster.sync.store_stale_minutes', 60);
+        Cache::put('marketplace:trendyol-booster:last-scheduler-run-at', now()->toIso8601String(), now()->addHour());
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/booster-test-urunu-p-123456',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+            'watch_stock' => true,
+        ]);
+        $tracked->forceFill([
+            'tracking_status' => 'active',
+            'analysis_auto_refresh_enabled' => false,
+            'last_checked_at' => now()->subHours(2),
+        ])->save();
+
+        TrendyolBoosterKeyword::query()->create([
+            'user_id' => $user->id,
+            'trendyol_booster_product_id' => $tracked->id,
+            'keyword' => 'booster test',
+            'keyword_hash' => hash('sha256', 'booster test'),
+            'target_rank' => 20,
+            'is_active' => true,
+            'last_checked_at' => now()->subHours(2),
+        ]);
+
+        TrendyolBoosterStoreWatch::query()->create([
+            'user_id' => $user->id,
+            'store_url' => 'https://www.trendyol.com/magaza/zolm-store-m-987',
+            'store_url_hash' => hash('sha256', 'https://www.trendyol.com/magaza/zolm-store-m-987'),
+            'store_id' => '987',
+            'store_name' => 'ZOLM Store',
+            'is_active' => true,
+            'last_checked_at' => null,
+        ]);
+
+        $dashboard = app(TrendyolBoosterSyncHealthService::class)->dashboard($user->id);
+        $areas = collect($dashboard['areas'])->keyBy('key');
+
+        $this->assertTrue($dashboard['healthy']);
+        $this->assertSame(3, (int) $dashboard['due_total']);
+        $this->assertSame(1, (int) data_get($areas, 'product.due_count'));
+        $this->assertSame(1, (int) data_get($areas, 'keyword.due_count'));
+        $this->assertSame(1, (int) data_get($areas, 'store.due_count'));
+        $this->assertSame(1, (int) $dashboard['never_checked_total']);
+    }
+
+    public function test_booster_operational_alert_flags_stale_scheduler(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        config()->set('marketplace.trendyol_booster.sync.scheduler_recent_minutes', 15);
+        config()->set('marketplace.trendyol_booster.alerts.scheduler_critical_multiplier', 2);
+        Cache::put('marketplace:trendyol-booster:last-scheduler-run-at', now()->subMinutes(45)->toIso8601String(), now()->addHour());
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/scheduler-alert-test-p-774411',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $tracked->forceFill([
+            'tracking_status' => 'active',
+            'analysis_auto_refresh_enabled' => false,
+            'last_checked_at' => now(),
+        ])->save();
+
+        $dashboard = app(TrendyolBoosterOperationalAlertService::class)->dashboard($user->id);
+
+        $this->assertSame('critical', $dashboard['severity']);
+        $this->assertSame('scheduler_stale', data_get($dashboard, 'primary_issue.key'));
+        $this->assertSame('Scheduler gecikti', data_get($dashboard, 'primary_issue.label'));
+        $this->assertStringContainsString('Cron ve queue worker', data_get($dashboard, 'primary_issue.action'));
+        $this->assertSame(0, TrendyolBoosterSnapshot::query()
+            ->where('user_id', $user->id)
+            ->where('trendyol_booster_product_id', $tracked->id)
+            ->count());
+    }
+
+    public function test_booster_retention_report_counts_candidates_without_deleting_records(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/retention-test-urunu-p-654321',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+            'watch_keyword' => true,
+        ]);
+
+        foreach ([now()->subDays(45), now()->subDays(5)] as $checkedAt) {
+            TrendyolBoosterSnapshot::query()->create([
+                'user_id' => $user->id,
+                'trendyol_booster_product_id' => $tracked->id,
+                'sale_price' => 1500,
+                'checked_at' => $checkedAt,
+            ]);
+        }
+
+        $keyword = TrendyolBoosterKeyword::query()->create([
+            'user_id' => $user->id,
+            'trendyol_booster_product_id' => $tracked->id,
+            'keyword' => 'retention test',
+            'keyword_hash' => hash('sha256', 'retention test'),
+            'target_rank' => 20,
+            'is_active' => true,
+        ]);
+
+        DB::table('trendyol_booster_keyword_observations')->insert([
+            [
+                'trendyol_booster_keyword_id' => $keyword->id,
+                'observed_rank' => 8,
+                'result_count' => 50,
+                'checked_result_count' => 10,
+                'visibility_status' => 'visible',
+                'created_at' => now()->subDays(45),
+            ],
+            [
+                'trendyol_booster_keyword_id' => $keyword->id,
+                'observed_rank' => 6,
+                'result_count' => 48,
+                'checked_result_count' => 10,
+                'visibility_status' => 'visible',
+                'created_at' => now()->subDays(5),
+            ],
+        ]);
+
+        $report = app(TrendyolBoosterRetentionReportService::class)->report($user->id, 30);
+        $datasets = collect($report['datasets'])->keyBy('key');
+
+        $this->assertSame('dry_run', $report['mode']);
+        $this->assertSame(1, (int) data_get($datasets, 'snapshots.candidate_count'));
+        $this->assertSame(2, (int) data_get($datasets, 'snapshots.total_count'));
+        $this->assertSame(1, (int) data_get($datasets, 'keyword_observations.candidate_count'));
+        $this->assertSame(2, (int) data_get($datasets, 'keyword_observations.total_count'));
+        $this->assertGreaterThanOrEqual(2, (int) data_get($report, 'summary.candidate_count'));
+        $this->assertSame(2, TrendyolBoosterSnapshot::query()
+            ->where('user_id', $user->id)
+            ->where('trendyol_booster_product_id', $tracked->id)
+            ->count());
+        $this->assertSame(2, DB::table('trendyol_booster_keyword_observations')
+            ->where('trendyol_booster_keyword_id', $keyword->id)
+            ->count());
+    }
+
+    public function test_booster_retention_report_command_outputs_dry_run_summary(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/retention-komut-test-p-654322',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+
+        TrendyolBoosterSnapshot::query()->create([
+            'user_id' => $user->id,
+            'trendyol_booster_product_id' => $tracked->id,
+            'sale_price' => 1500,
+            'checked_at' => now()->subDays(45),
+        ]);
+
+        $exitCode = Artisan::call('marketplace:trendyol-booster-retention-report', [
+            '--user' => $user->id,
+            '--days' => 30,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('dry-run', $output);
+        $this->assertStringContainsString('Silme yok', $output);
+        $this->assertStringContainsString('Ürün snapshot geçmişi', $output);
+        $this->assertSame(1, TrendyolBoosterSnapshot::query()
+            ->where('user_id', $user->id)
+            ->where('trendyol_booster_product_id', $tracked->id)
+            ->count());
+    }
+
+    public function test_booster_retention_cleanup_command_defaults_to_dry_run(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        config()->set('marketplace.trendyol_booster.retention.cleanup_enabled', true);
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/cleanup-dry-run-p-654324',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $snapshot = TrendyolBoosterSnapshot::query()->create([
+            'user_id' => $user->id,
+            'trendyol_booster_product_id' => $tracked->id,
+            'sale_price' => 1500,
+            'checked_at' => now()->subDays(45),
+        ]);
+
+        $exitCode = Artisan::call('marketplace:trendyol-booster-retention-cleanup', [
+            '--user' => $user->id,
+            '--days' => 30,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('dry-run', $output);
+        $this->assertStringContainsString('Silme yok', $output);
+        $this->assertTrue(TrendyolBoosterSnapshot::query()->whereKey($snapshot->id)->exists());
+    }
+
+    public function test_booster_retention_cleanup_requires_enabled_flag_and_configured_days(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/cleanup-guard-p-654325',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $snapshot = TrendyolBoosterSnapshot::query()->create([
+            'user_id' => $user->id,
+            'trendyol_booster_product_id' => $tracked->id,
+            'sale_price' => 1500,
+            'checked_at' => now()->subDays(45),
+        ]);
+
+        config()->set('marketplace.trendyol_booster.retention.cleanup_enabled', false);
+        $disabledExitCode = Artisan::call('marketplace:trendyol-booster-retention-cleanup', [
+            '--user' => $user->id,
+            '--execute' => true,
+        ]);
+
+        $this->assertSame(1, $disabledExitCode);
+        $this->assertStringContainsString('feature flag ile kapalı', Artisan::output());
+        $this->assertTrue(TrendyolBoosterSnapshot::query()->whereKey($snapshot->id)->exists());
+
+        config()->set('marketplace.trendyol_booster.retention.cleanup_enabled', true);
+        $overrideExitCode = Artisan::call('marketplace:trendyol-booster-retention-cleanup', [
+            '--user' => $user->id,
+            '--days' => 30,
+            '--execute' => true,
+        ]);
+
+        $this->assertSame(1, $overrideExitCode);
+        $this->assertStringContainsString('--days gerçek silmede kullanılamaz', Artisan::output());
+        $this->assertTrue(TrendyolBoosterSnapshot::query()->whereKey($snapshot->id)->exists());
+
+        $invalidUserExitCode = Artisan::call('marketplace:trendyol-booster-retention-cleanup', [
+            '--user' => 0,
+            '--execute' => true,
+        ]);
+
+        $this->assertSame(1, $invalidUserExitCode);
+        $this->assertStringContainsString('--user seçeneği zorunludur', Artisan::output());
+        $this->assertTrue(TrendyolBoosterSnapshot::query()->whereKey($snapshot->id)->exists());
+    }
+
+    public function test_booster_retention_cleanup_deletes_only_target_users_expired_data(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        [$otherUser, $otherProduct, $otherListing] = $this->createBoosterGraph();
+        config()->set('marketplace.trendyol_booster.retention.cleanup_enabled', true);
+        config()->set('marketplace.trendyol_booster.retention.snapshots_days', 30);
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/cleanup-target-p-654326',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $otherTracked = app(TrendyolBoosterAnalysisService::class)->store($otherUser->id, [
+            'user_id' => $otherUser->id,
+            'source_url' => 'https://www.trendyol.com/zolm/cleanup-other-p-654327',
+            'mp_product_id' => $otherProduct->id,
+            'channel_listing_id' => $otherListing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+
+        $oldTarget = TrendyolBoosterSnapshot::query()->create([
+            'user_id' => $user->id,
+            'trendyol_booster_product_id' => $tracked->id,
+            'sale_price' => 1500,
+            'checked_at' => now()->subDays(45),
+        ]);
+        $recentTarget = TrendyolBoosterSnapshot::query()->create([
+            'user_id' => $user->id,
+            'trendyol_booster_product_id' => $tracked->id,
+            'sale_price' => 1500,
+            'checked_at' => now()->subDays(5),
+        ]);
+        $oldOther = TrendyolBoosterSnapshot::query()->create([
+            'user_id' => $otherUser->id,
+            'trendyol_booster_product_id' => $otherTracked->id,
+            'sale_price' => 1500,
+            'checked_at' => now()->subDays(45),
+        ]);
+
+        $exitCode = Artisan::call('marketplace:trendyol-booster-retention-cleanup', [
+            '--user' => $user->id,
+            '--execute' => true,
+        ]);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('Silinen: 1', Artisan::output());
+        $this->assertFalse(TrendyolBoosterSnapshot::query()->whereKey($oldTarget->id)->exists());
+        $this->assertTrue(TrendyolBoosterSnapshot::query()->whereKey($recentTarget->id)->exists());
+        $this->assertTrue(TrendyolBoosterSnapshot::query()->whereKey($oldOther->id)->exists());
+    }
+
+    public function test_booster_retention_cleanup_stops_at_per_run_delete_limit(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        config()->set('marketplace.trendyol_booster.retention.cleanup_enabled', true);
+        config()->set('marketplace.trendyol_booster.retention.snapshots_days', 30);
+        config()->set('marketplace.trendyol_booster.retention.cleanup_max_delete_per_run', 2);
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/cleanup-limit-p-654328',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+
+        foreach ([45, 46, 47] as $daysAgo) {
+            TrendyolBoosterSnapshot::query()->create([
+                'user_id' => $user->id,
+                'trendyol_booster_product_id' => $tracked->id,
+                'sale_price' => 1500,
+                'checked_at' => now()->subDays($daysAgo),
+            ]);
+        }
+
+        $result = app(TrendyolBoosterRetentionCleanupService::class)->cleanup($user->id, 50);
+
+        $this->assertSame(3, data_get($result, 'summary.candidate_before'));
+        $this->assertSame(2, data_get($result, 'summary.deleted_count'));
+        $this->assertSame(1, data_get($result, 'summary.candidate_remaining'));
+        $this->assertTrue(data_get($result, 'summary.stopped_at_limit'));
+        $this->assertSame(1, TrendyolBoosterSnapshot::query()
+            ->where('user_id', $user->id)
+            ->where('trendyol_booster_product_id', $tracked->id)
+            ->count());
+    }
+
+    public function test_booster_retention_cleanup_deletes_child_history_before_parent(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        config()->set('marketplace.trendyol_booster.retention.cleanup_enabled', true);
+        config()->set('marketplace.trendyol_booster.retention.stock_checks_days', 30);
+        config()->set('marketplace.trendyol_booster.retention.stock_sellers_days', 30);
+
+        $oldAt = now()->subDays(45);
+        $stockCheckId = DB::table('trendyol_booster_stock_checks')->insertGetId([
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/cleanup-stock-p-654329',
+            'source_url_hash' => hash('sha256', 'https://www.trendyol.com/zolm/cleanup-stock-p-654329'),
+            'checked_at' => $oldAt,
+            'created_at' => $oldAt,
+            'updated_at' => $oldAt,
+        ]);
+        $stockSellerId = DB::table('trendyol_booster_stock_sellers')->insertGetId([
+            'trendyol_booster_stock_check_id' => $stockCheckId,
+            'user_id' => $user->id,
+            'seller_name' => 'Cleanup Seller',
+            'created_at' => $oldAt,
+            'updated_at' => $oldAt,
+        ]);
+
+        $result = app(TrendyolBoosterRetentionCleanupService::class)->cleanup($user->id, 50);
+        $datasets = collect($result['datasets'])->keyBy('key');
+
+        $this->assertSame(2, data_get($result, 'summary.candidate_before'));
+        $this->assertSame(2, data_get($result, 'summary.deleted_count'));
+        $this->assertSame(1, (int) data_get($datasets, 'stock_sellers.deleted_count'));
+        $this->assertSame(1, (int) data_get($datasets, 'stock_checks.deleted_count'));
+        $this->assertFalse(DB::table('trendyol_booster_stock_sellers')->where('id', $stockSellerId)->exists());
+        $this->assertFalse(DB::table('trendyol_booster_stock_checks')->where('id', $stockCheckId)->exists());
+    }
+
+    public function test_tracking_dashboard_renders_retention_health_summary(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        $this->actingAs($user);
+        config()->set('marketplace.trendyol_booster.retention.snapshots_days', 30);
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/retention-panel-test-p-654323',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+
+        foreach ([now()->subDays(45), now()->subDays(5)] as $checkedAt) {
+            TrendyolBoosterSnapshot::query()->create([
+                'user_id' => $user->id,
+                'trendyol_booster_product_id' => $tracked->id,
+                'sale_price' => 1500,
+                'checked_at' => $checkedAt,
+            ]);
+        }
+
+        Livewire::withQueryParams(['booster' => 'tracking'])
+            ->test(TrendyolBooster::class)
+            ->assertSeeHtml('data-testid="booster-retention-health"')
+            ->assertSee('Geçmiş veri yükü')
+            ->assertSee('Geçmiş veri adayı var')
+            ->assertSee('Ürün snapshot geçmişi')
+            ->assertSee('1 aday · 30 gün')
+            ->assertSee('Temizlik kapalı')
+            ->assertSee('marketplace:trendyol-booster-retention-report --user='.$user->id);
+
+        $this->assertSame(2, TrendyolBoosterSnapshot::query()
+            ->where('user_id', $user->id)
+            ->where('trendyol_booster_product_id', $tracked->id)
+            ->count());
+    }
+
+    public function test_tracking_dashboard_renders_operational_alert_summary(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        $this->actingAs($user);
+        config()->set('marketplace.trendyol_booster.sync.scheduler_recent_minutes', 15);
+        config()->set('marketplace.trendyol_booster.alerts.scheduler_critical_multiplier', 2);
+        Cache::put('marketplace:trendyol-booster:last-scheduler-run-at', now()->subMinutes(45)->toIso8601String(), now()->addHour());
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/operasyon-alarm-test-p-774412',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $tracked->forceFill([
+            'tracking_status' => 'active',
+            'analysis_auto_refresh_enabled' => false,
+            'last_checked_at' => now(),
+        ])->save();
+
+        Livewire::withQueryParams(['booster' => 'tracking'])
+            ->test(TrendyolBooster::class)
+            ->assertSeeHtml('data-testid="booster-operational-alert"')
+            ->assertSee('Operasyon alarmı')
+            ->assertSee('Operasyon alarmı kritik')
+            ->assertSee('Scheduler gecikti')
+            ->assertSee('Cron ve queue worker durumunu kontrol et');
+
+        $this->assertSame(0, TrendyolBoosterSnapshot::query()
+            ->where('user_id', $user->id)
+            ->where('trendyol_booster_product_id', $tracked->id)
+            ->count());
+    }
+
+    public function test_booster_priority_actions_rank_commercial_risk_without_writing(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+
+        $lossProduct = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/zarar-sinyali-p-774414',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'title' => 'Zarar Sinyali Ürünü',
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $lossProduct->forceFill([
+            'tracking_status' => 'active',
+            'decision_status' => 'loss',
+            'net_profit' => -125.50,
+            'risk_score' => 92,
+            'data_quality_score' => 85,
+        ])->save();
+
+        $riskProduct = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/yuksek-risk-p-774415',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'title' => 'Yüksek Risk Ürünü',
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $riskProduct->forceFill([
+            'tracking_status' => 'active',
+            'decision_status' => 'watch',
+            'net_profit' => 100,
+            'risk_score' => 72,
+            'data_quality_score' => 80,
+        ])->save();
+
+        $healthyProduct = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/saglikli-urun-p-774416',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'title' => 'Sağlıklı Ürün',
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $healthyProduct->forceFill([
+            'tracking_status' => 'active',
+            'decision_status' => 'go',
+            'net_profit' => 220,
+            'risk_score' => 10,
+            'data_quality_score' => 90,
+        ])->save();
+        TrendyolBoosterSnapshot::query()->create([
+            'user_id' => $user->id,
+            'trendyol_booster_product_id' => $healthyProduct->id,
+            'sale_price' => 1500,
+            'confidence_score' => 85,
+            'estimated_days_of_stock' => 20,
+            'checked_at' => now(),
+        ]);
+
+        $updatedAt = $lossProduct->fresh()->updated_at;
+        $dashboard = app(TrendyolBoosterPriorityActionService::class)->dashboard($user->id);
+
+        $this->assertSame(2, $dashboard['action_count']);
+        $this->assertSame('loss', data_get($dashboard, 'actions.0.key'));
+        $this->assertSame($lossProduct->id, data_get($dashboard, 'actions.0.product_id'));
+        $this->assertSame('high_risk', data_get($dashboard, 'actions.1.key'));
+        $this->assertSame($riskProduct->id, data_get($dashboard, 'actions.1.product_id'));
+        $this->assertSame($updatedAt->toISOString(), $lossProduct->fresh()->updated_at->toISOString());
+    }
+
+    public function test_tracking_dashboard_opens_priority_product_without_changing_it(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        $this->actingAs($user);
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/oncelikli-inceleme-p-774417',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'title' => 'Öncelikli İnceleme Ürünü',
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $tracked->forceFill([
+            'tracking_status' => 'active',
+            'decision_status' => 'loss',
+            'net_profit' => -80,
+            'risk_score' => 75,
+        ])->save();
+        $updatedAt = $tracked->fresh()->updated_at;
+
+        Livewire::withQueryParams(['booster' => 'tracking'])
+            ->test(TrendyolBooster::class)
+            ->assertSeeHtml('data-testid="booster-priority-actions"')
+            ->assertSee('Bugün ne yapmalıyım?')
+            ->assertSee('Zarar riskini incele')
+            ->assertSee('Öncelikli İnceleme Ürünü')
+            ->call('openTrackedProductAnalysis', $tracked->id)
+            ->assertSet('activeModule', 'analysis')
+            ->assertSet('selectedAnalysisProductId', $tracked->id);
+
+        $this->assertSame($updatedAt->toISOString(), $tracked->fresh()->updated_at->toISOString());
+    }
+
+    public function test_tracking_health_cache_is_cleared_when_tracking_changes(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        $this->actingAs($user);
+        config()->set('marketplace.trendyol_booster.alerts.cache_seconds', 60);
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/cache-clear-test-p-774413',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $tracked->forceFill([
+            'tracking_status' => 'paused',
+            'analysis_auto_refresh_enabled' => false,
+            'next_analysis_refresh_at' => null,
+        ])->save();
+
+        foreach (['scheduler', 'retention', 'operational-alert', 'priority-actions'] as $key) {
+            Cache::put('trendyol-booster:tracking-health:'.$user->id.':'.$key, ['cached' => true], now()->addMinute());
+        }
+
+        Livewire::test(TrendyolBooster::class)
+            ->call('followTrackedProduct', $tracked->id);
+
+        foreach (['scheduler', 'retention', 'operational-alert', 'priority-actions'] as $key) {
+            $this->assertFalse(Cache::has('trendyol-booster:tracking-health:'.$user->id.':'.$key));
+        }
+    }
+
+    public function test_booster_readiness_reports_ready_for_healthy_runtime(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        config()->set('marketplace.features.trendyol_booster_enabled', true);
+        config()->set('marketplace.features.notifications_enabled', true);
+        config()->set('marketplace.trendyol_booster.retention.cleanup_enabled', false);
+        config()->set('queue.default', 'database');
+        config()->set('cache.default', 'database');
+        Cache::put('marketplace:trendyol-booster:last-scheduler-run-at', now()->toIso8601String(), now()->addHour());
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/readiness-ready-p-774418',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+        $updatedAt = $tracked->fresh()->updated_at;
+
+        $report = app(TrendyolBoosterReadinessService::class)->audit($user->id);
+        $checks = collect($report['checks'])->keyBy('key');
+
+        $this->assertTrue($report['ready']);
+        $this->assertSame('ready', $report['status']);
+        $this->assertSame(0, data_get($report, 'summary.blocking_count'));
+        $this->assertSame(0, data_get($report, 'summary.warning_count'));
+        $this->assertSame('pass', data_get($checks, 'schema.status'));
+        $this->assertSame('24 tablo hazır.', data_get($checks, 'schema.detail'));
+        $this->assertSame('pass', data_get($checks, 'companion_version.status'));
+        $this->assertSame($updatedAt->toISOString(), $tracked->fresh()->updated_at->toISOString());
+    }
+
+    public function test_booster_readiness_keeps_non_blocking_runtime_choices_as_warnings(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        config()->set('marketplace.features.trendyol_booster_enabled', true);
+        config()->set('marketplace.features.notifications_enabled', false);
+        config()->set('marketplace.trendyol_booster.retention.cleanup_enabled', true);
+        config()->set('queue.default', 'sync');
+        config()->set('cache.default', 'array');
+
+        $report = app(TrendyolBoosterReadinessService::class)->audit($user->id);
+        $checks = collect($report['checks'])->keyBy('key');
+
+        $this->assertTrue($report['ready']);
+        $this->assertSame('warning', $report['status']);
+        $this->assertSame(0, data_get($report, 'summary.blocking_count'));
+        $this->assertGreaterThanOrEqual(5, data_get($report, 'summary.warning_count'));
+        $this->assertSame('warning', data_get($checks, 'scheduler.status'));
+        $this->assertSame('warning', data_get($checks, 'queue.status'));
+        $this->assertSame('warning', data_get($checks, 'cache.status'));
+        $this->assertSame('warning', data_get($checks, 'notifications.status'));
+        $this->assertSame('warning', data_get($checks, 'retention.status'));
+    }
+
+    public function test_booster_readiness_blocks_disabled_stale_or_unsafe_runtime(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        config()->set('marketplace.features.trendyol_booster_enabled', false);
+        config()->set('marketplace.trendyol_booster.sync.product_limit', 0);
+        Cache::put('marketplace:trendyol-booster:last-scheduler-run-at', now()->subHours(2)->toIso8601String(), now()->addHour());
+
+        app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/readiness-blocked-p-774419',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+
+        $report = app(TrendyolBoosterReadinessService::class)->audit($user->id);
+        $checks = collect($report['checks'])->keyBy('key');
+
+        $this->assertFalse($report['ready']);
+        $this->assertSame('blocked', $report['status']);
+        $this->assertGreaterThanOrEqual(3, data_get($report, 'summary.blocking_count'));
+        $this->assertSame('fail', data_get($checks, 'feature_flag.status'));
+        $this->assertSame('fail', data_get($checks, 'scheduler.status'));
+        $this->assertSame('fail', data_get($checks, 'sync_limits.status'));
+    }
+
+    public function test_booster_readiness_command_returns_deploy_safe_exit_codes(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        config()->set('marketplace.features.trendyol_booster_enabled', true);
+        config()->set('marketplace.features.notifications_enabled', true);
+        config()->set('marketplace.trendyol_booster.retention.cleanup_enabled', false);
+        config()->set('queue.default', 'database');
+        config()->set('cache.default', 'database');
+        Cache::put('marketplace:trendyol-booster:last-scheduler-run-at', now()->toIso8601String(), now()->addHour());
+
+        app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/readiness-command-p-774420',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'sale_price' => 1500,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+
+        $readyExitCode = Artisan::call('marketplace:trendyol-booster-readiness', ['--user' => $user->id]);
+        $readyOutput = Artisan::output();
+
+        $this->assertSame(0, $readyExitCode);
+        $this->assertStringContainsString('Canlıya geçiş hazır', $readyOutput);
+
+        config()->set('marketplace.features.trendyol_booster_enabled', false);
+        $blockedExitCode = Artisan::call('marketplace:trendyol-booster-readiness', [
+            '--user' => $user->id,
+            '--json' => true,
+        ]);
+        $blockedOutput = Artisan::output();
+
+        $this->assertSame(1, $blockedExitCode);
+        $this->assertStringContainsString('"status": "blocked"', $blockedOutput);
     }
 
     public function test_booster_sync_command_prioritizes_area_stale_window_over_common_option(): void
@@ -2624,6 +3932,47 @@ class TrendyolBoosterTest extends TestCase
         $this->assertSame(1, TrendyolBoosterStoreWatch::query()->where('user_id', $user->id)->count());
         $this->assertSame(1, TrendyolBoosterSupplierResearch::query()->where('user_id', $user->id)->count());
         $this->assertSame(2, TrendyolBoosterSupplierOffer::query()->where('user_id', $user->id)->count());
+    }
+
+    public function test_companion_stock_check_rejects_too_many_sellers(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $this->actingAs($user);
+        config()->set('marketplace.trendyol_booster.companion.max_stock_sellers', 2);
+
+        $this->postJson(route('mp.trendyol-booster.companion.stock-check'), [
+            'source_url' => 'https://www.trendyol.com/zolm/booster-test-urunu-p-123456',
+            'page' => ['trendyol_product_id' => '123456', 'title' => 'ZOLM Booster Test Ürünü', 'sale_price' => 1500],
+            'total_stock' => 44,
+            'sellers' => [
+                ['seller_name' => 'ZOLM Store 1', 'stock' => 10, 'sale_price' => 1500],
+                ['seller_name' => 'ZOLM Store 2', 'stock' => 12, 'sale_price' => 1490],
+                ['seller_name' => 'ZOLM Store 3', 'stock' => 22, 'sale_price' => 1480],
+            ],
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('sellers');
+    }
+
+    public function test_companion_store_scan_rejects_too_many_items(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $this->actingAs($user);
+        config()->set('marketplace.trendyol_booster.companion.max_store_items', 1);
+
+        $this->postJson(route('mp.trendyol-booster.companion.store-scan'), [
+            'store_url' => 'https://www.trendyol.com/magaza/zolm-store-m-987',
+            'store' => [
+                'store_id' => '987',
+                'store_name' => 'ZOLM Store',
+                'items' => [
+                    ['trendyol_product_id' => '123456', 'title' => 'ZOLM Booster Test Ürünü', 'source_url' => 'https://www.trendyol.com/zolm/booster-test-urunu-p-123456', 'sale_price' => 1500],
+                    ['trendyol_product_id' => '222222', 'title' => 'Rakip Ürün', 'source_url' => 'https://www.trendyol.com/zolm/rakip-p-222222', 'sale_price' => 1400],
+                ],
+            ],
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('store.items');
     }
 
     public function test_companion_product_analysis_persists_all_metrics_and_recent_reviews(): void
@@ -3268,7 +4617,7 @@ class TrendyolBoosterTest extends TestCase
             ->assertSet('activeModule', 'stock')
             ->assertSet('favoritesOnly', false)
             ->assertDispatched('booster-module-changed', module: 'stock', item: 'stock', group: 'market')
-            ->assertSee('Satıcı bazlı stok erime takibi')
+            ->assertSee('Stok ve satıcı takibi')
             ->call('setActiveModule', 'bestseller')
             ->assertSet('activeModule', 'bestseller')
             ->assertDispatched('booster-module-changed', module: 'bestseller', item: 'bestseller', group: 'market')
@@ -3346,7 +4695,7 @@ class TrendyolBoosterTest extends TestCase
         Livewire::withQueryParams(['booster' => 'stock'])
             ->test(TrendyolBooster::class)
             ->assertSet('activeModule', 'stock')
-            ->assertSee('Satıcı bazlı stok erime takibi');
+            ->assertSee('Stok ve satıcı takibi');
 
         Livewire::withQueryParams(['booster' => 'tracking', 'favorites' => 1])
             ->test(TrendyolBooster::class)
@@ -3391,6 +4740,61 @@ class TrendyolBoosterTest extends TestCase
             ->assertOk()
             ->assertSee('Trendyol Booster')
             ->assertSee('Ürün karar radarı');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function reviewPayload(array $overrides = []): array
+    {
+        $suffix = str_replace('-', '', (string) Str::uuid());
+
+        return array_merge([
+            'trendyol_product_id' => '76241080',
+            'trendyol_review_id' => 'rv-'.$suffix,
+            'trendyol_product_barcode' => 'BAR-'.$suffix,
+            'product_title' => 'Long Line Puf, Kırık Beyaz Gold',
+            'product_image_url' => 'https://cdn.dsmcdn.com/zem/long-line-puf.jpg',
+            'reviewer_name' => 'Ahmet Yılmaz',
+            'reviewer_avatar_url' => null,
+            'rating' => 5,
+            'comment' => 'Ürün beklediğimden kaliteli geldi.',
+            'review_media' => [],
+            'helpful_count' => 2,
+            'seller_name' => 'Zem Home',
+            'reviewed_at' => now()->subDay()->toIso8601String(),
+        ], $overrides);
+    }
+
+    protected function createReviewRecord(User $user, array $overrides = []): TrendyolBoosterReview
+    {
+        $payload = $this->reviewPayload($overrides);
+        $reviewerName = $payload['reviewer_name'] ?? 'Anonim';
+
+        return TrendyolBoosterReview::query()->create([
+            'user_id' => $user->id,
+            'sync_run_id' => $payload['sync_run_id'] ?? null,
+            'trendyol_product_id' => $payload['trendyol_product_id'],
+            'trendyol_review_id' => $payload['trendyol_review_id'],
+            'trendyol_product_barcode' => $payload['trendyol_product_barcode'] ?? null,
+            'product_title' => $payload['product_title'] ?? '',
+            'product_image_url' => $payload['product_image_url'] ?? null,
+            'reviewer_name_masked' => 'Ahmet Y.',
+            'reviewer_name_hash' => hash('sha256', $reviewerName),
+            'reviewer_avatar_url' => $payload['reviewer_avatar_url'] ?? null,
+            'rating' => $payload['rating'],
+            'comment' => $payload['comment'],
+            'comment_length' => mb_strlen($payload['comment']),
+            'review_media' => $payload['review_media'] ?? [],
+            'helpful_count' => $payload['helpful_count'] ?? 0,
+            'seller_name' => $payload['seller_name'] ?? null,
+            'reviewed_at' => $payload['reviewed_at'] ?? now(),
+            'fetched_at' => now(),
+            'spam_score' => $payload['spam_score'] ?? 0,
+            'is_spam' => $payload['is_spam'] ?? false,
+            'spam_flags' => $payload['spam_flags'] ?? [],
+            'status' => $payload['status'] ?? 'pending',
+        ]);
     }
 
     /**

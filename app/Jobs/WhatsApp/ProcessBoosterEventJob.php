@@ -40,6 +40,8 @@ class ProcessBoosterEventJob implements ShouldQueue
             match ($eventType) {
                 'order.created' => $this->handleOrderCreated($payload, $contactResolver),
                 'order.communication_preferences_synced' => $this->handlePreferencesSync($payload, $contactResolver),
+                'cart.updated' => $this->handleCartUpdated($payload, $contactResolver),
+                'cart.contact_captured' => $this->handleCartContactCaptured($payload, $contactResolver),
                 default => Log::info('Bilinmeyen Booster event tipi', ['type' => $eventType]),
             };
 
@@ -136,5 +138,32 @@ class ProcessBoosterEventJob implements ShouldQueue
                 'consent_timestamp' => now(),
             ]);
         }
+    }
+
+    private function handleCartUpdated(array $payload, ContactResolver $contactResolver): void
+    {
+        $storeId = (int) ($payload['store_id'] ?? 0);
+        if ($storeId <= 0) {
+            return;
+        }
+
+        $cartRecoveryService = app(\App\Services\WhatsApp\CartRecoveryService::class);
+        $cartRecoveryService->onCartUpdated($payload);
+    }
+
+    private function handleCartContactCaptured(array $payload, ContactResolver $contactResolver): void
+    {
+        $storeId = (int) ($payload['store_id'] ?? 0);
+        $phone = $payload['phone'] ?? null;
+
+        if ($storeId <= 0 || empty($phone)) {
+            return;
+        }
+
+        $contactResolver->resolveOrCreate(
+            $storeId,
+            $phone,
+            $payload['wc_customer_id'] ?? null,
+        );
     }
 }

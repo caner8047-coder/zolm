@@ -157,6 +157,18 @@ async function handleMessage(message) {
     return await companionPost('store_scan', message.payload || {});
   }
 
+  if (message.type === 'ZOLM_BOOSTER_REVIEW_SCAN_START') {
+    return await reviewScanFromUrl(message.source_url || '', message.options || {});
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_REVIEW_STORE_PREVIEW') {
+    return await reviewStorePreviewFromUrl(message.source_url || '', message.options || {});
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_REVIEW_SCAN_VERIFY') {
+    return await companionPost('review_scan_verify', message.payload || {});
+  }
+
   throw new Error('Bilinmeyen companion mesajı.');
 }
 
@@ -593,6 +605,267 @@ async function scrollForMoreProducts(tabId, maxScrolls = 3) {
     if (countAfter <= countBefore) break;
   }
 }
+// ─── Trendyol Yorum Senkronizasyonu (Faz 2) ────────────────────────────
+/**
+ * Mağaza yorum taramasını başlatır.
+ * 1. ZOLM'dan sync run oluştur
+ * 2. Aktif Trendyol tab'ında mağaza ürün listesini topla
+ * 3. Her ürün için yorumları pagination ile çek (rate-limited)
+ * 4. Batch olarak ZOLM'a ingest et
+ */
+async function reviewScanFromUrl(sourceUrl, options = {}) {
+  const syncType = options.sync_type || 'delta';
+  const maxProducts = options.max_products || 500;
+  const storeUrl = String(options.store_url || '').trim();
+  const merchantId = String(options.merchant_id || '').trim();
+  const storeName = String(options.store_name || '').trim();
+
+  if (!storeUrl || !/^\d{2,20}$/.test(merchantId)) {
+    throw new Error('Yorum taraması için doğrulanmış Trendyol mağazası ve merchant ID gereklidir.');
+  }
+
+  // Panelden gelen sync run varsa onu kullan; popup taramasında yeni run oluştur.
+  const startResponse = await companionPost('review_scan_start', {
+    sync_run_id: options.sync_run_id || null,
+    sync_type: syncType,
+    review_source_id: options.review_source_id || null,
+  });
+  if (!startResponse?.ok) {
+    throw new Error('ZOLM sync run oluşturulamadı: ' + (startResponse?.message || 'Bilinmeyen hata'));
+  }
+
+  const syncRunId = startResponse.sync_run_id;
+  // Tam tarama geçmiş senkronizasyon eşiğini kullanmaz; bütün yorumları baştan okur.
+  const lastSyncedAt = syncType === 'full' ? null : startResponse.last_synced_at;
+  let reviewTabId = null;
+
+  try {
+    const storeContext = await openReviewStoreContext(storeUrl, merchantId, maxProducts);
+    reviewTabId = storeContext.tab_id;
+    const productList = storeContext.products;
+
+    let totalNew = 0, totalUpdated = 0, totalSpam = 0;
+    let processedProducts = 0;
+    let failedProducts = 0;
+    let ignoredSellerReviews = 0;
+    const failureExamples = [];
+    const totalProducts = productList.length;
+
+    for (const product of productList) {
+      await randomDelay();
+      let progressReported = false;
+
+      try {
+        const reviewData = await sendTrendyolTabMessage(reviewTabId, {
+          type: 'ZOLM_BOOSTER_REVIEW_FETCH',
+          product_id: product.trendyol_product_id,
+          since: lastSyncedAt,
+          max_pages: 50,
+        });
+
+        if (!reviewData?.ok) {
+          throw new Error(reviewData?.message || 'Yorumlar okunamadı.');
+        }
+
+        const rawReviews = Array.isArray(reviewData?.reviews) ? reviewData.reviews : [];
+        const reviews = rawReviews.filter((review) => {
+          const structurallyValid = review?.trendyol_review_id
+            && review?.trendyol_product_id
+            && review?.comment
+            && Number(review?.rating) >= 1
+            && Number(review?.rating) <= 5;
+          if (!structurallyValid) return false;
+
+          const matches = reviewMatchesSelectedStore(review, merchantId, storeName);
+          if (!matches) ignoredSellerReviews++;
+          return matches;
+        });
+
+        if (reviews.length > 0) {
+          for (const review of reviews) {
+            review.product_title = product.product_title;
+            review.product_image_url = product.product_image_url;
+            review.trendyol_product_barcode = product.trendyol_product_barcode;
+          }
+          const chunks = [];
+          for (let offset = 0; offset < reviews.length; offset += REVIEW_SCAN_RATE.BATCH_SIZE) {
+            chunks.push(reviews.slice(offset, offset + REVIEW_SCAN_RATE.BATCH_SIZE));
+          }
+
+          for (let index = 0; index < chunks.length; index++) {
+            const ingestResult = await companionPost('review_scan_ingest', {
+              sync_run_id: syncRunId,
+              reviews: chunks[index],
+              total_products: totalProducts,
+              processed_products: index === chunks.length - 1 ? processedProducts + 1 : processedProducts,
+            });
+            totalNew += ingestResult?.new || 0;
+            totalUpdated += ingestResult?.updated || 0;
+            totalSpam += ingestResult?.spam || 0;
+            if (index === chunks.length - 1) progressReported = true;
+          }
+        }
+      } catch (error) {
+        failedProducts++;
+        const failureMessage = error instanceof Error ? error.message : 'Bilinmeyen yorum okuma hatası.';
+        if (failureExamples.length < 3) {
+          failureExamples.push(`${product.trendyol_product_id}: ${failureMessage}`);
+        }
+        console.warn(`[Review Scan] Ürün ${product.trendyol_product_id} yorum çekme hatası:`, failureMessage);
+      }
+
+      processedProducts++;
+      if (!progressReported) {
+        await companionPost('review_scan_ingest', {
+          sync_run_id: syncRunId,
+          reviews: [],
+          total_products: totalProducts,
+          processed_products: processedProducts,
+        });
+      }
+    }
+
+    if (failedProducts === totalProducts) {
+      throw new Error(
+        `${totalProducts} ürünün hiçbirinde Trendyol yorum servisine ulaşılamadı. `
+        + `İlk hata: ${failureExamples[0] || 'Yanıt alınamadı.'}`
+      );
+    }
+
+    await companionPost('review_scan_ingest', {
+      sync_run_id: syncRunId,
+      reviews: [],
+      total_products: totalProducts,
+      processed_products: processedProducts,
+      completed: true,
+    });
+
+    return {
+      ok: true,
+      sync_run_id: syncRunId,
+      message: `${storeName} için ${totalProducts} ürün tarandı: ${totalNew} yeni, ${totalUpdated} güncellenen, ${ignoredSellerReviews} farklı satıcı yorumu dışlandı.`,
+      stats: {
+        total_products: totalProducts,
+        processed_products: processedProducts,
+        new_reviews: totalNew,
+        updated_reviews: totalUpdated,
+        spam_detected: totalSpam,
+        failed_products: failedProducts,
+        ignored_seller_reviews: ignoredSellerReviews,
+      },
+    };
+  } finally {
+    if (reviewTabId) {
+      await chrome.tabs.remove(reviewTabId).catch(() => undefined);
+    }
+  }
+}
+
+async function reviewStorePreviewFromUrl(sourceUrl, options = {}) {
+  const storeUrl = String(options.store_url || sourceUrl || '').trim();
+  const merchantId = String(options.merchant_id || '').trim();
+  const context = await openReviewStoreContext(storeUrl, merchantId, 500);
+
+  try {
+    return {
+      ok: true,
+      store_id: context.store_id,
+      store_name: context.store_name || String(options.store_name || ''),
+      store_url: context.store_url,
+      product_count: context.products.length,
+      sample_products: context.products.slice(0, 6),
+    };
+  } finally {
+    await chrome.tabs.remove(context.tab_id).catch(() => undefined);
+  }
+}
+
+async function openReviewStoreContext(storeUrl, merchantId, maxProducts) {
+  if (!/^\d{2,20}$/.test(String(merchantId || ''))) {
+    throw new Error('Geçerli bir Trendyol merchant ID girin.');
+  }
+
+  const targetUrl = `https://www.trendyol.com/sr?mid=${encodeURIComponent(merchantId)}&os=1`;
+  const tab = await chrome.tabs.create({ url: targetUrl, active: false });
+  if (!tab?.id) throw new Error('Trendyol mağaza doğrulama sekmesi açılamadı.');
+
+  try {
+    await waitForTabComplete(tab.id, 30000);
+    await waitForStoreProducts(tab.id, 20000);
+    await scrollForMoreProducts(tab.id, 20);
+    const response = await sendTrendyolTabMessage(tab.id, {
+      type: 'ZOLM_BOOSTER_REVIEW_PRODUCT_LIST',
+      max_products: maxProducts,
+    });
+    const resolvedStoreId = String(response?.store?.store_id || merchantId);
+    const products = Array.isArray(response?.products) ? response.products : [];
+
+    if (resolvedStoreId !== String(merchantId)) {
+      throw new Error(`Açılan mağaza ${resolvedStoreId}, seçilen merchant ID ise ${merchantId}.`);
+    }
+    if (products.length === 0) {
+      throw new Error('Seçilen Trendyol mağazasında ürün bulunamadı.');
+    }
+
+    return {
+      tab_id: tab.id,
+      store_id: resolvedStoreId,
+      store_name: String(response?.store?.store_name || ''),
+      store_url: storeUrl || targetUrl,
+      products,
+    };
+  } catch (error) {
+    await chrome.tabs.remove(tab.id).catch(() => undefined);
+    throw error;
+  }
+}
+
+function reviewMatchesSelectedStore(review, merchantId, storeName) {
+  const reviewMerchantId = String(review?.seller_id || '').replace(/\D+/g, '');
+  if (reviewMerchantId) {
+    return reviewMerchantId === String(merchantId);
+  }
+
+  const normalizeName = (value) => String(value || '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[^a-z0-9çğıöşü]+/gi, ' ')
+    .trim();
+  const reviewSeller = normalizeName(review?.seller_name);
+  const selectedSeller = normalizeName(storeName);
+
+  return Boolean(reviewSeller && selectedSeller && (reviewSeller === selectedSeller || reviewSeller.includes(selectedSeller) || selectedSeller.includes(reviewSeller)));
+}
+
+async function sendTrendyolTabMessage(tabId, message) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, message);
+  } catch (firstError) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          window['zolm-trendyol-booster-panel'] = null;
+          document.getElementById('zolm-trendyol-booster-panel')?.remove();
+        },
+      });
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content.js'],
+      });
+      await delay(150);
+
+      return await chrome.tabs.sendMessage(tabId, message);
+    } catch (retryError) {
+      const detail = retryError instanceof Error
+        ? retryError.message
+        : (firstError instanceof Error ? firstError.message : 'Bilinmeyen bağlantı hatası.');
+
+      throw new Error(`Trendyol sekmesiyle bağlantı kurulamadı. Sekmeyi yenileyip tekrar deneyin. Ayrıntı: ${detail}`);
+    }
+  }
+}
+
+
 
 async function enrichStoreScanItems(items, limit = STORE_DETAIL_ENRICH_LIMIT) {
   const normalizedItems = Array.isArray(items) ? items.filter(Boolean) : [];
@@ -2934,7 +3207,53 @@ function actionPath(action) {
     product_analysis: 'product-analysis',
     stock_check: 'stock-check',
     store_scan: 'store-scan',
+    review_scan_start: 'review-scan/start',
+    review_scan_ingest: 'review-scan/ingest',
+    review_scan_status: 'review-scan/status',
+    review_scan_verify: 'review-scan/verify',
   }[action] || action;
+}
+
+// ===== Rate Limiting & Backoff (Faz 2) =====
+
+const REVIEW_SCAN_RATE = {
+  MIN_DELAY_MS: 2000,
+  MAX_DELAY_MS: 5000,
+  MAX_RETRIES: 3,
+  BACKOFF_BASE_MS: 5000,
+  BATCH_SIZE: 50,
+};
+
+function randomDelay(minMs = REVIEW_SCAN_RATE.MIN_DELAY_MS, maxMs = REVIEW_SCAN_RATE.MAX_DELAY_MS) {
+  const delay = minMs + Math.random() * (maxMs - minMs);
+  return new Promise((resolve) => setTimeout(resolve, delay));
+}
+
+async function fetchWithRetry(url, options = {}, maxRetries = REVIEW_SCAN_RATE.MAX_RETRIES) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.status === 429 || response.status === 503) {
+        if (attempt < maxRetries) {
+          const backoff = REVIEW_SCAN_RATE.BACKOFF_BASE_MS * Math.pow(2, attempt);
+          console.warn(`[Review Scan] Rate limit (${response.status}), backoff ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+          continue;
+        }
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        const backoff = REVIEW_SCAN_RATE.BACKOFF_BASE_MS * Math.pow(2, attempt);
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError || new Error('Max retries exceeded');
 }
 
 async function readJson(response) {

@@ -86,6 +86,10 @@ final class ZOLM_WhatsApp_Booster {
         add_action('woocommerce_order_status_changed', [$this, 'on_order_status_changed'], 10, 4);
         add_action('woocommerce_checkout_order_processed', [$this, 'on_checkout_order_processed'], 10, 3);
 
+        // Sepet event hooks
+        add_action('woocommerce_cart_updated', [$this, 'on_cart_updated'], 10);
+        add_action('woocommerce_before_checkout_process', [$this, 'on_checkout_contact_captured'], 5);
+
         // Consent checkbox'ları
         add_action('woocommerce_review_order_before_submit', [$this, 'add_checkout_consent_checkboxes']);
         add_action('woocommerce_checkout_process', [$this, 'validate_checkout_consent']);
@@ -238,6 +242,12 @@ final class ZOLM_WhatsApp_Booster {
         $this->send_signal('order.created', [
             'wc_customer_id' => (string) $order->get_customer_id(),
             'order_id' => $orderId,
+            'order_number' => $order->get_order_number(),
+            'order_status' => $order->get_status(),
+            'payment_status' => $order->get_status('pay'),
+            'order_total' => (float) $order->get_total(),
+            'currency' => $order->get_currency(),
+            'order_date' => $order->get_date_created() ? $order->get_date_created()->format('Y-m-d H:i:s') : '',
             'customer_phone' => $phone,
             'customer_name' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
             'communication_purposes' => $purposes,
@@ -248,9 +258,78 @@ final class ZOLM_WhatsApp_Booster {
     public function on_order_status_changed($orderId, $from, $to, $order) {
         $this->send_signal('order.status_changed', [
             'order_id' => $orderId,
+            'order_number' => $order->get_order_number(),
             'old_status' => $from,
             'new_status' => $to,
+            'order_status' => $order->get_status(),
+            'order_total' => (float) $order->get_total(),
+            'currency' => $order->get_currency(),
             'customer_phone' => $order->get_billing_phone(),
+        ]);
+    }
+
+    // ── Sepet Olayları ──────────────────────────────────────
+
+    public function on_cart_updated() {
+        if (is_admin() && !wp_doing_ajax()) {
+            return;
+        }
+
+        $cart = WC()->cart;
+        if (!$cart || $cart->is_empty()) {
+            return;
+        }
+
+        $cartItems = [];
+        foreach ($cart->get_cart() as $cartItem) {
+            $cartItems[] = [
+                'product_id' => $cartItem['product_id'],
+                'variation_id' => $cartItem['variation_id'] ?? 0,
+                'quantity' => $cartItem['quantity'],
+                'product_url' => get_permalink($cartItem['product_id']),
+            ];
+        }
+
+        $userId = get_current_user_id();
+        $phone = $userId ? get_user_meta($userId, 'billing_phone', true) : '';
+        $email = $userId ? get_userdata($userId)->user_email : WC()->checkout->get_value('billing_email');
+        $cartRecoveryConsent = $userId ? (get_user_meta($userId, '_wa_consent_order_updates', true) ?: 'no') : 'no';
+
+        $this->send_signal('cart.updated', [
+            'wc_customer_id' => $userId ? (string) $userId : null,
+            'guest_checkout' => $userId === 0,
+            'phone' => $phone,
+            'billing_email' => $email,
+            'cart_key' => $cart->get_cart_hash(),
+            'cart_items' => $cartItems,
+            'cart_total' => (float) $cart->get_cart_contents_total(),
+            'currency' => get_woocommerce_currency(),
+            'cart_recovery_consent' => $cartRecoveryConsent === 'yes' ? 'granted' : 'withdrawn',
+            'consent_source' => 'checkout',
+            'consent_timestamp' => current_time('mysql'),
+        ]);
+    }
+
+    public function on_checkout_contact_captured() {
+        if (!WC()->checkout) {
+            return;
+        }
+
+        $email = WC()->checkout->get_value('billing_email');
+        $phone = WC()->checkout->get_value('billing_phone');
+
+        if (empty($email) && empty($phone)) {
+            return;
+        }
+
+        $userId = get_current_user_id();
+
+        $this->send_signal('cart.contact_captured', [
+            'wc_customer_id' => $userId ? (string) $userId : null,
+            'phone' => $phone,
+            'billing_email' => $email,
+            'cart_key' => WC()->cart ? WC()->cart->get_cart_hash() : '',
+            'guest_checkout' => $userId === 0,
         ]);
     }
 
@@ -482,6 +561,13 @@ final class ZOLM_WhatsApp_Booster {
     public function handle_stock_notify_request($request) {
         $productId = $request->get_param('product_id');
         $phone = sanitize_text_field($request->get_param('phone') ?? '');
+        $variationId = (int) ($request->get_param('variation_id') ?? 0);
+        $honeypot = sanitize_text_field($request->get_param('website') ?? '');
+
+        // Honeypot
+        if (!empty($honeypot)) {
+            return rest_ensure_response(['status' => 'ok']);
+        }
 
         if (empty($phone)) {
             return rest_ensure_response(['status' => 'error', 'message' => 'phone required'], 400);
@@ -489,6 +575,7 @@ final class ZOLM_WhatsApp_Booster {
 
         $this->send_signal('stock.waitlist.created', [
             'product_id' => (int) $productId,
+            'variation_id' => $variationId,
             'phone' => $phone,
         ]);
 

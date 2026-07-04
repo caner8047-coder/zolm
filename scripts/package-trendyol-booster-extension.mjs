@@ -31,6 +31,7 @@ for (const file of requiredFiles) {
 }
 
 const manifest = JSON.parse(readFileSync(join(extensionDir, 'manifest.json'), 'utf8'));
+const readme = readFileSync(join(extensionDir, 'README.md'), 'utf8');
 
 if (manifest.manifest_version !== 3) {
   fail('manifest_version must be 3.');
@@ -38,6 +39,10 @@ if (manifest.manifest_version !== 3) {
 
 if (!/^\d+\.\d+\.\d+$/.test(String(manifest.version || ''))) {
   fail('manifest version must use x.y.z format.');
+}
+
+if (!readme.includes(`\`${manifest.version}\``)) {
+  fail('README.md must mention the current manifest version.');
 }
 
 for (const permission of ['storage', 'activeTab', 'tabs']) {
