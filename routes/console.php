@@ -159,3 +159,15 @@ Schedule::call(fn () => $runInlineCommand('whatsapp:process-campaigns'))
     ->name('whatsapp-process-campaigns')
     ->everyTwoMinutes()
     ->withoutOverlapping(1);
+
+// Metrik yenileme: her saat başı
+Schedule::call(fn () => $runInlineCommand('whatsapp:refresh-metrics'))
+    ->name('whatsapp-refresh-metrics')
+    ->hourly()
+    ->withoutOverlapping(5);
+
+// SLA kontrolü: her 5 dakikada
+Schedule::call(fn () => $runInlineCommand('whatsapp:check-sla-breaches'))
+    ->name('whatsapp-check-sla-breaches')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(4);
