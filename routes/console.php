@@ -111,8 +111,33 @@ Schedule::call(fn () => $runInlineCommand('marketplace:send-trendyol-booster-dig
     ->hourlyAt(35)
     ->withoutOverlapping();
 
+// Trendyol yorumları orphan cleanup: Trendyol'da silinen/düzenlenen yorumları tespit eder.
+Schedule::call(fn () => $runInlineCommand('trendyol-booster:cleanup-reviews'))
+    ->name('marketplace-trendyol-booster-cleanup-reviews')
+    ->dailyAt('03:00')
+    ->withoutOverlapping();
+
 // Sürat Kargo takip hareketleri: aktif gönderileri düzenli yeniler.
 Schedule::call(fn () => $runInlineCommand('cargo:sync-tracking', ['--limit' => 100, '--stale-minutes' => 120]))
     ->name('cargo-sync-tracking')
     ->everyThirtyMinutes()
+    ->withoutOverlapping();
+
+// ── WhatsApp Modülü ───────────────────────────────────────────────
+// Outbox işleme: kuyruktaki mesajları gönderir
+Schedule::call(fn () => $runInlineCommand('whatsapp:process-outbox'))
+    ->name('whatsapp-process-outbox')
+    ->everyMinute()
+    ->withoutOverlapping(5);
+
+// Başarısız mesaj retry
+Schedule::call(fn () => $runInlineCommand('whatsapp:retry-failed'))
+    ->name('whatsapp-retry-failed')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(4);
+
+// Retention cleanup: gece 04:00'te eski kayıtları temizler
+Schedule::call(fn () => $runInlineCommand('whatsapp:retention-cleanup'))
+    ->name('whatsapp-retention-cleanup')
+    ->dailyAt('04:00')
     ->withoutOverlapping();

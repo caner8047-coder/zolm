@@ -187,6 +187,10 @@ Route::middleware('auth')->group(function () {
             Route::post('/store-scan', [TrendyolBoosterCompanionController::class, 'storeScan'])->name('store-scan');
             Route::get('/pending-jobs', [TrendyolBoosterCompanionController::class, 'pendingJobs'])->name('pending-jobs');
             Route::post('/market-research', [TrendyolBoosterCompanionController::class, 'marketResearch'])->name('market-research');
+            Route::post('/review-scan/start', [TrendyolBoosterCompanionController::class, 'reviewScanStart'])->name('review-scan.start');
+            Route::post('/review-scan/ingest', [TrendyolBoosterCompanionController::class, 'reviewScanIngest'])->name('review-scan.ingest');
+            Route::get('/review-scan/status/{syncRunId}', [TrendyolBoosterCompanionController::class, 'reviewScanStatus'])->name('review-scan.status');
+            Route::post('/review-scan/verify', [TrendyolBoosterCompanionController::class, 'reviewScanVerify'])->name('review-scan.verify');
         });
 
     Route::get('/marketplace-pricing-simulator', \App\Livewire\MarketplacePricingSimulator::class)
@@ -347,6 +351,18 @@ Route::middleware('auth')->group(function () {
     // ============================================
     // ADMIN ROUTES
     // ============================================
+    // ============================================
+    // WHATSAPP MODÜLÜ
+    // ============================================
+    Route::middleware(\App\Http\Middleware\EnsureWhatsAppFeatureEnabled::class)
+        ->prefix('whatsapp')->name('whatsapp.')->group(function () {
+            Route::get('/', \App\Livewire\WhatsApp\WhatsAppOverview::class)->name('overview');
+            Route::get('/account', \App\Livewire\WhatsApp\WhatsAppAccountSettings::class)->name('account');
+            Route::get('/templates', \App\Livewire\WhatsApp\WhatsAppTemplateManager::class)->name('templates');
+            Route::get('/shipping', \App\Livewire\WhatsApp\WhatsAppShippingSettings::class)->name('shipping');
+            Route::get('/inbox', \App\Livewire\WhatsApp\WhatsAppInbox::class)->name('inbox');
+        });
+
     Route::middleware(\App\Http\Middleware\AdminMiddleware::class)->prefix('admin')->group(function () {
         Route::get('/', \App\Livewire\Admin\Dashboard::class)->name('admin.dashboard');
         Route::get('/users', \App\Livewire\Admin\UserManager::class)->name('admin.users');

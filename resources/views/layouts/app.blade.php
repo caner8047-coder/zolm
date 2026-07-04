@@ -454,6 +454,52 @@
                     Tedarik Raporu
                 </a>
 
+                {{-- WhatsApp Dropdown --}}
+                @if(config('whatsapp.features.whatsapp_enabled', false))
+                <div x-data="{ whatsappOpen: {{ request()->routeIs('whatsapp.*') ? 'true' : 'false' }} }">
+                    <button @click="whatsappOpen = !whatsappOpen"
+                        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                               {{ request()->routeIs('whatsapp.*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                        <span class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                            </svg>
+                            WhatsApp
+                        </span>
+                        <svg :class="whatsappOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div x-show="whatsappOpen" x-collapse class="ml-8 mt-1 space-y-1">
+                        <a href="{{ route('whatsapp.overview') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('whatsapp.overview') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Genel Bakış
+                        </a>
+                        <a href="{{ route('whatsapp.account') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('whatsapp.account') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Hesap Ayarları
+                        </a>
+                        <a href="{{ route('whatsapp.templates') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('whatsapp.templates') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Şablonlar
+                        </a>
+                        <a href="{{ route('whatsapp.shipping') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('whatsapp.shipping') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Kargo Bildirimleri
+                        </a>
+                        <a href="{{ route('whatsapp.inbox') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('whatsapp.inbox') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Gelen Kutusu
+                        </a>
+                    </div>
+                </div>
+                @endif
+
                 <!-- Divider -->
                 <div class="border-t border-gray-200 my-4"></div>
 

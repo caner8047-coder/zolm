@@ -12,6 +12,7 @@ use App\Models\SupplyOrder;
 use App\Services\Marketplace\MarketplaceProfitSnapshotService;
 use App\Services\ProductCompositionResolver;
 use Illuminate\Support\Carbon;
+use App\Events\ShipmentStatusChanged;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -276,6 +277,7 @@ class CargoShipmentService
             throw new \RuntimeException('Sürat hesap bilgisi bulunamadı. Önce Sürat Entegrasyon sekmesinde hesap tanımlayın.');
         }
 
+        $oldStatus = $shipment->status;
         $result = $this->suratConnector->createShipment($account, $shipment);
 
         $shipment->forceFill([
@@ -309,6 +311,12 @@ class CargoShipmentService
             'raw_payload' => $result,
         ]);
 
+        DB::afterCommit(function () use ($shipment, $oldStatus) {
+            if ($shipment->status !== $oldStatus) {
+                ShipmentStatusChanged::dispatch($shipment, $oldStatus, $shipment->status);
+            }
+        });
+
         return $shipment->fresh(['events', 'parcels', 'items']);
     }
 
@@ -333,6 +341,7 @@ class CargoShipmentService
             throw new \RuntimeException('Sürat iptal hesabı bulunamadı.');
         }
 
+        $oldStatus = $shipment->status;
         $result = $this->suratConnector->cancelShipment($account, $shipment, $context);
 
         $shipment->forceFill([
@@ -361,11 +370,18 @@ class CargoShipmentService
             'raw_payload' => $result,
         ]);
 
+        DB::afterCommit(function () use ($shipment, $oldStatus) {
+            if ($shipment->status !== $oldStatus) {
+                ShipmentStatusChanged::dispatch($shipment, $oldStatus, $shipment->status);
+            }
+        });
+
         return $shipment->fresh(['events', 'parcels', 'items']);
     }
 
     public function applyTrackingResult(Shipment $shipment, array $result): Shipment
     {
+        $oldStatus = $shipment->status;
         $actualCost = (float) ($result['actual_cost'] ?? 0);
         $actualDesi = (float) ($result['actual_desi'] ?? 0);
         $financialUpdates = [];
@@ -441,6 +457,12 @@ class CargoShipmentService
         if ($actualCost > 0) {
             $this->recalculateProfit($shipment);
         }
+
+        DB::afterCommit(function () use ($shipment, $oldStatus) {
+            if ($shipment->status !== $oldStatus) {
+                ShipmentStatusChanged::dispatch($shipment, $oldStatus, $shipment->status);
+            }
+        });
 
         return $shipment->fresh(['events', 'parcels', 'items']);
     }

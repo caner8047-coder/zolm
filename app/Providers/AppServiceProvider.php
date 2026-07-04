@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
@@ -23,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureViteHotReloadFallback();
+        $this->registerWhatsAppEvents();
 
         // Livewire endpointlerini sabit path'e alarak tarayici cache/ad-block etkisini azalt.
         Livewire::setScriptRoute(function ($handle) {
@@ -55,7 +57,6 @@ class AppServiceProvider extends ServiceProvider
     protected function isViteDevServerReachable(string $hotUrl): bool
     {
         $parts = parse_url($hotUrl);
-
         $host = $parts['host'] ?? null;
         $scheme = $parts['scheme'] ?? 'http';
         $port = isset($parts['port'])
@@ -67,13 +68,19 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $connection = @fsockopen($host, $port, $errno, $errorMessage, 0.2);
-
         if (!is_resource($connection)) {
             return false;
         }
-
         fclose($connection);
 
         return true;
+    }
+
+    protected function registerWhatsAppEvents(): void
+    {
+        Event::listen(
+            \App\Events\ShipmentStatusChanged::class,
+            \App\Listeners\WhatsApp\SendShippingNotificationListener::class,
+        );
     }
 }
