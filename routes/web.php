@@ -363,7 +363,11 @@ Route::middleware('auth')->group(function () {
             Route::get('/inbox', \App\Livewire\WhatsApp\WhatsAppInbox::class)->name('inbox');
             Route::get('/campaigns', \App\Livewire\WhatsApp\WhatsAppCampaigns::class)->name('campaigns');
             Route::get('/campaigns/create', \App\Livewire\WhatsApp\WhatsAppCampaignCreate::class)->name('campaign-create');
+            Route::get('/campaigns/{id}', \App\Livewire\WhatsApp\WhatsAppCampaignDetail::class)->name('campaign-detail');
             Route::get('/segments', \App\Livewire\WhatsApp\WhatsAppSegments::class)->name('segments');
+            Route::get('/customer/{id?}', \App\Livewire\WhatsApp\WhatsAppCustomerProfile::class)->name('customer-profile');
+            Route::get('/audit-logs', \App\Livewire\WhatsApp\WhatsAppAuditLogs::class)->name('audit-logs');
+            Route::get('/automation', \App\Livewire\WhatsApp\WhatsAppAutomationSettings::class)->name('automation');
         });
 
     Route::middleware(\App\Http\Middleware\AdminMiddleware::class)->prefix('admin')->group(function () {

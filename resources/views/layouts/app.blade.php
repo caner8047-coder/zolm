@@ -506,6 +506,21 @@
                                   {{ request()->routeIs('whatsapp.segments') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
                             Segmentler
                         </a>
+                        <a href="{{ route('whatsapp.customer-profile') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('whatsapp.customer-profile*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Müşteri Profili
+                        </a>
+                        <a href="{{ route('whatsapp.audit-logs') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('whatsapp.audit-logs') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Denetim Kayıtları
+                        </a>
+                        <a href="{{ route('whatsapp.automation') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('whatsapp.automation') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Otomasyon Ayarları
+                        </a>
                     </div>
                 </div>
                 @endif
