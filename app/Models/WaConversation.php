@@ -15,6 +15,11 @@ class WaConversation extends Model
         'contact_id',
         'store_id',
         'status',
+        'ai_status',
+        'handoff_status',
+        'priority',
+        'last_ai_summary',
+        'last_intent',
         'last_message_at',
         'assigned_user_id',
     ];
