@@ -30,7 +30,7 @@ class IntegrationTest extends WhatsAppTestCase
             'is_active' => true,
         ]);
 
-        $service = new WebhookReceiverService();
+        $service = app(WebhookReceiverService::class);
         $result = $service->receive($endpoint, ['event_type' => 'test'], '{"event_type":"test"}', null);
 
         $this->assertTrue($result['success']);
@@ -51,7 +51,7 @@ class IntegrationTest extends WhatsAppTestCase
             'is_active' => true,
         ]);
 
-        $service = new WebhookReceiverService();
+        $service = app(WebhookReceiverService::class);
         $result = $service->receive($endpoint, ['test' => true], '{"test":true}', 'wrong-signature');
 
         $this->assertFalse($result['success']);
@@ -71,7 +71,7 @@ class IntegrationTest extends WhatsAppTestCase
             'is_active' => true,
         ]);
 
-        $service = new WebhookReceiverService();
+        $service = app(WebhookReceiverService::class);
         $service->receive($endpoint, ['event_type' => 'test'], '{"test":true}', null);
 
         $log = WaWebhookLog::where('endpoint_id', $endpoint->id)->first();

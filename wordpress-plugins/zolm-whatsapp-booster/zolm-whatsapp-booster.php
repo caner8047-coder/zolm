@@ -198,26 +198,55 @@ final class ZOLM_WhatsApp_Booster {
         $timestamp = time();
         $signature = 'sha256=' . hash_hmac('sha256', $body, $secret);
 
-        $response = wp_remote_post($zolmUrl, [
-            'headers' => [
-                'Content-Type' => 'application/json',
-                'X-ZOLM-Event-ID' => wp_generate_uuid4(),
-                'X-ZOLM-Event-Type' => $eventType,
-                'X-ZOLM-Timestamp' => (string) $timestamp,
-                'X-ZOLM-Signature' => $signature,
-                'X-ZOLM-Store-ID' => (string) $storeId,
-                'X-ZOLM-Version' => '1.0',
-            ],
-            'body' => $body,
-            'timeout' => 15,
-        ]);
+        $maxRetries = 3;
+        $retryDelay = 5;
 
-        if (is_wp_error($response)) {
-            error_log('ZOLM Booster signal error: ' . $response->get_error_message());
-            return false;
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            $response = wp_remote_post($zolmUrl, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-ZOLM-Event-ID' => wp_generate_uuid4(),
+                    'X-ZOLM-Event-Type' => $eventType,
+                    'X-ZOLM-Timestamp' => (string) $timestamp,
+                    'X-ZOLM-Signature' => $signature,
+                    'X-ZOLM-Store-ID' => (string) $storeId,
+                    'X-ZOLM-Version' => '1.0',
+                    'X-ZOLM-Retry' => (string) $attempt,
+                ],
+                'body' => $body,
+                'timeout' => 15,
+            ]);
+
+            if (!is_wp_error($response)) {
+                $statusCode = wp_remote_retrieve_response_code($response);
+                if ($statusCode >= 200 && $statusCode < 300) {
+                    return true;
+                }
+
+                // 429 Rate Limit - bekle ve tekrar dene
+                if ($statusCode === 429) {
+                    $retryAfter = (int) wp_remote_retrieve_header($response, 'retry-after');
+                    sleep($retryAfter > 0 ? $retryAfter : $retryDelay * $attempt);
+                    continue;
+                }
+
+                // Diğer hatalarda tekrar dene
+                if ($attempt < $maxRetries) {
+                    sleep($retryDelay * $attempt);
+                    continue;
+                }
+            }
+
+            // Bağlantı hatası
+            if ($attempt < $maxRetries) {
+                sleep($retryDelay * $attempt);
+                continue;
+            }
         }
 
-        return true;
+        error_log('ZOLM Booster signal failed after ' . $maxRetries . ' attempts: ' . $eventType);
+        return false;
+    }
     }
 
     // ── Sipariş Olayları ──────────────────────────────────────

@@ -6,6 +6,7 @@ use App\Models\WaOutbox;
 use App\Models\WaMessageDelivery;
 use App\Services\WhatsApp\MetaCloudApiService;
 use App\Services\WhatsApp\OutboxService;
+use App\Services\WhatsApp\RateLimitService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -29,6 +30,7 @@ class SendWaMessageJob implements ShouldQueue
     public function handle(
         MetaCloudApiService $metaApi,
         OutboxService $outboxService,
+        RateLimitService $rateLimitService,
     ): void {
         $outbox = WaOutbox::find($this->outboxId);
 
@@ -40,9 +42,28 @@ class SendWaMessageJob implements ShouldQueue
             return;
         }
 
+        // Rate limit kontrolü - telefon bazında
+        $phoneHash = $outbox->contact?->phone_hash ?? '';
+        if ($phoneHash && !$rateLimitService->canSendToNumber($phoneHash)) {
+            $outboxService->markFailed($outbox, 'Rate limit aşıldı, tekrar denenecek', 'rate_limit', true);
+            return;
+        }
+
+        // Rate limit kontrolü - günlük store limiti
+        if (!$rateLimitService->canSendFromStoreToday($outbox->store_id)) {
+            $outboxService->markFailed($outbox, 'Günlük store limiti aşıldı', 'daily_limit', false);
+            return;
+        }
+
         $account = $outbox->store->connection?->waAccount;
         if (!$account || !$account->is_active) {
             $outboxService->markFailed($outbox, 'WhatsApp hesabı bulunamadı veya pasif', 'account_inactive', false);
+            return;
+        }
+
+        // Rate limit kontrolü - hesap bazında
+        if (!$rateLimitService->canSendFromAccount($account->id)) {
+            $outboxService->markFailed($outbox, 'Hesap rate limiti aşıldı', 'account_rate_limit', true);
             return;
         }
 
@@ -75,6 +96,14 @@ class SendWaMessageJob implements ShouldQueue
                     'status' => 'sent',
                     'sent_at' => now(),
                 ]);
+
+                // Rate limit kaydı
+                $phoneHash = $outbox->contact?->phone_hash ?? '';
+                if ($phoneHash) {
+                    $rateLimitService->recordSent($phoneHash);
+                }
+                $rateLimitService->recordAccountSent($account->id);
+                $rateLimitService->recordStoreSent($outbox->store_id);
             } else {
                 $outboxService->markFailed($outbox, 'Meta yanıtında message_id bulunamadı', 'no_message_id');
             }

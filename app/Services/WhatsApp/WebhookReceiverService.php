@@ -6,8 +6,19 @@ use App\Models\WaWebhookEndpoint;
 use App\Models\WaWebhookLog;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Webhook alma ve gönderme servisi.
+ * Gelen webhook'ları işler, giden webhook'ları retry mekanizmasıyla gönderir.
+ */
 class WebhookReceiverService
 {
+    private WebhookRetryService $retryService;
+
+    public function __construct(WebhookRetryService $retryService)
+    {
+        $this->retryService = $retryService;
+    }
+
     /**
      * Gelen webhook'u işle
      */
@@ -66,7 +77,7 @@ class WebhookReceiverService
     }
 
     /**
-     * Outbound webhook gönder
+     * Outbound webhook gönder - retry mekanizması ile
      */
     public function sendOutbound(WaWebhookEndpoint $endpoint, string $eventType, array $payload): array
     {
@@ -81,6 +92,7 @@ class WebhookReceiverService
             'event_type' => $eventType,
             'direction' => 'outbound',
             'status' => 'sending',
+            'payload_hash' => ['payload' => $payload],
         ]);
 
         try {
@@ -99,6 +111,7 @@ class WebhookReceiverService
             $log->update([
                 'status' => 'failed',
                 'error_message' => 'HTTP ' . $response->status(),
+                'next_retry_at' => $this->retryService->calculateNextRetry(0),
             ]);
 
             return ['success' => false, 'error' => 'HTTP ' . $response->status()];
@@ -106,6 +119,7 @@ class WebhookReceiverService
             $log->update([
                 'status' => 'failed',
                 'error_message' => mb_substr($e->getMessage(), 0, 500),
+                'next_retry_at' => $this->retryService->calculateNextRetry(0),
             ]);
 
             return ['success' => false, 'error' => $e->getMessage()];
