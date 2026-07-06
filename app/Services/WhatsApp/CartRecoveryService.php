@@ -260,6 +260,8 @@ class CartRecoveryService
             'recovery_link' => $trackingUrl,
         ];
 
+        $idempotencyKey = "cart_recovery:{$cart->store_id}:{$cart->id}:{$run->stage}";
+
         // Outbox'a yaz
         try {
             $outboxService = app(OutboxService::class);
@@ -272,6 +274,7 @@ class CartRecoveryService
                 priority: 'high',
                 automationKey: 'cart_recovery',
                 relatedCartId: $cart->id,
+                idempotencyKey: $idempotencyKey,
             );
 
             $trackingLink->update(['outbox_id' => $outbox->id]);
@@ -399,6 +402,8 @@ class CartRecoveryService
             templateParams: ['code' => $code, 'discount' => $stageConfig['coupon_value']],
             priority: 'high',
             automationKey: 'coupon_create',
+            relatedCartId: $cart->id,
+            idempotencyKey: "coupon_create:{$cart->store_id}:{$cart->id}",
         );
 
         return $coupon->id;

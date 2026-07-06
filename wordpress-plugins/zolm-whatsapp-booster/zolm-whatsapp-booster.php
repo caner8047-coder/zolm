@@ -197,6 +197,7 @@ final class ZOLM_WhatsApp_Booster {
         $body = wp_json_encode($payload);
         $timestamp = time();
         $signature = 'sha256=' . hash_hmac('sha256', $body, $secret);
+        $eventId = wp_generate_uuid4();
 
         $maxRetries = 3;
         $retryDelay = 5;
@@ -205,7 +206,7 @@ final class ZOLM_WhatsApp_Booster {
             $response = wp_remote_post($zolmUrl, [
                 'headers' => [
                     'Content-Type' => 'application/json',
-                    'X-ZOLM-Event-ID' => wp_generate_uuid4(),
+                    'X-ZOLM-Event-ID' => $eventId,
                     'X-ZOLM-Event-Type' => $eventType,
                     'X-ZOLM-Timestamp' => (string) $timestamp,
                     'X-ZOLM-Signature' => $signature,
@@ -246,7 +247,6 @@ final class ZOLM_WhatsApp_Booster {
 
         error_log('ZOLM Booster signal failed after ' . $maxRetries . ' attempts: ' . $eventType);
         return false;
-    }
     }
 
     // ── Sipariş Olayları ──────────────────────────────────────
@@ -591,6 +591,7 @@ final class ZOLM_WhatsApp_Booster {
         $productId = $request->get_param('product_id');
         $phone = sanitize_text_field($request->get_param('phone') ?? '');
         $variationId = (int) ($request->get_param('variation_id') ?? 0);
+        $stockAlertConsent = sanitize_text_field($request->get_param('stock_alert_consent') ?? '');
         $honeypot = sanitize_text_field($request->get_param('website') ?? '');
 
         // Honeypot
@@ -602,10 +603,17 @@ final class ZOLM_WhatsApp_Booster {
             return rest_ensure_response(['status' => 'error', 'message' => 'phone required'], 400);
         }
 
+        if ($stockAlertConsent !== 'yes') {
+            return rest_ensure_response(['status' => 'error', 'message' => 'consent required'], 400);
+        }
+
         $this->send_signal('stock.waitlist.created', [
             'product_id' => (int) $productId,
             'variation_id' => $variationId,
             'phone' => $phone,
+            'stock_alert_consent' => 'granted',
+            'consent_source' => 'stock_notify_form',
+            'consent_timestamp' => current_time('mysql'),
         ]);
 
         return rest_ensure_response(['status' => 'ok']);

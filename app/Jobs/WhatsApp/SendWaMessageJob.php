@@ -32,7 +32,7 @@ class SendWaMessageJob implements ShouldQueue
         OutboxService $outboxService,
         RateLimitService $rateLimitService,
     ): void {
-        $outbox = WaOutbox::find($this->outboxId);
+        $outbox = WaOutbox::with(['contact', 'store.waAccount'])->find($this->outboxId);
 
         if (!$outbox || $outbox->status !== WaOutbox::STATUS_QUEUED) {
             return;
@@ -55,7 +55,12 @@ class SendWaMessageJob implements ShouldQueue
             return;
         }
 
-        $account = $outbox->store->connection?->waAccount;
+        if ($outbox->store?->marketplace !== 'woocommerce' || ! $outbox->store?->is_active) {
+            $outboxService->markFailed($outbox, 'WhatsApp gönderimi yalnızca aktif WooCommerce mağazaları için desteklenir', 'store_not_supported', false);
+            return;
+        }
+
+        $account = $outbox->store?->waAccount;
         if (!$account || !$account->is_active) {
             $outboxService->markFailed($outbox, 'WhatsApp hesabı bulunamadı veya pasif', 'account_inactive', false);
             return;

@@ -82,6 +82,8 @@ class BirthdayService
             }
 
             try {
+                $idempotencyKey = "birthday:{$profile->store_id}:{$profile->contact_id}:{$thisYear}";
+
                 $outbox = app(OutboxService::class)->enqueue(
                     contact: $contact,
                     messageType: 'template',
@@ -90,6 +92,7 @@ class BirthdayService
                     templateParams: $templateParams,
                     priority: 'normal',
                     automationKey: 'birthday',
+                    idempotencyKey: $idempotencyKey,
                 );
 
                 $profile->update(['last_birthday_year' => $thisYear]);

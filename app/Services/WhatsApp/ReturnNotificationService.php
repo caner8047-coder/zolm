@@ -132,6 +132,7 @@ class ReturnNotificationService
                 priority: 'high',
                 automationKey: 'return_notification',
                 relatedOrderId: $order->id,
+                idempotencyKey: $idempotencyKey,
             );
 
             app(AuditLogService::class)->log(

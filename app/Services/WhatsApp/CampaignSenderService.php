@@ -217,6 +217,7 @@ class CampaignSenderService
                 templateParams: $templateParams,
                 priority: 'normal',
                 automationKey: 'bulk_campaign',
+                idempotencyKey: $idempotencyKey,
             );
 
             $audience->update([

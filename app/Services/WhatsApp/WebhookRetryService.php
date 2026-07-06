@@ -5,6 +5,7 @@ namespace App\Services\WhatsApp;
 use App\Models\WaWebhookLog;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /**
  * Başarısız webhook'lar için retry mekanizması.
@@ -22,7 +23,10 @@ class WebhookRetryService
     {
         $failedLogs = WaWebhookLog::where('status', 'failed')
             ->where('retry_count', '<', self::MAX_RETRIES)
-            ->where('next_retry_at', '<=', now())
+            ->where(function ($query) {
+                $query->whereNull('next_retry_at')
+                    ->orWhere('next_retry_at', '<=', now());
+            })
             ->with('endpoint')
             ->limit(50)
             ->get();
@@ -73,7 +77,7 @@ class WebhookRetryService
 
             $response = Http::withHeaders([
                 'Content-Type' => 'application/json',
-                'X-Webhook-Event-ID' => $log->request_id ?? wp_generate_uuid4(),
+                'X-Webhook-Event-ID' => $log->request_id ?: (string) Str::uuid(),
                 'X-Webhook-Timestamp' => $timestamp,
                 'X-Webhook-Signature' => $signature,
                 'X-Webhook-Retry' => (string) ($log->retry_count ?? 0),
@@ -104,7 +108,7 @@ class WebhookRetryService
     /**
      * Exponential backoff hesapla
      */
-    private function calculateNextRetry(int $retryCount): \Carbon\Carbon
+    public function calculateNextRetry(int $retryCount): \Carbon\Carbon
     {
         $delay = self::BASE_DELAY_SECONDS * pow(2, $retryCount);
         $maxDelay = 3600; // Maksimum 1 saat

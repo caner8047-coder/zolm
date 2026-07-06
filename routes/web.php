@@ -24,6 +24,19 @@ Route::get('/tools/trendyol-kar-hesaplama', \App\Livewire\PublicTrendyolProfitCa
     ->name('tools.trendyol-profit-calculator')
     ->middleware('mp.feature:public_trendyol_profit_tool_enabled');
 
+Route::get('/whatsapp/recovery/{token}', function (string $token) {
+    $link = \App\Models\WaTrackingLink::where('token_hash', hash('sha256', $token))->first();
+
+    abort_if(! $link || $link->isExpired(), 404);
+
+    $link->update([
+        'click_count' => \Illuminate\Support\Facades\DB::raw('COALESCE(click_count, 0) + 1'),
+        'clicked_at' => $link->clicked_at ?? now(),
+    ]);
+
+    return redirect()->away($link->destination_url ?: url('/'));
+})->name('whatsapp.recovery.track');
+
 // Auth routes
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
@@ -347,6 +360,21 @@ Route::middleware('auth')->group(function () {
 
     // Report History alias
     Route::get('/report-history', ReportHistory::class)->name('report-history');
+
+    // ============================================
+    // REKLAM ZEKÂSI MODÜLÜ
+    // ============================================
+    Route::prefix('ads')->middleware(\App\Http\Middleware\AdsAccessMiddleware::class)->group(function () {
+        Route::get('/', \App\Livewire\Ads\AdsDashboard::class)->name('ads.dashboard');
+        Route::get('/import', \App\Livewire\Ads\AdImportCenter::class)->name('ads.import');
+        Route::get('/product-ads', \App\Livewire\Ads\ProductAdsPage::class)->name('ads.product-ads');
+        Route::get('/product-ads/{campaignId}', \App\Livewire\Ads\ProductAdsCampaignDetail::class)->name('ads.product-ads.detail');
+        Route::get('/store-ads', \App\Livewire\Ads\StoreAdsPage::class)->name('ads.store-ads');
+        Route::get('/influencer-ads', \App\Livewire\Ads\InfluencerAdsPage::class)->name('ads.influencer-ads');
+        Route::get('/profitability', \App\Livewire\Ads\ProfitabilityCenter::class)->name('ads.profitability');
+        Route::get('/action-center', \App\Livewire\Ads\AiActionCenter::class)->name('ads.action-center');
+        Route::get('/settings', \App\Livewire\Ads\AdsSettings::class)->name('ads.settings');
+    });
 
     // ============================================
     // ADMIN ROUTES

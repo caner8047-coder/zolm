@@ -20,6 +20,7 @@ use App\Models\TrendyolBoosterCostPreset;
 use App\Models\TrendyolBoosterKeyword;
 use App\Models\TrendyolBoosterProduct;
 use App\Models\TrendyolBoosterReview;
+use App\Models\TrendyolBoosterReviewSource;
 use App\Models\TrendyolBoosterReviewSync;
 use App\Models\TrendyolBoosterShippingRate;
 use App\Models\TrendyolBoosterSnapshot;
@@ -53,6 +54,7 @@ use App\Services\Marketplace\TrendyolBoosterRetentionCleanupService;
 use App\Services\Marketplace\TrendyolBoosterRetentionReportService;
 use App\Services\Marketplace\TrendyolBoosterReviewPushService;
 use App\Services\Marketplace\TrendyolBoosterReviewService;
+use App\Services\Marketplace\TrendyolBoosterReviewMatchEngine;
 use App\Services\Marketplace\TrendyolBoosterScheduledAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterSellDecisionService;
 use App\Services\Marketplace\TrendyolBoosterShippingRateService;
@@ -1469,6 +1471,66 @@ class TrendyolBoosterTest extends TestCase
         $this->assertTrue($deltaSync->last_synced_at?->equalTo($previousCompletedAt));
     }
 
+    public function test_review_sync_delta_and_stats_are_scoped_to_selected_review_source(): void
+    {
+        Queue::fake();
+        [$user] = $this->createBoosterGraph();
+        $sourceA = $this->createReviewSource($user, [
+            'store_name' => 'Zem Home',
+            'merchant_id' => '121057',
+        ]);
+        $sourceB = $this->createReviewSource($user, [
+            'store_name' => 'Baska Magaza',
+            'merchant_id' => '991122',
+        ]);
+        $previousCompletedAt = now()->subMinutes(45)->startOfSecond();
+
+        TrendyolBoosterReviewSync::query()->create([
+            'user_id' => $user->id,
+            'review_source_id' => $sourceA->id,
+            'status' => 'completed',
+            'sync_type' => 'full',
+            'started_at' => $previousCompletedAt->copy()->subMinute(),
+            'completed_at' => $previousCompletedAt,
+            'progress_percent' => 100,
+        ]);
+
+        $service = app(TrendyolBoosterReviewService::class);
+        $sourceADelta = $service->createSyncRun($user->id, 'delta', $sourceA->id);
+        $sourceBDelta = $service->createSyncRun($user->id, 'delta', $sourceB->id);
+
+        $this->assertTrue($sourceADelta->last_synced_at?->equalTo($previousCompletedAt));
+        $this->assertNull($sourceBDelta->last_synced_at);
+
+        $this->createReviewRecord($user, [
+            'review_source_id' => $sourceA->id,
+            'trendyol_review_id' => 'source-a-1',
+            'status' => 'approved',
+            'rating' => 5,
+        ]);
+        $this->createReviewRecord($user, [
+            'review_source_id' => $sourceA->id,
+            'trendyol_review_id' => 'source-a-2',
+            'status' => 'approved',
+            'rating' => 4,
+        ]);
+        $this->createReviewRecord($user, [
+            'review_source_id' => $sourceB->id,
+            'trendyol_review_id' => 'source-b-1',
+            'status' => 'approved',
+            'rating' => 2,
+        ]);
+
+        $sourceAStats = $service->getStats($user->id, $sourceA->id);
+        $sourceBStats = $service->getStats($user->id, $sourceB->id);
+
+        $this->assertSame(2, $sourceAStats['total']);
+        $this->assertSame(2, $sourceAStats['approved']);
+        $this->assertSame(4.5, $sourceAStats['average_rating']);
+        $this->assertSame(1, $sourceBStats['total']);
+        $this->assertSame(2.0, $sourceBStats['average_rating']);
+    }
+
     public function test_review_scan_ingest_is_user_scoped_and_tracks_progress(): void
     {
         Queue::fake();
@@ -1512,6 +1574,91 @@ class TrendyolBoosterTest extends TestCase
             'user_id' => $otherUser->id,
             'trendyol_review_id' => 'rv-scope-1',
         ]);
+    }
+
+    public function test_review_source_preview_persists_source_and_form_changes_clear_selection(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $this->actingAs($user);
+
+        $component = Livewire::test(TrendyolBooster::class)
+            ->set('activeModule', 'reviews')
+            ->set('reviewSourceName', 'Zem Home')
+            ->set('reviewSourceMerchantId', '121057')
+            ->set('reviewSourceUrl', 'https://www.trendyol.com/magaza/zem-home-m-121057')
+            ->call('reviewStorePreviewCompleted', [
+                'store_id' => '121057',
+                'store_name' => 'Zem Home',
+                'store_url' => 'https://www.trendyol.com/magaza/zem-home-m-121057',
+                'product_count' => 52,
+                'sample_products' => [
+                    ['id' => '76241080', 'title' => 'Long Line Puf, Kırık Beyaz Gold'],
+                ],
+            ]);
+
+        $source = TrendyolBoosterReviewSource::query()
+            ->where('user_id', $user->id)
+            ->where('merchant_id', '121057')
+            ->firstOrFail();
+
+        $component
+            ->assertSet('reviewSourceId', $source->id)
+            ->assertSet('reviewSourcePreview.product_count', 52)
+            ->assertSet('message', 'Zem Home doğrulandı: 52 ürün taramaya hazır.')
+            ->set('reviewSourceUrl', 'https://www.trendyol.com/magaza/baska-magaza-m-991122')
+            ->assertSet('reviewSourceId', null)
+            ->assertSet('reviewSourcePreview', []);
+
+        $this->assertDatabaseHas('trendyol_booster_review_sources', [
+            'id' => $source->id,
+            'user_id' => $user->id,
+            'store_name' => 'Zem Home',
+            'merchant_id' => '121057',
+            'verified_product_count' => 52,
+        ]);
+    }
+
+    public function test_review_auto_match_retries_unmatched_products_and_scopes_source(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $sourceA = $this->createReviewSource($user, [
+            'store_name' => 'Zem Home',
+            'merchant_id' => '121057',
+        ]);
+        $sourceB = $this->createReviewSource($user, [
+            'store_name' => 'Baska Magaza',
+            'merchant_id' => '991122',
+        ]);
+
+        $reviewA = $this->createReviewRecord($user, [
+            'review_source_id' => $sourceA->id,
+            'trendyol_product_id' => '286823139',
+            'trendyol_review_id' => 'retry-source-a',
+            'product_title' => 'Lines Puf, Teddy Kumaş Kırık Beyaz',
+            'match_status' => 'unmatched',
+            'match_score' => 0,
+        ]);
+        $reviewB = $this->createReviewRecord($user, [
+            'review_source_id' => $sourceB->id,
+            'trendyol_product_id' => '286823139',
+            'trendyol_review_id' => 'retry-source-b',
+            'product_title' => 'Lines Puf, Teddy Kumaş Kırık Beyaz',
+            'match_status' => 'unmatched',
+            'match_score' => 0,
+        ]);
+
+        $result = app(TrendyolBoosterReviewMatchEngine::class)->autoMatchAll($user->id, [
+            ['id' => 3210, 'name' => 'Zem Lines Puf', 'sku' => '1PUFZEM00388'],
+        ], $sourceA->id);
+
+        $this->assertSame(1, $result['matched']);
+        $this->assertSame(0, $result['unmatched']);
+        $this->assertSame('matched', $reviewA->refresh()->match_status);
+        $this->assertSame(3210, $reviewA->wc_product_id);
+        $this->assertSame('1PUFZEM00388', $reviewA->wc_product_sku);
+        $this->assertGreaterThanOrEqual(0.70, (float) $reviewA->match_score);
+        $this->assertSame('unmatched', $reviewB->refresh()->match_status);
+        $this->assertNull($reviewB->wc_product_id);
     }
 
     public function test_review_scan_verify_marks_only_missing_checked_reviews_deleted(): void
@@ -4773,6 +4920,7 @@ class TrendyolBoosterTest extends TestCase
 
         return TrendyolBoosterReview::query()->create([
             'user_id' => $user->id,
+            'review_source_id' => $payload['review_source_id'] ?? null,
             'sync_run_id' => $payload['sync_run_id'] ?? null,
             'trendyol_product_id' => $payload['trendyol_product_id'],
             'trendyol_review_id' => $payload['trendyol_review_id'],
@@ -4794,7 +4942,28 @@ class TrendyolBoosterTest extends TestCase
             'is_spam' => $payload['is_spam'] ?? false,
             'spam_flags' => $payload['spam_flags'] ?? [],
             'status' => $payload['status'] ?? 'pending',
+            'match_status' => $payload['match_status'] ?? 'pending',
+            'match_score' => $payload['match_score'] ?? 0,
         ]);
+    }
+
+    protected function createReviewSource(User $user, array $overrides = []): TrendyolBoosterReviewSource
+    {
+        $merchantId = (string) ($overrides['merchant_id'] ?? random_int(100000, 999999));
+        $storeName = (string) ($overrides['store_name'] ?? 'Zem Home');
+        $storeUrl = (string) ($overrides['store_url'] ?? "https://www.trendyol.com/magaza/{$merchantId}-m-{$merchantId}");
+
+        return TrendyolBoosterReviewSource::query()->create(array_merge([
+            'user_id' => $user->id,
+            'store_name' => $storeName,
+            'store_url' => $storeUrl,
+            'store_url_hash' => hash('sha256', Str::lower(rtrim($storeUrl, '/'))),
+            'merchant_id' => $merchantId,
+            'is_active' => true,
+            'verified_at' => now(),
+            'verified_product_count' => 52,
+            'meta' => ['sample_products' => []],
+        ], $overrides));
     }
 
     /**

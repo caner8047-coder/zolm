@@ -110,6 +110,7 @@ class StockAlertService
                     templateParams: $templateParams,
                     priority: 'normal',
                     automationKey: 'stock_alert',
+                    idempotencyKey: "stock_alert:{$entry->store_id}:{$entry->id}",
                 );
 
                 $entry->update([

@@ -180,6 +180,11 @@ class User extends Authenticatable
         return in_array($role, ['admin', 'manager', 'operator', 'operasyon_sorumlusu', 'crm_sorumlusu'], true);
     }
 
+    public function canAccessAds(): bool
+    {
+        return in_array($this->roleSlug(), ['admin', 'manager', 'uretim_sorumlusu', 'operator'], true);
+    }
+
     // === HELPERS ===
 
     public function getRoleLabelAttribute(): string

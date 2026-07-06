@@ -102,6 +102,7 @@ class OrderNotificationService
                 priority: 'high',
                 automationKey: 'order_confirmation',
                 relatedOrderId: $order->id,
+                idempotencyKey: $idempotencyKey,
             );
 
             app(AuditLogService::class)->log(

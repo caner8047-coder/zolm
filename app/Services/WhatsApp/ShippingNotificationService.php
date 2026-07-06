@@ -82,6 +82,7 @@ class ShippingNotificationService
                 priority: 'high',
                 automationKey: 'shipping_notification',
                 relatedOrderId: $shipment->channel_order_id,
+                idempotencyKey: $idempotencyKey,
             );
 
             app(AuditLogService::class)->log(

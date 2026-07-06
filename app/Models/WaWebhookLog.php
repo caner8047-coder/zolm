@@ -12,7 +12,8 @@ class WaWebhookLog extends Model
 
     protected $fillable = [
         'endpoint_id', 'provider', 'event_type', 'direction',
-        'status', 'payload_hash', 'error_message', 'processing_time_ms',
+        'status', 'request_id', 'payload_hash', 'error_message',
+        'processing_time_ms', 'retry_count', 'next_retry_at',
     ];
 
     protected function casts(): array
@@ -20,6 +21,8 @@ class WaWebhookLog extends Model
         return [
             'payload_hash' => 'array',
             'processing_time_ms' => 'decimal:2',
+            'retry_count' => 'integer',
+            'next_retry_at' => 'datetime',
         ];
     }
 

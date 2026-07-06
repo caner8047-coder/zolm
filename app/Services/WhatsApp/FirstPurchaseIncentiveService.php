@@ -182,6 +182,8 @@ class FirstPurchaseIncentiveService
             }
 
             try {
+                $idempotencyKey = "first_purchase_incentive:{$flow->id}:{$step->id}";
+
                 $outbox = app(OutboxService::class)->enqueue(
                     contact: $contact,
                     messageType: 'template',
@@ -190,6 +192,7 @@ class FirstPurchaseIncentiveService
                     templateParams: $templateParams,
                     priority: 'high',
                     automationKey: 'first_purchase_incentive',
+                    idempotencyKey: $idempotencyKey,
                 );
 
                 $step->update([

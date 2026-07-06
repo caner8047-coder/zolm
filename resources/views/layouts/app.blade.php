@@ -454,6 +454,67 @@
                     Tedarik Raporu
                 </a>
 
+                {{-- Reklam Zekâsı Dropdown --}}
+                @if(auth()->user()->canAccessAds())
+                <div x-data="{ adsOpen: {{ request()->routeIs('ads.*') ? 'true' : 'false' }} }">
+                    <button @click="adsOpen = !adsOpen"
+                        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                               {{ request()->routeIs('ads.*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                        <span class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/>
+                            </svg>
+                            Reklam Zekâsı
+                        </span>
+                        <svg :class="adsOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div x-show="adsOpen" x-collapse class="ml-8 mt-1 space-y-1">
+                        <a href="{{ route('ads.dashboard') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('ads.dashboard') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Genel Bakış
+                        </a>
+                        <a href="{{ route('ads.import') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('ads.import') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Veri İçe Aktarma
+                        </a>
+                        <a href="{{ route('ads.product-ads') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('ads.product-ads*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Ürün Reklamları
+                        </a>
+                        <a href="{{ route('ads.store-ads') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('ads.store-ads*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Mağaza Reklamları
+                        </a>
+                        <a href="{{ route('ads.influencer-ads') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('ads.influencer-ads*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Influencer Reklamları
+                        </a>
+                        <a href="{{ route('ads.profitability') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('ads.profitability*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Kârlılık Merkezi
+                        </a>
+                        <a href="{{ route('ads.action-center') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('ads.action-center*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            AI Aksiyon Merkezi
+                        </a>
+                        <a href="{{ route('ads.settings') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('ads.settings*') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Ayarlar
+                        </a>
+                    </div>
+                </div>
+                @endif
+
                 {{-- WhatsApp Dropdown --}}
                 @if(config('whatsapp.features.whatsapp_enabled', false))
                 <div x-data="{ whatsappOpen: {{ request()->routeIs('whatsapp.*') ? 'true' : 'false' }} }">

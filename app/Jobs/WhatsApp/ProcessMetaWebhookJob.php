@@ -6,7 +6,11 @@ use App\Models\WaWebhookEvent;
 use App\Models\WaMessageDelivery;
 use App\Models\WaOutbox;
 use App\Models\WaConversation;
+use App\Models\WaContact;
+use App\Models\WaContactPreference;
+use App\Models\WaConsentEvent;
 use App\Models\WaInboundMessage;
+use App\Models\WaSuppression;
 use App\Services\WhatsApp\ContactResolver;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -148,7 +152,7 @@ class ProcessMetaWebhookJob implements ShouldQueue
             $account->store_id,
             $from,
             null,
-            $payload['contact']['profile']['name'] ?? null,
+            data_get($payload, 'contacts.0.profile.name') ?? data_get($payload, 'contact.profile.name'),
         );
 
         if (!$contact) {
@@ -160,18 +164,63 @@ class ProcessMetaWebhookJob implements ShouldQueue
             ['status' => 'open']
         );
 
-        WaInboundMessage::create([
-            'conversation_id' => $conversation->id,
-            'contact_id' => $contact->id,
-            'meta_message_id' => $messageId,
-            'message_type' => $payload['type'] ?? 'text',
-            'body' => $payload['text']['body'] ?? null,
-            'payload_json' => $payload,
-            'received_at' => now(),
-        ]);
+        $body = data_get($payload, 'text.body');
+
+        WaInboundMessage::firstOrCreate(
+            ['meta_message_id' => $messageId],
+            [
+                'conversation_id' => $conversation->id,
+                'contact_id' => $contact->id,
+                'message_type' => $payload['type'] ?? 'text',
+                'body' => $body,
+                'payload_json' => $payload,
+                'received_at' => now(),
+            ]
+        );
 
         $conversation->update(['last_message_at' => now()]);
         $contact->update(['last_seen_at' => now()]);
+
+        $this->handleOptOutKeyword($contact, $body);
+    }
+
+    private function handleOptOutKeyword(WaContact $contact, ?string $body): void
+    {
+        $keyword = mb_strtoupper(trim((string) $body), 'UTF-8');
+
+        if (! in_array($keyword, ['STOP', 'DUR', 'IPTAL', 'İPTAL', 'VAZGEC', 'VAZGEÇ'], true)) {
+            return;
+        }
+
+        $suppressionExists = WaSuppression::active()
+            ->where('contact_id', $contact->id)
+            ->where('reason', 'opted_out')
+            ->exists();
+
+        if (! $suppressionExists) {
+            WaSuppression::create([
+                'contact_id' => $contact->id,
+                'reason' => 'opted_out',
+                'details' => 'WhatsApp anahtar kelime ile abonelikten çıkıldı: ' . $keyword,
+                'suppressed_at' => now(),
+            ]);
+        }
+
+        foreach (['marketing', 'cart_recovery', 'stock_alert', 'birthday'] as $purpose) {
+            WaContactPreference::updateOrCreate(
+                ['contact_id' => $contact->id, 'store_id' => $contact->store_id, 'purpose' => $purpose],
+                ['status' => 'withdrawn']
+            );
+
+            WaConsentEvent::create([
+                'contact_id' => $contact->id,
+                'store_id' => $contact->store_id,
+                'purpose' => $purpose,
+                'action' => 'withdrawn',
+                'source' => 'whatsapp_keyword',
+                'consent_timestamp' => now(),
+            ]);
+        }
     }
 
     private function classifyDeliveryError(array $payload): string

@@ -51,6 +51,11 @@ class MarketplaceStore extends Model
         return $this->hasOne(IntegrationConnection::class, 'store_id');
     }
 
+    public function waAccount(): HasOne
+    {
+        return $this->hasOne(WaAccount::class, 'store_id');
+    }
+
     public function syncProfile(): HasOne
     {
         return $this->hasOne(IntegrationSyncProfile::class, 'store_id');

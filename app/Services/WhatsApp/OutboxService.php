@@ -3,11 +3,9 @@
 namespace App\Services\WhatsApp;
 
 use App\Models\WaContact;
-use App\Models\WaConsentEvent;
-use App\Models\WaContactPreference;
 use App\Models\WaOutbox;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use RuntimeException;
 
 class OutboxService
 {
@@ -23,8 +21,13 @@ class OutboxService
         ?int $relatedOrderId = null,
         ?int $relatedCartId = null,
         ?string $scheduledAt = null,
+        ?string $idempotencyKey = null,
     ): WaOutbox {
-        $idempotencyKey = $this->buildIdempotencyKey($automationKey, $contact->store_id, $contact->id, $templateName);
+        if (! $contact->store()->where('marketplace', 'woocommerce')->where('is_active', true)->exists()) {
+            throw new RuntimeException('WhatsApp mesajları yalnızca aktif WooCommerce mağazaları için kuyruğa alınabilir.');
+        }
+
+        $idempotencyKey ??= $this->buildIdempotencyKey($automationKey, $contact->store_id, $contact->id, $templateName);
 
         // Unique constraint sayesinde duplicate insert hata verir
         return WaOutbox::create([

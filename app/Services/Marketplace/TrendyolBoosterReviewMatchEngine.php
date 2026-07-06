@@ -30,6 +30,8 @@ class TrendyolBoosterReviewMatchEngine
     /** WC ürün cache süresi (dakika) */
     private const WC_CACHE_MINUTES = 30;
 
+    private const REMATCHABLE_STATUSES = ['pending', 'unmatched', 'suggested'];
+
     /** Normalleştirmede atılacak yaygın Türkçe/mobilya kelimeleri */
     private const STOP_WORDS = [
         'adet', 've', 'ile', 'için', 'veya', 'bir', 'de', 'da',
@@ -79,7 +81,7 @@ class TrendyolBoosterReviewMatchEngine
      *
      * @return array{matched: int, suggested: int, unmatched: int, errors: array}
      */
-    public function autoMatchAll(int $userId, array $wcProducts = []): array
+    public function autoMatchAll(int $userId, array $wcProducts = [], ?int $reviewSourceId = null): array
     {
         if (empty($wcProducts)) {
             $fetchResult = $this->fetchWcProducts($userId);
@@ -100,7 +102,8 @@ class TrendyolBoosterReviewMatchEngine
 
         // Trendyol'daki benzersiz ürün gruplarını al
         $productGroups = TrendyolBoosterReview::where('user_id', $userId)
-            ->where('match_status', 'pending')
+            ->when($reviewSourceId !== null, fn ($query) => $query->where('review_source_id', $reviewSourceId))
+            ->whereIn('match_status', self::REMATCHABLE_STATUSES)
             ->select('trendyol_product_id', 'product_title')
             ->selectRaw('count(*) as review_count')
             ->groupBy('trendyol_product_id', 'product_title')
@@ -122,14 +125,17 @@ class TrendyolBoosterReviewMatchEngine
                     (int) $bestMatch['wc_product_id'],
                     $bestMatch['wc_product_name'],
                     $bestMatch['score'],
-                    'auto'
+                    'auto',
+                    $bestMatch['wc_sku'] ?? null,
+                    $reviewSourceId,
                 );
                 $matched += $count;
             } elseif ($bestMatch && $bestMatch['score'] >= self::SUGGESTION_THRESHOLD) {
                 // Önerildi olarak işaretle
                 $count = TrendyolBoosterReview::where('user_id', $userId)
                     ->where('trendyol_product_id', $group->trendyol_product_id)
-                    ->where('match_status', 'pending')
+                    ->when($reviewSourceId !== null, fn ($query) => $query->where('review_source_id', $reviewSourceId))
+                    ->whereIn('match_status', self::REMATCHABLE_STATUSES)
                     ->update([
                         'match_status' => 'suggested',
                         'match_score' => $bestMatch['score'],
@@ -141,7 +147,8 @@ class TrendyolBoosterReviewMatchEngine
                 // Eşleşme bulunamadı
                 TrendyolBoosterReview::where('user_id', $userId)
                     ->where('trendyol_product_id', $group->trendyol_product_id)
-                    ->where('match_status', 'pending')
+                    ->when($reviewSourceId !== null, fn ($query) => $query->where('review_source_id', $reviewSourceId))
+                    ->whereIn('match_status', self::REMATCHABLE_STATUSES)
                     ->update(['match_status' => 'unmatched', 'match_score' => $bestMatch['score'] ?? 0]);
                 $unmatched += $group->review_count;
             }
@@ -153,18 +160,19 @@ class TrendyolBoosterReviewMatchEngine
     /**
      * Aynı Trendyol ürünündeki tüm yorumları belirtilen WC ürününe eşler.
      */
-    public function manualMatch(int $userId, string $trendyolProductId, int $wcProductId, ?string $wcProductName = null, ?string $wcSku = null): int
+    public function manualMatch(int $userId, string $trendyolProductId, int $wcProductId, ?string $wcProductName = null, ?string $wcSku = null, ?int $reviewSourceId = null): int
     {
-        return $this->applyMatch($userId, $trendyolProductId, $wcProductId, $wcProductName, 1.0, 'manual', $wcSku);
+        return $this->applyMatch($userId, $trendyolProductId, $wcProductId, $wcProductName, 1.0, 'manual', $wcSku, $reviewSourceId);
     }
 
     /**
      * Bir eşlemeyi iptal eder (unmatched'e çevirir).
      */
-    public function unmatch(int $userId, string $trendyolProductId): int
+    public function unmatch(int $userId, string $trendyolProductId, ?int $reviewSourceId = null): int
     {
         return TrendyolBoosterReview::where('user_id', $userId)
             ->where('trendyol_product_id', $trendyolProductId)
+            ->when($reviewSourceId !== null, fn ($query) => $query->where('review_source_id', $reviewSourceId))
             ->update([
                 'match_status' => 'unmatched',
                 'match_score' => 0,
@@ -176,10 +184,11 @@ class TrendyolBoosterReviewMatchEngine
     /**
      * Bir önerilen eşlemeyi onaylar.
      */
-    public function confirmSuggestion(int $userId, string $trendyolProductId): int
+    public function confirmSuggestion(int $userId, string $trendyolProductId, ?int $reviewSourceId = null): int
     {
         return TrendyolBoosterReview::where('user_id', $userId)
             ->where('trendyol_product_id', $trendyolProductId)
+            ->when($reviewSourceId !== null, fn ($query) => $query->where('review_source_id', $reviewSourceId))
             ->where('match_status', 'suggested')
             ->update(['match_status' => 'matched']);
     }
@@ -386,11 +395,13 @@ class TrendyolBoosterReviewMatchEngine
         ?string $wcProductName,
         float $score,
         string $method,
-        ?string $wcSku = null
+        ?string $wcSku = null,
+        ?int $reviewSourceId = null,
     ): int {
         return TrendyolBoosterReview::where('user_id', $userId)
             ->where('trendyol_product_id', $trendyolProductId)
-            ->whereIn('match_status', ['pending', 'unmatched', 'suggested'])
+            ->when($reviewSourceId !== null, fn ($query) => $query->where('review_source_id', $reviewSourceId))
+            ->whereIn('match_status', self::REMATCHABLE_STATUSES)
             ->update([
                 'wc_product_id' => $wcProductId,
                 'wc_product_sku' => $wcSku,

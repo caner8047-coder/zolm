@@ -4565,6 +4565,21 @@ class TrendyolBooster extends Component
         unset($this->reviewStats, $this->reviewGroups);
     }
 
+    public function updatedReviewSourceName(): void
+    {
+        $this->resetReviewSourceSelection();
+    }
+
+    public function updatedReviewSourceUrl(): void
+    {
+        $this->resetReviewSourceSelection();
+    }
+
+    public function updatedReviewSourceMerchantId(): void
+    {
+        $this->resetReviewSourceSelection();
+    }
+
     public function verifyReviewSource(): void
     {
         $this->validate([
@@ -4774,6 +4789,17 @@ class TrendyolBooster extends Component
         }
     }
 
+    protected function resetReviewSourceSelection(): void
+    {
+        if ($this->reviewSourceId === null && empty($this->reviewSourcePreview)) {
+            return;
+        }
+
+        $this->reviewSourceId = null;
+        $this->reviewSourcePreview = [];
+        unset($this->reviewStats, $this->reviewGroups);
+    }
+
     protected function merchantIdFromTrendyolUrl(string $url): string
     {
         if (preg_match('/-m-(\d+)/i', $url, $match)) {
@@ -4922,7 +4948,7 @@ class TrendyolBooster extends Component
     public function autoMatchReviews(): void
     {
         $engine = app(TrendyolBoosterReviewMatchEngine::class);
-        $result = $engine->autoMatchAll($this->userId());
+        $result = $engine->autoMatchAll($this->userId(), [], $this->reviewSourceId);
 
         $parts = [];
         if ($result['matched'] > 0) {
@@ -4954,7 +4980,8 @@ class TrendyolBooster extends Component
             $trendyolProductId,
             $wcProductId,
             $wcProduct['name'] ?? null,
-            $wcProduct['sku'] ?? null
+            $wcProduct['sku'] ?? null,
+            $this->reviewSourceId,
         );
 
         $this->message = "{$count} yorum WC ürünü #{$wcProductId} ile eşlendi.";
@@ -4965,7 +4992,7 @@ class TrendyolBooster extends Component
     public function confirmMatchSuggestion(string $trendyolProductId): void
     {
         $engine = app(TrendyolBoosterReviewMatchEngine::class);
-        $count = $engine->confirmSuggestion($this->userId(), $trendyolProductId);
+        $count = $engine->confirmSuggestion($this->userId(), $trendyolProductId, $this->reviewSourceId);
 
         $this->message = "{$count} yorum eşlemesi onaylandı.";
         $this->messageType = 'success';
@@ -4975,7 +5002,7 @@ class TrendyolBooster extends Component
     public function unmatchProduct(string $trendyolProductId): void
     {
         $engine = app(TrendyolBoosterReviewMatchEngine::class);
-        $count = $engine->unmatch($this->userId(), $trendyolProductId);
+        $count = $engine->unmatch($this->userId(), $trendyolProductId, $this->reviewSourceId);
 
         $this->message = "{$count} yorum eşlemesi kaldırıldı.";
         $this->messageType = 'success';
@@ -5001,6 +5028,7 @@ class TrendyolBooster extends Component
     public function pushMatchedReviews(): void
     {
         $reviews = TrendyolBoosterReview::where('user_id', $this->userId())
+            ->when($this->reviewSourceId !== null, fn (Builder $query) => $query->where('review_source_id', $this->reviewSourceId))
             ->where('status', 'approved')
             ->where('match_status', 'matched')
             ->whereNotNull('wc_product_id')
@@ -5031,6 +5059,7 @@ class TrendyolBooster extends Component
     {
         $reviews = TrendyolBoosterReview::where('user_id', $this->userId())
             ->where('trendyol_product_id', $trendyolProductId)
+            ->when($this->reviewSourceId !== null, fn (Builder $query) => $query->where('review_source_id', $this->reviewSourceId))
             ->where('status', 'approved')
             ->where('match_status', 'matched')
             ->whereNotNull('wc_product_id')

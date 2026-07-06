@@ -81,6 +81,10 @@ function zolm_stock_notify_shortcode($atts) {
                     <?php esc_html_e('Bildir', 'zolm-whatsapp-booster'); ?>
                 </button>
             </div>
+            <label style="display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; font-size: 12px; line-height: 1.4; color: #555;">
+                <input type="checkbox" name="stock_alert_consent" value="yes" required style="margin-top: 2px;">
+                <span><?php esc_html_e('Stoğa geldiğinde WhatsApp üzerinden bilgilendirilmeyi kabul ediyorum.', 'zolm-whatsapp-booster'); ?></span>
+            </label>
             <!-- Honeypot: bot'lara görünür, insanlara gizli -->
             <div style="position: absolute; left: -9999px;" aria-hidden="true">
                 <input type="text" name="website" tabindex="-1" autocomplete="off" value="">
@@ -101,6 +105,7 @@ function zolm_stock_notify_shortcode($atts) {
             var btn = form.querySelector('button[type="submit"]');
             var msg = form.querySelector('.zolm-stock-notify-message');
             var phone = form.querySelector('input[name="phone"]').value;
+            var consent = form.querySelector('input[name="stock_alert_consent"]').checked;
             var variationSelect = form.querySelector('select[name="variation_id"]');
             var variationId = variationSelect ? variationSelect.value : '0';
 
@@ -116,7 +121,8 @@ function zolm_stock_notify_shortcode($atts) {
                 },
                 body: JSON.stringify({
                     phone: phone,
-                    variation_id: parseInt(variationId) || 0
+                    variation_id: parseInt(variationId) || 0,
+                    stock_alert_consent: consent ? 'yes' : 'no'
                 }),
             })
             .then(function(r) { return r.json(); })

@@ -4,6 +4,7 @@ namespace App\Services\WhatsApp;
 
 use App\Models\WaWebhookEndpoint;
 use App\Models\WaWebhookLog;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -85,6 +86,7 @@ class WebhookReceiverService
         $body = json_encode($payload);
         $timestamp = (string) time();
         $signature = 'sha256=' . hash_hmac('sha256', $body, $secret);
+        $requestId = (string) Str::uuid();
 
         $log = WaWebhookLog::create([
             'endpoint_id' => $endpoint->id,
@@ -92,13 +94,14 @@ class WebhookReceiverService
             'event_type' => $eventType,
             'direction' => 'outbound',
             'status' => 'sending',
+            'request_id' => $requestId,
             'payload_hash' => ['payload' => $payload],
         ]);
 
         try {
             $response = \Illuminate\Support\Facades\Http::withHeaders([
                 'Content-Type' => 'application/json',
-                'X-Webhook-Event-ID' => wp_generate_uuid4(),
+                'X-Webhook-Event-ID' => $requestId,
                 'X-Webhook-Timestamp' => $timestamp,
                 'X-Webhook-Signature' => $signature,
             ])->timeout(15)->post($endpoint->url, $payload);

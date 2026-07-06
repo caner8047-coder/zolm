@@ -9,7 +9,6 @@ use App\Jobs\WhatsApp\ProcessMetaWebhookJob;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 class WebhookController extends Controller
 {
@@ -84,11 +83,15 @@ class WebhookController extends Controller
                         ? WaAccount::where('phone_number_id', $phone_number_id)->where('is_active', true)->first()
                         : null;
 
+                    $statusPayload = array_merge($status, [
+                        'metadata' => $value['metadata'] ?? [],
+                    ]);
+
                     $this->createOrRedeliverWebhookEvent(
                         $providerEventKey,
                         'status',
                         $requestHash,
-                        $status,
+                        $statusPayload,
                         $account,
                         $request->header('X-Request-Id'),
                     );
@@ -109,11 +112,16 @@ class WebhookController extends Controller
                         ? WaAccount::where('phone_number_id', $phone_number_id)->where('is_active', true)->first()
                         : null;
 
+                    $messagePayload = array_merge($message, [
+                        'metadata' => $value['metadata'] ?? [],
+                        'contacts' => $value['contacts'] ?? [],
+                    ]);
+
                     $this->createOrRedeliverWebhookEvent(
                         $providerEventKey,
                         'message',
                         $requestHash,
-                        $message,
+                        $messagePayload,
                         $account,
                         $request->header('X-Request-Id'),
                     );

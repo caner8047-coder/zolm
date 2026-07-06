@@ -142,6 +142,8 @@ class WelcomeOnboardingService
             );
 
             try {
+                $idempotencyKey = "onboarding:{$flow->id}:{$step->id}";
+
                 $outbox = $outboxService->enqueue(
                     contact: $contact,
                     messageType: 'template',
@@ -150,6 +152,7 @@ class WelcomeOnboardingService
                     templateParams: $templateParams,
                     priority: 'high',
                     automationKey: 'onboarding_' . $flow->flow_type,
+                    idempotencyKey: $idempotencyKey,
                 );
 
                 $step->update([
