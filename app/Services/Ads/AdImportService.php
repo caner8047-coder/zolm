@@ -38,7 +38,7 @@ class AdImportService
             // İlk 15 satırda başlık ara
             for ($i = 1; $i <= min(15, $sheet->getHighestRow()); $i++) {
                 $rowData = [];
-                for ($col = 1; $col <= $sheet->getHighestColumn(); $col++) {
+                for ($col = 1; $col <= $sheet->getHighestColumnIndex(); $col++) {
                     $cellValue = $sheet->getCellByColumnAndRow($col, $i)->getValue();
                     $rowData[] = $this->cleanCellValue($cellValue);
                 }
@@ -60,7 +60,7 @@ class AdImportService
             for ($i = $headerRow + 1; $i <= $sheet->getHighestRow(); $i++) {
                 $rowNumber++;
                 $rowData = [];
-                for ($col = 1; $col <= $sheet->getHighestColumn(); $col++) {
+                for ($col = 1; $col <= $sheet->getHighestColumnIndex(); $col++) {
                     $cellValue = $sheet->getCellByColumnAndRow($col, $i)->getValue();
                     $rowData[] = $this->cleanCellValue($cellValue);
                 }
@@ -252,7 +252,7 @@ class AdImportService
             $data = $parser->parse($row->normalized_payload);
 
             // Ürün eşleştir
-            $product = $this->matchProduct($batch->user_id, $batch->ad_account_id, $data);
+            $product = $this->matchProduct($batch->user_id, $batch->ad_account_id, $campaign->id, $data);
 
             // Product snapshot oluştur
             $this->createProductSnapshot($batch, $campaign, $product, $data);
@@ -324,13 +324,19 @@ class AdImportService
     /**
      * Ürün eşleştirme
      */
-    protected function matchProduct(int $userId, int $adAccountId, array $data): \App\Models\AdCampaignProduct
+    protected function matchProduct(int $userId, int $adAccountId, int $campaignId, array $data): \App\Models\AdCampaignProduct
     {
+        if (!$campaignId || $campaignId <= 0) {
+            throw new \RuntimeException('Ürün eşleştirme için geçerli bir campaign_id zorunludur.');
+        }
+
         $contentId = $data['content_id'] ?? null;
 
-        // Content ID varsa mevcut kaydı bul
+        // Content ID varsa aynı kampanya kapsamında kaydı bul
         if ($contentId) {
-            $existing = \App\Models\AdCampaignProduct::where('marketplace_content_id', $contentId)->first();
+            $existing = \App\Models\AdCampaignProduct::where('campaign_id', $campaignId)
+                ->where('marketplace_content_id', $contentId)
+                ->first();
             if ($existing) {
                 return $existing;
             }
@@ -338,7 +344,7 @@ class AdImportService
 
         // Yeni ürün oluştur
         return \App\Models\AdCampaignProduct::create([
-            'campaign_id' => $data['campaign_id'] ?? 0, // Bu çağrılmadan önce ayarlanmalı
+            'campaign_id' => $campaignId,
             'marketplace_content_id' => $contentId,
             'marketplace_model_code' => $data['model_code'] ?? null,
             'product_name_snapshot' => $data['product_name'] ?? 'Bilinmeyen Ürün',

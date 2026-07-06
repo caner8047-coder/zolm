@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class AdCampaign extends Model
 {
@@ -63,6 +64,11 @@ class AdCampaign extends Model
     public function adCampaignSnapshots(): HasMany
     {
         return $this->hasMany(AdCampaignSnapshot::class);
+    }
+
+    public function latestSnapshot(): HasOne
+    {
+        return $this->hasOne(AdCampaignSnapshot::class)->latestOfMany('captured_at');
     }
 
     public function adProductSnapshots(): HasMany
