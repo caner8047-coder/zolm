@@ -264,6 +264,140 @@ class MpSettingsService
         return $this->getBool('ui.help_tips_enabled', true);
     }
 
+    public function getOrdersPerPage(): int
+    {
+        return $this->normalizePerPage($this->getInt('ui.orders_per_page', 20), 20);
+    }
+
+    public function getProductsPerPage(): int
+    {
+        return $this->normalizePerPage($this->getInt('ui.products_per_page', 25), 25);
+    }
+
+    public function normalizePerPage(int $value, int $default): int
+    {
+        $allowed = [10, 20, 25, 50, 100];
+
+        return in_array($value, $allowed, true) ? $value : $default;
+    }
+
+    public function getOrdersDefaultDateRangeDays(): int
+    {
+        return $this->normalizeDateRangeDays($this->getInt('ui.orders_default_date_range_days', 0), 0);
+    }
+
+    public function getFinanceDefaultDateRangeDays(): int
+    {
+        return $this->normalizeDateRangeDays($this->getInt('ui.finance_default_date_range_days', 30), 30);
+    }
+
+    public function normalizeDateRangeDays(int $value, int $default = 30): int
+    {
+        $allowed = [0, 7, 30, 60, 90, 180, 365];
+
+        return in_array($value, $allowed, true) ? $value : $default;
+    }
+
+    public function getDefaultCurrency(): string
+    {
+        return $this->normalizeCurrency((string) $this->get('general.currency', 'TRY'));
+    }
+
+    public function normalizeCurrency(string $value): string
+    {
+        $allowed = ['TRY', 'EUR', 'USD', 'GBP'];
+
+        $upper = strtoupper(trim($value));
+
+        return in_array($upper, $allowed, true) ? $upper : 'TRY';
+    }
+
+    public function getAutoRecommendThreshold(): int
+    {
+        return $this->normalizeAutoRecommendThreshold($this->getInt('matching.auto_recommend_threshold', 100));
+    }
+
+    public function normalizeAutoRecommendThreshold(int $value): int
+    {
+        return ($value >= 1 && $value <= 500) ? $value : 100;
+    }
+
+    public function getMatchingCandidateSearchLimit(): int
+    {
+        return $this->normalizeCandidateLimit($this->getInt('matching.candidate_search_limit', 12), 1, 100, 12);
+    }
+
+    public function getMatchingCandidateResultLimit(): int
+    {
+        $searchLimit = $this->getMatchingCandidateSearchLimit();
+        $resultLimit = $this->normalizeCandidateLimit($this->getInt('matching.candidate_result_limit', 8), 1, 50, 8);
+
+        return $resultLimit > $searchLimit ? $searchLimit : $resultLimit;
+    }
+
+    protected function normalizeCandidateLimit(int $value, int $min, int $max, int $default): int
+    {
+        return ($value >= $min && $value <= $max) ? $value : $default;
+    }
+
+    public function getMatchingWeights(): array
+    {
+        $defaults = $this->getDefaults()['matching']['weights'];
+
+        $saved = (array) $this->get('matching.weights', []);
+
+        $result = [];
+        foreach ($defaults as $key => $default) {
+            $raw = $saved[$key] ?? $default;
+            $result[$key] = $this->normalizeMatchingWeight((int) $raw, $default);
+        }
+
+        return $result;
+    }
+
+    public function normalizeMatchingWeight(int $value, int $default): int
+    {
+        return ($value >= 0 && $value <= 500) ? $value : $default;
+    }
+
+    public function getMatchingStopWords(): array
+    {
+        $defaults = $this->getDefaults()['matching']['stop_words'];
+        $raw = $this->get('matching.stop_words', null);
+
+        if (! is_array($raw) || $raw === []) {
+            return $defaults;
+        }
+
+        return $this->normalizeStopWords($raw, $defaults);
+    }
+
+    public function normalizeStopWords(array $input, array $defaults): array
+    {
+        $normalized = [];
+        foreach ($input as $word) {
+            if (! is_string($word)) {
+                continue;
+            }
+
+            $clean = strtolower(trim($word));
+
+            if ($clean === '' || mb_strlen($clean) < 2 || mb_strlen($clean) > 40) {
+                continue;
+            }
+
+            if (! in_array($clean, $normalized, true)) {
+                $normalized[] = $clean;
+            }
+
+            if (count($normalized) >= 100) {
+                break;
+            }
+        }
+
+        return $normalized === [] ? $defaults : $normalized;
+    }
+
     public function getProductProfitDefaultMarketplace(): string
     {
         $value = strtolower(trim((string) $this->get('marketplace_products.profit.default_marketplace', 'average')));
@@ -410,6 +544,10 @@ class MpSettingsService
             'ui' => [
                 'visible_columns' => ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay'],
                 'help_tips_enabled' => true,
+                'orders_per_page' => 20,
+                'products_per_page' => 25,
+                'orders_default_date_range_days' => 0,
+                'finance_default_date_range_days' => 30,
             ],
             'marketplace_products' => [
                 'profit' => [
@@ -462,6 +600,25 @@ class MpSettingsService
                 'branch'     => '',
                 'manager'    => '',
                 'mersis'     => '',
+            ],
+            'matching' => [
+                'auto_recommend_threshold' => 100,
+                'candidate_search_limit' => 12,
+                'candidate_result_limit' => 8,
+                'weights' => [
+                    'barcode_exact' => 120,
+                    'stock_code_exact' => 100,
+                    'model_exact' => 90,
+                    'model_family' => 70,
+                    'brand_exact' => 12,
+                    'category_exact' => 8,
+                    'title_token' => 6,
+                    'title_max' => 30,
+                ],
+                'stop_words' => [
+                    'adet', 'one', 'size', 'olan', 'icin', 'için', 'ile', 've', 'bir', 'iki',
+                    'tak', 'takim', 'takimi', 'takımı', 'urun', 'ürün', 'seti',
+                ],
             ],
             'profitability' => [
                 'target_margin'          => 15.00,

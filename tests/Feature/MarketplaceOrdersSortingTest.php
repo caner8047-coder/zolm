@@ -8,6 +8,7 @@ use App\Models\ChannelOrderPackage;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
 use App\Models\User;
+use App\Services\MpSettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -113,7 +114,7 @@ class MarketplaceOrdersSortingTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Sorting Ltd.',
-            'tax_number' => $prefix . $suffix,
+            'tax_number' => $prefix.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -124,8 +125,8 @@ class MarketplaceOrdersSortingTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'pazarama',
             'store_name' => 'ZEM SORTING',
-            'store_code' => 'SORT-' . $suffix,
-            'seller_id' => 'SORT-' . $suffix,
+            'store_code' => 'SORT-'.$suffix,
+            'seller_id' => 'SORT-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -159,8 +160,8 @@ class MarketplaceOrdersSortingTest extends TestCase
         ChannelOrderPackage::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_package_id' => 'PKG-' . $orderNumber,
-            'package_number' => 'PKG-' . $orderNumber,
+            'external_package_id' => 'PKG-'.$orderNumber,
+            'package_number' => 'PKG-'.$orderNumber,
             'package_status' => 'approved',
             'raw_payload' => [
                 'estimatedShippingDate' => $cargoDueDate,
@@ -168,5 +169,95 @@ class MarketplaceOrdersSortingTest extends TestCase
         ]);
 
         return $order;
+    }
+
+    public function test_orders_loads_per_page_from_settings(): void
+    {
+        [$user, $store] = $this->createStoreGraph('PP');
+
+        (new MpSettingsService($user->id))->set('ui.orders_per_page', 50);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceOrders::class)
+            ->assertSet('perPage', 50);
+    }
+
+    public function test_orders_defaults_to_20_when_no_setting(): void
+    {
+        [$user, $store] = $this->createStoreGraph('DF');
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceOrders::class)
+            ->assertSet('perPage', 20);
+    }
+
+    public function test_orders_applies_default_date_range_from_settings(): void
+    {
+        [$user, $store] = $this->createStoreGraph('DR');
+
+        (new MpSettingsService($user->id))->set('ui.orders_default_date_range_days', 7);
+
+        $this->actingAs($user);
+
+        \Carbon\Carbon::setTestNow('2026-07-01 12:00:00');
+
+        try {
+            Livewire::test(MarketplaceOrders::class)
+                ->assertSet('dateFrom', '2026-06-24')
+                ->assertSet('dateTo', '2026-07-01');
+        } finally {
+            \Carbon\Carbon::setTestNow(null);
+        }
+    }
+
+    public function test_orders_keeps_empty_dates_when_default_is_zero(): void
+    {
+        [$user, $store] = $this->createStoreGraph('DZ');
+
+        (new MpSettingsService($user->id))->set('ui.orders_default_date_range_days', 0);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceOrders::class)
+            ->assertSet('dateFrom', '')
+            ->assertSet('dateTo', '');
+    }
+
+    public function test_orders_preserves_query_string_dates_over_default(): void
+    {
+        [$user, $store] = $this->createStoreGraph('QS');
+
+        (new MpSettingsService($user->id))->set('ui.orders_default_date_range_days', 7);
+
+        $this->actingAs($user);
+
+        Livewire::withQueryParams(['dateFrom' => '2026-01-01', 'dateTo' => '2026-01-31'])
+            ->test(MarketplaceOrders::class)
+            ->assertSet('dateFrom', '2026-01-01')
+            ->assertSet('dateTo', '2026-01-31');
+    }
+
+    public function test_orders_reset_filters_applies_saved_default(): void
+    {
+        [$user, $store] = $this->createStoreGraph('RF');
+
+        (new MpSettingsService($user->id))->set('ui.orders_default_date_range_days', 60);
+
+        $this->actingAs($user);
+
+        \Carbon\Carbon::setTestNow('2026-07-01 12:00:00');
+
+        try {
+            Livewire::test(MarketplaceOrders::class)
+                ->set('dateFrom', '2026-01-01')
+                ->set('dateTo', '2026-06-01')
+                ->call('resetFilters')
+                ->assertSet('dateFrom', '2026-05-02')
+                ->assertSet('dateTo', '2026-07-01');
+        } finally {
+            \Carbon\Carbon::setTestNow(null);
+        }
     }
 }

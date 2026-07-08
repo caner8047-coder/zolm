@@ -97,8 +97,11 @@ class MarketplaceFinance extends Component
         );
 
         if ($this->dateFrom === '' && $this->dateTo === '') {
-            $this->dateFrom = now()->subDays(30)->toDateString();
-            $this->dateTo = now()->toDateString();
+            $defaultDays = app(MpSettingsService::class)->getFinanceDefaultDateRangeDays();
+            if ($defaultDays > 0) {
+                $this->dateFrom = now()->subDays($defaultDays)->toDateString();
+                $this->dateTo = now()->toDateString();
+            }
         }
     }
 
@@ -442,8 +445,16 @@ class MarketplaceFinance extends Component
         $this->deltaStateFilter = '';
         $this->eventTypeFilter = '';
         $this->legacyProjectionFilter = '';
-        $this->dateFrom = now()->subDays(30)->toDateString();
-        $this->dateTo = now()->toDateString();
+
+        $defaultDays = app(MpSettingsService::class)->getFinanceDefaultDateRangeDays();
+        if ($defaultDays > 0) {
+            $this->dateFrom = now()->subDays($defaultDays)->toDateString();
+            $this->dateTo = now()->toDateString();
+        } else {
+            $this->dateFrom = '';
+            $this->dateTo = '';
+        }
+
         $this->sortField = 'ordered_at';
         $this->sortDirection = 'desc';
         $this->resetPage();

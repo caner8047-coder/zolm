@@ -17,6 +17,33 @@ class MarketplaceSettings extends Component
 
     public bool $recipeCostSyncEnabled = false;
 
+    public int $ordersPerPage = 20;
+
+    public int $productsPerPage = 25;
+
+    public int $ordersDefaultDateRangeDays = 0;
+
+    public int $financeDefaultDateRangeDays = 30;
+
+    public int $autoRecommendThreshold = 100;
+
+    public array $matchingWeights = [
+        'barcode_exact' => 120,
+        'stock_code_exact' => 100,
+        'model_exact' => 90,
+        'model_family' => 70,
+        'brand_exact' => 12,
+        'category_exact' => 8,
+        'title_token' => 6,
+        'title_max' => 30,
+    ];
+
+    public string $matchingStopWords = '';
+
+    public int $candidateSearchLimit = 12;
+
+    public int $candidateResultLimit = 8;
+
     public array $labelPrintSettings = [];
 
     public array $dispatchPrintSettings = [];
@@ -41,6 +68,15 @@ class MarketplaceSettings extends Component
         $this->defaultProfitMarketplace = $settings->getProductProfitDefaultMarketplace();
         $this->woocommerceCommissionRate = $settings->getProductProfitWooCommerceCommissionRate();
         $this->recipeCostSyncEnabled = $settings->recipeCostSyncEnabled();
+        $this->ordersPerPage = $settings->getOrdersPerPage();
+        $this->productsPerPage = $settings->getProductsPerPage();
+        $this->ordersDefaultDateRangeDays = $settings->getOrdersDefaultDateRangeDays();
+        $this->financeDefaultDateRangeDays = $settings->getFinanceDefaultDateRangeDays();
+        $this->autoRecommendThreshold = $settings->getAutoRecommendThreshold();
+        $this->matchingWeights = $settings->getMatchingWeights();
+        $this->matchingStopWords = implode(', ', $settings->getMatchingStopWords());
+        $this->candidateSearchLimit = $settings->getMatchingCandidateSearchLimit();
+        $this->candidateResultLimit = $settings->getMatchingCandidateResultLimit();
         $this->labelPrintSettings = $settings->getArray('print.label', $this->defaultLabelPrintSettings());
         $this->dispatchPrintSettings = $settings->getArray('print.dispatch', $this->defaultDispatchPrintSettings());
         $this->companyForm = [
@@ -55,16 +91,54 @@ class MarketplaceSettings extends Component
     {
         $validated = $this->validate([
             'helpTipsEnabled' => ['boolean'],
-            'defaultProfitMarketplace' => ['required', 'string', 'in:' . implode(',', array_keys($this->productProfitMarketplaceOptions()))],
+            'defaultProfitMarketplace' => ['required', 'string', 'in:'.implode(',', array_keys($this->productProfitMarketplaceOptions()))],
             'woocommerceCommissionRate' => ['required', 'numeric', 'min:0', 'max:100'],
             'recipeCostSyncEnabled' => ['boolean'],
+            'ordersPerPage' => ['required', 'integer', 'in:10,20,25,50,100'],
+            'productsPerPage' => ['required', 'integer', 'in:10,20,25,50,100'],
+            'ordersDefaultDateRangeDays' => ['required', 'integer', 'in:0,7,30,60,90,180,365'],
+            'financeDefaultDateRangeDays' => ['required', 'integer', 'in:0,7,30,60,90,180,365'],
+            'autoRecommendThreshold' => ['required', 'integer', 'min:1', 'max:500'],
+            'matchingWeights.barcode_exact' => ['required', 'integer', 'min:0', 'max:500'],
+            'matchingWeights.stock_code_exact' => ['required', 'integer', 'min:0', 'max:500'],
+            'matchingWeights.model_exact' => ['required', 'integer', 'min:0', 'max:500'],
+            'matchingWeights.model_family' => ['required', 'integer', 'min:0', 'max:500'],
+            'matchingWeights.brand_exact' => ['required', 'integer', 'min:0', 'max:500'],
+            'matchingWeights.category_exact' => ['required', 'integer', 'min:0', 'max:500'],
+            'matchingWeights.title_token' => ['required', 'integer', 'min:0', 'max:500'],
+            'matchingWeights.title_max' => ['required', 'integer', 'min:0', 'max:500'],
+            'matchingStopWords' => ['required', 'string', 'max:5000'],
+            'candidateSearchLimit' => ['required', 'integer', 'min:1', 'max:100'],
+            'candidateResultLimit' => ['required', 'integer', 'min:1', 'max:50'],
         ]);
+
+        $normalizedWeights = [];
+        $defaults = app(MpSettingsService::class)->getDefaults()['matching']['weights'];
+        foreach ($defaults as $key => $default) {
+            $normalizedWeights[$key] = app(MpSettingsService::class)->normalizeMatchingWeight(
+                (int) ($validated['matchingWeights'][$key] ?? $default),
+                $default
+            );
+        }
+
+        $stopWordsRaw = preg_split('/[,\n]+/', $validated['matchingStopWords']) ?? [];
+        $stopWordsDefaults = app(MpSettingsService::class)->getDefaults()['matching']['stop_words'];
+        $normalizedStopWords = app(MpSettingsService::class)->normalizeStopWords($stopWordsRaw, $stopWordsDefaults);
 
         app(MpSettingsService::class)->setMany([
             'ui.help_tips_enabled' => (bool) $validated['helpTipsEnabled'],
             'marketplace_products.profit.default_marketplace' => $validated['defaultProfitMarketplace'],
             'marketplace_products.profit.woocommerce_commission_rate' => round((float) $validated['woocommerceCommissionRate'], 2),
             'marketplace_products.recipe_cost_sync_enabled' => (bool) $validated['recipeCostSyncEnabled'],
+            'ui.orders_per_page' => (int) $validated['ordersPerPage'],
+            'ui.products_per_page' => (int) $validated['productsPerPage'],
+            'ui.orders_default_date_range_days' => (int) $validated['ordersDefaultDateRangeDays'],
+            'ui.finance_default_date_range_days' => (int) $validated['financeDefaultDateRangeDays'],
+            'matching.auto_recommend_threshold' => (int) $validated['autoRecommendThreshold'],
+            'matching.weights' => $normalizedWeights,
+            'matching.stop_words' => $normalizedStopWords,
+            'matching.candidate_search_limit' => (int) $validated['candidateSearchLimit'],
+            'matching.candidate_result_limit' => min((int) $validated['candidateResultLimit'], (int) $validated['candidateSearchLimit']),
         ]);
 
         $syncSummary = null;
@@ -137,12 +211,54 @@ class MarketplaceSettings extends Component
             'marketplace_products.profit.default_marketplace' => 'average',
             'marketplace_products.profit.woocommerce_commission_rate' => 0.00,
             'marketplace_products.recipe_cost_sync_enabled' => false,
+            'ui.orders_per_page' => 20,
+            'ui.products_per_page' => 25,
+            'ui.orders_default_date_range_days' => 0,
+            'ui.finance_default_date_range_days' => 30,
+            'matching.auto_recommend_threshold' => 100,
+            'matching.weights' => [
+                'barcode_exact' => 120,
+                'stock_code_exact' => 100,
+                'model_exact' => 90,
+                'model_family' => 70,
+                'brand_exact' => 12,
+                'category_exact' => 8,
+                'title_token' => 6,
+                'title_max' => 30,
+            ],
+            'matching.stop_words' => [
+                'adet', 'one', 'size', 'olan', 'icin', 'için', 'ile', 've', 'bir', 'iki',
+                'tak', 'takim', 'takimi', 'takımı', 'urun', 'ürün', 'seti',
+            ],
+            'matching.candidate_search_limit' => 12,
+            'matching.candidate_result_limit' => 8,
         ]);
 
         $this->helpTipsEnabled = true;
         $this->defaultProfitMarketplace = 'average';
         $this->woocommerceCommissionRate = 0.00;
         $this->recipeCostSyncEnabled = false;
+        $this->ordersPerPage = 20;
+        $this->productsPerPage = 25;
+        $this->ordersDefaultDateRangeDays = 0;
+        $this->financeDefaultDateRangeDays = 30;
+        $this->autoRecommendThreshold = 100;
+        $this->matchingWeights = [
+            'barcode_exact' => 120,
+            'stock_code_exact' => 100,
+            'model_exact' => 90,
+            'model_family' => 70,
+            'brand_exact' => 12,
+            'category_exact' => 8,
+            'title_token' => 6,
+            'title_max' => 30,
+        ];
+        $this->matchingStopWords = implode(', ', [
+            'adet', 'one', 'size', 'olan', 'icin', 'için', 'ile', 've', 'bir', 'iki',
+            'tak', 'takim', 'takimi', 'takımı', 'urun', 'ürün', 'seti',
+        ]);
+        $this->candidateSearchLimit = 12;
+        $this->candidateResultLimit = 8;
 
         session()->flash('settings_success', 'Genel ayarlar varsayılan değerlere döndürüldü.');
     }
@@ -219,11 +335,13 @@ class MarketplaceSettings extends Component
         foreach ($normalized as $key => $value) {
             if (is_bool($value)) {
                 $normalized[$key] = (bool) $value;
+
                 continue;
             }
 
             if ($key === 'barcode_height') {
                 $normalized[$key] = (int) $value;
+
                 continue;
             }
 

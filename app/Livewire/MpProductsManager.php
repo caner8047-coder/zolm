@@ -255,6 +255,7 @@ class MpProductsManager extends Component
         $this->visibleColumns = $this->normalizeVisibleColumns(
             $settings->getArray('marketplace_products.v2.visible_columns', $this->visibleColumns)
         );
+        $this->perPage = $settings->getProductsPerPage();
 
         if (!$settings->getBool('marketplace_products.v2.delivery_terms_column_seeded', false)) {
             if (!in_array('teslimat', $this->visibleColumns, true)) {
@@ -460,6 +461,13 @@ class MpProductsManager extends Component
     public function updatedPage(): void
     {
         $this->syncSelectAllState();
+    }
+
+    public function updatedPerPage(): void
+    {
+        $this->perPage = app(MpSettingsService::class)->normalizePerPage($this->perPage, 25);
+        app(MpSettingsService::class)->set('ui.products_per_page', $this->perPage);
+        $this->resetPage();
     }
 
     #[Computed]
@@ -4606,7 +4614,7 @@ class MpProductsManager extends Component
         $this->f_cargo_cost = 0;
         $this->f_extra_cost_fixed = 0;
         $this->f_extra_cost_percentage = 0;
-        $this->f_vat_rate = 10;
+        $this->f_vat_rate = (int) round(app(MpSettingsService::class)->getDefaultProductVatRate() * 100);
         $this->f_cost_vat_rate = null;
         $this->f_market_price = 0;
         $this->f_sale_price = 0;

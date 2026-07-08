@@ -40,6 +40,16 @@
                     <input type="text" wire:model="settingsCompanyName" placeholder="Örn: ABC Tekstil Ltd. Şti." class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
                 </div>
                 <div class="space-y-1.5">
+                    <label class="block text-sm font-semibold text-gray-700">Varsayılan Para Birimi</label>
+                    <select wire:model="settingsCurrency" class="w-full px-4 py-3 sm:py-2 text-base sm:text-sm rounded-[6px] border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <option value="TRY">TRY — Türk Lirası</option>
+                        <option value="EUR">EUR — Euro</option>
+                        <option value="USD">USD — ABD Doları</option>
+                        <option value="GBP">GBP — İngiliz Sterlini</option>
+                    </select>
+                    <p class="text-xs text-gray-400">Muhasebe için varsayılan para birimi. Otomatik kur dönüşümü yapmaz ve mevcut kayıtları değiştirmez.</p>
+                </div>
+                <div class="space-y-1.5">
                     <label class="block text-sm font-semibold text-gray-700">Vergi Numarası / T.C. Kimlik</label>
                     <input type="text" wire:model="settingsCompanyTaxNumber" placeholder="10 haneli vergi no veya 11 haneli TC" class="px-4 py-2.5 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono tracking-wider">
                 </div>

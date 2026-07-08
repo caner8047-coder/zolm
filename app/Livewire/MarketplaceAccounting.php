@@ -137,6 +137,7 @@ class MarketplaceAccounting extends Component
 
     // Genel
     public string $settingsMarketplace = 'Trendyol';
+    public string $settingsCurrency = 'TRY';
 
     // Firma Profili
     public string $settingsCompanyName = '';
@@ -336,6 +337,7 @@ class MarketplaceAccounting extends Component
 
         // Bölüm 2: Kargo
         $this->settingsBaremLimit              = (float) ($all['cargo']['barem_limit'] ?? 300);
+        $this->settingsCurrency                = $svc->getDefaultCurrency();
         $this->settingsDefaultCargoCompany     = (string) ($all['general']['default_cargo_company'] ?? 'TEX');
         $this->settingsCargoCompanies          = (array) ($all['cargo']['cargo_companies'] ?? ['TEX', 'PTT', 'Aras', 'Sürat', 'Yurtiçi']);
         $this->settingsHeavyCargoPenalties     = (array) ($all['cargo']['heavy_cargo_penalties'] ?? []);
@@ -465,6 +467,10 @@ class MarketplaceAccounting extends Component
 
     public function saveSettings()
     {
+        $this->validate([
+            'settingsCurrency' => ['required', 'string', 'in:TRY,EUR,USD,GBP'],
+        ]);
+
         $svc = new MpSettingsService();
         $svc->save([
             'tax' => [
@@ -530,7 +536,7 @@ class MarketplaceAccounting extends Component
             ],
             'general' => [
                 'marketplace'           => $this->settingsMarketplace,
-                'currency'              => 'TRY',
+                'currency'              => $this->settingsCurrency,
                 'default_cargo_company' => $this->settingsDefaultCargoCompany,
             ],
             'company' => [

@@ -1562,6 +1562,94 @@ class MpProductsManagerActionsTest extends TestCase
         ];
     }
 
+    public function test_new_product_form_uses_settings_vat_rate_when_configured(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('tax.default_product_vat_rate', 0.20);
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->call('openCreateModal')
+            ->assertSet('f_vat_rate', 20)
+            ->assertSet('showEditModal', true);
+    }
+
+    public function test_new_product_form_defaults_to_10_when_no_setting(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->call('openCreateModal')
+            ->assertSet('f_vat_rate', 10);
+    }
+
+    public function test_edit_product_preserves_own_vat_rate(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('tax.default_product_vat_rate', 0.20);
+
+        $product = MpProduct::query()->create(
+            array_merge($this->productPayload($user->id), ['vat_rate' => 1])
+        );
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->call('editProduct', $product->id)
+            ->assertSet('f_vat_rate', 1);
+    }
+
+    public function test_products_manager_loads_per_page_from_settings(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('ui.products_per_page', 50);
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->assertSet('perPage', 50);
+    }
+
+    public function test_products_manager_defaults_to_25_when_no_setting(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->assertSet('perPage', 25);
+    }
+
+    public function test_products_manager_saves_per_page_on_change(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->set('perPage', 100);
+
+        $settings = new MpSettingsService($user->id);
+        $this->assertSame(100, $settings->getProductsPerPage());
+    }
+
+    public function test_products_manager_normalizes_invalid_per_page(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->set('perPage', 77)
+            ->assertSet('perPage', 25);
+    }
+
     /**
      * @param  array<int, array<int, scalar|null>>  $rows
      */

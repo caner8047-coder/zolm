@@ -22,6 +22,9 @@
         ],
     ];
 
+    $perPageOptions = [10 => '10', 20 => '20', 25 => '25', 50 => '50', 100 => '100'];
+    $dateRangeOptions = [0 => 'Tüm zamanlar', 7 => '7 gün', 30 => '30 gün', 60 => '60 gün', 90 => '90 gün', 180 => '180 gün', 365 => '365 gün'];
+
     $labelToggles = [
         ['label' => 'Gönderici', 'hint' => 'Firma alanı', 'model' => 'labelPrintSettings.show_sender'],
         ['label' => 'Takip no', 'hint' => 'Başlık alanı', 'model' => 'labelPrintSettings.show_tracking_number'],
@@ -164,6 +167,111 @@
             </div>
 
             <div class="grid grid-cols-1 gap-3">
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+                    <h3 class="text-sm font-semibold text-slate-900">Sayfa başına kayıt</h3>
+                    <p class="mt-1 text-sm leading-5 text-slate-500">Liste ekranlarındaki varsayılan sayfa boyutu.</p>
+                    <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Siparişler</label>
+                            <select wire:model.live="ordersPerPage" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                                @foreach($perPageOptions as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Ürünler</label>
+                            <select wire:model.live="productsPerPage" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                                @foreach($perPageOptions as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+                    <h3 class="text-sm font-semibold text-slate-900">Varsayılan tarih aralığı</h3>
+                    <p class="mt-1 text-sm leading-5 text-slate-500">Ekranlar ilk açıldığında kullanılacak tarih filtresi.</p>
+                    <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Siparişler</label>
+                            <select wire:model.live="ordersDefaultDateRangeDays" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                                @foreach($dateRangeOptions as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Finans</label>
+                            <select wire:model.live="financeDefaultDateRangeDays" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                                @foreach($dateRangeOptions as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+                    <h3 class="text-sm font-semibold text-slate-900">Eşleştirme ağırlıkları</h3>
+                    <p class="mt-1 text-sm leading-5 text-slate-500">Aday ürünleri sıralarken kullanılan sinyal puanları. 0 girilirse o sinyal devre dışı kalır.</p>
+                    <div class="mt-3">
+                        <label class="mb-1 block text-xs font-medium text-slate-500">Otomatik önerme eşiği (1–500)</label>
+                        <input type="number" min="1" max="500" wire:model.defer="autoRecommendThreshold" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                    </div>
+                    <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Barkod birebir</label>
+                            <input type="number" min="0" max="500" wire:model.defer="matchingWeights.barcode_exact" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Stok kodu birebir</label>
+                            <input type="number" min="0" max="500" wire:model.defer="matchingWeights.stock_code_exact" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Model birebir</label>
+                            <input type="number" min="0" max="500" wire:model.defer="matchingWeights.model_exact" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Model ailesi</label>
+                            <input type="number" min="0" max="500" wire:model.defer="matchingWeights.model_family" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Marka</label>
+                            <input type="number" min="0" max="500" wire:model.defer="matchingWeights.brand_exact" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Kategori</label>
+                            <input type="number" min="0" max="500" wire:model.defer="matchingWeights.category_exact" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Başlık token</label>
+                            <input type="number" min="0" max="500" wire:model.defer="matchingWeights.title_token" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Başlık üst sınır</label>
+                            <input type="number" min="0" max="500" wire:model.defer="matchingWeights.title_max" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="mb-1 block text-xs font-medium text-slate-500">Arama durak kelimeleri</label>
+                        <textarea wire:model.defer="matchingStopWords" rows="2" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm" placeholder="virgül veya yeni satırla ayırın"></textarea>
+                        <p class="mt-1 text-[11px] leading-4 text-slate-400">Bu kelimeler aday arama token'larından çıkarılır; skor ağırlıklarını değiştirmez.</p>
+                    </div>
+                    <div class="mt-3 grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Arama limiti (1–100)</label>
+                            <input type="number" min="1" max="100" wire:model.defer="candidateSearchLimit" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-slate-500">Sonuç limiti (1–50)</label>
+                            <input type="number" min="1" max="50" wire:model.defer="candidateResultLimit" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        </div>
+                    </div>
+                    <p class="mt-1 text-[11px] leading-4 text-slate-400">Arama limiti aday havuzunu, sonuç limiti ekranda gösterilecek en iyi aday sayısını belirler.</p>
+                </div>
+
                 @foreach($generalToggles as $toggle)
                     <label class="flex cursor-pointer items-start justify-between gap-4 rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
                         <div class="min-w-0">

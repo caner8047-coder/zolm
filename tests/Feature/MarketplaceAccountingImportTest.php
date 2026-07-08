@@ -949,4 +949,89 @@ class MarketplaceAccountingImportTest extends TestCase
             true
         );
     }
+
+    public function test_default_currency_is_try(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $this->assertSame('TRY', $service->getDefaultCurrency());
+    }
+
+    public function test_currency_can_be_set_to_eur(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('general.currency', 'EUR');
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceAccounting::class)
+            ->assertSet('settingsCurrency', 'EUR');
+    }
+
+    public function test_saving_other_settings_preserves_currency(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('general.currency', 'EUR');
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceAccounting::class)
+            ->set('settingsCompanyName', 'Test Firma')
+            ->call('saveSettings');
+
+        $settings = new MpSettingsService($user->id);
+        $this->assertSame('EUR', $settings->getDefaultCurrency());
+    }
+
+    public function test_invalid_currency_normalizes_to_try(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $this->assertSame('TRY', $service->normalizeCurrency('XYZ'));
+        $this->assertSame('TRY', $service->normalizeCurrency(''));
+        $this->assertSame('TRY', $service->normalizeCurrency('tl'));
+    }
+
+    public function test_currency_is_isolated_per_user(): void
+    {
+        $user1 = User::factory()->create();
+        $user2 = User::factory()->create();
+
+        (new MpSettingsService($user1->id))->set('general.currency', 'USD');
+
+        $this->assertSame('USD', (new MpSettingsService($user1->id))->getDefaultCurrency());
+        $this->assertSame('TRY', (new MpSettingsService($user2->id))->getDefaultCurrency());
+    }
+
+    public function test_invalid_currency_rejected_by_validation(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('general.currency', 'EUR');
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceAccounting::class)
+            ->set('settingsCurrency', 'XYZ')
+            ->call('saveSettings')
+            ->assertHasErrors(['settingsCurrency']);
+
+        $this->assertSame('EUR', (new MpSettingsService($user->id))->getDefaultCurrency());
+    }
+
+    public function test_corrupt_stored_currency_loads_as_try_in_ui(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('general.currency', 'BOZUK');
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceAccounting::class)
+            ->assertSet('settingsCurrency', 'TRY');
+    }
 }

@@ -11,6 +11,7 @@ use App\Services\Marketplace\MarketplaceDiagnosticsGuidanceService;
 use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceManualMatchService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
+use App\Services\MpSettingsService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -595,9 +596,10 @@ class MarketplaceMatchingCenter extends Component
     public function candidateScoreTone(MpProduct $candidate): string
     {
         $score = $this->candidateScore($candidate);
+        $threshold = $this->resolvedAutoRecommendThreshold();
 
         return match (true) {
-            $score >= 100 => 'success',
+            $score >= $threshold => 'success',
             $score >= 70 => 'info',
             $score >= 40 => 'warning',
             default => 'default',
@@ -606,7 +608,60 @@ class MarketplaceMatchingCenter extends Component
 
     public function canAutoRecommend(?MpProduct $candidate): bool
     {
-        return $candidate instanceof MpProduct && $this->candidateScore($candidate) >= 100;
+        $threshold = $this->resolvedAutoRecommendThreshold();
+
+        return $candidate instanceof MpProduct && $this->candidateScore($candidate) >= $threshold;
+    }
+
+    protected ?int $cachedAutoRecommendThreshold = null;
+    protected ?array $cachedMatchingWeights = null;
+    protected ?array $cachedMatchingStopWords = null;
+    protected ?int $cachedCandidateSearchLimit = null;
+    protected ?int $cachedCandidateResultLimit = null;
+
+    protected function resolvedAutoRecommendThreshold(): int
+    {
+        if ($this->cachedAutoRecommendThreshold === null) {
+            $this->cachedAutoRecommendThreshold = app(MpSettingsService::class)->getAutoRecommendThreshold();
+        }
+
+        return $this->cachedAutoRecommendThreshold;
+    }
+
+    protected function resolvedMatchingWeights(): array
+    {
+        if ($this->cachedMatchingWeights === null) {
+            $this->cachedMatchingWeights = app(MpSettingsService::class)->getMatchingWeights();
+        }
+
+        return $this->cachedMatchingWeights;
+    }
+
+    protected function resolvedMatchingStopWords(): array
+    {
+        if ($this->cachedMatchingStopWords === null) {
+            $this->cachedMatchingStopWords = app(MpSettingsService::class)->getMatchingStopWords();
+        }
+
+        return $this->cachedMatchingStopWords;
+    }
+
+    protected function resolvedCandidateSearchLimit(): int
+    {
+        if ($this->cachedCandidateSearchLimit === null) {
+            $this->cachedCandidateSearchLimit = app(MpSettingsService::class)->getMatchingCandidateSearchLimit();
+        }
+
+        return $this->cachedCandidateSearchLimit;
+    }
+
+    protected function resolvedCandidateResultLimit(): int
+    {
+        if ($this->cachedCandidateResultLimit === null) {
+            $this->cachedCandidateResultLimit = app(MpSettingsService::class)->getMatchingCandidateResultLimit();
+        }
+
+        return $this->cachedCandidateResultLimit;
     }
 
     /**
@@ -836,10 +891,10 @@ class MarketplaceMatchingCenter extends Component
                         ->orWhere('model_code', 'like', '%' . $searchTerm . '%');
                 })
                 ->orderBy('product_name')
-                ->limit(12)
+                ->limit($this->resolvedCandidateSearchLimit())
                 ->get();
 
-            return $this->rankCandidatesForIssue($issue, $searchResults)->take(8)->values();
+            return $this->rankCandidatesForIssue($issue, $searchResults)->take($this->resolvedCandidateResultLimit())->values();
         }
 
         $issueCandidates = collect((array) ($issue->candidate_ids_json ?? []))
@@ -893,8 +948,8 @@ class MarketplaceMatchingCenter extends Component
 
         return $this->rankCandidatesForIssue(
             $issue,
-            $fallbackQuery->orderBy('product_name')->limit(12)->get()
-        )->take(8)->values();
+            $fallbackQuery->orderBy('product_name')->limit($this->resolvedCandidateSearchLimit())->get()
+        )->take($this->resolvedCandidateResultLimit())->values();
     }
 
     protected function getActiveFilters(): array
@@ -943,6 +998,8 @@ class MarketplaceMatchingCenter extends Component
      */
     protected function rankCandidatesForIssue(ProductMatchIssue $issue, Collection $candidates): Collection
     {
+        $weights = $this->resolvedMatchingWeights();
+
         $channelProduct = $issue->channelListing?->channelProduct;
         $channelStockCode = $this->normalizeToken($channelProduct?->stock_code);
         $channelBarcode = $this->normalizeToken($channelProduct?->barcode);
@@ -952,27 +1009,27 @@ class MarketplaceMatchingCenter extends Component
         $channelModelVariants = $this->modelCodeVariantsFromText($channelProduct?->title);
 
         return $candidates
-            ->map(function (MpProduct $candidate) use ($channelStockCode, $channelBarcode, $channelTitle, $channelBrand, $channelCategory, $channelModelVariants) {
+            ->map(function (MpProduct $candidate) use ($channelStockCode, $channelBarcode, $channelTitle, $channelBrand, $channelCategory, $channelModelVariants, $weights) {
                 $score = 0;
                 $reasons = [];
 
-                if ($channelStockCode !== '' && $this->normalizeToken($candidate->stock_code) === $channelStockCode) {
-                    $score += 100;
+                if ($weights['stock_code_exact'] > 0 && $channelStockCode !== '' && $this->normalizeToken($candidate->stock_code) === $channelStockCode) {
+                    $score += $weights['stock_code_exact'];
                     $reasons[] = 'Stok kodu birebir eşleşiyor';
                 }
 
-                if ($channelBarcode !== '' && $this->normalizeToken($candidate->barcode) === $channelBarcode) {
-                    $score += 120;
+                if ($weights['barcode_exact'] > 0 && $channelBarcode !== '' && $this->normalizeToken($candidate->barcode) === $channelBarcode) {
+                    $score += $weights['barcode_exact'];
                     $reasons[] = 'Barkod birebir eşleşiyor';
                 }
 
-                if ($channelBrand !== '' && $this->normalizeText($candidate->brand) === $channelBrand) {
-                    $score += 12;
+                if ($weights['brand_exact'] > 0 && $channelBrand !== '' && $this->normalizeText($candidate->brand) === $channelBrand) {
+                    $score += $weights['brand_exact'];
                     $reasons[] = 'Marka aynı';
                 }
 
-                if ($channelCategory !== '' && $this->normalizeText($candidate->category_name) === $channelCategory) {
-                    $score += 8;
+                if ($weights['category_exact'] > 0 && $channelCategory !== '' && $this->normalizeText($candidate->category_name) === $channelCategory) {
+                    $score += $weights['category_exact'];
                     $reasons[] = 'Kategori aynı';
                 }
 
@@ -982,20 +1039,20 @@ class MarketplaceMatchingCenter extends Component
                         continue;
                     }
 
-                    if ($candidateModel === $variant) {
-                        $score += 90;
+                    if ($weights['model_exact'] > 0 && $candidateModel === $variant) {
+                        $score += $weights['model_exact'];
                         $reasons[] = 'Model kodu birebir uyumlu';
                         break;
                     }
 
-                    if (str_starts_with($candidateModel, $variant) || str_starts_with($variant, $candidateModel)) {
-                        $score += 70;
+                    if ($weights['model_family'] > 0 && (str_starts_with($candidateModel, $variant) || str_starts_with($variant, $candidateModel))) {
+                        $score += $weights['model_family'];
                         $reasons[] = 'Model kodu ailesi uyumlu';
                         break;
                     }
                 }
 
-                $titleOverlap = $this->titleTokenOverlapScore($channelTitle, $this->normalizeText($candidate->product_name));
+                $titleOverlap = $this->titleTokenOverlapScore($channelTitle, $this->normalizeText($candidate->product_name), $weights);
                 if ($titleOverlap > 0) {
                     $score += $titleOverlap;
                     $reasons[] = 'Ürün adı benzer';
@@ -1013,9 +1070,15 @@ class MarketplaceMatchingCenter extends Component
             ->values();
     }
 
-    protected function titleTokenOverlapScore(string $left, string $right): int
+    protected function titleTokenOverlapScore(string $left, string $right, ?array $weights = null): int
     {
         if ($left === '' || $right === '') {
+            return 0;
+        }
+
+        $w = $weights ?? $this->resolvedMatchingWeights();
+
+        if ($w['title_token'] <= 0) {
             return 0;
         }
 
@@ -1037,7 +1100,7 @@ class MarketplaceMatchingCenter extends Component
 
         $overlap = $leftTokens->intersect($rightTokens)->count();
 
-        return min(30, $overlap * 6);
+        return min($w['title_max'], $overlap * $w['title_token']);
     }
 
     protected function normalizeToken(?string $value): string
@@ -1100,10 +1163,7 @@ class MarketplaceMatchingCenter extends Component
             return [];
         }
 
-        $stopWords = [
-            'adet', 'one', 'size', 'olan', 'icin', 'için', 'ile', 've', 'bir', 'iki',
-            'tak', 'takim', 'takimi', 'takımı', 'urun', 'ürün', 'seti',
-        ];
+        $stopWords = $this->resolvedMatchingStopWords();
 
         return collect(preg_split('/\s+/', $normalized) ?: [])
             ->map(fn ($token) => trim((string) $token))

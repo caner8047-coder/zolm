@@ -15,6 +15,7 @@ use App\Models\MpPeriod;
 use App\Models\OrderFinancialEvent;
 use App\Models\OrderProfitSnapshot;
 use App\Models\User;
+use App\Services\MpSettingsService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -587,5 +588,73 @@ class MarketplaceFinanceGuidanceTest extends TestCase
         ]);
 
         return [$user, $store];
+    }
+
+    public function test_finance_applies_default_date_range_from_settings(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('ui.finance_default_date_range_days', 7);
+
+        $this->actingAs($user);
+
+        \Carbon\Carbon::setTestNow('2026-07-01 12:00:00');
+
+        try {
+            Livewire::test(MarketplaceFinance::class)
+                ->assertSet('dateFrom', '2026-06-24')
+                ->assertSet('dateTo', '2026-07-01');
+        } finally {
+            \Carbon\Carbon::setTestNow(null);
+        }
+    }
+
+    public function test_finance_keeps_empty_dates_when_default_is_zero(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('ui.finance_default_date_range_days', 0);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceFinance::class)
+            ->assertSet('dateFrom', '')
+            ->assertSet('dateTo', '');
+    }
+
+    public function test_finance_preserves_query_string_dates_over_default(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('ui.finance_default_date_range_days', 7);
+
+        $this->actingAs($user);
+
+        Livewire::withQueryParams(['dateFrom' => '2026-01-01', 'dateTo' => '2026-01-31'])
+            ->test(MarketplaceFinance::class)
+            ->assertSet('dateFrom', '2026-01-01')
+            ->assertSet('dateTo', '2026-01-31');
+    }
+
+    public function test_finance_reset_filters_applies_saved_default(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('ui.finance_default_date_range_days', 60);
+
+        $this->actingAs($user);
+
+        \Carbon\Carbon::setTestNow('2026-07-01 12:00:00');
+
+        try {
+            Livewire::test(MarketplaceFinance::class)
+                ->set('dateFrom', '2026-01-01')
+                ->set('dateTo', '2026-06-01')
+                ->call('resetFilters')
+                ->assertSet('dateFrom', '2026-05-02')
+                ->assertSet('dateTo', '2026-07-01');
+        } finally {
+            \Carbon\Carbon::setTestNow(null);
+        }
     }
 }

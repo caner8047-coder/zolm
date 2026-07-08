@@ -47,6 +47,8 @@ class MarketplaceOrders extends Component
 
     public array $visibleColumns = ['siparis', 'musteri', 'lojistik', 'ciro', 'muhasebe', 'kar', 'durum'];
 
+    public int $perPage = 20;
+
     public static array $sortableColumns = [
         'siparis' => 'source_ordered_at_metric',
         'magaza' => 'store_name_alias',
@@ -188,6 +190,14 @@ class MarketplaceOrders extends Component
         }
 
         $this->visibleColumns = $savedVisibleColumns;
+        $this->perPage = app(MpSettingsService::class)->getOrdersPerPage();
+
+        $defaultDays = app(MpSettingsService::class)->getOrdersDefaultDateRangeDays();
+        if ($this->dateFrom === '' && $this->dateTo === '' && $defaultDays > 0) {
+            $this->dateFrom = now()->subDays($defaultDays)->toDateString();
+            $this->dateTo = now()->toDateString();
+        }
+
         $this->orderLabelForm = $this->orderLabelFormDefaults();
     }
 
@@ -240,6 +250,13 @@ class MarketplaceOrders extends Component
         ) {
             $this->syncEditOrderDerivedStatuses();
         }
+    }
+
+    public function updatedPerPage(): void
+    {
+        $this->perPage = app(MpSettingsService::class)->normalizePerPage($this->perPage, 20);
+        app(MpSettingsService::class)->set('ui.orders_per_page', $this->perPage);
+        $this->resetPage();
     }
 
     public function sortTable(string $columnKey): void
@@ -995,6 +1012,12 @@ class MarketplaceOrders extends Component
             'brandFilter',
             'corporateFilter',
         ]);
+
+        $defaultDays = app(MpSettingsService::class)->getOrdersDefaultDateRangeDays();
+        if ($defaultDays > 0) {
+            $this->dateFrom = now()->subDays($defaultDays)->toDateString();
+            $this->dateTo = now()->toDateString();
+        }
 
         $this->sortField = 'source_ordered_at_metric';
         $this->sortDirection = 'desc';
@@ -4700,7 +4723,7 @@ SQL;
     protected function currentPageOrderIds(): array
     {
         return $this->applyOrderSorting($this->buildChannelOrdersQuery())
-            ->forPage($this->getPage(), 20)
+            ->forPage($this->getPage(), $this->perPage)
             ->pluck('channel_orders.id')
             ->map(fn ($id) => (string) $id)
             ->all();
@@ -4709,7 +4732,7 @@ SQL;
     public function render()
     {
         $ordersPaginator = $this->applyOrderSorting($this->buildChannelOrdersQuery())
-            ->paginate(20);
+            ->paginate($this->perPage);
 
         $pageOrders = $ordersPaginator->getCollection();
         $legacyOperationalOrders = collect();
