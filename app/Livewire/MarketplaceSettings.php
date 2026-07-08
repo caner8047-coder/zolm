@@ -44,6 +44,8 @@ class MarketplaceSettings extends Component
 
     public int $candidateResultLimit = 8;
 
+    public bool $autoRunMatchingOnSync = true;
+
     public array $labelPrintSettings = [];
 
     public array $dispatchPrintSettings = [];
@@ -77,6 +79,7 @@ class MarketplaceSettings extends Component
         $this->matchingStopWords = implode(', ', $settings->getMatchingStopWords());
         $this->candidateSearchLimit = $settings->getMatchingCandidateSearchLimit();
         $this->candidateResultLimit = $settings->getMatchingCandidateResultLimit();
+        $this->autoRunMatchingOnSync = $settings->getAutoRunMatchingOnSync();
         $this->labelPrintSettings = $settings->getArray('print.label', $this->defaultLabelPrintSettings());
         $this->dispatchPrintSettings = $settings->getArray('print.dispatch', $this->defaultDispatchPrintSettings());
         $this->companyForm = [
@@ -110,6 +113,7 @@ class MarketplaceSettings extends Component
             'matchingStopWords' => ['required', 'string', 'max:5000'],
             'candidateSearchLimit' => ['required', 'integer', 'min:1', 'max:100'],
             'candidateResultLimit' => ['required', 'integer', 'min:1', 'max:50'],
+            'autoRunMatchingOnSync' => ['boolean'],
         ]);
 
         $normalizedWeights = [];
@@ -139,6 +143,7 @@ class MarketplaceSettings extends Component
             'matching.stop_words' => $normalizedStopWords,
             'matching.candidate_search_limit' => (int) $validated['candidateSearchLimit'],
             'matching.candidate_result_limit' => min((int) $validated['candidateResultLimit'], (int) $validated['candidateSearchLimit']),
+            'matching.auto_run_on_sync' => (bool) $validated['autoRunMatchingOnSync'],
         ]);
 
         $syncSummary = null;
@@ -232,6 +237,7 @@ class MarketplaceSettings extends Component
             ],
             'matching.candidate_search_limit' => 12,
             'matching.candidate_result_limit' => 8,
+            'matching.auto_run_on_sync' => true,
         ]);
 
         $this->helpTipsEnabled = true;
@@ -259,6 +265,7 @@ class MarketplaceSettings extends Component
         ]);
         $this->candidateSearchLimit = 12;
         $this->candidateResultLimit = 8;
+        $this->autoRunMatchingOnSync = true;
 
         session()->flash('settings_success', 'Genel ayarlar varsayılan değerlere döndürüldü.');
     }

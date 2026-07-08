@@ -270,6 +270,17 @@
                         </div>
                     </div>
                     <p class="mt-1 text-[11px] leading-4 text-slate-400">Arama limiti aday havuzunu, sonuç limiti ekranda gösterilecek en iyi aday sayısını belirler.</p>
+                    <label class="mt-3 flex cursor-pointer items-start justify-between gap-4 rounded-[6px] border border-slate-200 bg-white p-3">
+                        <div class="min-w-0">
+                            <h3 class="text-sm font-semibold text-slate-900">Otomatik eşleme</h3>
+                            <p class="mt-1 text-[11px] leading-4 text-slate-500">Yeni/varsayılan senkron profillerde otomatik eşleme açık gelsin. Mevcut mağaza profillerini değiştirmez.</p>
+                        </div>
+                        <div class="relative h-7 w-14 shrink-0">
+                            <input type="checkbox" wire:model.live="autoRunMatchingOnSync" class="sr-only peer">
+                            <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-300 shadow-inner transition peer-checked:bg-slate-900 peer-focus:ring-4 peer-focus:ring-slate-300"></span>
+                            <span class="pointer-events-none absolute left-1 top-1 h-5 w-5 rounded-full border border-slate-200 bg-white shadow-sm transition-transform peer-checked:translate-x-7"></span>
+                        </div>
+                    </label>
                 </div>
 
                 @foreach($generalToggles as $toggle)

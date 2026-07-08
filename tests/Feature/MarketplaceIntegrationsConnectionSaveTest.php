@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Livewire\MarketplaceIntegrations;
 use App\Models\IntegrationConnection;
+use App\Models\IntegrationSyncProfile;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
 use App\Models\User;
+use App\Services\MpSettingsService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
@@ -220,5 +222,99 @@ class MarketplaceIntegrationsConnectionSaveTest extends TestCase
         ]);
 
         return [$user, $store, $connection];
+    }
+
+    protected function makeTrendyolStore(): array
+    {
+        $suffix = (string) random_int(100000, 999999);
+        $user = User::factory()->create([
+            'email' => 'trendyol-auto-match-'.$suffix.'@example.test',
+        ]);
+        $this->createdUserIds[] = $user->id;
+
+        $legalEntity = LegalEntity::query()->create([
+            'user_id' => $user->id,
+            'name' => 'Zem Trendyol Test Ltd.',
+            'tax_number' => '9'.$suffix,
+            'company_type' => 'limited',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        $this->createdEntityIds[] = $legalEntity->id;
+
+        $store = MarketplaceStore::query()->create([
+            'user_id' => $user->id,
+            'legal_entity_id' => $legalEntity->id,
+            'marketplace' => 'trendyol',
+            'store_name' => 'ZEM TRENDYOL TEST',
+            'store_code' => 'TY-'.$suffix,
+            'seller_id' => 'TY'.$suffix,
+            'status' => 'active',
+            'timezone' => 'Europe/Istanbul',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        $this->createdStoreIds[] = $store->id;
+
+        $connection = IntegrationConnection::query()->create([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'auth_type' => 'api_key_secret',
+            'credentials_encrypted' => [
+                'seller_id' => 'TY'.$suffix,
+                'api_key' => 'key',
+                'api_secret' => 'secret',
+            ],
+            'api_base_url' => 'https://apigw.trendyol.com',
+            'status' => 'configured',
+        ]);
+
+        return [$user, $store, $connection];
+    }
+
+    public function test_global_setting_applies_to_sync_form_when_no_profile(): void
+    {
+        [$user, $store, $connection] = $this->makeTrendyolStore();
+
+        (new MpSettingsService($user->id))->set('matching.auto_run_on_sync', false);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceIntegrations::class)
+            ->call('selectStore', $store->id)
+            ->assertSet('syncForm.autoMatchEnabled', false);
+    }
+
+    public function test_existing_sync_profile_preserves_own_value_over_global_setting(): void
+    {
+        [$user, $store, $connection] = $this->makeTrendyolStore();
+
+        (new MpSettingsService($user->id))->set('matching.auto_run_on_sync', false);
+
+        IntegrationSyncProfile::query()->create([
+            'store_id' => $store->id,
+            'auto_match_enabled' => true,
+        ]);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceIntegrations::class)
+            ->call('selectStore', $store->id)
+            ->assertSet('syncForm.autoMatchEnabled', true);
+    }
+
+    public function test_safe_profile_preset_applies_global_setting(): void
+    {
+        [$user, $store, $connection] = $this->makeTrendyolStore();
+
+        (new MpSettingsService($user->id))->set('matching.auto_run_on_sync', false);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceIntegrations::class)
+            ->call('selectStore', $store->id)
+            ->assertSet('syncForm.autoMatchEnabled', false)
+            ->call('applySelectedStoreSafeProfile')
+            ->assertSet('syncForm.autoMatchEnabled', false);
     }
 }

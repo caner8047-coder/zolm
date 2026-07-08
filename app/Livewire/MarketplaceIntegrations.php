@@ -9,6 +9,7 @@ use App\Models\IntegrationWebhookEvent;
 use App\Models\LegalEntity;
 use App\Models\LegalEntitySetting;
 use App\Models\MarketplaceStore;
+use App\Services\MpSettingsService;
 use App\Services\Marketplace\Contracts\TestsConnection;
 use App\Services\Marketplace\LegacyFinancialProjectionService;
 use App\Services\Marketplace\LegacyFinancialProjectionInsightsService;
@@ -564,7 +565,7 @@ class MarketplaceIntegrations extends Component
             'webhookEnabled' => (bool) $defaults['webhook_enabled'],
             'pricePushEnabled' => (bool) $defaults['price_push_enabled'],
             'stockPushEnabled' => (bool) $defaults['stock_push_enabled'],
-            'autoMatchEnabled' => (bool) $defaults['auto_match_enabled'],
+            'autoMatchEnabled' => app(MpSettingsService::class)->getAutoRunMatchingOnSync(),
             'barcodeFallbackEnabled' => (bool) $defaults['barcode_fallback_enabled'],
             'strictUniqueMatchEnabled' => (bool) $defaults['strict_unique_match_enabled'],
             'nightlyRepairSyncEnabled' => (bool) $defaults['nightly_repair_sync_enabled'],
@@ -1659,7 +1660,9 @@ class MarketplaceIntegrations extends Component
             'webhookEnabled' => (bool) ($syncProfile?->webhook_enabled ?? $defaults['webhook_enabled']),
             'pricePushEnabled' => (bool) ($syncProfile?->price_push_enabled ?? $defaults['price_push_enabled']),
             'stockPushEnabled' => (bool) ($syncProfile?->stock_push_enabled ?? $defaults['stock_push_enabled']),
-            'autoMatchEnabled' => (bool) ($syncProfile?->auto_match_enabled ?? $defaults['auto_match_enabled']),
+            'autoMatchEnabled' => $syncProfile?->auto_match_enabled !== null
+                ? (bool) $syncProfile->auto_match_enabled
+                : app(MpSettingsService::class)->getAutoRunMatchingOnSync(),
             'barcodeFallbackEnabled' => (bool) ($syncProfile?->barcode_fallback_enabled ?? $defaults['barcode_fallback_enabled']),
             'strictUniqueMatchEnabled' => (bool) ($syncProfile?->strict_unique_match_enabled ?? $defaults['strict_unique_match_enabled']),
             'nightlyRepairSyncEnabled' => (bool) ($syncProfile?->nightly_repair_sync_enabled ?? $defaults['nightly_repair_sync_enabled']),
@@ -1778,7 +1781,7 @@ class MarketplaceIntegrations extends Component
             'webhookEnabled' => $defaults['webhook_enabled'],
             'pricePushEnabled' => $defaults['price_push_enabled'],
             'stockPushEnabled' => $defaults['stock_push_enabled'],
-            'autoMatchEnabled' => $defaults['auto_match_enabled'],
+            'autoMatchEnabled' => app(MpSettingsService::class)->getAutoRunMatchingOnSync(),
             'barcodeFallbackEnabled' => $defaults['barcode_fallback_enabled'],
             'strictUniqueMatchEnabled' => $defaults['strict_unique_match_enabled'],
             'nightlyRepairSyncEnabled' => $defaults['nightly_repair_sync_enabled'],

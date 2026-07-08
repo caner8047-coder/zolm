@@ -667,4 +667,71 @@ class MarketplaceSettingsTest extends TestCase
         $this->assertSame(50, (new MpSettingsService($user1->id))->getMatchingCandidateSearchLimit());
         $this->assertSame(12, (new MpSettingsService($user2->id))->getMatchingCandidateSearchLimit());
     }
+
+    public function test_auto_run_on_sync_defaults_to_true(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $this->assertTrue($service->getAutoRunMatchingOnSync());
+    }
+
+    public function test_auto_run_on_sync_can_be_disabled(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $service->set('matching.auto_run_on_sync', false);
+
+        $this->assertFalse($service->getAutoRunMatchingOnSync());
+    }
+
+    public function test_settings_saves_auto_run_on_sync(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceSettings::class)
+            ->set('autoRunMatchingOnSync', false)
+            ->call('saveSettings');
+
+        $settings = MpAccountingSetting::where('user_id', $user->id)->firstOrFail();
+
+        $this->assertFalse((bool) data_get($settings->settings, 'matching.auto_run_on_sync'));
+    }
+
+    public function test_settings_resets_auto_run_on_sync(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceSettings::class)
+            ->set('autoRunMatchingOnSync', false)
+            ->call('saveSettings');
+
+        Livewire::test(MarketplaceSettings::class)
+            ->call('resetUiSettings')
+            ->assertSet('autoRunMatchingOnSync', true);
+    }
+
+    public function test_auto_run_on_sync_normalizes_string_false(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $service->set('matching.auto_run_on_sync', 'false');
+
+        $this->assertFalse($service->getAutoRunMatchingOnSync());
+    }
+
+    public function test_auto_run_on_sync_normalizes_invalid_to_true(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $service->set('matching.auto_run_on_sync', 'xyz');
+
+        $this->assertTrue($service->getAutoRunMatchingOnSync());
+    }
 }

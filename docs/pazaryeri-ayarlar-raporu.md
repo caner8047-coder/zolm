@@ -188,7 +188,7 @@ Aşağıda her bir pazaryeri alt modülü için **mevcut ayarların yetmediği, 
 | ES-2 | **Otomatik önerme eşiği** | ✅ DÜZELTİLDİ — `matching.auto_recommend_threshold` (varsayılan 100, aralık 1–500), persistent | Daha muhafazakar veya agresif olabilir | — |
 | ES-3 | **Arama duraklama kelimeleri** | ✅ DÜZELTİLDİ — `matching.stop_words` (17 varsayılan, virgül/yeni satır girişi), persistent | Firma domain-specific kelimeler ekleyebilir | — |
 | ES-4 | **Aday arama limiti** | ✅ DÜZELTİLDİ — `matching.candidate_search_limit` (1–100, vars. 12) + `candidate_result_limit` (1–50, vars. 8), persistent | Büyük ürün kataloğunda daha fazla aranabilir | — |
-| ES-5 | **Eşleme otomatik çalıştırma** | Manuel tetikleme var | Firmalar her senkronizasyondan sonra otomatik eşleme isteyebilir | `matching.auto_run_on_sync` |
+| ES-5 | **Eşleme otomatik çalıştırma** | ✅ DÜZELTİLDİ — `matching.auto_run_on_sync` (vars. true), yeni profiller için global default; mevcut profiller korunuyor | Firmalar her senkronizasyondan sonra otomatik eşleme isteyebilir | — |
 
 ---
 

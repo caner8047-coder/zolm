@@ -327,6 +327,13 @@ class MpSettingsService
         return $this->normalizeCandidateLimit($this->getInt('matching.candidate_search_limit', 12), 1, 100, 12);
     }
 
+    public function getAutoRunMatchingOnSync(): bool
+    {
+        $raw = $this->get('matching.auto_run_on_sync', true);
+
+        return filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
+    }
+
     public function getMatchingCandidateResultLimit(): int
     {
         $searchLimit = $this->getMatchingCandidateSearchLimit();
@@ -605,6 +612,7 @@ class MpSettingsService
                 'auto_recommend_threshold' => 100,
                 'candidate_search_limit' => 12,
                 'candidate_result_limit' => 8,
+                'auto_run_on_sync' => true,
                 'weights' => [
                     'barcode_exact' => 120,
                     'stock_code_exact' => 100,
