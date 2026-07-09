@@ -182,6 +182,11 @@ class MpSettingsService
         return $this->getFloat('cargo.barem_limit', 300);
     }
 
+    public function getMaxDesiLimit(): float
+    {
+        return $this->getFloat('cargo.max_desi_limit', 500);
+    }
+
     public function getDefaultCargoCompany(): string
     {
         return (string) $this->get('general.default_cargo_company', 'TEX');
@@ -420,6 +425,39 @@ class MpSettingsService
         return filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
     }
 
+    public function getHealthScoreWeights(): array
+    {
+        $defaults = $this->getDefaults()['profit']['health_score_weights'];
+        $saved = $this->get('profit.health_score_weights', null);
+
+        if (! is_array($saved) || $saved === []) {
+            return $defaults;
+        }
+
+        return $this->normalizeHealthScoreWeights($saved, $defaults);
+    }
+
+    public function normalizeHealthScoreWeights(array $input, array $defaults): array
+    {
+        $normalized = [];
+        $allowed = ['finance_coverage', 'snapshot_coverage', 'cost_readiness', 'payment_pressure'];
+
+        foreach ($allowed as $key) {
+            $val = $input[$key] ?? $defaults[$key] ?? 0;
+            $normalized[$key] = is_numeric($val) ? max(0.0, (float) $val) : ($defaults[$key] ?? 0);
+        }
+
+        $total = array_sum($normalized);
+
+        if ($total > 0 && abs($total - 1.0) > 0.001) {
+            foreach ($normalized as $key => $val) {
+                $normalized[$key] = round($val / $total, 4);
+            }
+        }
+
+        return $normalized;
+    }
+
     public function getMatchingCandidateResultLimit(): int
     {
         $searchLimit = $this->getMatchingCandidateSearchLimit();
@@ -523,6 +561,16 @@ class MpSettingsService
         return $this->getBool('marketplace_products.recipe_cost_sync_enabled', false);
     }
 
+    public function getLowStockThreshold(): int
+    {
+        return max(0, $this->getInt('marketplace_products.low_stock_threshold', 0));
+    }
+
+    public function isAiAnswerEnabled(): bool
+    {
+        return (bool) $this->get('questions.ai_answer_enabled', true);
+    }
+
     // ─── Audit Tolerans Kısa Yolları ────────────────────────────
 
     public function getAuditTolerance(string $key): float
@@ -561,6 +609,7 @@ class MpSettingsService
             ],
             'cargo' => [
                 'barem_limit'           => 300,
+                'max_desi_limit'        => 500,
                 'cargo_companies'       => ['TEX', 'PTT', 'Aras', 'Sürat', 'Yurtiçi'],
                 'uses_own_cargo'        => false,
                 'heavy_cargo_penalties' => [
@@ -655,6 +704,7 @@ class MpSettingsService
                     'koctas_commission_rate' => (float) config('marketplace.koctas.commission_rate', 15),
                 ],
                 'recipe_cost_sync_enabled' => false,
+                'low_stock_threshold' => 0,
             ],
             'print' => [
                 'label' => [
@@ -720,10 +770,21 @@ class MpSettingsService
                     'tak', 'takim', 'takimi', 'takımı', 'urun', 'ürün', 'seti',
                 ],
             ],
+            'questions' => [
+                'ai_answer_enabled' => true,
+            ],
             'profitability' => [
                 'target_margin'          => 15.00,
                 'min_margin'             => 5.00,
                 'default_packaging_cost' => 0.00,
+            ],
+            'profit' => [
+                'health_score_weights' => [
+                    'finance_coverage'   => 0.30,
+                    'snapshot_coverage'  => 0.25,
+                    'cost_readiness'     => 0.25,
+                    'payment_pressure'   => 0.20,
+                ],
             ],
         ];
     }

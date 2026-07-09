@@ -11,6 +11,7 @@ use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceQuestionAiService;
 use App\Services\Marketplace\MarketplaceQuestionAnswerService;
 use App\Services\Marketplace\MarketplaceQuestionRuleEngine;
+use App\Services\MpSettingsService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -114,6 +115,12 @@ class MarketplaceQuestions extends Component
 
     public function generateAiAnswer(): void
     {
+        if (! app(MpSettingsService::class)->isAiAnswerEnabled()) {
+            $this->notify('AI cevap üretimi şu anda devre dışı.', 'warning');
+
+            return;
+        }
+
         $question = $this->currentQuestion();
         $answer = app(MarketplaceQuestionAiService::class)->suggestAnswer($question);
 

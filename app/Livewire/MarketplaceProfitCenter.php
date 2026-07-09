@@ -376,8 +376,16 @@ class MarketplaceProfitCenter extends Component
             ? round(((int) ($summary['material_variance_order_count'] ?? 0) / $orderDenominator) * 100, 1)
             : 0.0;
 
+        $weights = (new MpSettingsService($this->userId()))->getHealthScoreWeights();
+
         $score = $totalOrders > 0
-            ? round(($financeCoverage * 0.30) + ($snapshotCoverage * 0.25) + ($costReadiness * 0.25) + ((100 - $materialVariance) * 0.20), 1)
+            ? round(
+                ($financeCoverage * $weights['finance_coverage'])
+                + ($snapshotCoverage * $weights['snapshot_coverage'])
+                + ($costReadiness * $weights['cost_readiness'])
+                + ((100 - $materialVariance) * $weights['payment_pressure']),
+                1
+            )
             : 0.0;
 
         $costGapLines = (int) ($readiness['unmatched_lines'] ?? 0) + (int) ($readiness['missing_cost_lines'] ?? 0);

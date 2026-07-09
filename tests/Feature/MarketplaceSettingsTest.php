@@ -1017,4 +1017,105 @@ class MarketplaceSettingsTest extends TestCase
         $this->assertSame(0.0, \App\Models\MpFinancialRule::getDesiPrice('TEX', 5.0));
         $this->assertNull(\App\Models\MpFinancialRule::getBaremPrice('TEX', 100.0));
     }
+
+    public function test_health_score_weights_defaults_are_correct(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+        $weights = $service->getHealthScoreWeights();
+
+        $this->assertSame(0.30, $weights['finance_coverage']);
+        $this->assertSame(0.25, $weights['snapshot_coverage']);
+        $this->assertSame(0.25, $weights['cost_readiness']);
+        $this->assertSame(0.20, $weights['payment_pressure']);
+        $this->assertEqualsWithDelta(1.0, array_sum($weights), 0.001);
+    }
+
+    public function test_health_score_weights_normalizes_to_sum_one(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $result = $service->normalizeHealthScoreWeights([
+            'finance_coverage' => 5,
+            'snapshot_coverage' => 3,
+            'cost_readiness' => 1,
+            'payment_pressure' => 1,
+        ], $service->getDefaults()['profit']['health_score_weights']);
+
+        $this->assertEqualsWithDelta(1.0, array_sum($result), 0.001);
+        $this->assertSame(0.5, $result['finance_coverage']);
+    }
+
+    public function test_health_score_weights_invalid_key_ignored(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $result = $service->normalizeHealthScoreWeights([
+            'finance_coverage' => 0.50,
+            'unknown_key' => 0.99,
+        ], $service->getDefaults()['profit']['health_score_weights']);
+
+        $this->assertArrayNotHasKey('unknown_key', $result);
+        $this->assertEqualsWithDelta(0.4167, $result["finance_coverage"], 0.001);
+    }
+
+    public function test_max_desi_limit_defaults_to_500(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $this->assertSame(500.0, $service->getMaxDesiLimit());
+    }
+
+    public function test_max_desi_limit_can_be_customized(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $service->set('cargo.max_desi_limit', 1000);
+
+        $this->assertSame(1000.0, $service->getMaxDesiLimit());
+    }
+
+    public function test_low_stock_threshold_defaults_to_zero(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $this->assertSame(0, $service->getLowStockThreshold());
+    }
+
+    public function test_low_stock_threshold_can_be_set(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $service->set('marketplace_products.low_stock_threshold', 10);
+
+        $this->assertSame(10, $service->getLowStockThreshold());
+    }
+
+    public function test_low_stock_threshold_negative_normalizes_to_zero(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $service->set('marketplace_products.low_stock_threshold', -5);
+
+        $this->assertSame(0, $service->getLowStockThreshold());
+    }
+
+    public function test_ai_answer_enabled_defaults_to_true(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $this->assertTrue($service->isAiAnswerEnabled());
+    }
+
+    public function test_ai_answer_enabled_can_be_disabled(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $service->set('questions.ai_answer_enabled', false);
+
+        $this->assertFalse($service->isAiAnswerEnabled());
+    }
 }
