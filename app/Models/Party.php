@@ -55,4 +55,9 @@ class Party extends Model
     {
         return $this->roles()->where('role', 'supplier');
     }
+
+    public function ledgerEntries(): HasMany
+    {
+        return $this->hasMany(PartyLedgerEntry::class, 'party_id');
+    }
 }
