@@ -363,7 +363,25 @@ class PartyIdentityResolver
             return null;
         }
 
-        return preg_replace('/\D+/', '', $clean);
+        // CrmIdentityResolver ile aynı davranış: sadece digit, ardından
+        // 90 ile başlayan 12 hane ise baştaki 90'ı kaldır,
+        // 0 ile başlayan 11 hane ise baştaki 0'ı kaldır.
+        // Böylece 0532..., 90532..., 532... formatları aynı değere indirgenir.
+        $digits = preg_replace('/\D+/', '', $clean);
+
+        if ($digits === '') {
+            return null;
+        }
+
+        if (strlen($digits) === 12 && str_starts_with($digits, '90')) {
+            $digits = substr($digits, 2);
+        }
+
+        if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+            $digits = substr($digits, 1);
+        }
+
+        return $digits;
     }
 
     protected function normalizeName(?string $name): ?string

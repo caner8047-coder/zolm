@@ -297,3 +297,50 @@ Aşağıdaki kararlar onaylanmış ve migration/model/test kapsamına girilmişt
 
 > Not: `docs/pazaryeri-ayarlar-raporu.md` ve `tests/Feature/MarketplaceSettingsTest.php` ayrı bir iş koludur (Mimo); bu PR kapsamı dışında kalır ve dokunulmaz.
 
+## 13. Faz 1C — CRM Backfill Command (`party:backfill-from-crm`)
+
+Mevcut `crm_contacts` kayıtlarını parties katmanına güvenli, idempotent ve kontrollü şekilde bağlayan artisan command.
+
+- **Komut:** `party:backfill-from-crm`
+- **Dosya:** `app/Console/Commands/BackfillPartiesFromCrmCommand.php`
+- **Test:** `tests/Feature/PartyBackfillFromCrmCommandTest.php`
+
+### 13.1. Seçenekler
+
+| Seçenek | Anlamı |
+| --- | --- |
+| `--user-id=` | Sadece belirli kullanıcı için çalıştır (tenant izolasyonu). |
+| `--limit=` | Maksimum işlenecek `crm_contacts` kaydı. |
+| `--chunk=100` | Chunk başına işlenecek kayıt sayısı (default 100, max 1000). |
+| `--dry-run` | Hiçbir veri yazma, sadece adayları ve raporu göster. |
+| `--force` | `party_core_enabled` kapalıyken gerçek yazmaya izin ver. |
+
+### 13.2. Dry-run / Force Güvenlik Mantığı
+
+- `party_core_enabled` **false** iken **gerçek backfill çalışmaz** (exit code 1).
+- `--dry-run` **her zaman serbesttir** (flag durumu ne olursa olsun); hiçbir veri yazmaz, sadece aday contact'ları ve özet tabloyu gösterir.
+- `--force` verilirse, `party_core_enabled` kapalı olsa bile gerçek yazmaya izin verilir. Bu durumda komut, `PartyIdentityResolver::isEnabled()` kontrolünü bypass etmek için **run süresince** `config()->set('marketplace.features.party_core_enabled', true)` yapar (resolver'a dokunulmaz; process sonunda config scope biter). Kullanıcıya `--force ile party_core_enabled kapalıyken gerçek yazma yapılıyor.` uyarısı gösterilir.
+- Yazma izni matrisi: `canWrite = dryRun || enabled || force`.
+
+### 13.3. Davranış
+
+- Yalnızca `party_id` **boş** `crm_contacts` kayıtlarını işler (`whereNull('party_id')`).
+- Her contact için `PartyIdentityResolver::resolve()` ile party oluştur/eşleştir.
+- `party_roles.role = customer` rolü `firstOrCreate` ile upsert edilir (unique `user_id+party_id+role` ile idempotent).
+- `crm_contact_identities` içindeki `external_customer_id` / `normalized_phone` / `email` / `tax_number` kimlikleri `party_identities`'e `firstOrCreate` ile idempotent aktarılır.
+- `crm_contacts.party_id` set edilir.
+
+### 13.4. Idempotency Garantileri
+
+- `party_id` dolu contact'lar **atlanır** (aday sorgudan çıkar).
+- `PartyRole` unique `user_id+party_id+role` → aynı party+customer duplicate oluşmaz.
+- `PartyIdentity` `firstOrCreate` → aynı `user_id+source_type+store_id+identity_kind+identity_value` duplicate oluşmaz.
+- İkinci run'da aday sayısı 0 olur (tüm contact'lar party'ye bağlı); hiçbir şey değişmez.
+
+### 13.5. Korunan Sınırlar (brief uyumu)
+
+- Mevcut CRM servisleri (`CrmIdentityResolver`, `CrmProjectionService`, `CrmCustomerLedgerProjectionService`), projection, ledger, timeline **değişmez**.
+- UI, route, backfill otomasyonu (scheduled) yok — komut yalnızca manuel/onaylı çalıştırılır.
+- Tenant izolasyonu: `--user-id` filtresi + her sorgu `user_id` ile.
+- `crm_contacts` ve `crm_contact_identities` tabloları silinmez/yeniden adlandırılmaz; yalnızca `party_id` nullable alanı set edilir.
+

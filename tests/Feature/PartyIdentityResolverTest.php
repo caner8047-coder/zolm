@@ -102,13 +102,14 @@ class PartyIdentityResolverTest extends TestCase
         $this->assertNotNull($party->id);
         $this->assertSame('Yeni Müşteri', $party->display_name);
         $this->assertSame('new@test.com', $party->primary_email);
-        $this->assertSame('05321112233', $party->normalized_phone);
+        // normalizePhone artık baştaki 0'ı kaldırır: 0532... → 532...
+        $this->assertSame('5321112233', $party->normalized_phone);
         $this->assertSame('unknown', $party->party_type);
 
         $identity = PartyIdentity::query()->where('party_id', $party->id)->firstOrFail();
         // Telefon verildiğinde upsertIdentity sıralı dalar nedeniyle phone identity'sini oluşturur.
         $this->assertSame('phone', $identity->identity_kind);
-        $this->assertSame('05321112233', $identity->identity_value);
+        $this->assertSame('5321112233', $identity->identity_value);
     }
 
     public function test_resolve_finds_existing_party_by_email_identity(): void
@@ -214,5 +215,17 @@ class PartyIdentityResolverTest extends TestCase
         $this->assertNull($found->store_id);
         $this->assertTrue($found->party->is($party));
     }
-}
+    public function test_normalize_phone_collapses_formats(): void
+    {
+        $resolver = app(PartyIdentityResolver::class);
+        $reflection = new \ReflectionMethod($resolver, 'normalizePhone');
+        $reflection->setAccessible(true);
 
+        // 0532..., 90532..., 532... formatları aynı değere (532...) indirgenmeli.
+        $this->assertSame('5321112233', $reflection->invoke($resolver, '0532 111 22 33'));
+        $this->assertSame('5321112233', $reflection->invoke($resolver, '905321112233'));
+        $this->assertSame('5321112233', $reflection->invoke($resolver, '5321112233'));
+        $this->assertNull($reflection->invoke($resolver, null));
+        $this->assertNull($reflection->invoke($resolver, ''));
+    }
+}
