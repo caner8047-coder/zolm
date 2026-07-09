@@ -82,6 +82,7 @@ return [
         'listing_push_enabled' => (bool) env('MARKETPLACE_LISTING_PUSH_ENABLED', true),
         'order_action_retry_enabled' => (bool) env('MARKETPLACE_ORDER_ACTION_RETRY_ENABLED', true),
         'notifications_enabled' => (bool) env('MARKETPLACE_NOTIFICATIONS_ENABLED', true),
+        'party_core_enabled' => (bool) env('PARTY_CORE_ENABLED', false),
     ],
 
     'report_digest' => [
