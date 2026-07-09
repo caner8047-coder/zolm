@@ -70,6 +70,11 @@ class CrmContact extends Model
         return $this->hasMany(CrmCustomerLedgerEntry::class, 'contact_id')->latest('purchased_at')->latest('id');
     }
 
+    public function party(): BelongsTo
+    {
+        return $this->belongsTo(Party::class);
+    }
+
     public function riskTone(): string
     {
         return match (true) {
