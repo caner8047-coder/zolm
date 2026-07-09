@@ -57,26 +57,27 @@ class MpFinancialRule extends Model
      */
     public static function getDesiPrice(string $cargoCompany, float $desi, ?string $date = null): float
     {
-        // Desi aralıklarını uygun formata çevir
         $desiRanges = ['0_2', '3', '4', '5', '10', '15', '20', '25', '30'];
 
         $key = null;
         foreach ($desiRanges as $range) {
             if (str_contains($range, '_')) {
                 $parts = explode('_', $range);
-                if ($desi >= (float)$parts[0] && $desi <= (float)$parts[1]) {
+                if ($desi >= (float) $parts[0] && $desi <= (float) $parts[1]) {
                     $key = "desi_{$range}";
                     break;
                 }
             } else {
-                if ($desi <= (float)$range) {
+                if ($desi <= (float) $range) {
                     $key = "desi_{$range}";
                     break;
                 }
             }
         }
 
-        if (!$key) $key = 'desi_30'; // En yüksek aralık
+        if (! $key) {
+            $key = 'desi_30';
+        }
 
         return static::getRuleFloat($key, $cargoCompany, $date);
     }
@@ -89,7 +90,7 @@ class MpFinancialRule extends Model
         $baremLimit = static::getRuleFloat('barem_limit', null, $date);
 
         if ($orderAmount >= $baremLimit) {
-            return null; // 300+ TL = barem geçerli değil
+            return null;
         }
 
         if ($orderAmount < 150) {

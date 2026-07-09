@@ -201,18 +201,96 @@ class MpSettingsService
         ]);
     }
 
+    public function getDesiRanges(): array
+    {
+        $defaults = $this->getDefaults()['cargo']['desi_ranges'];
+        $saved = $this->get('cargo.desi_ranges', null);
+
+        if (! is_array($saved) || $saved === []) {
+            return $defaults;
+        }
+
+        return $this->normalizeDesiRanges($saved, $defaults);
+    }
+
+    public function getBaremRanges(): array
+    {
+        $defaults = $this->getDefaults()['cargo']['barem_ranges'];
+        $saved = $this->get('cargo.barem_ranges', null);
+
+        if (! is_array($saved) || $saved === []) {
+            return $defaults;
+        }
+
+        return $this->normalizeBaremRanges($saved, $defaults);
+    }
+
+    public function normalizeDesiRanges(array $input, array $defaults): array
+    {
+        $normalized = [];
+        foreach ($input as $range) {
+            if (! is_array($range) || empty($range['key'])) {
+                continue;
+            }
+
+            $key = (string) $range['key'];
+            $min = isset($range['min']) ? (int) $range['min'] : 0;
+            $max = isset($range['max']) ? (int) $range['max'] : $min;
+            $label = isset($range['label']) ? (string) $range['label'] : $key;
+
+            if ($min > $max) {
+                [$min, $max] = [$max, $min];
+            }
+
+            $normalized[] = ['key' => $key, 'min' => $min, 'max' => $max, 'label' => $label];
+        }
+
+        return $normalized !== [] ? $normalized : $defaults;
+    }
+
+    public function normalizeBaremRanges(array $input, array $defaults): array
+    {
+        $normalized = [];
+        foreach ($input as $range) {
+            if (! is_array($range) || empty($range['key'])) {
+                continue;
+            }
+
+            $key = (string) $range['key'];
+            $min = isset($range['min']) ? (float) $range['min'] : 0;
+            $max = isset($range['max']) ? (float) $range['max'] : $min;
+            $label = isset($range['label']) ? (string) $range['label'] : $key;
+
+            if ($min > $max) {
+                [$min, $max] = [$max, $min];
+            }
+
+            $normalized[] = ['key' => $key, 'min' => $min, 'max' => $max, 'label' => $label];
+        }
+
+        return $normalized !== [] ? $normalized : $defaults;
+    }
+
     public function getBaremPrice(string $cargoCompany, float $amount): float
     {
-        $limit = $this->getBaremLimit();
+        $ranges = $this->getBaremRanges();
+        $effectiveLimit = $this->getBaremLimit();
 
-        if ($amount < $limit) {
-            // Şimdilik barem fiyatları eski yapıya göre kaydedildi (Örn: barem_0_150)
-            // İleride burası dinamik range yapısına çevrilebilir, ancak DB'deki karşılığını arayalım.
-            $val = \App\Models\MpFinancialRule::getRule('barem_0_150', $cargoCompany) 
-                ?? \App\Models\MpFinancialRule::getRule('barem_0_200', $cargoCompany)
-                ?? \App\Models\MpFinancialRule::getRule('barem_0_' . (int)$limit, $cargoCompany);
+        if ($ranges !== []) {
+            $maxRangeMax = max(array_column($ranges, 'max'));
+            $effectiveLimit = max($effectiveLimit, $maxRangeMax);
+        }
 
-            return $val !== null ? (float) $val : 0.0;
+        if ($amount >= $effectiveLimit) {
+            return 0.0;
+        }
+
+        foreach ($ranges as $range) {
+            if ($amount >= $range['min'] && $amount < $range['max']) {
+                $val = \App\Models\MpFinancialRule::getRule($range['key'], $cargoCompany);
+
+                return $val !== null ? (float) $val : 0.0;
+            }
         }
 
         return 0.0;
@@ -222,20 +300,18 @@ class MpSettingsService
     {
         $desiInt = (int) ceil($desi);
 
-        $ranges = ['desi_0_2', 'desi_3', 'desi_4', 'desi_5', 'desi_10', 'desi_15', 'desi_20', 'desi_25', 'desi_30'];
-        $bestRange = 'desi_0_2';
+        foreach ($this->getDesiRanges() as $range) {
+            if ($desiInt >= $range['min'] && $desiInt <= $range['max']) {
+                $val = \App\Models\MpFinancialRule::getRule($range['key'], $cargoCompany);
 
-        if ($desiInt <= 2) $bestRange = 'desi_0_2';
-        elseif ($desiInt <= 3) $bestRange = 'desi_3';
-        elseif ($desiInt <= 4) $bestRange = 'desi_4';
-        elseif ($desiInt <= 5) $bestRange = 'desi_5';
-        elseif ($desiInt <= 10) $bestRange = 'desi_10';
-        elseif ($desiInt <= 15) $bestRange = 'desi_15';
-        elseif ($desiInt <= 20) $bestRange = 'desi_20';
-        elseif ($desiInt <= 25) $bestRange = 'desi_25';
-        else $bestRange = 'desi_30';
+                return $val !== null ? (float) $val : 0.0;
+            }
+        }
 
-        $val = \App\Models\MpFinancialRule::getRule($bestRange, $cargoCompany);
+        $desiRanges = $this->getDesiRanges();
+        $lastRange = end($desiRanges);
+        $val = \App\Models\MpFinancialRule::getRule($lastRange['key'], $cargoCompany);
+
         return $val !== null ? (float) $val : 0.0;
     }
 
@@ -486,23 +562,26 @@ class MpSettingsService
             'cargo' => [
                 'barem_limit'           => 300,
                 'cargo_companies'       => ['TEX', 'PTT', 'Aras', 'Sürat', 'Yurtiçi'],
-                'uses_own_cargo'        => false, // Kendi kargo anlaşması var mı?
+                'uses_own_cargo'        => false,
                 'heavy_cargo_penalties' => [
                     'Aras'    => 4250,
                     'Sürat'   => 4500,
                     'Yurtiçi' => 5350,
                 ],
-                'barem_prices' => [
-                    'TEX'     => 35.00,
-                    'PTT'     => 32.00,
-                    'Aras'    => 40.00,
-                    'Sürat'   => 38.00,
-                    'Yurtiçi' => 45.00,
+                'desi_ranges' => [
+                    ['key' => 'desi_0_2', 'min' => 0, 'max' => 2, 'label' => '0-2 Desi'],
+                    ['key' => 'desi_3', 'min' => 3, 'max' => 3, 'label' => '3 Desi'],
+                    ['key' => 'desi_4', 'min' => 4, 'max' => 4, 'label' => '4 Desi'],
+                    ['key' => 'desi_5', 'min' => 5, 'max' => 5, 'label' => '5 Desi'],
+                    ['key' => 'desi_10', 'min' => 6, 'max' => 10, 'label' => '6-10 Desi'],
+                    ['key' => 'desi_15', 'min' => 11, 'max' => 15, 'label' => '11-15 Desi'],
+                    ['key' => 'desi_20', 'min' => 16, 'max' => 20, 'label' => '16-20 Desi'],
+                    ['key' => 'desi_25', 'min' => 21, 'max' => 25, 'label' => '21-25 Desi'],
+                    ['key' => 'desi_30', 'min' => 26, 'max' => 500, 'label' => '26+ Desi'],
                 ],
-                'desi_prices' => [
-                    'TEX' => [1 => 45, 2 => 50, 3 => 55, 4 => 60, 5 => 65],
-                    'PTT' => [1 => 40, 2 => 45, 3 => 50, 4 => 55, 5 => 60],
-                    'Aras'=> [1 => 50, 2 => 55, 3 => 60, 4 => 65, 5 => 70],
+                'barem_ranges' => [
+                    ['key' => 'barem_0_150', 'min' => 0, 'max' => 150, 'label' => '0-150 TL'],
+                    ['key' => 'barem_150_300', 'min' => 150, 'max' => 300, 'label' => '150-300 TL'],
                 ],
             ],
             'audit_tolerances' => [

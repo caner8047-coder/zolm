@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ZOLM Trendyol Booster Companion",
-  "version": "0.12.0",
-  "description": "Trendyol ürünlerini ZOLM Booster Radar'a ekler, takip sinyallerini gösterir ve mağaza yorumlarını senkronize eder.",
+  "version": "0.14.1",
+  "description": "Trendyol ürünlerini ZOLM Booster Radar'a ekler; Seller Panel fiyatlandırma, kampanya ve sipariş sayfalarında karlılık gösterir.",
   "permissions": ["storage", "activeTab", "tabs", "scripting", "alarms"],
   "host_permissions": [
     "http://localhost/*",
@@ -15,6 +15,7 @@
     "https://127.0.0.1:*/*",
     "https://www.trendyol.com/*",
     "https://*.trendyol.com/*",
+    "https://partner.trendyol.com/*",
     "https://ty.gl/*",
     "https://www.google.com/*",
     "https://google.com/*"
@@ -25,7 +26,13 @@
   "content_scripts": [
     {
       "matches": ["https://www.trendyol.com/*", "https://*.trendyol.com/*"],
+      "exclude_matches": ["https://partner.trendyol.com/*"],
       "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://partner.trendyol.com/*"],
+      "js": ["seller-panel.js", "campaign-panel.js", "orders-panel.js"],
       "run_at": "document_idle"
     },
     {

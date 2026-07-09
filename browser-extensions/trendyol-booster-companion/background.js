@@ -169,6 +169,22 @@ async function handleMessage(message) {
     return await companionPost('review_scan_verify', message.payload || {});
   }
 
+  if (message.type === 'ZOLM_PRICING_COST_LOOKUP') {
+    return await pricingCostLookup(
+      message.barcodes || [],
+      message.model_codes || [],
+      message.stock_codes || [],
+    );
+  }
+
+  if (message.type === 'ZOLM_UPDATE_PRODUCT_COST') {
+    return await updateProductCost(message.payload || {});
+  }
+
+  if (message.type === 'ZOLM_ORDER_PROFIT_LOOKUP') {
+    return await orderProfitLookup(message.payload || {});
+  }
+
   throw new Error('Bilinmeyen companion mesajı.');
 }
 
@@ -3126,7 +3142,6 @@ async function companionSession() {
 
   return json;
 }
-
 async function companionPost(action, payload) {
   const baseUrl = await getBaseUrl();
   const session = await companionSession();
@@ -3363,4 +3378,113 @@ async function runPendingJobs() {
   } finally {
     isRunningJobs = false;
   }
+}
+
+// ─── Trendyol Seller Panel: Maliyet Sorgulama ────────────────
+async function pricingCostLookup(barcodes, modelCodes, stockCodes) {
+  const baseUrl = await getBaseUrl();
+  const session = await companionSession();
+  const endpoint = companionEndpoint(baseUrl, session.endpoints?.pricing_cost_lookup, 'pricing-cost-lookup');
+
+  if (!endpoint) {
+    throw new Error('ZOLM pricing-cost-lookup endpoint bulunamadı.');
+  }
+
+  const url = new URL(endpoint);
+
+  // Query string olarak barkod ve model kodlarını ekle
+  if (Array.isArray(barcodes)) {
+    barcodes.filter(Boolean).forEach(b => url.searchParams.append('barcodes[]', b));
+  }
+  if (Array.isArray(modelCodes)) {
+    modelCodes.filter(Boolean).forEach(m => url.searchParams.append('model_codes[]', m));
+  }
+  if (Array.isArray(stockCodes)) {
+    stockCodes.filter(Boolean).forEach(s => url.searchParams.append('stock_codes[]', s));
+  }
+
+  const response = await fetchWithTimeout(url.href, {
+    method: 'GET',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  }, ZOLM_REQUEST_TIMEOUT_MS);
+
+  const json = await readJson(response);
+
+  if (response.status === 401) {
+    throw new Error('ZOLM oturumu eklenti tarafından doğrulanamadı. ZOLM panelinde oturum açık olmalı.');
+  }
+
+  if (!response.ok || !json.ok) {
+    throw new Error(json.message || 'Maliyet sorgulama başarısız.');
+  }
+
+  return json;
+}
+
+// ─── Trendyol Seller Panel: Maliyet Güncelleme ────────────────
+async function updateProductCost(payload) {
+  const baseUrl = await getBaseUrl();
+  const session = await companionSession();
+  const endpoint = companionEndpoint(baseUrl, session.endpoints?.update_product_cost, 'update-product-cost');
+
+  if (!endpoint) {
+    throw new Error('ZOLM update-product-cost endpoint bulunamadı.');
+  }
+
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': session.csrf_token,
+    },
+    body: JSON.stringify(payload),
+  }, ZOLM_REQUEST_TIMEOUT_MS);
+
+  const json = await readJson(response);
+
+  if (response.status === 401 || response.status === 419) {
+    throw new Error('ZOLM oturumu veya CSRF doğrulaması geçmedi.');
+  }
+
+  if (!response.ok || !json.ok) {
+    throw new Error(json.message || 'Maliyet güncelleme başarısız.');
+  }
+
+  return json;
+}
+
+async function orderProfitLookup(payload) {
+  const baseUrl = await getBaseUrl();
+  const session = await companionSession();
+  const endpoint = companionEndpoint(baseUrl, session.endpoints?.order_profit_lookup, 'order-profit-lookup');
+
+  if (!endpoint) {
+    throw new Error('ZOLM order-profit-lookup endpoint bulunamadı.');
+  }
+
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': session.csrf_token,
+    },
+    body: JSON.stringify(payload),
+  }, ZOLM_REQUEST_TIMEOUT_MS);
+
+  const json = await readJson(response);
+
+  if (response.status === 401 || response.status === 419) {
+    throw new Error('ZOLM oturumu veya CSRF doğrulaması geçmedi.');
+  }
+
+  if (!response.ok || !json.ok) {
+    throw new Error(json.message || 'Sipariş kârlılığı sorgulanamadı.');
+  }
+
+  return json;
 }

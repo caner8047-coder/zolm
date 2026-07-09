@@ -51,6 +51,9 @@ class TrendyolBoosterCompanionController extends Controller
                 'store_scan' => route('mp.trendyol-booster.companion.store-scan'),
                 'market_research' => route('mp.trendyol-booster.companion.market-research'),
                 'pending_jobs' => route('mp.trendyol-booster.companion.pending-jobs'),
+                'pricing_cost_lookup' => route('mp.trendyol-booster.companion.pricing-cost-lookup'),
+                'update_product_cost' => route('mp.trendyol-booster.companion.update-product-cost'),
+                'order_profit_lookup' => route('mp.trendyol-booster.companion.order-profit-lookup'),
                 'dashboard' => route('mp.trendyol-booster'),
             ],
         ]);
@@ -927,6 +930,322 @@ class TrendyolBoosterCompanionController extends Controller
             'checked' => $checkedIds->count(),
             'verified' => $existingIds->count(),
             'marked_deleted' => $count,
+        ]);
+    }
+
+    /**
+     * Trendyol Seller Panel fiyatlandırma sayfası için toplu maliyet sorgulama.
+     * Barkod veya model kodu listesiyle ZOLM'daki ürün maliyetlerini döner.
+     * Chrome eklentisi bu endpoint'i kullanarak her ürün satırına karlılık badge'i gösterir.
+     */
+    public function pricingCostLookup(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'barcodes'    => ['nullable', 'array', 'max:100'],
+            'barcodes.*'  => ['string', 'max:120'],
+            'model_codes' => ['nullable', 'array', 'max:100'],
+            'model_codes.*' => ['string', 'max:120'],
+            'stock_codes' => ['nullable', 'array', 'max:100'],
+            'stock_codes.*' => ['string', 'max:120'],
+        ]);
+
+        $userId = $this->userId();
+        $barcodes   = array_filter(array_unique($validated['barcodes'] ?? []), fn ($v) => trim($v) !== '');
+        $modelCodes = array_filter(array_unique($validated['model_codes'] ?? []), fn ($v) => trim($v) !== '');
+        $stockCodes = array_filter(array_unique($validated['stock_codes'] ?? []), fn ($v) => trim($v) !== '');
+
+        if (empty($barcodes) && empty($modelCodes) && empty($stockCodes)) {
+            return response()->json([
+                'ok' => true,
+                'products' => [],
+                'matched' => 0,
+                'total_requested' => 0,
+            ]);
+        }
+
+        // Tüm eşleşen ürünleri tek sorguda çek
+        $query = \App\Models\MpProduct::where('user_id', $userId);
+
+        $query->where(function ($q) use ($barcodes, $modelCodes, $stockCodes) {
+            if (! empty($barcodes)) {
+                $q->orWhereIn('barcode', $barcodes);
+            }
+            if (! empty($modelCodes)) {
+                $q->orWhereIn('model_code', $modelCodes);
+            }
+            if (! empty($stockCodes)) {
+                $q->orWhereIn('stock_code', $stockCodes);
+            }
+        });
+
+        $products = $query->get();
+
+        // Barkod → ürün map'i oluştur (hızlı lookup için)
+        $result = [];
+        foreach ($products as $product) {
+            $salePrice = (float) $product->sale_price;
+            $cogs = (float) $product->cogs;
+            $packagingCost = (float) $product->packaging_cost;
+            $cargoCost = (float) $product->cargo_cost;
+            $extraFixed = (float) $product->extra_cost_fixed;
+            $extraPercent = (float) $product->extra_cost_percentage;
+            $commissionRate = (float) $product->commission_rate;
+            $vatRate = (float) $product->vat_rate;
+
+            $totalCost = $product->total_cost;
+
+            $entry = [
+                'mp_product_id'       => $product->id,
+                'barcode'             => $product->barcode,
+                'stock_code'          => $product->stock_code,
+                'model_code'          => $product->model_code,
+                'product_name'        => $product->product_name,
+                'cogs'                => $cogs,
+                'packaging_cost'      => $packagingCost,
+                'cargo_cost'          => $cargoCost,
+                'extra_cost_fixed'    => $extraFixed,
+                'extra_cost_percentage' => $extraPercent,
+                'total_cost'          => round($totalCost, 2),
+                'commission_rate'     => $commissionRate,
+                'vat_rate'            => $vatRate,
+                'sale_price'          => $salePrice,
+                'stock_quantity'      => (int) $product->stock_quantity,
+                'status'              => $product->status,
+                'has_cost'            => $cogs > 0,
+            ];
+
+            // Birden fazla key ile eşleştir (barkod, model kodu, stok kodu)
+            if ($product->barcode && trim($product->barcode) !== '') {
+                $result[$product->barcode] = $entry;
+            }
+            if ($product->model_code && trim($product->model_code) !== '') {
+                $result['mc:' . $product->model_code] = $entry;
+            }
+            if ($product->stock_code && trim($product->stock_code) !== '') {
+                $result['sc:' . $product->stock_code] = $entry;
+            }
+        }
+
+        $totalRequested = count($barcodes) + count($modelCodes) + count($stockCodes);
+
+        return response()->json([
+            'ok' => true,
+            'products' => $result,
+            'matched' => $products->count(),
+            'total_requested' => $totalRequested,
+        ]);
+    }
+
+    /**
+     * Trendyol Seller Panel'den doğrudan ürün maliyetini (cogs) günceller.
+     */
+    public function updateProductCost(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'barcode'    => ['nullable', 'string', 'max:120'],
+            'model_code' => ['nullable', 'string', 'max:120'],
+            'stock_code' => ['nullable', 'string', 'max:120'],
+            'mp_product_id' => ['nullable', 'integer'],
+            'cogs'       => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $userId = $this->userId();
+        $query = \App\Models\MpProduct::where('user_id', $userId);
+
+        if (!empty($validated['mp_product_id'])) {
+            $query->where('id', $validated['mp_product_id']);
+        } else {
+            $query->where(function ($q) use ($validated) {
+                if (!empty($validated['barcode'])) {
+                    $q->orWhere('barcode', $validated['barcode']);
+                }
+                if (!empty($validated['model_code'])) {
+                    $q->orWhere('model_code', $validated['model_code']);
+                }
+                if (!empty($validated['stock_code'])) {
+                    $q->orWhere('stock_code', $validated['stock_code']);
+                }
+            });
+        }
+
+        $product = $query->first();
+
+        if (!$product) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Ürün ZOLM panelinde bulunamadı.',
+            ], 404);
+        }
+
+        $product->update([
+            'cogs' => $validated['cogs'],
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Ürün maliyeti başarıyla güncellendi.',
+            'product' => [
+                'mp_product_id' => $product->id,
+                'product_name' => $product->product_name,
+                'barcode' => $product->barcode,
+                'cogs' => (float) $product->cogs,
+                'total_cost' => (float) $product->total_cost,
+            ],
+        ]);
+    }
+
+    /**
+     * Trendyol sipariş ekranındaki görünür siparişler için anlık kârlılık.
+     * ZOLM snapshot'ı varsa onu, yoksa ürün kartı maliyetlerinden tahmini sonucu döner.
+     */
+    public function orderProfitLookup(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'orders' => ['required', 'array', 'max:100'],
+            'orders.*.order_number' => ['required', 'string', 'max:100'],
+            'orders.*.revenue' => ['required', 'numeric', 'min:0'],
+            'orders.*.items' => ['required', 'array', 'min:1', 'max:20'],
+            'orders.*.items.*.barcode' => ['nullable', 'string', 'max:120'],
+            'orders.*.items.*.model_code' => ['nullable', 'string', 'max:120'],
+            'orders.*.items.*.quantity' => ['required', 'integer', 'min:1', 'max:100'],
+            'orders.*.items.*.line_amount' => ['required', 'numeric', 'min:0'],
+            'service_fee_fixed' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'withholding_tax_enabled' => ['nullable', 'boolean'],
+        ]);
+
+        $userId = $this->userId();
+        $orders = collect($validated['orders'])->unique('order_number')->values();
+        $orderNumbers = $orders->pluck('order_number')->all();
+        $withholdingEnabled = (bool) ($validated['withholding_tax_enabled'] ?? false);
+        $serviceFeeFixed = round((float) ($validated['service_fee_fixed'] ?? 0), 2);
+
+        $channelOrders = \App\Models\ChannelOrder::query()
+            ->whereHas('store', fn ($query) => $query
+                ->where('user_id', $userId)
+                ->where('marketplace', 'trendyol'))
+            ->whereIn('order_number', $orderNumbers)
+            ->with('profitSnapshot')
+            ->get()
+            ->keyBy('order_number');
+
+        $barcodes = $orders->flatMap(fn ($order) => collect($order['items'])
+            ->pluck('barcode'))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $products = \App\Models\MpProduct::query()
+            ->where('user_id', $userId)
+            ->whereIn('barcode', $barcodes->all())
+            ->get()
+            ->keyBy(fn ($product) => (string) $product->barcode);
+
+        $results = [];
+
+        foreach ($orders as $input) {
+            $orderNumber = (string) $input['order_number'];
+            $channelOrder = $channelOrders->get($orderNumber);
+            $snapshot = $channelOrder?->profitSnapshot;
+
+            if ($snapshot) {
+                $profitState = (string) ($snapshot->profit_state ?: 'estimated');
+                $profit = $profitState === 'confirmed'
+                    ? (float) $snapshot->confirmed_profit
+                    : (float) $snapshot->estimated_profit;
+
+                $results[$orderNumber] = [
+                    'source' => 'snapshot',
+                    'state' => $profitState,
+                    'profit' => round($profit, 2),
+                    'margin_percent' => round((float) $snapshot->margin_percent, 1),
+                    'gross_revenue' => round((float) $snapshot->gross_revenue, 2),
+                    'commission_total' => round((float) $snapshot->commission_total, 2),
+                    'withholding_total' => round((float) $snapshot->withholding_total, 2),
+                    'marketplace_cargo_total' => round((float) $snapshot->cargo_total, 2),
+                    'service_fee_total' => round((float) $snapshot->service_fee_total, 2),
+                    'cogs_cost' => round((float) $snapshot->cogs_cost, 2),
+                    'packaging_cost' => round((float) $snapshot->packaging_cost, 2),
+                    'own_cargo_cost' => round((float) $snapshot->own_cargo_cost, 2),
+                    'calculated_at' => $snapshot->calculated_at?->toIso8601String(),
+                ];
+                continue;
+            }
+
+            $revenue = round((float) $input['revenue'], 2);
+            $items = collect($input['items']);
+            $lineAmountTotal = max(0.01, (float) $items->sum('line_amount'));
+            $allocationFactor = $revenue / $lineAmountTotal;
+            $missingIdentifiers = [];
+            $cogs = 0.0;
+            $packaging = 0.0;
+            $ownCargo = 0.0;
+            $totalCost = 0.0;
+            $commission = 0.0;
+            $withholding = 0.0;
+
+            foreach ($items as $item) {
+                $barcode = trim((string) ($item['barcode'] ?? ''));
+                $product = $barcode !== '' ? $products->get($barcode) : null;
+                if (! $product) {
+                    $missingIdentifiers[] = $barcode ?: (string) ($item['model_code'] ?? 'Bilinmeyen ürün');
+                    continue;
+                }
+
+                $quantity = (int) $item['quantity'];
+                $allocatedRevenue = (float) $item['line_amount'] * $allocationFactor;
+                $commissionRate = (float) $product->commission_rate;
+                $vatRate = (float) $product->vat_rate;
+
+                $cogs += (float) $product->cogs * $quantity;
+                $packaging += (float) $product->packaging_cost * $quantity;
+                $ownCargo += (float) $product->cargo_cost * $quantity;
+                $totalCost += (float) $product->total_cost * $quantity;
+                $commission += $allocatedRevenue * ($commissionRate / 100);
+
+                if ($withholdingEnabled) {
+                    $withholdingBase = $vatRate > 0
+                        ? $allocatedRevenue / (1 + ($vatRate / 100))
+                        : $allocatedRevenue;
+                    $withholding += $withholdingBase * 0.01;
+                }
+            }
+
+            if ($missingIdentifiers !== []) {
+                $results[$orderNumber] = [
+                    'source' => 'live_estimate',
+                    'state' => 'missing_product',
+                    'missing_identifiers' => array_values(array_unique($missingIdentifiers)),
+                ];
+                continue;
+            }
+
+            // Trendyol finans kalemlerini ayrı ayrı kuruşa yuvarlayarak tahakkuk ettirir.
+            // Net kârı ham ondalıklardan değil, gösterilen/tahsil edilen kalemlerden üret.
+            $commission = round($commission, 2);
+            $withholding = round($withholding, 2);
+            $profit = $revenue - $commission - $serviceFeeFixed - $withholding - $totalCost;
+            $margin = $cogs > 0 ? ($profit / $cogs) * 100 : 0;
+
+            $results[$orderNumber] = [
+                'source' => 'live_estimate',
+                'state' => $cogs > 0 ? 'estimated' : 'missing_cost',
+                'profit' => round($profit, 2),
+                'margin_percent' => round($margin, 1),
+                'gross_revenue' => $revenue,
+                'commission_total' => round($commission, 2),
+                'withholding_total' => round($withholding, 2),
+                'marketplace_cargo_total' => 0.0,
+                'service_fee_total' => $serviceFeeFixed,
+                'cogs_cost' => round($cogs, 2),
+                'packaging_cost' => round($packaging, 2),
+                'own_cargo_cost' => round($ownCargo, 2),
+                'total_cost' => round($totalCost, 2),
+            ];
+        }
+
+        return response()->json([
+            'ok' => true,
+            'orders' => $results,
         ]);
     }
 }

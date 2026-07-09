@@ -12,6 +12,9 @@ const requiredFiles = [
   'manifest.json',
   'background.js',
   'content.js',
+  'seller-panel.js',
+  'campaign-panel.js',
+  'orders-panel.js',
   'zolm-bridge.js',
   'popup.html',
   'popup.js',
@@ -57,7 +60,7 @@ for (const host of ['http://localhost/*', 'https://www.trendyol.com/*']) {
   }
 }
 
-for (const file of ['background.js', 'content.js', 'zolm-bridge.js', 'popup.js']) {
+for (const file of ['background.js', 'content.js', 'seller-panel.js', 'campaign-panel.js', 'orders-panel.js', 'zolm-bridge.js', 'popup.js']) {
   const result = spawnSync(process.execPath, ['--check', join(extensionDir, file)], {
     stdio: 'inherit',
   });

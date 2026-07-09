@@ -83,6 +83,16 @@ class MarketplaceAccounting extends Component
     public array $settingsCargoCompanies = [];
     public array $settingsHeavyCargoPenalties = [];
     public string $newCargoCompany = '';
+
+    public string $newDesiRangeKey = '';
+    public int $newDesiRangeMin = 0;
+    public int $newDesiRangeMax = 0;
+    public string $newDesiRangeLabel = '';
+
+    public string $newBaremRangeKey = '';
+    public float $newBaremRangeMin = 0;
+    public float $newBaremRangeMax = 0;
+    public string $newBaremRangeLabel = '';
     public string $newPenaltyCompany = '';
     public float $newPenaltyAmount = 0;
 
@@ -437,28 +447,28 @@ class MarketplaceAccounting extends Component
 
     protected function loadDesiPrices()
     {
-        $desiRanges = ['desi_0_2', 'desi_3', 'desi_4', 'desi_5', 'desi_10', 'desi_15', 'desi_20', 'desi_25', 'desi_30'];
+        $desiRanges = app(\App\Services\MpSettingsService::class)->getDesiRanges();
         $this->settingsDesiPrices = [];
 
         foreach ($this->settingsCargoCompanies as $company) {
             $this->settingsDesiPrices[$company] = [];
             foreach ($desiRanges as $range) {
-                $val = \App\Models\MpFinancialRule::getRule($range, $company);
-                $this->settingsDesiPrices[$company][$range] = $val !== null ? (float) $val : null;
+                $val = \App\Models\MpFinancialRule::getRule($range['key'], $company);
+                $this->settingsDesiPrices[$company][$range['key']] = $val !== null ? (float) $val : null;
             }
         }
     }
 
     protected function loadBaremPrices()
     {
-        $baremRanges = ['barem_0_150', 'barem_150_300'];
+        $baremRanges = app(\App\Services\MpSettingsService::class)->getBaremRanges();
         $this->settingsBaremPrices = [];
 
         foreach ($this->settingsCargoCompanies as $company) {
             $this->settingsBaremPrices[$company] = [];
             foreach ($baremRanges as $range) {
-                $val = \App\Models\MpFinancialRule::getRule($range, $company);
-                $this->settingsBaremPrices[$company][$range] = $val !== null ? (float) $val : null;
+                $val = \App\Models\MpFinancialRule::getRule($range['key'], $company);
+                $this->settingsBaremPrices[$company][$range['key']] = $val !== null ? (float) $val : null;
             }
         }
     }
@@ -618,9 +628,12 @@ class MarketplaceAccounting extends Component
         }
         $this->settingsCargoCompanies[] = $name;
         $this->newCargoCompany = '';
-        // Desi & barem tablosuna da boş satır ekle
-        $this->settingsDesiPrices[$name] = array_fill_keys(['desi_0_2','desi_3','desi_4','desi_5','desi_10','desi_15','desi_20','desi_25','desi_30'], null);
-        $this->settingsBaremPrices[$name] = ['barem_0_150' => null, 'barem_150_300' => null];
+
+        $desiKeys = array_column(app(\App\Services\MpSettingsService::class)->getDesiRanges(), 'key');
+        $baremKeys = array_column(app(\App\Services\MpSettingsService::class)->getBaremRanges(), 'key');
+
+        $this->settingsDesiPrices[$name] = array_fill_keys($desiKeys, null);
+        $this->settingsBaremPrices[$name] = array_fill_keys($baremKeys, null);
     }
 
     public function removeCargoCompany(string $company)
@@ -628,6 +641,112 @@ class MarketplaceAccounting extends Component
         $this->settingsCargoCompanies = array_values(array_filter($this->settingsCargoCompanies, fn($c) => $c !== $company));
         unset($this->settingsDesiPrices[$company]);
         unset($this->settingsBaremPrices[$company]);
+    }
+
+    public function addDesiRange()
+    {
+        $key = trim($this->newDesiRangeKey);
+        if ($key === '' || $this->newDesiRangeMin > $this->newDesiRangeMax) {
+            session()->flash('settings_error', 'Geçersiz aralık bilgisi.');
+            return;
+        }
+
+        $svc = app(MpSettingsService::class);
+        $ranges = $svc->getDesiRanges();
+
+        foreach ($ranges as $range) {
+            if ($range['key'] === $key) {
+                session()->flash('settings_error', 'Bu anahtar zaten mevcut.');
+                return;
+            }
+        }
+
+        $ranges[] = [
+            'key' => $key,
+            'min' => $this->newDesiRangeMin,
+            'max' => $this->newDesiRangeMax,
+            'label' => $this->newDesiRangeLabel !== '' ? $this->newDesiRangeLabel : $key,
+        ];
+
+        $svc->set('cargo.desi_ranges', $ranges);
+
+        foreach ($this->settingsCargoCompanies as $company) {
+            $this->settingsDesiPrices[$company][$key] = null;
+        }
+
+        $this->newDesiRangeKey = '';
+        $this->newDesiRangeMin = 0;
+        $this->newDesiRangeMax = 0;
+        $this->newDesiRangeLabel = '';
+
+        session()->flash('settings_success', "Desi aralığı '{$key}' eklendi.");
+    }
+
+    public function removeDesiRange(string $key)
+    {
+        $svc = app(MpSettingsService::class);
+        $ranges = $svc->getDesiRanges();
+        $ranges = array_values(array_filter($ranges, fn($r) => $r['key'] !== $key));
+        $svc->set('cargo.desi_ranges', $ranges);
+
+        foreach ($this->settingsCargoCompanies as $company) {
+            unset($this->settingsDesiPrices[$company][$key]);
+        }
+
+        session()->flash('settings_success', "Desi aralığı '{$key}' kaldırıldı.");
+    }
+
+    public function addBaremRange()
+    {
+        $key = trim($this->newBaremRangeKey);
+        if ($key === '' || $this->newBaremRangeMin >= $this->newBaremRangeMax) {
+            session()->flash('settings_error', 'Geçersiz aralık bilgisi. Min, max\'ten küçük olmalı.');
+            return;
+        }
+
+        $svc = app(MpSettingsService::class);
+        $ranges = $svc->getBaremRanges();
+
+        foreach ($ranges as $range) {
+            if ($range['key'] === $key) {
+                session()->flash('settings_error', 'Bu anahtar zaten mevcut.');
+                return;
+            }
+        }
+
+        $ranges[] = [
+            'key' => $key,
+            'min' => $this->newBaremRangeMin,
+            'max' => $this->newBaremRangeMax,
+            'label' => $this->newBaremRangeLabel !== '' ? $this->newBaremRangeLabel : $key,
+        ];
+
+        $svc->set('cargo.barem_ranges', $ranges);
+
+        foreach ($this->settingsCargoCompanies as $company) {
+            $this->settingsBaremPrices[$company][$key] = null;
+        }
+
+        $this->newBaremRangeKey = '';
+        $this->newBaremRangeMin = 0;
+        $this->newBaremRangeMax = 0;
+        $this->newBaremRangeLabel = '';
+
+        session()->flash('settings_success', "Barem aralığı '{$key}' eklendi.");
+    }
+
+    public function removeBaremRange(string $key)
+    {
+        $svc = app(MpSettingsService::class);
+        $ranges = $svc->getBaremRanges();
+        $ranges = array_values(array_filter($ranges, fn($r) => $r['key'] !== $key));
+        $svc->set('cargo.barem_ranges', $ranges);
+
+        foreach ($this->settingsCargoCompanies as $company) {
+            unset($this->settingsBaremPrices[$company][$key]);
+        }
+
+        session()->flash('settings_success', "Barem aralığı '{$key}' kaldırıldı.");
     }
 
     public function addHeavyCargoPenalty()

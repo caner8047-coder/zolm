@@ -406,28 +406,24 @@
         @if($settingsActiveSection === 'desi')
         <div class="p-6 border-t border-gray-100">
             @php
-                $desiLabels = [
-                    'desi_0_2' => '0-2 Desi', 'desi_3' => '3 Desi', 'desi_4' => '4 Desi',
-                    'desi_5' => '5 Desi', 'desi_10' => '10 Desi', 'desi_15' => '15 Desi',
-                    'desi_20' => '20 Desi', 'desi_25' => '25 Desi', 'desi_30' => '30 Desi',
-                ];
+                $desiRanges = app(\App\Services\MpSettingsService::class)->getDesiRanges();
             @endphp
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead><tr class="bg-gray-50">
                         <th class="px-3 py-2 text-left font-semibold text-gray-600 sticky left-0 bg-gray-50">Firma</th>
-                        @foreach($desiLabels as $key => $label)
-                            <th class="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap text-xs">{{ $label }}</th>
+                        @foreach($desiRanges as $range)
+                            <th class="px-2 py-2 text-center font-semibold text-gray-600 whitespace-nowrap text-xs">{{ $range['label'] }}</th>
                         @endforeach
                     </tr></thead>
                     <tbody class="divide-y divide-gray-100">
                         @foreach($settingsCargoCompanies as $company)
                         <tr>
                             <td class="px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white whitespace-nowrap">{{ $company }}</td>
-                            @foreach($desiLabels as $key => $label)
+                            @foreach($desiRanges as $range)
                             <td class="px-1 py-1.5">
                                 <input type="number" step="0.01"
-                                       wire:model="settingsDesiPrices.{{ $company }}.{{ $key }}"
+                                       wire:model="settingsDesiPrices.{{ $company }}.{{ $range['key'] }}"
                                        placeholder="-"
                                        class="w-16 px-1 py-1 border border-gray-200 rounded text-center text-xs focus:ring-1 focus:ring-blue-400 focus:border-blue-400">
                             </td>
@@ -442,6 +438,36 @@
                     <span wire:loading.remove wire:target="saveDesiPrices">💾 Desi Fiyatları Kaydet</span>
                     <span wire:loading wire:target="saveDesiPrices">Kaydediliyor...</span>
                 </button>
+            </div>
+            <div class="mt-4 border-t border-gray-100 pt-4">
+                <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Desi Aralığı Ekle</h4>
+                <div class="flex flex-wrap items-end gap-2">
+                    <div class="flex-1 min-w-[100px]">
+                        <label class="block text-[10px] text-gray-500 mb-0.5">Anahtar</label>
+                        <input type="text" wire:model="newDesiRangeKey" placeholder="desi_40" class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs">
+                    </div>
+                    <div class="w-16">
+                        <label class="block text-[10px] text-gray-500 mb-0.5">Min</label>
+                        <input type="number" wire:model="newDesiRangeMin" class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs text-center">
+                    </div>
+                    <div class="w-16">
+                        <label class="block text-[10px] text-gray-500 mb-0.5">Max</label>
+                        <input type="number" wire:model="newDesiRangeMax" class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs text-center">
+                    </div>
+                    <div class="flex-1 min-w-[100px]">
+                        <label class="block text-[10px] text-gray-500 mb-0.5">Etiket</label>
+                        <input type="text" wire:model="newDesiRangeLabel" placeholder="31-40 Desi" class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs">
+                    </div>
+                    <button wire:click="addDesiRange" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 transition-colors">+ Ekle</button>
+                </div>
+                <div class="mt-2 flex flex-wrap gap-1">
+                    @foreach($desiRanges as $range)
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px]">
+                            {{ $range['label'] }}
+                            <button wire:click="removeDesiRange('{{ $range['key'] }}')" class="text-gray-400 hover:text-red-500" title="Kaldır">&times;</button>
+                        </span>
+                    @endforeach
+                </div>
             </div>
         </div>
         @endif
@@ -462,23 +488,26 @@
         </button>
         @if($settingsActiveSection === 'barem')
         <div class="p-6 border-t border-gray-100">
+            @php
+                $baremRanges = app(\App\Services\MpSettingsService::class)->getBaremRanges();
+            @endphp
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead><tr class="bg-gray-50">
                         <th class="px-4 py-2 text-left font-semibold text-gray-600">Kargo Firması</th>
-                        <th class="px-4 py-2 text-center font-semibold text-gray-600">0 — 150 TL Arası (TL)</th>
-                        <th class="px-4 py-2 text-center font-semibold text-gray-600">150 — 300 TL Arası (TL)</th>
+                        @foreach($baremRanges as $range)
+                            <th class="px-4 py-2 text-center font-semibold text-gray-600">{{ $range['label'] }} (TL)</th>
+                        @endforeach
                     </tr></thead>
                     <tbody class="divide-y divide-gray-100">
                         @foreach($settingsCargoCompanies as $company)
                         <tr>
                             <td class="px-4 py-2 font-medium text-gray-800">{{ $company }}</td>
+                            @foreach($baremRanges as $range)
                             <td class="px-4 py-1.5">
-                                <input type="number" step="0.01" wire:model="settingsBaremPrices.{{ $company }}.barem_0_150" placeholder="-" class="w-28 px-3 py-1.5 border border-gray-200 rounded text-center text-sm">
+                                <input type="number" step="0.01" wire:model="settingsBaremPrices.{{ $company }}.{{ $range['key'] }}" placeholder="-" class="w-28 px-3 py-1.5 border border-gray-200 rounded text-center text-sm">
                             </td>
-                            <td class="px-4 py-1.5">
-                                <input type="number" step="0.01" wire:model="settingsBaremPrices.{{ $company }}.barem_150_300" placeholder="-" class="w-28 px-3 py-1.5 border border-gray-200 rounded text-center text-sm">
-                            </td>
+                            @endforeach
                         </tr>
                         @endforeach
                     </tbody>
@@ -489,6 +518,36 @@
                     <span wire:loading.remove wire:target="saveBaremPrices">💾 Barem Fiyatları Kaydet</span>
                     <span wire:loading wire:target="saveBaremPrices">Kaydediliyor...</span>
                 </button>
+            </div>
+            <div class="mt-4 border-t border-gray-100 pt-4">
+                <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Barem Aralığı Ekle</h4>
+                <div class="flex flex-wrap items-end gap-2">
+                    <div class="flex-1 min-w-[100px]">
+                        <label class="block text-[10px] text-gray-500 mb-0.5">Anahtar</label>
+                        <input type="text" wire:model="newBaremRangeKey" placeholder="barem_200_500" class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs">
+                    </div>
+                    <div class="w-20">
+                        <label class="block text-[10px] text-gray-500 mb-0.5">Min (TL)</label>
+                        <input type="number" step="0.01" wire:model="newBaremRangeMin" class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs text-center">
+                    </div>
+                    <div class="w-20">
+                        <label class="block text-[10px] text-gray-500 mb-0.5">Max (TL)</label>
+                        <input type="number" step="0.01" wire:model="newBaremRangeMax" class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs text-center">
+                    </div>
+                    <div class="flex-1 min-w-[100px]">
+                        <label class="block text-[10px] text-gray-500 mb-0.5">Etiket</label>
+                        <input type="text" wire:model="newBaremRangeLabel" placeholder="200-500 TL" class="w-full px-2 py-1.5 border border-gray-200 rounded text-xs">
+                    </div>
+                    <button wire:click="addBaremRange" class="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 transition-colors">+ Ekle</button>
+                </div>
+                <div class="mt-2 flex flex-wrap gap-1">
+                    @foreach($baremRanges as $range)
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px]">
+                            {{ $range['label'] }}
+                            <button wire:click="removeBaremRange('{{ $range['key'] }}')" class="text-gray-400 hover:text-red-500" title="Kaldır">&times;</button>
+                        </span>
+                    @endforeach
+                </div>
             </div>
         </div>
         @endif

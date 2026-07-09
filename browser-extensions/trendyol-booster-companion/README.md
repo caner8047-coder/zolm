@@ -13,13 +13,20 @@ Bu Chrome eklentisi Trendyol ürün ve mağaza sayfalarındaki görünür veriyi
 Mağaza sayfasında:
 - Rakip mağaza ürün kartlarını yakalamak için `Mağaza tara`
 
+Seller Panel'de:
+- Fiyatlandırma, flaş ve kampanya sayfalarında ZOLM maliyetleriyle karlılık kartları
+- Kampanyalarda mevcut fiyat, girilen kampanya fiyatı ve maksimum fiyat senaryosu karşılaştırması
+- Trendyol katkı oranını dikkate alan satıcı indirim payı hesabı
+- Sipariş satırlarında ZOLM snapshot'ı varsa kesinleşmiş, yoksa görünür tutar ve ürün maliyetiyle anlık tahmini kârlılık
+- Canlı tahminlerde sipariş başına ayarlanabilir, KDV dahil platform hizmet bedeli
+
 ## Kurulum
 
 1. Chrome'da `chrome://extensions` adresini aç.
 2. Sağ üstten `Geliştirici modu`nu aç.
 3. `Paketlenmemiş öğe yükle` seçeneğiyle bu klasörü seç:
    `browser-extensions/trendyol-booster-companion`
-4. Chrome kartında sürümün `0.12.0` göründüğünü kontrol et. Eski sürüm görünüyorsa doğru klasörü seçip `Yeniden yükle` düğmesine bas.
+4. Chrome kartında sürümün `0.14.1` göründüğünü kontrol et. Eski sürüm görünüyorsa doğru klasörü seçip `Yeniden yükle` düğmesine bas.
 5. ZOLM panelinde oturum aç.
 6. Eklenti popup'ında ZOLM adresini `http://localhost` olarak bırak veya kendi adresini gir.
 7. ZOLM paneli açıkken popup içinden `Oturumu test et` düğmesine bas; panel oturumu doğrulanınca modüller eklenti köprüsünü kullanır.
@@ -61,6 +68,9 @@ Chrome'da test ederken `build/trendyol-booster-companion` klasörünü `Paketlen
 - ZOLM Tedarikçi Radar ekranı, ürün sayfasındaki kimliği doğrulanabilen ana satıcı ve diğer satıcıları ilk grup olarak kaydeder; ardından Google Alışveriş (`udm=28`) ve hedef pazaryeri `site:` aramalarını okur. Marka, model kodu ve ayırt edici teknik özellikler güçlü eşleşmiyorsa sonucu göndermez.
 - Eksik veri varsa panel turuncu uyarı verir; Trendyol dinamik içerik yüklediyse sayfayı aşağı kaydırıp `Yenile` kullanılabilir.
 - Popup ekranı aktif Trendyol sekmesinin ürün/mağaza olarak okunup okunmadığını ayrıca gösterir.
+- Kampanya karlılığı yalnızca eşik, indirim ve Trendyol katkı kuralı güvenle okunabildiğinde gösterilir; kural okunamazsa tahmin üretilmez.
+- Sipariş kartında `Anlık Tahmin` görüldüğünde gerçek pazaryeri kargo ve finans kesintileri henüz senkronize değildir; senkron sonrası kart ZOLM snapshot sonucuna geçer.
+- Popup'taki `Platform hizmet bedeli` KDV dahil ve sipariş başınadır. Varsayılan 9,33 TL'dir; Trendyol tarifeniz değiştiğinde buradan güncelleyebilirsiniz.
 
 ## Notlar
 

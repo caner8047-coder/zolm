@@ -204,6 +204,9 @@ Route::middleware('auth')->group(function () {
             Route::post('/review-scan/ingest', [TrendyolBoosterCompanionController::class, 'reviewScanIngest'])->name('review-scan.ingest');
             Route::get('/review-scan/status/{syncRunId}', [TrendyolBoosterCompanionController::class, 'reviewScanStatus'])->name('review-scan.status');
             Route::post('/review-scan/verify', [TrendyolBoosterCompanionController::class, 'reviewScanVerify'])->name('review-scan.verify');
+            Route::get('/pricing-cost-lookup', [TrendyolBoosterCompanionController::class, 'pricingCostLookup'])->name('pricing-cost-lookup');
+            Route::post('/update-product-cost', [TrendyolBoosterCompanionController::class, 'updateProductCost'])->name('update-product-cost');
+            Route::post('/order-profit-lookup', [TrendyolBoosterCompanionController::class, 'orderProfitLookup'])->name('order-profit-lookup');
         });
 
     Route::get('/marketplace-pricing-simulator', \App\Livewire\MarketplacePricingSimulator::class)

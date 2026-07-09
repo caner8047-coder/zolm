@@ -794,4 +794,209 @@ class MarketplaceSettingsTest extends TestCase
             ->call('resetUiSettings')
             ->assertSet('trendyolTimestampOffsetSeconds', 10800);
     }
+
+    public function test_desi_ranges_defaults_are_correct(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+        $ranges = $service->getDesiRanges();
+
+        $this->assertCount(9, $ranges);
+        $this->assertSame('desi_0_2', $ranges[0]['key']);
+        $this->assertSame('desi_30', $ranges[8]['key']);
+        $this->assertSame(0, $ranges[0]['min']);
+        $this->assertSame(500, $ranges[8]['max']);
+    }
+
+    public function test_barem_ranges_defaults_are_correct(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+        $ranges = $service->getBaremRanges();
+
+        $this->assertCount(2, $ranges);
+        $this->assertSame('barem_0_150', $ranges[0]['key']);
+        $this->assertSame('barem_150_300', $ranges[1]['key']);
+    }
+
+    public function test_getDesiPrice_uses_dynamic_ranges(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        \App\Models\MpFinancialRule::create([
+            'rule_key' => 'desi_5',
+            'category' => 'TEX',
+            'rule_value' => '65.00',
+            'valid_from' => '2025-01-01',
+        ]);
+
+        $this->assertSame(65.0, $service->getDesiPrice('TEX', 5.0));
+    }
+
+    public function test_getBaremPrice_uses_dynamic_ranges(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        \App\Models\MpFinancialRule::create([
+            'rule_key' => 'barem_0_150',
+            'category' => 'TEX',
+            'rule_value' => '35.00',
+            'valid_from' => '2025-01-01',
+        ]);
+
+        \App\Models\MpFinancialRule::create([
+            'rule_key' => 'barem_150_300',
+            'category' => 'TEX',
+            'rule_value' => '50.00',
+            'valid_from' => '2025-01-01',
+        ]);
+
+        $this->assertSame(35.0, $service->getBaremPrice('TEX', 100.0));
+        $this->assertSame(50.0, $service->getBaremPrice('TEX', 200.0));
+        $this->assertSame(0.0, $service->getBaremPrice('TEX', 300.0));
+    }
+
+    public function test_normalize_desi_ranges_fixes_inverted_min_max(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $result = $service->normalizeDesiRanges([
+            ['key' => 'desi_test', 'min' => 10, 'max' => 5, 'label' => 'Test'],
+        ], []);
+
+        $this->assertSame(5, $result[0]['min']);
+        $this->assertSame(10, $result[0]['max']);
+    }
+
+    public function test_normalize_barem_ranges_returns_defaults_on_empty(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $result = $service->normalizeBaremRanges([], [['key' => 'fallback']]);
+
+        $this->assertCount(1, $result);
+        $this->assertSame('fallback', $result[0]['key']);
+    }
+
+    public function test_custom_desi_range_isolation(): void
+    {
+        $user1 = User::factory()->create();
+        $user2 = User::factory()->create();
+
+        (new MpSettingsService($user1->id))->set('cargo.desi_ranges', [
+            ['key' => 'custom_range', 'min' => 0, 'max' => 100, 'label' => 'Custom'],
+        ]);
+
+        $this->assertCount(1, (new MpSettingsService($user1->id))->getDesiRanges());
+        $this->assertCount(9, (new MpSettingsService($user2->id))->getDesiRanges());
+    }
+
+    public function test_custom_desi_range_finds_price_for_value(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $service->set('cargo.desi_ranges', [
+            ['key' => 'desi_0_10', 'min' => 0, 'max' => 10, 'label' => '0-10'],
+            ['key' => 'desi_31_50', 'min' => 31, 'max' => 50, 'label' => '31-50'],
+        ]);
+
+        $rule = \App\Models\MpFinancialRule::create([
+            'rule_key' => 'desi_31_50',
+            'category' => 'TEX',
+            'rule_value' => '99.00',
+            'valid_from' => '2025-01-01',
+        ]);
+
+        $this->assertNotNull($rule->id);
+
+        $found = \App\Models\MpFinancialRule::getRule('desi_31_50', 'TEX');
+        $this->assertNotNull($found, 'Rule desi_31_50 not found');
+
+        $this->assertSame(99.0, $service->getDesiPrice('TEX', 45.0));
+        $this->assertSame(0.0, $service->getDesiPrice('TEX', 15.0));
+    }
+
+    public function test_custom_barem_range_0_200_200_500_works(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $service->set('cargo.barem_ranges', [
+            ['key' => 'barem_0_200', 'min' => 0, 'max' => 200, 'label' => '0-200 TL'],
+            ['key' => 'barem_200_500', 'min' => 200, 'max' => 500, 'label' => '200-500 TL'],
+        ]);
+
+        \App\Models\MpFinancialRule::create([
+            'rule_key' => 'barem_0_200',
+            'category' => 'TEX',
+            'rule_value' => '30.00',
+            'valid_from' => '2025-01-01',
+        ]);
+
+        \App\Models\MpFinancialRule::create([
+            'rule_key' => 'barem_200_500',
+            'category' => 'TEX',
+            'rule_value' => '55.00',
+            'valid_from' => '2025-01-01',
+        ]);
+
+        $this->assertSame(30.0, $service->getBaremPrice('TEX', 100.0));
+        $this->assertSame(55.0, $service->getBaremPrice('TEX', 350.0));
+        $this->assertSame(0.0, $service->getBaremPrice('TEX', 500.0));
+    }
+
+    public function test_default_barem_ranges_unchanged(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        \App\Models\MpFinancialRule::create([
+            'rule_key' => 'barem_0_150',
+            'category' => 'TEX',
+            'rule_value' => '35.00',
+            'valid_from' => '2025-01-01',
+        ]);
+
+        \App\Models\MpFinancialRule::create([
+            'rule_key' => 'barem_150_300',
+            'category' => 'TEX',
+            'rule_value' => '50.00',
+            'valid_from' => '2025-01-01',
+        ]);
+
+        $this->assertSame(35.0, $service->getBaremPrice('TEX', 100.0));
+        $this->assertSame(50.0, $service->getBaremPrice('TEX', 200.0));
+        $this->assertSame(0.0, $service->getBaremPrice('TEX', 300.0));
+    }
+
+    public function test_default_desi_ranges_unchanged(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $ranges = $service->getDesiRanges();
+        $this->assertCount(9, $ranges);
+
+        $rule = \App\Models\MpFinancialRule::create([
+            'rule_key' => 'desi_5',
+            'category' => 'TEX',
+            'rule_value' => '65.00',
+            'valid_from' => '2025-01-01',
+        ]);
+
+        $this->assertNotNull($rule->id);
+
+        $found = \App\Models\MpFinancialRule::getRule('desi_5', 'TEX');
+        $this->assertNotNull($found, 'Rule not found by getRule');
+
+        $price = $service->getDesiPrice('TEX', 5.0);
+        $this->assertSame(65.0, $price);
+    }
+
+    public function test_mp_financial_rule_static_helpers_work_without_user(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->assertSame(0.0, \App\Models\MpFinancialRule::getDesiPrice('TEX', 5.0));
+        $this->assertNull(\App\Models\MpFinancialRule::getBaremPrice('TEX', 100.0));
+    }
 }

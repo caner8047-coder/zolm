@@ -1380,8 +1380,74 @@ class TrendyolBoosterTest extends TestCase
             ->assertJsonPath('user.email', $user->email)
             ->assertJsonStructure([
                 'csrf_token',
-                'endpoints' => ['preview', 'track', 'dashboard'],
+                'endpoints' => ['preview', 'track', 'dashboard', 'order_profit_lookup'],
             ]);
+    }
+
+    public function test_companion_order_profit_lookup_estimates_visible_order_from_product_costs(): void
+    {
+        [$user, $product] = $this->createBoosterGraph();
+        $this->actingAs($user);
+
+        $this->postJson(route('mp.trendyol-booster.companion.order-profit-lookup'), [
+            'orders' => [[
+                'order_number' => '11393454866',
+                'revenue' => 1000,
+                'items' => [[
+                    'barcode' => $product->barcode,
+                    'model_code' => $product->stock_code,
+                    'quantity' => 1,
+                    'line_amount' => 1000,
+                ]],
+            ]],
+            'service_fee_fixed' => 9.33,
+            'withholding_tax_enabled' => true,
+        ])
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('orders.11393454866.source', 'live_estimate')
+            ->assertJsonPath('orders.11393454866.state', 'estimated')
+            ->assertJsonPath('orders.11393454866.gross_revenue', 1000)
+            ->assertJsonPath('orders.11393454866.commission_total', 100)
+            ->assertJsonPath('orders.11393454866.service_fee_total', 9.33)
+            ->assertJsonPath('orders.11393454866.withholding_total', 8.33)
+            ->assertJsonPath('orders.11393454866.total_cost', 710)
+            ->assertJsonPath('orders.11393454866.profit', 172.34)
+            ->assertJsonPath('orders.11393454866.margin_percent', 28.7);
+    }
+
+    public function test_companion_order_profit_lookup_includes_platform_service_fee(): void
+    {
+        [$user, $product] = $this->createBoosterGraph();
+        $product->update([
+            'cogs' => 550,
+            'packaging_cost' => 0,
+            'cargo_cost' => 137.92,
+            'commission_rate' => 23,
+            'vat_rate' => 10,
+        ]);
+        $this->actingAs($user);
+
+        $this->postJson(route('mp.trendyol-booster.companion.order-profit-lookup'), [
+            'orders' => [[
+                'order_number' => 'PLATFORM-FEE-EXAMPLE',
+                'revenue' => 839.90,
+                'items' => [[
+                    'barcode' => $product->barcode,
+                    'model_code' => $product->stock_code,
+                    'quantity' => 1,
+                    'line_amount' => 839.90,
+                ]],
+            ]],
+            'service_fee_fixed' => 9.33,
+            'withholding_tax_enabled' => true,
+        ])
+            ->assertOk()
+            ->assertJsonPath('orders.PLATFORM-FEE-EXAMPLE.commission_total', 193.18)
+            ->assertJsonPath('orders.PLATFORM-FEE-EXAMPLE.service_fee_total', 9.33)
+            ->assertJsonPath('orders.PLATFORM-FEE-EXAMPLE.withholding_total', 7.64)
+            ->assertJsonPath('orders.PLATFORM-FEE-EXAMPLE.total_cost', 687.92)
+            ->assertJsonPath('orders.PLATFORM-FEE-EXAMPLE.profit', -58.17);
     }
 
     public function test_booster_reviews_module_renders_without_runtime_errors(): void
