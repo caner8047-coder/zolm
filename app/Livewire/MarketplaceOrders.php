@@ -43,8 +43,6 @@ class MarketplaceOrders extends Component
     use WithFileUploads;
     use WithPagination;
 
-    protected const TRENDYOL_LOCAL_TIMESTAMP_OFFSET_SECONDS = 10800;
-
     public array $visibleColumns = ['siparis', 'musteri', 'lojistik', 'ciro', 'muhasebe', 'kar', 'durum'];
 
     public int $perPage = 20;
@@ -1586,7 +1584,7 @@ class MarketplaceOrders extends Component
             }
 
             return Carbon::createFromTimestampUTC($timestamp)
-                ->subSeconds(self::TRENDYOL_LOCAL_TIMESTAMP_OFFSET_SECONDS)
+                ->subSeconds(app(MpSettingsService::class)->getTrendyolTimestampOffsetSeconds())
                 ->setTimezone(config('app.timezone', 'Europe/Istanbul'));
         }
 
@@ -1737,7 +1735,7 @@ class MarketplaceOrders extends Component
     {
         $valueSql = $this->jsonStringValueSql($column, $path);
         $timestampOffsetSql = $marketplaceColumn
-            ? " - CASE WHEN LOWER({$marketplaceColumn}) = 'trendyol' THEN " . self::TRENDYOL_LOCAL_TIMESTAMP_OFFSET_SECONDS . ' ELSE 0 END'
+            ? " - CASE WHEN LOWER({$marketplaceColumn}) = 'trendyol' THEN " . app(MpSettingsService::class)->getTrendyolTimestampOffsetSeconds() . ' ELSE 0 END'
             : '';
 
         if (DB::connection()->getDriverName() === 'sqlite') {

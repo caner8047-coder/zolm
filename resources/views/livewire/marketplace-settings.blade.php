@@ -214,6 +214,15 @@
                 </div>
 
                 <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+                    <h3 class="text-sm font-semibold text-slate-900">Trendyol zaman damgası ofseti</h3>
+                    <p class="mt-1 text-sm leading-5 text-slate-500">Trendyol'dan gelen numeric timestamp'lerden çıkarılan saniye. Varsayılan 10800 (Türkiye/+03:00). Pozitif değer saati geri alır, negatif değer ileri taşır.</p>
+                    <div class="mt-3">
+                        <label class="mb-1 block text-xs font-medium text-slate-500">Saniye (-43200–50400)</label>
+                        <input type="number" min="-43200" max="50400" wire:model.defer="trendyolTimestampOffsetSeconds" class="w-full min-h-[44px] rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                    </div>
+                </div>
+
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
                     <h3 class="text-sm font-semibold text-slate-900">Eşleştirme ağırlıkları</h3>
                     <p class="mt-1 text-sm leading-5 text-slate-500">Aday ürünleri sıralarken kullanılan sinyal puanları. 0 girilirse o sinyal devre dışı kalır.</p>
                     <div class="mt-3">

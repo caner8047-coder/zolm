@@ -46,6 +46,8 @@ class MarketplaceSettings extends Component
 
     public bool $autoRunMatchingOnSync = true;
 
+    public int $trendyolTimestampOffsetSeconds = 10800;
+
     public array $labelPrintSettings = [];
 
     public array $dispatchPrintSettings = [];
@@ -80,6 +82,7 @@ class MarketplaceSettings extends Component
         $this->candidateSearchLimit = $settings->getMatchingCandidateSearchLimit();
         $this->candidateResultLimit = $settings->getMatchingCandidateResultLimit();
         $this->autoRunMatchingOnSync = $settings->getAutoRunMatchingOnSync();
+        $this->trendyolTimestampOffsetSeconds = $settings->getTrendyolTimestampOffsetSeconds();
         $this->labelPrintSettings = $settings->getArray('print.label', $this->defaultLabelPrintSettings());
         $this->dispatchPrintSettings = $settings->getArray('print.dispatch', $this->defaultDispatchPrintSettings());
         $this->companyForm = [
@@ -114,6 +117,7 @@ class MarketplaceSettings extends Component
             'candidateSearchLimit' => ['required', 'integer', 'min:1', 'max:100'],
             'candidateResultLimit' => ['required', 'integer', 'min:1', 'max:50'],
             'autoRunMatchingOnSync' => ['boolean'],
+            'trendyolTimestampOffsetSeconds' => ['required', 'integer', 'min:-43200', 'max:50400'],
         ]);
 
         $normalizedWeights = [];
@@ -144,6 +148,7 @@ class MarketplaceSettings extends Component
             'matching.candidate_search_limit' => (int) $validated['candidateSearchLimit'],
             'matching.candidate_result_limit' => min((int) $validated['candidateResultLimit'], (int) $validated['candidateSearchLimit']),
             'matching.auto_run_on_sync' => (bool) $validated['autoRunMatchingOnSync'],
+            'orders.trendyol_timestamp_offset_seconds' => (int) $validated['trendyolTimestampOffsetSeconds'],
         ]);
 
         $syncSummary = null;
@@ -238,6 +243,7 @@ class MarketplaceSettings extends Component
             'matching.candidate_search_limit' => 12,
             'matching.candidate_result_limit' => 8,
             'matching.auto_run_on_sync' => true,
+            'orders.trendyol_timestamp_offset_seconds' => 10800,
         ]);
 
         $this->helpTipsEnabled = true;
@@ -266,6 +272,7 @@ class MarketplaceSettings extends Component
         $this->candidateSearchLimit = 12;
         $this->candidateResultLimit = 8;
         $this->autoRunMatchingOnSync = true;
+        $this->trendyolTimestampOffsetSeconds = 10800;
 
         session()->flash('settings_success', 'Genel ayarlar varsayılan değerlere döndürüldü.');
     }

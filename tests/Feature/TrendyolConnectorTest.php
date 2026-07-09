@@ -7,13 +7,17 @@ use App\Models\IntegrationConnection;
 use App\Models\MarketplaceStore;
 use App\Services\Marketplace\Connectors\TrendyolConnector;
 use App\Services\Marketplace\MarketplaceConnectorManager;
+use App\Models\User;
+use App\Services\MpSettingsService;
 use Carbon\CarbonImmutable;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class TrendyolConnectorTest extends TestCase
 {
+    use RefreshDatabase;
     public function test_manager_resolves_trendyol_connector(): void
     {
         $connector = app(MarketplaceConnectorManager::class)->resolve('trendyol');
@@ -539,5 +543,113 @@ class TrendyolConnectorTest extends TestCase
         $store->setRelation('connection', $connection);
 
         return $store;
+    }
+
+    public function test_pull_orders_uses_default_offset_for_numeric_dates(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        $baseTime = CarbonImmutable::now('Europe/Istanbul')->subHours(5)->startOfMinute();
+
+        Http::fake([
+            'https://apigw.trendyol.com/integration/order/sellers/123456/orders*' => Http::response([
+                'content' => [[
+                    'orderNumber' => 'TY-OFF-DEFAULT',
+                    'shipmentPackageId' => 111111,
+                    'status' => 'Approved',
+                    'grossAmount' => 100,
+                    'totalPrice' => 100,
+                    'packageGrossAmount' => 100,
+                    'packageTotalPrice' => 100,
+                    'customerFirstName' => 'Test',
+                    'customerLastName' => 'User',
+                    'customerPhone' => '05550000000',
+                    'createdDate' => $baseTime->timestamp,
+                    'lines' => [[
+                        'lineId' => 1,
+                        'stockCode' => 'DEF-STK',
+                        'barcode' => '8690000000099',
+                        'productName' => 'Default Offset Urun',
+                        'quantity' => 1,
+                        'lineUnitPrice' => 100,
+                        'lineGrossAmount' => 100,
+                        'lineSellerDiscount' => 0,
+                        'lineTyDiscount' => 0,
+                        'lineTotalDiscount' => 0,
+                    ]],
+                ]],
+                'totalPages' => 1,
+            ], 200),
+        ]);
+
+        $result = app(TrendyolConnector::class)->pullOrders($this->makeStore(), [
+            'start_date' => $baseTime->subDay()->toIso8601String(),
+            'end_date' => $baseTime->addDay()->toIso8601String(),
+        ]);
+
+        $orderedAt = data_get($result, 'items.0.order.ordered_at');
+
+        $this->assertNotNull($orderedAt);
+        $this->assertSame(
+            $baseTime->subSeconds(10800)->format('Y-m-d\TH:i'),
+            \Carbon\Carbon::parse($orderedAt)->format('Y-m-d\TH:i')
+        );
+    }
+
+    public function test_pull_orders_uses_custom_offset_for_numeric_dates(): void
+    {
+        $user = User::factory()->create();
+
+        (new MpSettingsService($user->id))->set('orders.trendyol_timestamp_offset_seconds', 7200);
+
+        $this->actingAs($user);
+
+        $baseTime = CarbonImmutable::now('Europe/Istanbul')->subHours(5)->startOfMinute();
+
+        Http::fake([
+            'https://apigw.trendyol.com/integration/order/sellers/123456/orders*' => Http::response([
+                'content' => [[
+                    'orderNumber' => 'TY-OFF-CUSTOM',
+                    'shipmentPackageId' => 222222,
+                    'status' => 'Approved',
+                    'grossAmount' => 200,
+                    'totalPrice' => 200,
+                    'packageGrossAmount' => 200,
+                    'packageTotalPrice' => 200,
+                    'customerFirstName' => 'Test',
+                    'customerLastName' => 'Custom',
+                    'customerPhone' => '05550000001',
+                    'createdDate' => $baseTime->timestamp,
+                    'lines' => [[
+                        'lineId' => 2,
+                        'stockCode' => 'CUS-STK',
+                        'barcode' => '8690000000088',
+                        'productName' => 'Custom Offset Urun',
+                        'quantity' => 1,
+                        'lineUnitPrice' => 200,
+                        'lineGrossAmount' => 200,
+                        'lineSellerDiscount' => 0,
+                        'lineTyDiscount' => 0,
+                        'lineTotalDiscount' => 0,
+                    ]],
+                ]],
+                'totalPages' => 1,
+            ], 200),
+        ]);
+
+        $result = app(TrendyolConnector::class)->pullOrders($this->makeStore(), [
+            'start_date' => $baseTime->subDay()->toIso8601String(),
+            'end_date' => $baseTime->addDay()->toIso8601String(),
+        ]);
+
+        $orderedAt = data_get($result, 'items.0.order.ordered_at');
+
+        $this->assertNotNull($orderedAt);
+        $this->assertSame(
+            $baseTime->subSeconds(7200)->format('Y-m-d\TH:i'),
+            \Carbon\Carbon::parse($orderedAt)->format('Y-m-d\TH:i')
+        );
     }
 }

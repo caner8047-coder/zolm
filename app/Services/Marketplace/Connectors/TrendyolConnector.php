@@ -1453,7 +1453,7 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
 
             // Trendyol numeric dates arrive as Turkey local time encoded in Unix milliseconds.
             return CarbonImmutable::createFromTimestampUTC($timestamp)
-                ->subSeconds(3 * 60 * 60)
+                ->subSeconds(app(\App\Services\MpSettingsService::class)->getTrendyolTimestampOffsetSeconds())
                 ->setTimezone(config('app.timezone', 'Europe/Istanbul'))
                 ->toIso8601String();
         }

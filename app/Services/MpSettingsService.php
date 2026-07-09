@@ -269,6 +269,16 @@ class MpSettingsService
         return $this->normalizePerPage($this->getInt('ui.orders_per_page', 20), 20);
     }
 
+    public function getTrendyolTimestampOffsetSeconds(): int
+    {
+        return $this->normalizeTrendyolTimestampOffset($this->getInt('orders.trendyol_timestamp_offset_seconds', 10800));
+    }
+
+    public function normalizeTrendyolTimestampOffset(int $value): int
+    {
+        return ($value >= -43200 && $value <= 50400) ? $value : 10800;
+    }
+
     public function getProductsPerPage(): int
     {
         return $this->normalizePerPage($this->getInt('ui.products_per_page', 25), 25);
@@ -547,6 +557,9 @@ class MpSettingsService
                 'marketplace'           => 'Trendyol',
                 'currency'              => 'TRY',
                 'default_cargo_company' => 'TEX',
+            ],
+            'orders' => [
+                'trendyol_timestamp_offset_seconds' => 10800,
             ],
             'ui' => [
                 'visible_columns' => ['siparis', 'urun', 'durum', 'brut', 'hakedis', 'komisyon', 'kargo', 'detay'],

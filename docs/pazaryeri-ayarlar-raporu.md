@@ -82,7 +82,7 @@ Aşağıda her bir pazaryeri alt modülü için **mevcut ayarların yetmediği, 
 | S-7 | **Diyagnostik geriye dönük pencere** | Hardcoded 168 saat | Kullanıcı 1 hafta değil, 1 ay geriye bakmak isteyebilir | `orders.diagnostics_lookback_hours` |
 | S-8 | **Varsayılan renk etiketi filtresi** | Renk etiketleri var ama filtre tercihi kaydedilmiyor | Kullanıcı sürekli aynı etikete göre filtreler | `orders.default_color_label` |
 | S-9 | **Sipariş durumu filtresi tercihi** | Varsayılan açık durumlar | Kullanıcı bazen "kargoya verildi" filtresiyle açmak isteyebilir | `orders.default_status_filter` |
-| S-10 | **Trendyol zaman damgası ofseti** | Hardcoded 10800 saniye (3 saat), store timezone'u override ediyor | Her firma farklı timezone'da olabilir (AB'de satış yapan firmalar) | `orders.trendyol_timestamp_offset_seconds` |
+| S-10 | **Trendyol zaman damgası ofseti** | ✅ DÜZELTİLDİ — `orders.trendyol_timestamp_offset_seconds` (vars. 10800, -43200..50400), persistent; MarketplaceOrders ve TrendyolConnector kullanıyor | Her firma farklı timezone'da olabilir (AB'de satış yapan firmalar) | — |
 
 ---
 
@@ -299,7 +299,7 @@ reports.auto_refresh_interval       → Otomatik yenileme süresi
 3. ~~**P-1** — Ürün formu KDV oranı~~ ✅ Tamamlandı
 4. ~~**M-1** — Para birimi seçimi~~ ✅ Tamamlandı
 5. ~~**ES-1** — Eşleştirme ağırlıkları~~ ✅ Tamamlandı
-6. **S-10** — Trendyol zaman damgası offset'i (AB firmaları için kritik)
+6. ~~**S-10** — Trendyol zaman damgası offset'i~~ ✅ Tamamlandı
 7. **C-1, C-2** — Dinamik desi/barem aralıkları (şirketler kendi anlaşmalarına göre değiştirir)
 
 ### Orta Öncelik (Yakın Zamanda)

@@ -734,4 +734,64 @@ class MarketplaceSettingsTest extends TestCase
 
         $this->assertTrue($service->getAutoRunMatchingOnSync());
     }
+
+    public function test_trendyol_timestamp_offset_defaults_to_10800(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $this->assertSame(10800, $service->getTrendyolTimestampOffsetSeconds());
+    }
+
+    public function test_trendyol_timestamp_offset_can_be_set_to_7200(): void
+    {
+        $user = User::factory()->create();
+        $service = new MpSettingsService($user->id);
+
+        $service->set('orders.trendyol_timestamp_offset_seconds', 7200);
+
+        $this->assertSame(7200, $service->getTrendyolTimestampOffsetSeconds());
+    }
+
+    public function test_trendyol_timestamp_offset_normalizes_invalid(): void
+    {
+        $service = new MpSettingsService(User::factory()->create()->id);
+
+        $this->assertSame(10800, $service->normalizeTrendyolTimestampOffset(-43201));
+        $this->assertSame(10800, $service->normalizeTrendyolTimestampOffset(50401));
+        $this->assertSame(-3600, $service->normalizeTrendyolTimestampOffset(-3600));
+        $this->assertSame(0, $service->normalizeTrendyolTimestampOffset(0));
+        $this->assertSame(-43200, $service->normalizeTrendyolTimestampOffset(-43200));
+        $this->assertSame(50400, $service->normalizeTrendyolTimestampOffset(50400));
+        $this->assertSame(7200, $service->normalizeTrendyolTimestampOffset(7200));
+    }
+
+    public function test_settings_saves_trendyol_timestamp_offset(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceSettings::class)
+            ->set('trendyolTimestampOffsetSeconds', 7200)
+            ->call('saveSettings');
+
+        $settings = MpAccountingSetting::where('user_id', $user->id)->firstOrFail();
+
+        $this->assertSame(7200, data_get($settings->settings, 'orders.trendyol_timestamp_offset_seconds'));
+    }
+
+    public function test_settings_resets_trendyol_timestamp_offset(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceSettings::class)
+            ->set('trendyolTimestampOffsetSeconds', 7200)
+            ->call('saveSettings');
+
+        Livewire::test(MarketplaceSettings::class)
+            ->call('resetUiSettings')
+            ->assertSet('trendyolTimestampOffsetSeconds', 10800);
+    }
 }
