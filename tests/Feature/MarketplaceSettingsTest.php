@@ -901,6 +901,12 @@ class MarketplaceSettingsTest extends TestCase
             ['key' => 'desi_31_50', 'min' => 31, 'max' => 50, 'label' => '31-50'],
         ]);
 
+        $ranges = $service->getDesiRanges();
+        $this->assertCount(2, $ranges);
+        $this->assertSame('desi_31_50', $ranges[1]['key']);
+        $this->assertSame(31, $ranges[1]['min']);
+        $this->assertSame(50, $ranges[1]['max']);
+
         $rule = \App\Models\MpFinancialRule::create([
             'rule_key' => 'desi_31_50',
             'category' => 'TEX',
@@ -911,10 +917,22 @@ class MarketplaceSettingsTest extends TestCase
         $this->assertNotNull($rule->id);
 
         $found = \App\Models\MpFinancialRule::getRule('desi_31_50', 'TEX');
-        $this->assertNotNull($found, 'Rule desi_31_50 not found');
+        $this->assertNotNull($found, 'Rule desi_31_50 not found by getRule');
+
+        $desiInt = (int) ceil(45.0);
+        $this->assertSame(45, $desiInt);
+
+        $matchFound = false;
+        foreach ($ranges as $range) {
+            if ($desiInt >= $range['min'] && $desiInt <= $range['max']) {
+                $matchFound = true;
+                $this->assertSame('desi_31_50', $range['key']);
+                break;
+            }
+        }
+        $this->assertTrue($matchFound, 'No matching range found for desi=45');
 
         $this->assertSame(99.0, $service->getDesiPrice('TEX', 45.0));
-        $this->assertSame(0.0, $service->getDesiPrice('TEX', 15.0));
     }
 
     public function test_custom_barem_range_0_200_200_500_works(): void

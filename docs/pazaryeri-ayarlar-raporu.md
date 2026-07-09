@@ -130,8 +130,8 @@ Aşağıda her bir pazaryeri alt modülü için **mevcut ayarların yetmediği, 
 
 | # | Ayar | Açıklama | Neden Gerekli | Önerilen Key |
 |---|---|---|---|---|
-| C-1 | **Desi aralıkları dinamik** | 9 sabit aralık var (0-2, 3, 4, 5, 10, 15, 20, 25, 30), aralık eklenemiyor | Firma kendi kargo anlaşmasına göre farklı aralıklar kullanabilir | `cargo.desi_ranges` (dinamik array) |
-| C-2 | **Barem aralıkları dinamik** | Sadece 0-150 ve 150-300 var, eklenemiyor | Bazı firmalarda barem 0-200, 200-500 gibi aralıklar kullanılır | `cargo.barem_ranges` (dinamik array) |
+| C-1 | **Desi aralıkları dinamik** | ✅ DÜZELTİLDİ — `cargo.desi_ranges` (9 varsayılan, dinamik ekleme/çıkarma), UI ile aralık yönetimi mevcut | Firma kendi kargo anlaşmasına göre farklı aralıklar kullanabilir | — |
+| C-2 | **Barem aralıkları dinamik** | ✅ DÜZELTİLDİ — `cargo.barem_ranges` (2 varsayılan, dinamik ekleme/çıkarma), UI ile aralık yönetimi mevcut, barem_limit custom range max'i dikkate alıyor | Bazı firmalarda barem 0-200, 200-500 gibi aralıklar kullanılır | — |
 | C-3 | **Varsayılan kargo firması (gönderici)** | Sürat ayarlarında Denizli hardcoded | Firma konumu settings'den gelmeli | `cargo.default_origin_city` |
 | C-4 | **Kargo desi üst sınırı** | Hardcoded 30 desi | Büyük mobilya firmaları 50+ desi gönderir | `cargo.max_desi_limit` |
 | C-5 | **Kargo raporu varsayılan periyodu** | Hardcoded 30 gün | Kullanıcı tercihini kaydetmeli | `cargo.default_report_period` |
@@ -300,7 +300,7 @@ reports.auto_refresh_interval       → Otomatik yenileme süresi
 4. ~~**M-1** — Para birimi seçimi~~ ✅ Tamamlandı
 5. ~~**ES-1** — Eşleştirme ağırlıkları~~ ✅ Tamamlandı
 6. ~~**S-10** — Trendyol zaman damgası offset'i~~ ✅ Tamamlandı
-7. **C-1, C-2** — Dinamik desi/barem aralıkları (şirketler kendi anlaşmalarına göre değiştirir)
+7. ~~**C-1, C-2** — Dinamik desi/barem aralıkları~~ ✅ Tamamlandı
 
 ### Orta Öncelik (Yakın Zamanda)
 
