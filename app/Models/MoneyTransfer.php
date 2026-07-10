@@ -15,6 +15,9 @@ class MoneyTransfer extends Model
             'transfer_date' => 'date',
             'amount'        => 'decimal:2',
             'exchange_rate' => 'decimal:6',
+            'posted_at'     => 'datetime',
+            'voided_at'     => 'datetime',
+            'meta_json'     => 'array',
         ];
     }
 
@@ -37,4 +40,10 @@ class MoneyTransfer extends Model
     {
         return $this->belongsTo(JournalEntry::class);
     }
+
+    public function legalEntity(): BelongsTo
+    {
+        return $this->belongsTo(LegalEntity::class);
+    }
+
 }

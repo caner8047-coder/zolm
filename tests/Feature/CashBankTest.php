@@ -5,10 +5,13 @@ namespace Tests\Feature;
 use App\Models\Account;
 use App\Models\BankAccount;
 use App\Models\CashAccount;
+use App\Models\MoneyTransfer;
 use App\Models\User;
+use Database\Seeders\ChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\TestCase;
+
 
 class CashBankTest extends TestCase
 {
@@ -196,5 +199,108 @@ class CashBankTest extends TestCase
             ->set('transferAmount', 100.00)
             ->call('executeTransfer')
             ->assertSet('messageType', 'error');
+    }
+
+    public function test_dropdown_excludes_other_users_and_non_cash_bank_accounts(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $user1 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $user2 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        (new ChartOfAccountsSeeder())->runForUser($user1->id);
+        (new ChartOfAccountsSeeder())->runForUser($user2->id);
+
+        // User 2 cash account
+        $cash2 = Account::create([
+            'user_id' => $user2->id,
+            'code' => '100.02',
+            'name' => 'User2 Kasa',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_cash_account' => true,
+        ]);
+
+        // User 1 cash account
+        $cash1 = Account::create([
+            'user_id' => $user1->id,
+            'code' => '100.01',
+            'name' => 'User1 Kasa',
+            'type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_cash_account' => true,
+        ]);
+
+        // Non cash/bank account (e.g. 120 AR account)
+        $arAccount = Account::where('user_id', $user1->id)->where('is_ar_account', true)->first();
+
+        $component = Livewire::actingAs($user1)
+            ->test('accounting.cash-bank');
+
+        $accounts = $component->instance()->transferableAccounts;
+
+        // Should contain user 1 cash
+        $this->assertTrue($accounts->contains('id', $cash1->id));
+        // Should NOT contain user 2 cash
+        $this->assertFalse($accounts->contains('id', $cash2->id));
+        // Should NOT contain non cash/bank account
+        $this->assertFalse($accounts->contains('id', $arAccount->id));
+    }
+
+    public function test_search_filter_does_not_leak_tenant_records(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $user1 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $user2 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+
+        // User 2 cash with specific name
+        $cash2 = CashAccount::create([
+            'user_id' => $user2->id,
+            'account_id' => Account::create([
+                'user_id' => $user2->id,
+                'code' => '100.02',
+                'name' => 'LEAK_SEARCH_TERM',
+                'type' => 'asset',
+                'normal_balance' => 'debit',
+                'is_cash_account' => true,
+            ])->id,
+            'name' => 'LEAK_SEARCH_TERM',
+            'currency_code' => 'TRY',
+            'is_active' => true,
+        ]);
+
+        $component = Livewire::actingAs($user1)
+            ->test('accounting.cash-bank')
+            ->set('search', 'LEAK_SEARCH_TERM');
+
+        $this->assertCount(0, $component->instance()->cashAccounts);
+    }
+
+
+    public function test_void_transfer_action_via_ui(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        (new ChartOfAccountsSeeder())->runForUser($user->id);
+
+        $service = app(\App\Services\Accounting\CashBankService::class);
+        $cash = $service->createCashAccount($user->id, 'Kasa');
+        $bank = $service->createBankAccount($user->id, ['bank_name' => 'Banka']);
+
+        $transfer = $service->transferFunds([
+            'user_id'         => $user->id,
+            'from_account_id' => $cash->account->id,
+            'to_account_id'   => $bank->account->id,
+            'amount'          => 100.00,
+            'transfer_date'   => now()->toDateString(),
+        ]);
+
+        Livewire::actingAs($user)
+            ->test('accounting.cash-bank')
+            ->call('voidTransfer', $transfer->id)
+            ->assertSet('messageType', 'success');
+
+        $this->assertEquals('voided', $transfer->fresh()->status);
     }
 }
