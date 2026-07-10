@@ -275,7 +275,9 @@ class SalesTest extends TestCase
         // Cancel the order
         Livewire::actingAs($user)
             ->test('accounting.sales')
-            ->call('cancelOrder', $order->id)
+            ->call('confirmCancel', $order->id)
+            ->set('cancelReason', 'Müşteri talebi')
+            ->call('cancelOrder')
             ->assertSet('messageType', 'success');
 
         $this->assertEquals('cancelled', $order->fresh()->status);
@@ -313,5 +315,266 @@ class SalesTest extends TestCase
             ])
             ->call('createSalesOrder')
             ->assertSet('messageType', 'error');
+    }
+
+    public function test_cannot_create_sales_order_if_party_not_customer(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $party = Party::factory()->create(['user_id' => $user->id]);
+        $party->roles()->create(['user_id' => $user->id, 'role' => 'supplier']);
+
+        Livewire::actingAs($user)
+            ->test('accounting.sales')
+            ->set('partyId', $party->id)
+            ->set('documentNumber', 'FAT-NO-CUST')
+            ->set('items', [
+                ['stock_code' => 'PRD-ANY', 'quantity' => 1, 'unit_price' => 10.00, 'vat_rate' => 20.00],
+            ])
+            ->call('createSalesOrder')
+            ->assertSet('messageType', 'error');
+    }
+
+    public function test_cannot_cancel_sales_order_if_already_paid(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $party = Party::factory()->create(['user_id' => $user->id]);
+        $party->roles()->create(['user_id' => $user->id, 'role' => 'customer']);
+
+        (new \Database\Seeders\ChartOfAccountsSeeder())->runForUser($user->id);
+
+        $warehouse = Warehouse::create([
+            'user_id' => $user->id,
+            'name' => 'Main',
+            'code' => 'depo-main',
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+
+        $product = MpProduct::create([
+            'user_id' => $user->id,
+            'stock_code' => 'PRD-X',
+            'product_name' => 'Fancy Shirt',
+            'barcode' => 'BAR-X',
+        ]);
+
+        StockBalance::create([
+            'user_id' => $user->id,
+            'warehouse_id' => $warehouse->id,
+            'stock_code' => 'PRD-X',
+            'quantity' => 10,
+        ]);
+
+        $tradeService = app(\App\Services\Accounting\TradeService::class);
+        $order = $tradeService->createSalesOrder([
+            'user_id' => $user->id,
+            'party_id' => $party->id,
+            'document_number' => 'FAT-001',
+            'order_date' => now()->toDateString(),
+        ], [
+            ['stock_code' => 'PRD-X', 'quantity' => 3, 'unit_price' => 100.00, 'vat_rate' => 20.00],
+        ]);
+
+        $tradeService->approveSalesOrder($order);
+
+        // Mark receivable as paid/partially paid
+        $receivable = Receivable::find($order->receivable_id);
+        $receivable->update([
+            'paid_amount' => 100.00,
+            'status' => 'partially_paid'
+        ]);
+
+        // Attempt cancel
+        Livewire::actingAs($user)
+            ->test('accounting.sales')
+            ->call('confirmCancel', $order->id)
+            ->call('cancelOrder')
+            ->assertSet('messageType', 'error');
+
+        $this->assertEquals('approved', $order->fresh()->status);
+    }
+
+    public function test_sorting_and_visibility(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+
+        $component = Livewire::actingAs($user)
+            ->test('accounting.sales');
+
+        $component->assertSet('sortColumn', 'id')
+            ->assertSet('sortDirection', 'desc')
+            ->call('sortTable', 'total_amount')
+            ->assertSet('sortColumn', 'total_amount')
+            ->assertSet('sortDirection', 'asc')
+            ->call('sortTable', 'total_amount')
+            ->assertSet('sortDirection', 'desc');
+
+        // Column toggles using PHP assert
+        $visible = $component->get('visibleColumns');
+        $this->assertContains('document_number', $visible);
+
+        $component->call('toggleColumn', 'document_number');
+        $visible = $component->get('visibleColumns');
+        $this->assertNotContains('document_number', $visible);
+
+        $component->call('toggleColumn', 'document_number');
+        $visible = $component->get('visibleColumns');
+        $this->assertContains('document_number', $visible);
+    }
+
+    public function test_cannot_cancel_with_allocation(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $party = Party::factory()->create(['user_id' => $user->id]);
+        $party->roles()->create(['user_id' => $user->id, 'role' => 'customer']);
+
+        (new \Database\Seeders\ChartOfAccountsSeeder())->runForUser($user->id);
+
+        $warehouse = Warehouse::create([
+            'user_id' => $user->id,
+            'name' => 'Main',
+            'code' => 'depo-main',
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+
+        $product = MpProduct::create([
+            'user_id' => $user->id,
+            'stock_code' => 'PRD-X',
+            'product_name' => 'Fancy Shirt',
+            'barcode' => 'BAR-X',
+        ]);
+
+        StockBalance::create([
+            'user_id' => $user->id,
+            'warehouse_id' => $warehouse->id,
+            'stock_code' => 'PRD-X',
+            'quantity' => 10,
+        ]);
+
+        $tradeService = app(\App\Services\Accounting\TradeService::class);
+        $order = $tradeService->createSalesOrder([
+            'user_id' => $user->id,
+            'party_id' => $party->id,
+            'document_number' => 'FAT-ALL-1',
+            'order_date' => now()->toDateString(),
+        ], [
+            ['stock_code' => 'PRD-X', 'quantity' => 3, 'unit_price' => 100.00, 'vat_rate' => 20.00],
+        ]);
+
+        $tradeService->approveSalesOrder($order);
+
+        // Seed bank account and collection first using CashBankService to satisfy database schema requirements
+        $bankAcc = app(\App\Services\Accounting\CashBankService::class)->createBankAccount($user->id, [
+            'bank_name'      => 'Garanti',
+            'account_number' => '123',
+            'currency_code'  => 'TRY',
+        ]);
+        $collection = \App\Models\Collection::create([
+            'user_id' => $user->id,
+            'party_id' => $party->id,
+            'account_id' => $bankAcc->account->id,
+            'amount' => 50.00,
+            'collection_date' => now()->toDateString(),
+            'payment_method' => 'bank',
+            'status' => 'posted',
+        ]);
+
+        // Create a fake allocation
+        \App\Models\ReceivableAllocation::create([
+            'user_id' => $user->id,
+            'receivable_id' => $order->receivable_id,
+            'collection_id' => $collection->id,
+            'amount' => 50.00,
+        ]);
+
+        // Attempt cancel
+        Livewire::actingAs($user)
+            ->test('accounting.sales')
+            ->call('confirmCancel', $order->id)
+            ->call('cancelOrder')
+            ->assertSet('messageType', 'error');
+
+        $this->assertEquals('approved', $order->fresh()->status);
+    }
+
+    public function test_ui_search_does_not_leak_other_user_orders(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $user1 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $user2 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+
+        $party1 = Party::factory()->create(['user_id' => $user1->id]);
+        $party1->roles()->create(['user_id' => $user1->id, 'role' => 'customer']);
+
+        $party2 = Party::factory()->create(['user_id' => $user2->id]);
+        $party2->roles()->create(['user_id' => $user2->id, 'role' => 'customer']);
+
+        // Seed PRD-ANY for both users to allow order creation
+        MpProduct::create([
+            'user_id' => $user1->id,
+            'stock_code' => 'PRD-ANY',
+            'product_name' => 'Any Product U1',
+            'barcode' => 'BAR-1',
+        ]);
+        MpProduct::create([
+            'user_id' => $user2->id,
+            'stock_code' => 'PRD-ANY',
+            'product_name' => 'Any Product U2',
+            'barcode' => 'BAR-2',
+        ]);
+
+        $tradeService = app(\App\Services\Accounting\TradeService::class);
+
+        // Order for User 1
+        $order1 = $tradeService->createSalesOrder([
+            'user_id' => $user1->id,
+            'party_id' => $party1->id,
+            'document_number' => 'FAT-U1',
+            'order_date' => now()->toDateString(),
+        ], [
+            ['stock_code' => 'PRD-ANY', 'quantity' => 1, 'unit_price' => 10.00, 'vat_rate' => 0.00],
+        ]);
+
+        // Order for User 2
+        $order2 = $tradeService->createSalesOrder([
+            'user_id' => $user2->id,
+            'party_id' => $party2->id,
+            'document_number' => 'FAT-U2',
+            'order_date' => now()->toDateString(),
+        ], [
+            ['stock_code' => 'PRD-ANY', 'quantity' => 1, 'unit_price' => 10.00, 'vat_rate' => 0.00],
+        ]);
+
+        // Accessing UI as User 1
+        $component = Livewire::actingAs($user1)
+            ->test('accounting.sales')
+            ->set('search', 'FAT');
+
+        $orders = $component->instance()->orders;
+        $ids = collect($orders->items())->pluck('id')->all();
+        $this->assertContains($order1->id, $ids);
+        $this->assertNotContains($order2->id, $ids);
+    }
+
+    public function test_sort_table_ignores_non_whitelisted_column(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+
+        Livewire::actingAs($user)
+            ->test('accounting.sales')
+            ->assertSet('sortColumn', 'id')
+            ->call('sortTable', 'non_existent_column_injection')
+            ->assertSet('sortColumn', 'id'); // Should remain 'id'
     }
 }

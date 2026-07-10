@@ -112,6 +112,16 @@ class PosService
                     ]);
                 }
                 $partyId = $party->id;
+            } else {
+                $party = Party::where('user_id', $userId)->findOrFail($partyId);
+            }
+
+            // Ensure customer role exists on the party
+            if (!$party->roles()->where('role', 'customer')->exists()) {
+                $party->roles()->create([
+                    'user_id' => $userId,
+                    'role'    => 'customer',
+                ]);
             }
 
             // Döküman numarası üret

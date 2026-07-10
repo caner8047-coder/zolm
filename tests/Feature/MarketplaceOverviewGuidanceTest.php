@@ -136,7 +136,7 @@ class MarketplaceOverviewGuidanceTest extends TestCase
     public function test_it_surfaces_woocommerce_safe_profile_guidance_in_overview(): void
     {
         $user = User::factory()->create();
-        $suffix = (string) random_int(100000, 999999);
+        $suffix = (string) random_int(10000000, 99999999);
 
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,

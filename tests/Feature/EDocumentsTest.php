@@ -44,6 +44,7 @@ class EDocumentsTest extends TestCase
 
         $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
         $party = Party::factory()->create(['user_id' => $user->id]);
+        $party->roles()->create(['user_id' => $user->id, 'role' => 'customer']);
 
         $tradeService = app(\App\Services\Accounting\TradeService::class);
         $order = $tradeService->createSalesOrder([
@@ -79,6 +80,7 @@ class EDocumentsTest extends TestCase
 
         $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
         $party = Party::factory()->create(['user_id' => $user->id]);
+        $party->roles()->create(['user_id' => $user->id, 'role' => 'customer']);
 
         $tradeService = app(\App\Services\Accounting\TradeService::class);
         $order = $tradeService->createSalesOrder([
@@ -109,6 +111,7 @@ class EDocumentsTest extends TestCase
 
         $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
         $party = Party::factory()->create(['user_id' => $user->id]);
+        $party->roles()->create(['user_id' => $user->id, 'role' => 'customer']);
 
         $tradeService = app(\App\Services\Accounting\TradeService::class);
         $order = $tradeService->createSalesOrder([
@@ -144,6 +147,7 @@ class EDocumentsTest extends TestCase
         $user2 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
 
         $party2 = Party::factory()->create(['user_id' => $user2->id]);
+        $party2->roles()->create(['user_id' => $user2->id, 'role' => 'customer']);
 
         $tradeService = app(\App\Services\Accounting\TradeService::class);
         $order2 = $tradeService->createSalesOrder([

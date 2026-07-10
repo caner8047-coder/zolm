@@ -68,6 +68,14 @@ class MarketplaceFinanceBridgeService
                 }
             }
 
+            // Ensure customer role exists on the party
+            if (!$party->roles()->where('role', 'customer')->exists()) {
+                $party->roles()->create([
+                    'user_id' => $userId,
+                    'role'    => 'customer',
+                ]);
+            }
+
             // Siparişteki items bilgilerinden satırları hazırla
             $items = [];
             foreach ($order->items as $item) {

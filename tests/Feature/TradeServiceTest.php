@@ -29,6 +29,8 @@ class TradeServiceTest extends TestCase
 
         $this->user = User::factory()->create(['is_active' => true]);
         $this->party = Party::factory()->create(['user_id' => $this->user->id]);
+        $this->party->roles()->create(['user_id' => $this->user->id, 'role' => 'customer']);
+        $this->party->roles()->create(['user_id' => $this->user->id, 'role' => 'supplier']);
 
         $seeder = new ChartOfAccountsSeeder();
         $seeder->runForUser($this->user->id);
@@ -37,6 +39,17 @@ class TradeServiceTest extends TestCase
 
         // Seed default warehouse
         $this->warehouse = app(StockService::class)->createWarehouse($this->user->id, 'Merkez Depo', 'depo-merkez', true);
+
+        // Seed MpProducts to satisfy stock_code verification
+        $stockCodes = ['P-1', 'P-2', 'STOCK-A', 'RAW-1', 'RAW-2', 'ITEM-A', 'STOCK-MULTI', 'PRD-ANY'];
+        foreach ($stockCodes as $code) {
+            MpProduct::create([
+                'user_id' => $this->user->id,
+                'stock_code' => $code,
+                'product_name' => 'Product ' . $code,
+                'barcode' => 'BAR-' . $code,
+            ]);
+        }
     }
 
     public function test_create_sales_order_calculates_total_with_vat(): void
@@ -267,6 +280,409 @@ class TradeServiceTest extends TestCase
                 'stock_code' => 'STOCK-MULTI',
                 'direction'  => 'out',
             ]);
+        }
+    }
+
+    public function test_create_sales_order_rejects_non_customer_party(): void
+    {
+        $nonCustomerParty = Party::factory()->create(['user_id' => $this->user->id]);
+        $nonCustomerParty->roles()->create(['user_id' => $this->user->id, 'role' => 'supplier']); // not customer
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/cari müşteri rolüne sahip değil/i');
+
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $nonCustomerParty->id,
+            'document_number' => 'SO-NOCUST',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+    }
+
+    public function test_create_sales_order_rejects_other_user_warehouse(): void
+    {
+        $otherUser = User::factory()->create();
+        $otherWarehouse = app(StockService::class)->createWarehouse($otherUser->id, 'Other WH', 'depo-other', true);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/depo bu kullanıcıya ait değil/i');
+
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'warehouse_id'    => $otherWarehouse->id,
+            'document_number' => 'SO-BADWH',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+    }
+
+    public function test_source_key_with_different_payload_throws(): void
+    {
+        // First creation
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-PAY-1',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'unique_src_key',
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+
+        // Attempt second creation with different document_number but same source_key
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/farklı başlık detaylarına sahip/i');
+
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-PAY-2', // different
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'unique_src_key',
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+    }
+
+    public function test_same_source_key_different_item_quantity_throws(): void
+    {
+        // First creation
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-QTY-1',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'unique_qty_key',
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+
+        // Attempt second creation with different item quantity
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/farklı kalem detaylarına sahip/i');
+
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-QTY-1',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'unique_qty_key',
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 2, 'unit_price' => 10], // different quantity
+        ]);
+    }
+
+    public function test_same_source_key_different_warehouse_throws(): void
+    {
+        // Create secondary warehouse
+        $whSecondary = app(StockService::class)->createWarehouse($this->user->id, 'Second WH', 'depo-wh-2', false);
+
+        // First creation
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'warehouse_id'    => $this->warehouse->id,
+            'document_number' => 'SO-WH-1',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'unique_wh_key',
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+
+        // Attempt second creation with different warehouse
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/farklı başlık detaylarına sahip/i');
+
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'warehouse_id'    => $whSecondary->id, // different warehouse
+            'document_number' => 'SO-WH-1',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'unique_wh_key',
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+    }
+
+    public function test_same_source_key_different_legal_entity_throws(): void
+    {
+        $legalEntity = \App\Models\LegalEntity::create([
+            'user_id' => $this->user->id,
+            'name' => 'Firma Test 1',
+            'tax_number' => '1234567890',
+            'company_type' => 'limited',
+            'is_active' => true,
+        ]);
+
+        // First creation with legal_entity_id set
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'legal_entity_id' => $legalEntity->id,
+            'document_number' => 'SO-LE-1',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'unique_le_key',
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+
+        // Attempt second creation with missing/null legal_entity_id
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/farklı başlık detaylarına sahip/i');
+
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'legal_entity_id' => null, // missing/null
+            'document_number' => 'SO-LE-1',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'unique_le_key',
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+    }
+
+    public function test_same_source_key_different_default_warehouse_throws(): void
+    {
+        // First creation uses warehouse_id explicitly
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'warehouse_id'    => $this->warehouse->id,
+            'document_number' => 'SO-DEFWH-1',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'unique_defwh_key',
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+
+        // Change default warehouse to a secondary warehouse
+        $whSecondary = app(StockService::class)->createWarehouse($this->user->id, 'Second WH', 'depo-wh-2', true); // set as default
+
+        // Attempt second creation with warehouse_id omitted (should resolve to new default warehouse, which is different)
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/farklı başlık detaylarına sahip/i');
+
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'warehouse_id'    => null, // omitted/null
+            'document_number' => 'SO-DEFWH-1',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'unique_defwh_key',
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+    }
+
+    public function test_approve_writes_stock_movement_source_key_and_warehouse(): void
+    {
+        app(StockService::class)->recordMovement([
+            'user_id'       => $this->user->id,
+            'warehouse_id'  => $this->warehouse->id,
+            'stock_code'    => 'P-1',
+            'movement_type' => 'in_adjustment',
+            'direction'     => 'in',
+            'quantity'      => 10,
+        ]);
+
+        $order = $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'warehouse_id'    => $this->warehouse->id,
+            'document_number' => 'SO-MVT-1',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 2, 'unit_price' => 100],
+        ]);
+
+        $this->service->approveSalesOrder($order);
+
+        $this->assertDatabaseHas('stock_movements', [
+            'user_id'          => $this->user->id,
+            'warehouse_id'     => $this->warehouse->id,
+            'stock_code'       => 'P-1',
+            'direction'        => 'out',
+            'source_type'      => 'sales_order',
+            'source_id'        => $order->id,
+            'source_key'       => 'sales_order_stock_out_' . $order->id . '_' . $order->items->first()->id,
+            'reference_number' => 'SO-MVT-1',
+        ]);
+    }
+
+    public function test_cancel_returns_stock_to_original_warehouse(): void
+    {
+        // Create 2 warehouses
+        $whSecondary = app(StockService::class)->createWarehouse($this->user->id, 'Second', 'depo-2', false);
+
+        // Put stock in secondary warehouse
+        app(StockService::class)->recordMovement([
+            'user_id'       => $this->user->id,
+            'warehouse_id'  => $whSecondary->id,
+            'stock_code'    => 'P-1',
+            'movement_type' => 'in_adjustment',
+            'direction'     => 'in',
+            'quantity'      => 10,
+        ]);
+
+        // Create Sales Order targeting secondary warehouse
+        $order = $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'warehouse_id'    => $whSecondary->id,
+            'document_number' => 'SO-WH-2',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 4, 'unit_price' => 50],
+        ]);
+
+        $this->service->approveSalesOrder($order);
+
+        // Change default warehouse
+        $whNewDefault = app(StockService::class)->createWarehouse($this->user->id, 'New Default', 'depo-3', true);
+
+        // Cancel order
+        $this->service->cancelSalesOrder($order, 'Test Cancel');
+
+        // Stock in secondary warehouse should return to 10
+        $this->assertEquals(10, app(StockService::class)->getStockLevel($this->user->id, 'P-1', $whSecondary->id));
+        // Stock in new default warehouse should remain 0
+        $this->assertEquals(0, app(StockService::class)->getStockLevel($this->user->id, 'P-1', $whNewDefault->id));
+    }
+
+    public function test_cancel_receivable_journal_party_ledger_all_voided(): void
+    {
+        app(StockService::class)->recordMovement([
+            'user_id'       => $this->user->id,
+            'warehouse_id'  => $this->warehouse->id,
+            'stock_code'    => 'P-1',
+            'movement_type' => 'in_adjustment',
+            'direction'     => 'in',
+            'quantity'      => 10,
+        ]);
+
+        $order = $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-VOID-ALL',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 2, 'unit_price' => 50, 'vat_rate' => 0.00],
+        ]);
+
+        $this->service->approveSalesOrder($order);
+
+        $this->service->cancelSalesOrder($order, 'İptal Nedeni');
+
+        $order->refresh();
+        $this->assertEquals('cancelled', $order->status);
+        $this->assertEquals('İptal Nedeni', $order->cancel_reason);
+
+        // Receivable status must be voided
+        $this->assertDatabaseHas('receivables', [
+            'id' => $order->receivable_id,
+            'status' => 'voided',
+        ]);
+
+        // JournalEntry must be voided
+        $receivable = \App\Models\Receivable::find($order->receivable_id);
+        $this->assertNotNull($receivable->journal_entry_id);
+        $journalEntry = \App\Models\JournalEntry::find($receivable->journal_entry_id);
+        $this->assertTrue($journalEntry->isVoid());
+
+        // Party Ledger Entry must be voided
+        $ledgerEntry = \App\Models\PartyLedgerEntry::where('user_id', $this->user->id)
+            ->where('source_type', 'sales_order')
+            ->where('source_key', 'sales_order_post_' . $order->id)
+            ->first();
+        $this->assertTrue($ledgerEntry->isVoid());
+    }
+
+    public function test_create_sales_order_rejects_empty_item_list(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/sipariş kalemi bulunamadı/i');
+
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-EMPTY',
+            'order_date'      => now()->toDateString(),
+        ], []);
+    }
+
+    public function test_create_sales_order_rejects_duplicate_document_number(): void
+    {
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-DUP-1',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/zaten mevcut/i');
+
+        $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-DUP-1',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 10],
+        ]);
+    }
+
+    public function test_create_sales_order_calculates_correctly_with_discounts(): void
+    {
+        $order = $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-DISC-TEST',
+            'order_date'      => now()->toDateString(),
+            'discount_amount' => 15.00, // Header discount
+        ], [
+            // quantity * price = 200. line discount 10% -> 20. line total before vat = 180. VAT 20% -> 36. line total = 216
+            ['stock_code' => 'P-1', 'quantity' => 2, 'unit_price' => 100, 'vat_rate' => 20.00, 'discount_rate' => 10.00],
+        ]);
+
+        // subtotal = 200
+        // total discount = 20 (line) + 15 (header) = 35
+        // vat = 36
+        // total = 200 - 35 + 36 = 201
+        $this->assertEquals(201.00, (float) $order->total_amount);
+        $this->assertEquals(35.00, (float) $order->discount_amount);
+    }
+
+    public function test_approve_sales_order_rollback_on_failed_stock(): void
+    {
+        // No stock seeded for P-1
+        $order = $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-ROLLBACK',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 5, 'unit_price' => 10],
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/yetersiz stok/i');
+
+        try {
+            $this->service->approveSalesOrder($order);
+        } finally {
+            $order->refresh();
+            $this->assertEquals('draft', $order->status);
+            $this->assertNull($order->receivable_id);
+            $this->assertDatabaseMissing('receivables', ['document_number' => 'SO-ROLLBACK']);
         }
     }
 }

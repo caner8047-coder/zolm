@@ -17,7 +17,26 @@ class SalesOrder extends Model
             'total_amount'    => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'exchange_rate'   => 'decimal:6',
+            'approved_at'     => 'datetime',
+            'cancelled_at'    => 'datetime',
+            'due_date'        => 'date',
+            'meta_json'       => 'array',
         ];
+    }
+
+    public function isDraft(): bool
+    {
+        return $this->status === 'draft';
+    }
+
+    public function isApproved(): bool
+    {
+        return $this->status === 'approved';
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === 'cancelled';
     }
 
     public function user(): BelongsTo
@@ -43,5 +62,10 @@ class SalesOrder extends Model
     public function receivable(): BelongsTo
     {
         return $this->belongsTo(Receivable::class);
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 }

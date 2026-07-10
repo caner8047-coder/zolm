@@ -27,6 +27,7 @@ class EDocumentServiceTest extends TestCase
 
         $this->user = User::factory()->create(['is_active' => true]);
         $party = Party::factory()->create(['user_id' => $this->user->id]);
+        $party->roles()->create(['user_id' => $this->user->id, 'role' => 'customer']);
 
         $seeder = new ChartOfAccountsSeeder();
         $seeder->runForUser($this->user->id);

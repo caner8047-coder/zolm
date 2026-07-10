@@ -105,4 +105,36 @@ class PosServiceTest extends TestCase
             'payment_method' => 'credit_card',
         ]);
     }
+
+    public function test_checkout_rejects_other_user_party(): void
+    {
+        $otherUser = User::factory()->create(['is_active' => true]);
+        $otherParty = Party::factory()->create([
+            'user_id' => $otherUser->id,
+            'display_name' => 'Other User Customer',
+        ]);
+
+        $shift = $this->service->openShift($this->terminal, 100.00);
+
+        // Expect Exception because party belongs to other user
+        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+
+        try {
+            $this->service->recordPosSale($shift, [
+                'payment_method' => 'credit_card',
+                'party_id' => $otherParty->id,
+            ], [
+                ['stock_code' => 'POS-BARCODE-01', 'quantity' => 2, 'unit_price' => 50.00, 'vat_rate' => 0.00],
+            ]);
+        } finally {
+            // Verify no role was added to the other party
+            $this->assertFalse($otherParty->roles()->where('role', 'customer')->exists());
+
+            // Verify no sales order, stock movement, collection or journal entry was created
+            $this->assertEquals(0, \App\Models\SalesOrder::count());
+            $this->assertEquals(0, \App\Models\StockMovement::count());
+            $this->assertEquals(0, \App\Models\Collection::count());
+            $this->assertEquals(0, \App\Models\JournalEntry::count());
+        }
+    }
 }
