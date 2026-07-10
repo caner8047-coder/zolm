@@ -692,13 +692,13 @@
                             </div>
                         </div>
 
-                        @if(!empty($partySummary))
+                        @if(config('marketplace.features.party_core_enabled', false) && config('marketplace.features.accounting_enabled', false) && !empty($partySummary))
                             <div class="mt-4 rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
                                 @if($partySummary['has_party'])
                                     <div class="flex items-center justify-between gap-3">
                                         <p class="text-xs font-semibold text-slate-900">Cari Açık Hesap Özeti</p>
                                         <a href="{{ route('accounting.party-ledger', ['party' => $partySummary['party_id']]) }}"
-                                           class="shrink-0 rounded-[6px] border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50">
+                                           class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50">
                                             Cari Aç
                                         </a>
                                     </div>

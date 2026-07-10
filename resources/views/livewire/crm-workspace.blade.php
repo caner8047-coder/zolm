@@ -535,6 +535,124 @@
                         </div>
                     @endif
 
+                    {{-- Cari / Muhasebe Özeti (Phase P13) --}}
+                    @if(config('marketplace.features.party_core_enabled', false))
+                        <div class="mt-4 rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm">
+                            <div class="flex items-center justify-between gap-3">
+                                <h3 class="text-xs font-semibold text-slate-900 uppercase tracking-wider">Cari / Muhasebe Özeti</h3>
+                                @if($accountingSummary['has_party'])
+                                    @php
+                                        $pStatus = $accountingSummary['party']['status'] ?? 'active';
+                                    @endphp
+                                    @if($pStatus !== 'active')
+                                        <span class="inline-flex items-center rounded-[6px] border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-700">Pasif Party</span>
+                                    @else
+                                        <span class="inline-flex items-center rounded-[6px] border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Party Bağlı</span>
+                                    @endif
+                                @else
+                                    <span class="inline-flex items-center rounded-[6px] border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-400">Party bağlı değil</span>
+                                @endif
+                            </div>
+
+                            @if($accountingSummary['has_party'])
+                                {{-- Rol badgeleri --}}
+                                @if(!empty($accountingSummary['party']['roles']))
+                                    <div class="mt-2 flex flex-wrap gap-1">
+                                        @foreach($accountingSummary['party']['roles'] as $role)
+                                            <span class="inline-flex items-center rounded-[4px] border border-slate-100 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 uppercase">
+                                                {{ $role === 'customer' ? 'Müşteri' : ($role === 'supplier' ? 'Tedarikçi' : $role) }}
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                @endif
+
+                                @if(config('marketplace.features.accounting_enabled', false) && !empty($accountingSummary['balance']))
+                                    {{-- Net Bakiye ve Yönü --}}
+                                    @php
+                                        $balanceVal = (float) $accountingSummary['balance']['net_balance'];
+                                        $direction = $accountingSummary['balance']['direction'];
+                                        $balanceLabel = $accountingSummary['balance']['label'];
+                                        $balanceTone = $direction === 'receivable' ? 'text-emerald-700' : ($direction === 'payable' ? 'text-rose-700' : 'text-slate-600');
+                                    @endphp
+                                    <div class="mt-3 rounded-[8px] border border-slate-100 bg-slate-50/70 p-3">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-xs text-slate-500">Net Bakiye</span>
+                                            <span class="text-xs font-medium {{ $balanceTone }}">{{ $balanceLabel }}</span>
+                                        </div>
+                                        <div class="mt-1 text-lg font-bold {{ $balanceTone }}">
+                                            ₺{{ number_format(abs($balanceVal), 2, ',', '.') }}
+                                        </div>
+                                    </div>
+
+                                    {{-- Açık Alacak / Borç KPI'ları --}}
+                                    @if(!empty($accountingSummary['open_totals']))
+                                        <div class="mt-2 grid grid-cols-2 gap-2">
+                                            <div class="rounded-[8px] border border-slate-100 bg-slate-50/70 p-2.5">
+                                                <span class="block text-[9px] font-semibold text-slate-400 uppercase">Açık Alacak</span>
+                                                <span class="block mt-1 text-xs font-bold text-slate-900">
+                                                    ₺{{ number_format((float) $accountingSummary['open_totals']['open_receivable'], 2, ',', '.') }}
+                                                </span>
+                                            </div>
+                                            <div class="rounded-[8px] border border-slate-100 bg-slate-50/70 p-2.5">
+                                                <span class="block text-[9px] font-semibold text-slate-400 uppercase">Açık Borç</span>
+                                                <span class="block mt-1 text-xs font-bold text-slate-900">
+                                                    ₺{{ number_format((float) $accountingSummary['open_totals']['open_payable'], 2, ',', '.') }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="mt-1 text-[10px] text-slate-400 text-right">
+                                            {{ $accountingSummary['open_totals']['open_entry_count'] }} adet açık fatura/işlem
+                                        </div>
+                                    @endif
+
+                                    {{-- Son 5 Cari Hareket --}}
+                                    @if(!empty($accountingSummary['latest_entries']))
+                                        <div class="mt-3">
+                                            <h4 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Son Cari Hareketler</h4>
+                                            <div class="space-y-1.5">
+                                                @foreach(array_slice($accountingSummary['latest_entries'], 0, 5) as $entry)
+                                                    @php
+                                                        $isDebit = (float) $entry['debit_amount'] > 0;
+                                                        $amountStr = $isDebit ? '+₺' . number_format($entry['debit_amount'], 2, ',', '.') : '-₺' . number_format($entry['credit_amount'], 2, ',', '.');
+                                                        $amountTone = $isDebit ? 'text-emerald-700' : 'text-rose-700';
+                                                        $docTypeLabel = match($entry['document_type']) {
+                                                            'receivable' => 'Alacak',
+                                                            'collection' => 'Tahsilat',
+                                                            'payable' => 'Borç',
+                                                            'payment' => 'Ödeme',
+                                                            default => $entry['document_type']
+                                                        };
+                                                    @endphp
+                                                    <div class="flex items-center justify-between gap-2 rounded-[6px] border border-slate-100 bg-white px-2 py-1.5 text-[11px]">
+                                                        <div class="min-w-0">
+                                                            <span class="font-medium text-slate-700 block truncate">{{ $entry['description'] ?: $docTypeLabel }}</span>
+                                                            <span class="text-[9px] text-slate-400 block">{{ \Carbon\Carbon::parse($entry['document_date'])->format('d.m.Y') }} · {{ $docTypeLabel }}</span>
+                                                        </div>
+                                                        <span class="shrink-0 font-bold {{ $amountTone }}">{{ $amountStr }}</span>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                    @endif
+
+                                    {{-- Muhasebede Cari Aç Linki (min-h-[44px] touch target) --}}
+                                    @if(!empty($accountingSummary['links']['party_ledger_url']))
+                                        <div class="mt-3">
+                                            <a href="{{ $accountingSummary['links']['party_ledger_url'] }}"
+                                               class="flex min-h-[44px] w-full items-center justify-center rounded-[6px] bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+                                                Muhasebede Cari Aç
+                                            </a>
+                                        </div>
+                                    @endif
+                                @endif
+                            @else
+                                <div class="mt-3 text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-[8px] p-3 text-center">
+                                    Bu CRM kaydı henüz Party/Cari ile eşleşmemiş.
+                                </div>
+                            @endif
+                        </div>
+                    @endif
+
                     <div class="mt-4 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
                         <p class="text-xs font-semibold text-slate-900">Kimlikler</p>
                         <div class="mt-2 flex flex-wrap gap-1.5">

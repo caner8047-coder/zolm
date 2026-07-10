@@ -339,6 +339,18 @@ class CrmWorkspace extends Component
                 'activeFilters' => [],
                 'columnDefs' => static::$allColumnDefs,
                 'sortableColumns' => static::$sortableColumns,
+                'accountingSummary' => [
+                    'enabled' => false,
+                    'has_party' => false,
+                    'party' => null,
+                    'balance' => null,
+                    'open_totals' => null,
+                    'latest_entries' => [],
+                    'links' => [
+                        'party_ledger_url' => null,
+                        'accounting_party_url' => null,
+                    ],
+                ],
             ])->layout('layouts.app', ['title' => 'CRM']);
         }
 
@@ -360,6 +372,7 @@ class CrmWorkspace extends Component
             'activeFilters' => $this->activeFilters(),
             'columnDefs' => static::$allColumnDefs,
             'sortableColumns' => static::$sortableColumns,
+            'accountingSummary' => $this->accountingSummary,
         ])->layout('layouts.app', ['title' => 'CRM']);
     }
 
@@ -564,5 +577,27 @@ class CrmWorkspace extends Component
     {
         $this->workspaceMessage = $message;
         $this->workspaceMessageTone = $tone;
+    }
+
+    public function getAccountingSummaryProperty(): array
+    {
+        $contact = $this->selectedContactOrNull();
+        if (!$contact) {
+            return [
+                'enabled' => (bool) config('marketplace.features.party_core_enabled', false),
+                'has_party' => false,
+                'party' => null,
+                'balance' => null,
+                'open_totals' => null,
+                'latest_entries' => [],
+                'links' => [
+                    'party_ledger_url' => null,
+                    'accounting_party_url' => null,
+                ],
+            ];
+        }
+
+        return app(\App\Services\Crm\CrmAccountingSummaryService::class)
+            ->summaryForContact(auth()->user(), $contact);
     }
 }

@@ -482,7 +482,7 @@ class CrmCustomerLedger extends Component
 
     protected function partySummary(): ?array
     {
-        if (!config('marketplace.features.party_core_enabled', false) || !config('marketplace.features.accounting_enabled', false)) {
+        if (!config('marketplace.features.party_core_enabled', false)) {
             return null;
         }
 
@@ -491,29 +491,31 @@ class CrmCustomerLedger extends Component
         }
 
         $contact = $this->selectedContact();
-        if (!$contact) {
+        if (!$contact || (int) $contact->user_id !== (int) auth()->id()) {
             return null;
         }
 
-        $party = $contact->party;
-        if (!$party) {
+        $summary = app(\App\Services\Crm\CrmAccountingSummaryService::class)
+            ->summaryForContact(auth()->user(), $contact);
+
+        if (!$summary['enabled']) {
+            return null;
+        }
+
+        if (!$summary['has_party']) {
             return ['has_party' => false];
         }
 
-        $party->load('roles');
-
-        $balance = app(\App\Services\Accounting\PartyLedgerService::class)
-            ->balanceForParty($party);
-
         return [
             'has_party' => true,
-            'party_id' => $party->id,
-            'display_name' => $party->display_name,
-            'roles' => $party->roles->pluck('role')->toArray(),
-            'debit' => $balance['debit'],
-            'credit' => $balance['credit'],
-            'balance' => $balance['balance'],
-            'created_at' => $party->created_at->format('d.m.Y'),
+            'party_id' => $summary['party']['id'],
+            'display_name' => $summary['party']['display_name'],
+            'status' => $summary['party']['status'],
+            'roles' => $summary['party']['roles'],
+            'debit' => $summary['balance']['debit_total'] ?? 0.0,
+            'credit' => $summary['balance']['credit_total'] ?? 0.0,
+            'balance' => $summary['balance']['net_balance'] ?? 0.0,
+            'created_at' => $contact->party->created_at->format('d.m.Y'),
         ];
     }
 
