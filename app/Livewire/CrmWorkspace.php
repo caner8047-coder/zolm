@@ -367,7 +367,7 @@ class CrmWorkspace extends Component
     {
         return CrmContact::query()
             ->where('user_id', auth()->id())
-            ->with(['identities.store'])
+            ->with(['identities.store', 'party'])
             ->withCount(['openCases', 'openTasks'])
             ->when($this->search !== '', function (Builder $query) {
                 $term = '%' . trim($this->search) . '%';
@@ -457,6 +457,7 @@ class CrmWorkspace extends Component
             'notes' => fn ($query) => $query->latest()->limit(8),
             'notes.author',
             'timelineEvents' => fn ($query) => $query->latest('occurred_at')->latest('id')->limit(24),
+            'party.roles',
         ];
 
         if (Schema::hasTable('crm_customer_ledger_entries')) {

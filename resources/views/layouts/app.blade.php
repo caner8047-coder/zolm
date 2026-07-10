@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title ?? 'ZOLM' }} - XLS Dönüşüm Platformu</title>
-    
+
     <!-- Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -19,18 +19,18 @@
             }
         }
     </script>
-    
+
     <!-- Alpine.js Livewire 3 ile birlikte geliyor, harici eklemeye gerek yok -->
-    
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+
     @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     @endif
     @livewireStyles
-    
+
     <style>
         [x-cloak] {
             display: none !important;
@@ -66,10 +66,10 @@
         $boosterMenuGroups = \App\Services\Marketplace\TrendyolBoosterModuleConfig::getGroups();
     @endphp
     <div class="min-h-full flex">
-        
+
         <!-- Mobile Sidebar Overlay -->
-        <div 
-            x-show="sidebarOpen" 
+        <div
+            x-show="sidebarOpen"
             x-transition:enter="transition-opacity ease-linear duration-300"
             x-transition:enter-start="opacity-0"
             x-transition:enter-end="opacity-100"
@@ -79,9 +79,9 @@
             class="fixed inset-0 bg-gray-900/50 z-40 lg:hidden"
             @click="sidebarOpen = false"
         ></div>
-        
+
         <!-- Sidebar -->
-        <aside 
+        <aside
             :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
             class="fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200 flex flex-col z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0"
         >
@@ -91,8 +91,8 @@
                     zolm <span class="text-xs font-normal text-gray-400 ml-1">v.{{ config('version.version', '0.7.0') }}</span>
                 </a>
                 <!-- Mobile close button -->
-                <button 
-                    @click="sidebarOpen = false" 
+                <button
+                    @click="sidebarOpen = false"
                     class="lg:hidden p-2 -mr-2 text-gray-500 hover:text-gray-900"
                 >
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -256,15 +256,105 @@
                     </div>
                 @endif
 
-                <a href="{{ route('marketplace-accounting') }}"
-                   @click="sidebarOpen = false"
-                   class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                          {{ request()->routeIs('marketplace-accounting') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                    <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M9 7h6m-6 4h6m-7 4h.01M12 15h.01M16 15h.01M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" />
-                    </svg>
-                    Muhasebe
-                </a>
+                @if(config('marketplace.features.accounting_enabled', false))
+                    <div x-data="{ accountingOpen: {{ request()->routeIs('accounting.*') ? 'true' : 'false' }} }">
+                        <button @click="accountingOpen = !accountingOpen"
+                            class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                                   {{ request()->routeIs('accounting.*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M9 7h6m-6 4h6m-7 4h.01M12 15h.01M16 15h.01M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" />
+                                </svg>
+                                Muhasebe (ERP)
+                            </span>
+                            <svg :class="accountingOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                        <div x-show="accountingOpen" x-collapse class="ml-8 mt-1 space-y-1">
+                            <a href="{{ route('accounting.dashboard') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.dashboard') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Muhasebe Paneli
+                            </a>
+                            <a href="{{ route('accounting.party-ledger') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.party-ledger') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Cari Açık Hesap
+                            </a>
+                            <a href="{{ route('accounting.chart-of-accounts') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.chart-of-accounts') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Hesap Planı
+                            </a>
+                            <a href="{{ route('accounting.journal') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.journal') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Yevmiye Defteri
+                            </a>
+                            <a href="{{ route('accounting.cash-bank') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.cash-bank') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Kasa & Banka
+                            </a>
+                            <a href="{{ route('accounting.stock') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.stock') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Depo & Stok
+                            </a>
+                            <a href="{{ route('accounting.sales') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.sales') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Satışlar
+                            </a>
+                            <a href="{{ route('accounting.purchases') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.purchases') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Satın Alma
+                            </a>
+                            <a href="{{ route('accounting.pos') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.pos') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Hızlı Satış (POS)
+                            </a>
+                            <a href="{{ route('accounting.e-documents') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.e-documents') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                e-Fatura
+                            </a>
+                            <a href="{{ route('accounting.reports') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.reports') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Finansal Raporlar
+                            </a>
+                            <a href="{{ route('accounting.assistant') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.assistant') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                AI Asistan
+                            </a>
+                            <a href="{{ route('accounting.marketplace-bridge') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.marketplace-bridge') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Pazaryeri Köprüsü
+                            </a>
+                            <a href="{{ route('accounting.audit-logs') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.audit-logs') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Denetim Günlüğü
+                            </a>
+                        </div>
+                    </div>
+                @else
+                    <a href="{{ route('marketplace-accounting') }}"
+                       @click="sidebarOpen = false"
+                       class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                              {{ request()->routeIs('marketplace-accounting') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
+                        <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M9 7h6m-6 4h6m-7 4h.01M12 15h.01M16 15h.01M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" />
+                        </svg>
+                        Muhasebe
+                    </a>
+                @endif
 
                 {{-- Araçlar Dropdown --}}
                 <div x-data="{ araclarOpen: {{ request()->routeIs('production', 'operation', 'custom-motors*', 'profiles*', 'returns.*') ? 'true' : 'false' }} }">
@@ -434,7 +524,7 @@
                     </div>
                 </div>
 
-                <a href="{{ route('cargo-reports') }}" 
+                <a href="{{ route('cargo-reports') }}"
                    @click="sidebarOpen = false"
                    class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
                           {{ request()->routeIs('cargo-reports') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
@@ -444,7 +534,7 @@
                     Kargo Operasyon
                 </a>
 
-                <a href="{{ route('supply-reports') }}" 
+                <a href="{{ route('supply-reports') }}"
                    @click="sidebarOpen = false"
                    class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
                           {{ request()->routeIs('supply-reports') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
@@ -590,7 +680,7 @@
                 <div class="border-t border-gray-200 my-4"></div>
 
                 <!-- Coming Soon Items -->
-                <a href="{{ route('api-dev') }}" 
+                <a href="{{ route('api-dev') }}"
                    @click="sidebarOpen = false"
                    class="flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
                           {{ request()->routeIs('api-dev') ? 'bg-gray-900 text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700' }}">
@@ -606,7 +696,7 @@
 
             <!-- AI Chat Link -->
             <div class="px-4 pb-6">
-                <a href="{{ route('ai-chat') }}" 
+                <a href="{{ route('ai-chat') }}"
                    @click="sidebarOpen = false"
                    class="flex items-center px-4 py-3 text-sm font-medium rounded-lg border-2 border-dashed transition-colors
                           {{ request()->routeIs('ai-chat') ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 text-gray-700 hover:border-gray-900 hover:bg-gray-50' }}">
@@ -623,18 +713,18 @@
             <!-- Top Bar -->
             <header class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30">
                 <!-- Mobile menu button -->
-                <button 
-                    @click="sidebarOpen = true" 
+                <button
+                    @click="sidebarOpen = true"
                     class="lg:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900"
                 >
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
                     </svg>
                 </button>
-                
+
                 <!-- Desktop spacer -->
                 <div class="hidden lg:block"></div>
-                
+
                 <!-- Right side -->
                 <div class="flex items-center space-x-2 sm:space-x-4">
                     @if($showMarketplaceV2 && ($marketplaceFeatures['notifications_enabled'] ?? true))

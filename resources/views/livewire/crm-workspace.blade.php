@@ -323,6 +323,13 @@
                                     <div class="min-w-0">
                                         <p class="truncate text-sm font-semibold text-slate-950">{{ $contact->display_name }}</p>
                                         <p class="mt-1 truncate text-xs text-slate-500">{{ $contact->primary_phone ?: $contact->primary_email ?: ($contact->city ?: 'İletişim bilgisi yok') }}</p>
+                                        @if(config('marketplace.features.party_core_enabled', false))
+                                            @if($contact->party)
+                                                <span class="mt-1 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Party Bağlı</span>
+                                            @else
+                                                <span class="mt-1 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-400">Bağlanmamış</span>
+                                            @endif
+                                        @endif
                                     </div>
                                     <span class="rounded-[6px] border px-2 py-0.5 text-[10px] font-medium {{ $contact->riskTone() === 'danger' ? 'border-rose-200 bg-rose-50 text-rose-700' : ($contact->riskTone() === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700') }}">
                                         Risk {{ $contact->risk_score }}
@@ -380,6 +387,13 @@
                                             <button type="button" wire:click="selectContact({{ $contact->id }})" class="block max-w-full text-left">
                                                 <span class="block truncate text-sm font-semibold text-slate-950">{{ $contact->display_name }}</span>
                                                 <span class="mt-1 block truncate text-xs text-slate-500">{{ $contact->primary_phone ?: $contact->primary_email ?: ($contact->city ?: 'İletişim bilgisi yok') }}</span>
+                                                @if(config('marketplace.features.party_core_enabled', false))
+                                                    @if($contact->party)
+                                                        <span class="mt-1 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Party Bağlı</span>
+                                                    @else
+                                                        <span class="mt-1 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-400">Bağlanmamış</span>
+                                                    @endif
+                                                @endif
                                             </button>
                                         </td>
                                     @endif

@@ -451,6 +451,7 @@ class CrmCustomerLedger extends Component
                 'selectedEntries' => collect(),
                 'selectedContactStats' => $this->emptyStats(),
                 'activeFilters' => [],
+                'partySummary' => null,
                 'columnDefs' => static::$allColumnDefs,
                 'sortableColumns' => static::$sortableColumns,
             ])->layout('layouts.app', ['title' => 'Müşteri Cari']);
@@ -473,16 +474,54 @@ class CrmCustomerLedger extends Component
             'selectedEntries' => $this->selectedEntries(),
             'selectedContactStats' => $this->selectedContactStats(),
             'activeFilters' => $this->activeFilters(),
+            'partySummary' => $this->partySummary(),
             'columnDefs' => static::$allColumnDefs,
             'sortableColumns' => static::$sortableColumns,
         ])->layout('layouts.app', ['title' => 'Müşteri Cari']);
+    }
+
+    protected function partySummary(): ?array
+    {
+        if (!config('marketplace.features.party_core_enabled', false) || !config('marketplace.features.accounting_enabled', false)) {
+            return null;
+        }
+
+        if (!$this->selectedContactId) {
+            return null;
+        }
+
+        $contact = $this->selectedContact();
+        if (!$contact) {
+            return null;
+        }
+
+        $party = $contact->party;
+        if (!$party) {
+            return ['has_party' => false];
+        }
+
+        $party->load('roles');
+
+        $balance = app(\App\Services\Accounting\PartyLedgerService::class)
+            ->balanceForParty($party);
+
+        return [
+            'has_party' => true,
+            'party_id' => $party->id,
+            'display_name' => $party->display_name,
+            'roles' => $party->roles->pluck('role')->toArray(),
+            'debit' => $balance['debit'],
+            'credit' => $balance['credit'],
+            'balance' => $balance['balance'],
+            'created_at' => $party->created_at->format('d.m.Y'),
+        ];
     }
 
     protected function buildEntriesQuery(): Builder
     {
         return CrmCustomerLedgerEntry::query()
             ->where('user_id', auth()->id())
-            ->with(['contact', 'store', 'recipe'])
+            ->with(['contact.party', 'store', 'recipe'])
             ->when($this->selectedContactId, fn (Builder $query) => $query->where('contact_id', $this->selectedContactId))
             ->when($this->search !== '', function (Builder $query) {
                 $term = '%' . trim($this->search) . '%';

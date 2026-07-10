@@ -128,7 +128,7 @@ Route::middleware('auth')->group(function () {
     });
     // Backwards compat alias
     Route::get('/tariff-optimizer', fn() => redirect()->route('campaigns.product-commission'))->name('tariff-optimizer');
-    
+
     // Supply Label Download
     Route::get('/supply-label/{id}', [\App\Http\Controllers\SupplyLabelController::class, 'download'])->name('supply.label');
 
@@ -140,6 +140,76 @@ Route::middleware('auth')->group(function () {
     });
     Route::get('/marketplace-accounting', \App\Livewire\MarketplaceAccounting::class)
         ->name('marketplace-accounting')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/party-ledger', \App\Livewire\Accounting\PartyLedgerWorkspace::class)
+        ->name('accounting.party-ledger')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting', \App\Livewire\Accounting\AccountingDashboard::class)
+        ->name('accounting.dashboard')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/chart-of-accounts', \App\Livewire\Accounting\ChartOfAccounts::class)
+        ->name('accounting.chart-of-accounts')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/journal', \App\Livewire\Accounting\Journal::class)
+        ->name('accounting.journal')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/cash-bank', \App\Livewire\Accounting\CashBank::class)
+        ->name('accounting.cash-bank')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/stock', \App\Livewire\Accounting\Stock::class)
+        ->name('accounting.stock')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/sales', \App\Livewire\Accounting\Sales::class)
+        ->name('accounting.sales')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/purchases', \App\Livewire\Accounting\Purchases::class)
+        ->name('accounting.purchases')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/pos', \App\Livewire\Accounting\Pos::class)
+        ->name('accounting.pos')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/e-documents', \App\Livewire\Accounting\EDocuments::class)
+        ->name('accounting.e-documents')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/reports', \App\Livewire\Accounting\Reports::class)
+        ->name('accounting.reports')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/assistant', \App\Livewire\Accounting\Assistant::class)
+        ->name('accounting.assistant')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/marketplace-bridge', \App\Livewire\Accounting\MarketplaceBridge::class)
+        ->name('accounting.marketplace-bridge')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/audit-logs', \App\Livewire\Accounting\AuditLogs::class)
+        ->name('accounting.audit-logs')
+        ->middleware('mp.feature:accounting_enabled')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
     // Legacy aliases kept for backward compatibility.
@@ -346,7 +416,7 @@ Route::middleware('auth')->group(function () {
         }
 
         $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($reportFile->file_path);
-        
+
         if (!file_exists($fullPath)) {
             abort(404, 'Dosya bulunamadı');
         }
@@ -421,11 +491,11 @@ if (app()->environment('local')) {
         $sheet->setCellValue('B1', 'Dünya');
         $sheet->setCellValue('A2', 'Test');
         $sheet->setCellValue('B2', '123');
-        
+
         $tempFile = storage_path('app/test-excel.xlsx');
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
         $writer->save($tempFile);
-        
+
         return response()->download($tempFile, 'test-dosya.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ])->deleteFileAfterSend(true);
@@ -437,13 +507,13 @@ if (app()->environment('local')) {
         if (!$lastFile) {
             return 'Dosya bulunamadı';
         }
-        
+
         $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($lastFile->file_path);
-        
+
         if (!file_exists($fullPath)) {
             return 'Dosya mevcut değil: ' . $lastFile->file_path;
         }
-        
+
         try {
             $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($fullPath);
             $info = [
@@ -452,7 +522,7 @@ if (app()->environment('local')) {
                 'sheet_count' => $spreadsheet->getSheetCount(),
                 'sheets' => [],
             ];
-            
+
             foreach ($spreadsheet->getSheetNames() as $name) {
                 $sheet = $spreadsheet->getSheetByName($name);
                 $info['sheets'][] = [
@@ -461,9 +531,9 @@ if (app()->environment('local')) {
                     'cols' => $sheet->getHighestColumn(),
                 ];
             }
-            
+
             return response()->json($info);
-            
+
         } catch (\Exception $e) {
             return 'Hata: ' . $e->getMessage();
         }
@@ -483,7 +553,7 @@ if (app()->environment('local')) {
         $count = 0;
         $errors = [];
         $syncService = app(\App\Services\Marketplace\MarketplaceSyncService::class);
-        
+
         foreach($runs as $run) {
             try {
                 $syncService->run($run->id);
@@ -495,7 +565,7 @@ if (app()->environment('local')) {
                 $errors[] = "Run #{$run->id}: " . $e->getMessage();
             }
         }
-        
+
         $output = "{$count} adet senkronizasyon kuyruğu başarıyla işlendi! Siparişler ekrana düşmüş olmalı.<br><br>";
         if (!empty($errors)) {
             $output .= "<b>Alınan Hatalar (Bu hatalar eski veya geçersiz bağlantılara ait olabilir ve atlanmıştır):</b><br>" . implode('<br>', $errors);
@@ -508,7 +578,7 @@ if (app()->environment('local')) {
                     ->orderBy('id', 'desc')
                     ->take(5)
                     ->get();
-        
+
         $output = "";
         foreach($runs as $run) {
             $notes = json_encode($run->notes_json, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -520,26 +590,26 @@ if (app()->environment('local')) {
     Route::get('/woo-reset', function () {
         $storeIds = \App\Models\MarketplaceStore::where('marketplace', 'woocommerce')->pluck('id');
         if ($storeIds->isEmpty()) return 'WooCommerce mağazası bulunamadı.';
-        
+
         $runs = \App\Models\IntegrationSyncRun::whereIn('store_id', $storeIds)
             ->where('sync_type', 'orders')
             ->where('status', 'completed')
             ->update(['status' => 'failed', 'notes_json' => []]);
-            
+
         return "Tüm WooCommerce mağazalarının geçmiş kilitleri sıfırlandı ({$runs} adet işlem iptal edildi). Şimdi 'Siparişleri Çek' butonuna bastığınızda tüm son 7 günü baştan tarayacaktır!";
     });
 
     Route::get('/woo-test', function () {
         $store = \App\Models\MarketplaceStore::where('marketplace', 'woocommerce')->orderBy('id', 'desc')->first();
         if (!$store) return 'Store not found';
-        
+
         $startDate = \Carbon\CarbonImmutable::now()->subDays(7);
         $connector = app(\App\Services\Marketplace\MarketplaceConnectorManager::class)->resolve('woocommerce');
-        
+
         try {
             $options = ['start_date' => $startDate->toIso8601String(), 'end_date' => now()->toIso8601String(), 'page_size' => 100];
             $response = $connector->pullOrders($store, $options);
-            
+
             $results = [];
             $items = $response['items'] ?? [];
             foreach (array_slice($items, 0, 10) as $order) {
@@ -551,7 +621,7 @@ if (app()->environment('local')) {
                     'customer' => $order['customer']['full_name'] ?? null,
                 ];
             }
-            
+
             return response()->json([
                 'success' => true,
                 'count' => count($items),

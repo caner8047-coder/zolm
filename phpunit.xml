@@ -31,5 +31,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="PARTY_CORE_ENABLED" value="false"/>
+        <env name="ACCOUNTING_ENABLED" value="false"/>
     </php>
 </phpunit>

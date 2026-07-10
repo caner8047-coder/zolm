@@ -692,6 +692,51 @@
                             </div>
                         </div>
 
+                        @if(!empty($partySummary))
+                            <div class="mt-4 rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                                @if($partySummary['has_party'])
+                                    <div class="flex items-center justify-between gap-3">
+                                        <p class="text-xs font-semibold text-slate-900">Cari Açık Hesap Özeti</p>
+                                        <a href="{{ route('accounting.party-ledger', ['party' => $partySummary['party_id']]) }}"
+                                           class="shrink-0 rounded-[6px] border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50">
+                                            Cari Aç
+                                        </a>
+                                    </div>
+                                    <div class="mt-2 flex flex-wrap gap-2">
+                                        <span class="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                                            {{ $partySummary['display_name'] }}
+                                        </span>
+                                        @foreach($partySummary['roles'] as $role)
+                                            <span class="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                                                {{ $role }}
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                    <div class="mt-3 grid grid-cols-3 gap-2">
+                                        <div class="rounded-[6px] border border-slate-200 bg-white px-2 py-2">
+                                            <p class="text-[10px] text-slate-500">Borç</p>
+                                            <p class="mt-1 text-xs font-semibold text-rose-700">₺{{ number_format($partySummary['debit'], 2, ',', '.') }}</p>
+                                        </div>
+                                        <div class="rounded-[6px] border border-slate-200 bg-white px-2 py-2">
+                                            <p class="text-[10px] text-slate-500">Alacak</p>
+                                            <p class="mt-1 text-xs font-semibold text-emerald-700">₺{{ number_format($partySummary['credit'], 2, ',', '.') }}</p>
+                                        </div>
+                                        <div class="rounded-[6px] border border-slate-200 bg-white px-2 py-2">
+                                            <p class="text-[10px] text-slate-500">Bakiye</p>
+                                            <p class="mt-1 text-xs font-semibold {{ $partySummary['balance'] >= 0 ? 'text-emerald-700' : 'text-rose-700' }}">
+                                                {{ $partySummary['balance'] >= 0 ? '+' : '-' }}₺{{ number_format(abs($partySummary['balance']), 2, ',', '.') }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <p class="mt-2 text-[10px] text-slate-400">Kayıt: {{ $partySummary['created_at'] }}</p>
+                                @else
+                                    <p class="text-xs font-semibold text-slate-900">Cari Açık Hesap Özeti</p>
+                                    <p class="mt-2 text-xs text-slate-500">Party bağlı değil</p>
+                                    <p class="mt-1 text-[10px] text-slate-400">Backfill çalıştırın veya manuel party bağlantısı kurun.</p>
+                                @endif
+                            </div>
+                        @endif
+
                         <div class="mt-4 grid grid-cols-3 gap-2">
                             <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 px-2 py-2">
                                 <p class="text-[10px] text-slate-500">Hareket</p>
