@@ -39,6 +39,11 @@ class Payment extends Model
         return $this->belongsTo(JournalEntry::class);
     }
 
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(Account::class);
+    }
+
     public function allocations(): HasMany
     {
         return $this->hasMany(PayableAllocation::class);

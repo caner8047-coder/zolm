@@ -192,6 +192,11 @@ Route::middleware('auth')->group(function () {
         ->middleware('mp.feature:accounting_enabled')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
+    Route::get('/accounting/collections-payments', \App\Livewire\Accounting\CollectionsPayments::class)
+        ->name('accounting.collections-payments')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
     Route::get('/accounting/pos', \App\Livewire\Accounting\Pos::class)
         ->name('accounting.pos')
         ->middleware('mp.feature:accounting_enabled')
