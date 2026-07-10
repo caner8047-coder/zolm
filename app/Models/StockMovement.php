@@ -15,10 +15,19 @@ class StockMovement extends Model
             'quantity'      => 'integer',
             'unit_cost'     => 'decimal:2',
             'movement_date' => 'date',
+            'posted_at'     => 'datetime',
+            'voided_at'     => 'datetime',
+            'meta_json'     => 'array',
         ];
     }
 
+    public function legalEntity(): BelongsTo
+    {
+        return $this->belongsTo(LegalEntity::class);
+    }
+
     public function user(): BelongsTo
+
     {
         return $this->belongsTo(User::class);
     }
@@ -39,5 +48,10 @@ class StockMovement extends Model
     public function signedQuantity(): int
     {
         return $this->direction === 'in' ? $this->quantity : -$this->quantity;
+    }
+
+    public function isVoid(): bool
+    {
+        return $this->status === 'voided';
     }
 }

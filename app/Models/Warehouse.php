@@ -15,10 +15,17 @@ class Warehouse extends Model
         return [
             'is_default' => 'boolean',
             'is_active'  => 'boolean',
+            'meta_json'  => 'array',
         ];
     }
 
+    public function legalEntity(): BelongsTo
+    {
+        return $this->belongsTo(LegalEntity::class);
+    }
+
     public function user(): BelongsTo
+
     {
         return $this->belongsTo(User::class);
     }
