@@ -152,6 +152,11 @@ Route::middleware('auth')->group(function () {
         ->middleware('mp.feature:accounting_enabled')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
+    Route::get('/accounting/parties', \App\Livewire\Accounting\Parties::class)
+        ->name('accounting.parties')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
     Route::get('/accounting/chart-of-accounts', \App\Livewire\Accounting\ChartOfAccounts::class)
         ->name('accounting.chart-of-accounts')
         ->middleware('mp.feature:accounting_enabled')
@@ -169,6 +174,11 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/accounting/stock', \App\Livewire\Accounting\Stock::class)
         ->name('accounting.stock')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
+    Route::get('/accounting/products', \App\Livewire\Accounting\Products::class)
+        ->name('accounting.products')
         ->middleware('mp.feature:accounting_enabled')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 

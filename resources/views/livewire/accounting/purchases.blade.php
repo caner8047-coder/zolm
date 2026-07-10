@@ -19,7 +19,7 @@
                 </div>
                 <h1 class="mt-3 text-xl font-semibold tracking-tight text-slate-950 lg:text-2xl">Satın Alma Siparişleri & Faturaları</h1>
                 <p class="mt-2 text-sm text-slate-500">
-                    Tedarikçi siparişlerini taslak olarak hazırlayın, KDV ve ara toplamları hesaplayın, onaylayarak faturalandırın ve depoya stok girişlerini yapın.
+                    Tedarikçi siparişlerini taslak olarak hazırlayın, KDV ve iskonto oranlarını hesaplayın, onaylayarak faturalandırın ve depoya stok girişlerini yapın.
                 </p>
             </div>
             <div class="shrink-0">
@@ -79,11 +79,12 @@
                     <table class="w-full border-collapse text-left text-sm text-slate-600 min-w-[700px]">
                         <thead>
                             <tr class="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider bg-slate-50/50">
-                                <th class="p-3 w-1/2">Ürün</th>
-                                <th class="p-3 w-24">Miktar</th>
-                                <th class="p-3 w-32">Birim Fiyat</th>
-                                <th class="p-3 w-28">KDV Oranı</th>
-                                <th class="p-3 text-right w-36">Satır Toplamı (KDV Dahil)</th>
+                                <th class="p-3 w-1/3">Ürün</th>
+                                <th class="p-3 w-20">Miktar</th>
+                                <th class="p-3 w-28">Birim Fiyat</th>
+                                <th class="p-3 w-24">KDV Oranı</th>
+                                <th class="p-3 w-24">İskonto (%)</th>
+                                <th class="p-3 text-right w-32">Satır Toplamı (KDV Dahil)</th>
                                 <th class="p-3 text-center w-12">Aksiyon</th>
                             </tr>
                         </thead>
@@ -93,7 +94,13 @@
                                     $lineQty = (int) ($item['quantity'] ?? 0);
                                     $linePrice = (float) ($item['unit_price'] ?? 0);
                                     $lineVat = (float) ($item['vat_rate'] ?? 20.00);
-                                    $lineTotal = round(($lineQty * $linePrice) * (1 + $lineVat / 100), 2);
+                                    $lineDisc = (float) ($item['discount_rate'] ?? 0.00);
+
+                                    $baseTotal = $lineQty * $linePrice;
+                                    $lineDiscount = round($baseTotal * ($lineDisc / 100), 2);
+                                    $totalBeforeVat = $baseTotal - $lineDiscount;
+                                    $lineVatAmount = round($totalBeforeVat * ($lineVat / 100), 2);
+                                    $lineTotal = round($totalBeforeVat + $lineVatAmount, 2);
                                 @endphp
                                 <tr>
                                     <td class="p-2">
@@ -117,6 +124,9 @@
                                             <option value="1.00">%1</option>
                                             <option value="0.00">%0</option>
                                         </select>
+                                    </td>
+                                    <td class="p-2">
+                                        <input type="number" step="0.01" wire:model.live="items.{{ $index }}.discount_rate" class="w-full rounded-[6px] border border-slate-200 bg-white px-2 py-1.5 text-base sm:text-sm text-right font-mono focus:border-slate-500 focus:outline-none min-h-[44px]" />
                                     </td>
                                     <td class="p-2 text-right font-mono font-semibold text-slate-900">
                                         {{ $formatMoney($lineTotal) }}
@@ -144,6 +154,7 @@
 
                     <div class="flex items-center gap-6 font-mono text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-[6px] px-4 py-2">
                         <div>Ara Toplam: <span class="font-bold text-slate-900">{{ $formatMoney($this->subtotal) }}</span></div>
+                        <div>İndirim: <span class="font-bold text-rose-600">-{{ $formatMoney($this->discountTotal) }}</span></div>
                         <div>KDV Toplam: <span class="font-bold text-slate-600">{{ $formatMoney($this->vatTotal) }}</span></div>
                         <div>Genel Toplam: <span class="font-bold text-slate-950">{{ $formatMoney($this->total) }}</span></div>
                     </div>
@@ -173,6 +184,7 @@
                     <option value="">Tüm Sipariş Durumları</option>
                     <option value="draft">Taslak (Draft)</option>
                     <option value="approved">Onaylandı (Approved)</option>
+                    <option value="cancelled">İptal Edildi (Cancelled)</option>
                 </select>
             </div>
         </div>
@@ -209,17 +221,23 @@
                             <td class="p-4 text-center">
                                 @if($order->status === 'draft')
                                     <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-600/10">Taslak</span>
-                                @else
+                                @elseif($order->status === 'approved')
                                     <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/10">Onaylı</span>
+                                @else
+                                    <span class="inline-flex items-center rounded-full bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 ring-1 ring-inset ring-rose-600/10">İptal Edildi</span>
                                 @endif
                             </td>
                             <td class="p-4 text-center">
                                 @if($order->status === 'draft')
-                                    <button type="button" wire:click="approveOrder({{ $order->id }})" class="px-3 py-1.5 text-xs font-medium text-white bg-slate-900 rounded-[6px] hover:bg-slate-800 transition-colors min-h-[40px] w-full">
-                                        Onayla (Kabul)
+                                    <button type="button" wire:click="approveOrder({{ $order->id }})" class="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded-[6px] hover:bg-emerald-700 transition-colors min-h-[40px] w-full">
+                                        Onayla
+                                    </button>
+                                @elseif($order->status === 'approved')
+                                    <button type="button" wire:click="cancelOrder({{ $order->id }})" class="px-3 py-1.5 text-xs font-medium text-white bg-rose-600 rounded-[6px] hover:bg-rose-700 transition-colors min-h-[40px] w-full">
+                                        İptal Et
                                     </button>
                                 @else
-                                    <span class="text-xs text-slate-400">Mal Girişi Yapıldı</span>
+                                    <span class="text-xs text-slate-400">-</span>
                                 @endif
                             </td>
                         </tr>
@@ -227,7 +245,7 @@
                         <tr class="bg-slate-50/20 text-xs">
                             <td colspan="8" class="p-0">
                                 <div class="px-8 py-3 bg-slate-50/40 border-t border-b border-slate-100 space-y-2">
-                                    <div class="font-semibold text-slate-500 uppercase tracking-wider">Sipariş Kalemleri</div>
+                                    <div class="font-semibold text-slate-500 uppercase tracking-wider">Sipariş İçeriği</div>
                                     <div class="space-y-1">
                                         @foreach($order->items as $item)
                                             <div class="flex justify-between items-center font-mono">
@@ -238,6 +256,9 @@
                                                 <div class="flex gap-8">
                                                     <span class="text-slate-500">{{ $item->quantity }} adet</span>
                                                     <span class="text-slate-500">x {{ $formatMoney($item->unit_price) }}</span>
+                                                    @if($item->discount_rate > 0)
+                                                        <span class="text-rose-600">İsk. %{{ (float) $item->discount_rate }} (-{{ $formatMoney($item->discount_amount) }})</span>
+                                                    @endif
                                                     <span class="text-slate-400">KDV %{{ (int) $item->vat_rate }}</span>
                                                     <span class="w-28 text-right font-bold text-slate-800">{{ $formatMoney($item->total_amount) }}</span>
                                                 </div>

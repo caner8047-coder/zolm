@@ -12,10 +12,12 @@ class PurchaseOrderItem extends Model
     protected function casts(): array
     {
         return [
-            'quantity'     => 'integer',
-            'unit_price'   => 'decimal:2',
-            'vat_rate'     => 'decimal:2',
-            'total_amount' => 'decimal:2',
+            'quantity'        => 'integer',
+            'unit_price'      => 'decimal:2',
+            'vat_rate'        => 'decimal:2',
+            'discount_rate'   => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'total_amount'    => 'decimal:2',
         ];
     }
 
@@ -26,6 +28,6 @@ class PurchaseOrderItem extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(MpProduct::class, 'product_id');
     }
 }

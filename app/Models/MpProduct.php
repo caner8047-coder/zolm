@@ -37,6 +37,7 @@ class MpProduct extends Model
         'gender',
         'brand',
         'category_name',
+        'unit_name',
         'description',
         // Maliyet & Fiyat
         'cogs',

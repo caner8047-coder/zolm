@@ -277,6 +277,11 @@
                                       {{ request()->routeIs('accounting.dashboard') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
                                 Muhasebe Paneli
                             </a>
+                            <a href="{{ route('accounting.parties') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.parties') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Cariler
+                            </a>
                             <a href="{{ route('accounting.party-ledger') }}" @click="sidebarOpen = false"
                                class="block px-4 py-2 text-sm rounded-lg transition-colors
                                       {{ request()->routeIs('accounting.party-ledger') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
@@ -301,6 +306,11 @@
                                class="block px-4 py-2 text-sm rounded-lg transition-colors
                                       {{ request()->routeIs('accounting.stock') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
                                 Depo & Stok
+                            </a>
+                            <a href="{{ route('accounting.products') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.products') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Ürün Kartları
                             </a>
                             <a href="{{ route('accounting.sales') }}" @click="sidebarOpen = false"
                                class="block px-4 py-2 text-sm rounded-lg transition-colors

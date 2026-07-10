@@ -36,6 +36,27 @@
 
     <!-- Modül Kartları Grid -->
     <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
+        <!-- Cariler -->
+        <div class="rounded-[10px] border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div>
+                <div class="flex items-center justify-between">
+                    <span class="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m8-4a4 4 0 10-8 0 4 4 0 008 0zm-8 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                    </span>
+                    <span class="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-100 text-emerald-800">Hazır</span>
+                </div>
+                <h3 class="mt-4 text-base font-semibold text-slate-900">Cariler</h3>
+                <p class="mt-2 text-sm text-slate-500">Müşteri ve tedarikçi kartları, rol yönetimi, iletişim/vergi bilgileri ve aktif-pasif durum kontrolü.</p>
+            </div>
+            <div class="mt-6">
+                <a href="{{ route('accounting.parties') }}" class="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-[6px] hover:bg-slate-800 transition-colors">
+                    Yönet
+                </a>
+            </div>
+        </div>
+
         <!-- Cari Açık Hesap -->
         <div class="rounded-[10px] border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
             <div>
@@ -97,6 +118,27 @@
             </div>
             <div class="mt-6">
                 <a href="{{ route('accounting.cash-bank') }}" class="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-[6px] hover:bg-slate-800 transition-colors">
+                    Yönet
+                </a>
+            </div>
+        </div>
+
+        <!-- Ürün Kartları -->
+        <div class="rounded-[10px] border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div>
+                <div class="flex items-center justify-between">
+                    <span class="p-2 bg-amber-50 text-amber-700 rounded-lg">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                    </span>
+                    <span class="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-100 text-emerald-800">Hazır</span>
+                </div>
+                <h3 class="mt-4 text-base font-semibold text-slate-900">Ürün Kartları</h3>
+                <p class="mt-2 text-sm text-slate-500">Barkod, SKU, kategori, birim, KDV, alış/satış fiyatı ve minimum stok bilgisini tek kartta yönetin.</p>
+            </div>
+            <div class="mt-6">
+                <a href="{{ route('accounting.products') }}" class="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-[6px] hover:bg-slate-800 transition-colors">
                     Yönet
                 </a>
             </div>

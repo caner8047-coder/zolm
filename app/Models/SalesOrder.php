@@ -13,9 +13,10 @@ class SalesOrder extends Model
     protected function casts(): array
     {
         return [
-            'order_date'    => 'date',
-            'total_amount'  => 'decimal:2',
-            'exchange_rate' => 'decimal:6',
+            'order_date'      => 'date',
+            'total_amount'    => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'exchange_rate'   => 'decimal:6',
         ];
     }
 

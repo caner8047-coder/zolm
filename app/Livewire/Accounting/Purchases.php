@@ -49,13 +49,13 @@ class Purchases extends Component
     public function resetItems(): void
     {
         $this->items = [
-            ['stock_code' => '', 'quantity' => 1, 'unit_price' => 0.0, 'vat_rate' => 20.00],
+            ['stock_code' => '', 'quantity' => 1, 'unit_price' => 0.0, 'vat_rate' => 20.00, 'discount_rate' => 0.00],
         ];
     }
 
     public function addItem(): void
     {
-        $this->items[] = ['stock_code' => '', 'quantity' => 1, 'unit_price' => 0.0, 'vat_rate' => 20.00];
+        $this->items[] = ['stock_code' => '', 'quantity' => 1, 'unit_price' => 0.0, 'vat_rate' => 20.00, 'discount_rate' => 0.00];
     }
 
     public function removeItem(int $index): void
@@ -76,18 +76,29 @@ class Purchases extends Component
         }, 0.0);
     }
 
+    public function getDiscountTotalProperty(): float
+    {
+        return array_reduce($this->items, function ($carry, $item) {
+            $base = (int) ($item['quantity'] ?? 0) * (float) ($item['unit_price'] ?? 0);
+            $disc = (float) ($item['discount_rate'] ?? 0.00);
+            return $carry + ($base * $disc / 100);
+        }, 0.0);
+    }
+
     public function getVatTotalProperty(): float
     {
         return array_reduce($this->items, function ($carry, $item) {
             $base = (int) ($item['quantity'] ?? 0) * (float) ($item['unit_price'] ?? 0);
+            $disc = (float) ($item['discount_rate'] ?? 0.00);
             $vatRate = (float) ($item['vat_rate'] ?? 20.00);
-            return $carry + ($base * $vatRate / 100);
+            $discountedBase = $base - ($base * $disc / 100);
+            return $carry + ($discountedBase * $vatRate / 100);
         }, 0.0);
     }
 
     public function getTotalProperty(): float
     {
-        return round($this->subtotal + $this->vatTotal, 2);
+        return round($this->subtotal - $this->discountTotal + $this->vatTotal, 2);
     }
 
     public function createPurchaseOrder(): void
@@ -100,12 +111,14 @@ class Purchases extends Component
             'orderDate' => 'required|date',
             'items.*.stock_code' => 'required|string',
             'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.unit_price' => 'required|numeric|min:0.01',
+            'items.*.discount_rate' => 'nullable|numeric|min:0|max:100',
         ], [
             'partyId.required' => 'Tedarikçi (Cari) seçimi zorunludur.',
             'documentNumber.required' => 'Belge numarası zorunludur.',
             'items.*.stock_code.required' => 'Ürün seçimi zorunludur.',
             'items.*.quantity.min' => 'Miktar en az 1 olmalıdır.',
+            'items.*.unit_price.min' => 'Birim fiyat sıfırdan büyük olmalıdır.',
         ]);
 
         // Tenant validations
@@ -185,9 +198,37 @@ class Purchases extends Component
         }
     }
 
+    public function cancelOrder(int $orderId): void
+    {
+        $userId = auth()->id();
+        $order = PurchaseOrder::where('user_id', $userId)->with('items')->findOrFail($orderId);
+
+        if ($order->status !== 'approved') {
+            $this->message = 'Sadece onaylanmış satın alma siparişleri iptal edilebilir.';
+            $this->messageType = 'error';
+            return;
+        }
+
+        try {
+            $tradeService = app(TradeService::class);
+            $tradeService->cancelPurchaseOrder($order);
+
+            $this->message = 'Satın alma siparişi iptal edildi, cari kaydı geri çekildi ve stoklar iade edildi.';
+            $this->messageType = 'success';
+        } catch (\Exception $e) {
+            $this->message = 'Sipariş iptal edilirken hata: ' . $e->getMessage();
+            $this->messageType = 'error';
+        }
+    }
+
     public function getPartiesProperty()
     {
-        return Party::where('user_id', auth()->id())->orderBy('display_name')->get();
+        return Party::where('user_id', auth()->id())
+            ->whereHas('roles', function ($q) {
+                $q->where('role', 'supplier');
+            })
+            ->orderBy('display_name')
+            ->get();
     }
 
     public function getLegalEntitiesProperty()

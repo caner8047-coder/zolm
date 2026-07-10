@@ -153,6 +153,16 @@ class TradeServiceTest extends TestCase
 
     public function test_approving_non_draft_order_is_rejected(): void
     {
+        // Seed stock for ITEM-A
+        app(StockService::class)->recordMovement([
+            'user_id'       => $this->user->id,
+            'warehouse_id'  => $this->warehouse->id,
+            'stock_code'    => 'ITEM-A',
+            'movement_type' => 'in_adjustment',
+            'direction'     => 'in',
+            'quantity'      => 10,
+        ]);
+
         $order = $this->service->createSalesOrder([
             'user_id'         => $this->user->id,
             'party_id'        => $this->party->id,
@@ -208,5 +218,55 @@ class TradeServiceTest extends TestCase
         ], [
             ['stock_code' => 'ITEM-A', 'quantity' => 1, 'unit_price' => 10.00],
         ]);
+    }
+
+    public function test_approve_sales_order_fails_when_default_warehouse_is_empty_but_other_has_stock(): void
+    {
+        // 1. Create a non-default warehouse
+        $otherWarehouse = app(StockService::class)->createWarehouse($this->user->id, 'Secondary Warehouse', 'depo-sec', false);
+
+        // 2. Put 10 items in the secondary warehouse
+        app(StockService::class)->recordMovement([
+            'user_id'       => $this->user->id,
+            'warehouse_id'  => $otherWarehouse->id,
+            'stock_code'    => 'STOCK-MULTI',
+            'movement_type' => 'in_adjustment',
+            'direction'     => 'in',
+            'quantity'      => 10,
+        ]);
+
+        // Verify stock levels: default has 0, secondary has 10
+        $this->assertEquals(0, app(StockService::class)->getStockLevel($this->user->id, 'STOCK-MULTI', $this->warehouse->id));
+        $this->assertEquals(10, app(StockService::class)->getStockLevel($this->user->id, 'STOCK-MULTI', $otherWarehouse->id));
+
+        // 3. Create a sales order requiring 5 items
+        $order = $this->service->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-MULTI',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'STOCK-MULTI', 'quantity' => 5, 'unit_price' => 20.00, 'vat_rate' => 0.00],
+        ]);
+
+        // 4. Try to approve the order, it should fail since it checks the default warehouse which has 0 stock
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/yetersiz stok/i');
+
+        try {
+            $this->service->approveSalesOrder($order);
+        } finally {
+            // Verify absolutely NO receivable / journal / party ledger / stock movement is created
+            $order->refresh();
+            $this->assertEquals('draft', $order->status);
+            $this->assertNull($order->receivable_id);
+            $this->assertDatabaseMissing('receivables', ['document_number' => 'SO-MULTI']);
+            $this->assertDatabaseMissing('party_ledger_entries', ['source_key' => 'sales_order_post_' . $order->id]);
+            $this->assertDatabaseMissing('stock_movements', [
+                'user_id'    => $this->user->id,
+                'stock_code' => 'STOCK-MULTI',
+                'direction'  => 'out',
+            ]);
+        }
     }
 }

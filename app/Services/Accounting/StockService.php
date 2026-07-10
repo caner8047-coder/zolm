@@ -43,6 +43,26 @@ class StockService
     }
 
     /**
+     * Depo ID'sini çözümler. Belirtilmemişse varsayılan veya ilk aktif depoyu döner.
+     */
+    public function resolveWarehouseId(int $userId, ?int $warehouseId = null): int
+    {
+        if ($warehouseId) {
+            return $warehouseId;
+        }
+
+        $defaultWarehouse = Warehouse::where('user_id', $userId)->where('is_default', true)->first();
+        if (!$defaultWarehouse) {
+            $defaultWarehouse = Warehouse::where('user_id', $userId)->where('is_active', true)->first();
+            if (!$defaultWarehouse) {
+                $defaultWarehouse = $this->createWarehouse($userId, 'Merkez Depo', 'depo-merkez', true);
+            }
+        }
+
+        return $defaultWarehouse->id;
+    }
+
+    /**
      * Stok Hareketi Kaydet ve Bakiyeyi Güncelle.
      *
      * @param array{
@@ -80,18 +100,7 @@ class StockService
 
         return DB::transaction(function () use ($data, $userId, $qty, $direction, $stockCode) {
             // Depo tespiti: belirtilmediyse varsayılan depoyu bul
-            $warehouseId = $data['warehouse_id'] ?? null;
-            if (!$warehouseId) {
-                $defaultWarehouse = Warehouse::where('user_id', $userId)->where('is_default', true)->first();
-                if (!$defaultWarehouse) {
-                    // Varsayılan depo yoksa, ilk aktif depoyu seç veya oluştur
-                    $defaultWarehouse = Warehouse::where('user_id', $userId)->where('is_active', true)->first();
-                    if (!$defaultWarehouse) {
-                        $defaultWarehouse = $this->createWarehouse($userId, 'Merkez Depo', 'depo-merkez', true);
-                    }
-                }
-                $warehouseId = $defaultWarehouse->id;
-            }
+            $warehouseId = $this->resolveWarehouseId($userId, $data['warehouse_id'] ?? null);
 
             // Depo doğrulaması
             $warehouse = Warehouse::where('user_id', $userId)->findOrFail($warehouseId);
