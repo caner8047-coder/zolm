@@ -3,8 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
-use App\Models\JournalEntry;
 use App\Models\User;
+use App\Models\Party;
+use App\Models\Warehouse;
+use App\Models\LegalEntity;
+use App\Services\Accounting\OutstandingInvoiceService;
+use App\Services\Accounting\StockService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -13,13 +17,25 @@ class ReportsTest extends TestCase
 {
     use RefreshDatabase;
 
+    private User $user;
+    private Party $party;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $this->party = Party::factory()->create(['user_id' => $this->user->id]);
+        $this->party->roles()->create(['user_id' => $this->user->id, 'role' => 'customer']);
+
+        (new \Database\Seeders\ChartOfAccountsSeeder())->runForUser($this->user->id);
+    }
+
     public function test_route_is_blocked_when_accounting_enabled_is_false(): void
     {
         config()->set('marketplace.features.accounting_enabled', false);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-
-        $this->actingAs($user)
+        $this->actingAs($this->user)
             ->get(route('accounting.reports'))
             ->assertStatus(404);
     }
@@ -28,132 +44,125 @@ class ReportsTest extends TestCase
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-
-        $this->actingAs($user)
+        $this->actingAs($this->user)
             ->get(route('accounting.reports'))
             ->assertStatus(200)
             ->assertSeeLivewire('accounting.reports');
     }
 
-    public function test_trial_balance_calculation(): void
+    public function test_empty_data_shows_zero_kpi(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-
-        // Seed default charts of accounts
-        (new \Database\Seeders\ChartOfAccountsSeeder())->runForUser($user->id);
-
-        $cash = Account::where('user_id', $user->id)->where('code', '100')->first();
-        $bank = Account::where('user_id', $user->id)->where('code', '102')->first();
-
-        // Create a journal entry: Debit Cash 500, Credit Bank 500
-        $journalService = app(\App\Services\Accounting\JournalService::class);
-        $journalService->postManual([
-            'user_id' => $user->id,
-            'entry_date' => now()->toDateString(),
-            'description' => 'Transfer',
-        ], [
-            ['account_id' => $cash->id, 'debit_amount' => 500.00],
-            ['account_id' => $bank->id, 'credit_amount' => 500.00],
-        ]);
-
-        Livewire::actingAs($user)
+        Livewire::actingAs($this->user)
             ->test('accounting.reports')
-            ->set('reportType', 'trial_balance')
-            ->call('runReport')
-            ->assertSet('message', '')
-            ->assertSee('Kasa')
-            ->assertSee('Bankalar');
+            ->assertSee('Yönetim Raporları')
+            ->assertSee('₺0,00');
     }
 
-    public function test_balance_sheet_calculation(): void
+    public function test_switching_report_types_renders_different_tables(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-
-        // Seed default charts of accounts
-        (new \Database\Seeders\ChartOfAccountsSeeder())->runForUser($user->id);
-
-        $cash = Account::where('user_id', $user->id)->where('code', '100')->first();
-        $bank = Account::where('user_id', $user->id)->where('code', '102')->first();
-
-        $journalService = app(\App\Services\Accounting\JournalService::class);
-        $journalService->postManual([
-            'user_id' => $user->id,
-            'entry_date' => now()->toDateString(),
-            'description' => 'Transfer',
-        ], [
-            ['account_id' => $cash->id, 'debit_amount' => 300.00],
-            ['account_id' => $bank->id, 'credit_amount' => 300.00],
-        ]);
-
-        Livewire::actingAs($user)
+        Livewire::actingAs($this->user)
             ->test('accounting.reports')
-            ->set('reportType', 'balance_sheet')
-            ->call('runReport')
-            ->assertSee('AKTİFLER')
-            ->assertSee('PASİFLER');
+            ->set('reportType', 'receivables_aging')
+            ->assertSee('Vadesi Gelmemiş')
+            ->set('reportType', 'cash_flow')
+            ->assertSee('Beklenen Giriş')
+            ->set('reportType', 'stock_inventory')
+            ->assertSee('Birim Maliyet')
+            ->set('reportType', 'party_balances')
+            ->assertSee('Müşteri / Tedarikçi');
     }
 
-    public function test_income_statement_calculation(): void
+    public function test_column_toggling_and_sorting(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-
-        // Seed default charts of accounts
-        (new \Database\Seeders\ChartOfAccountsSeeder())->runForUser($user->id);
-
-        $revenue = Account::where('user_id', $user->id)->where('code', '600')->first();
-        $expense = Account::where('user_id', $user->id)->where('code', '760')->first();
-
-        $cash = Account::where('user_id', $user->id)->where('code', '100')->first();
-
-        $journalService = app(\App\Services\Accounting\JournalService::class);
-        $journalService->postManual([
-            'user_id' => $user->id,
-            'entry_date' => now()->toDateString(),
-            'description' => 'Revenue',
-        ], [
-            ['account_id' => $cash->id, 'debit_amount' => 1000.00],
-            ['account_id' => $revenue->id, 'credit_amount' => 1000.00],
+        // Alacak kaydı oluşturalım ki sıralanacak veri olsun
+        app(OutstandingInvoiceService::class)->createReceivable([
+            'user_id'       => $this->user->id,
+            'party_id'      => $this->party->id,
+            'amount'        => 500.00,
+            'document_date' => now()->toDateString(),
         ]);
 
-        $journalService->postManual([
-            'user_id' => $user->id,
-            'entry_date' => now()->toDateString(),
-            'description' => 'Expense',
-        ], [
-            ['account_id' => $expense->id, 'debit_amount' => 400.00],
-            ['account_id' => $cash->id, 'credit_amount' => 400.00],
-        ]);
-
-        Livewire::actingAs($user)
+        Livewire::actingAs($this->user)
             ->test('accounting.reports')
-            ->set('reportType', 'income_statement')
-            ->call('runReport')
-            ->assertSee('Brüt Satış Gelirleri')
-            ->assertSee('Faaliyet Giderleri');
+            ->set('reportType', 'income_expense')
+            // Kolon gizle
+            ->call('toggleColumn', 'account_name')
+            ->assertSet('visibleColumns', ['account_code', 'type', 'amount'])
+            // Kolon geri getir
+            ->call('toggleColumn', 'account_name')
+            ->assertSet('visibleColumns', ['account_code', 'type', 'amount', 'account_name'])
+            // Sırala
+            ->call('sortTable', 'account_code')
+            ->assertSet('sortColumn', 'account_code')
+            // Whitelist dışı kolon sıralanmaz
+            ->call('sortTable', 'invalid_column_name')
+            ->assertSet('sortColumn', 'account_code');
     }
 
-    public function test_excel_export_generation(): void
+    public function test_other_user_filter_id_handling(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $otherUser = User::factory()->create(['is_active' => true]);
+        $otherParty = Party::factory()->create(['user_id' => $otherUser->id]);
 
-        // Seed default charts of accounts
-        (new \Database\Seeders\ChartOfAccountsSeeder())->runForUser($user->id);
-
-        $response = Livewire::actingAs($user)
+        Livewire::actingAs($this->user)
             ->test('accounting.reports')
-            ->set('reportType', 'trial_balance')
-            ->call('runReport')
-            ->call('exportExcel');
+            ->set('partyId', $otherParty->id)
+            ->assertSee('Güvenlik Uyarısı: Belirtilen cari bulunamadı veya bu kullanıcıya ait değil.');
+    }
 
-        $this->assertNotNull($response);
+    public function test_rendering_does_not_mutate_accounting_enabled_feature_flag(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', false);
+
+        Livewire::actingAs($this->user)
+            ->test('accounting.reports');
+
+        $this->assertFalse(config('marketplace.features.accounting_enabled'));
+
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        Livewire::actingAs($this->user)
+            ->test('accounting.reports');
+
+        $this->assertTrue(config('marketplace.features.accounting_enabled'));
+    }
+
+    public function test_ui_filters_successfully_update_and_filter_results(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $invoice = app(OutstandingInvoiceService::class);
+
+        // Created 10 days ago (amount 700)
+        $invoice->createReceivable([
+            'user_id'       => $this->user->id,
+            'party_id'      => $this->party->id,
+            'amount'        => 700.00,
+            'document_date' => now()->subDays(10)->toDateString(),
+        ]);
+
+        // Created today (amount 1500)
+        $invoice->createReceivable([
+            'user_id'       => $this->user->id,
+            'party_id'      => $this->party->id,
+            'amount'        => 1500.00,
+            'document_date' => now()->toDateString(),
+        ]);
+
+        // When dateFrom is set to 3 days ago, the 10 days ago receivable should be filtered out
+        Livewire::actingAs($this->user)
+            ->test('accounting.reports')
+            ->set('reportType', 'receivables_aging')
+            ->set('dateFrom', now()->subDays(3)->toDateString())
+            ->assertSee('₺1.500,00')
+            ->assertDontSee('₺2.200,00'); // total open would be 2200 if not filtered
     }
 }
