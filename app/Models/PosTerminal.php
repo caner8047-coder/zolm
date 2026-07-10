@@ -14,6 +14,7 @@ class PosTerminal extends Model
     {
         return [
             'is_active' => 'boolean',
+            'meta_json' => 'array',
         ];
     }
 
@@ -25,5 +26,20 @@ class PosTerminal extends Model
     public function shifts(): HasMany
     {
         return $this->hasMany(PosShift::class);
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
+    }
+
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(Account::class);
+    }
+
+    public function legalEntity(): BelongsTo
+    {
+        return $this->belongsTo(LegalEntity::class);
     }
 }

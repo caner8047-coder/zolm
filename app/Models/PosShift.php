@@ -13,10 +13,13 @@ class PosShift extends Model
     protected function casts(): array
     {
         return [
-            'opened_at'       => 'datetime',
-            'closed_at'       => 'datetime',
-            'opening_balance' => 'decimal:2',
-            'closing_balance' => 'decimal:2',
+            'opened_at'                => 'datetime',
+            'closed_at'                => 'datetime',
+            'opening_balance'          => 'decimal:2',
+            'closing_balance'          => 'decimal:2',
+            'expected_closing_balance' => 'decimal:2',
+            'difference_amount'        => 'decimal:2',
+            'meta_json'                => 'array',
         ];
     }
 
@@ -33,5 +36,31 @@ class PosShift extends Model
     public function sales(): HasMany
     {
         return $this->hasMany(PosSale::class);
+    }
+
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(Account::class);
+    }
+
+    public function legalEntity(): BelongsTo
+    {
+        return $this->belongsTo(LegalEntity::class);
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
+    }
+
+    // Helper metotlar
+    public function isOpen(): bool
+    {
+        return $this->status === 'open';
+    }
+
+    public function isClosed(): bool
+    {
+        return $this->status === 'closed';
     }
 }

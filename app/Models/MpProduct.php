@@ -114,6 +114,12 @@ class MpProduct extends Model
 
     protected static function booted(): void
     {
+        static::creating(function (MpProduct $product): void {
+            if (empty($product->barcode)) {
+                $product->barcode = 'BAR-' . ($product->stock_code ?: uniqid());
+            }
+        });
+
         static::saved(function (MpProduct $product): void {
             // Stok değişikliği → domain event
             if ($product->wasChanged('stock_quantity')) {

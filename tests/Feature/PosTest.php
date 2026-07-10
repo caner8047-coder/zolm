@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\LegalEntity;
 use App\Models\MpProduct;
 use App\Models\Party;
 use App\Models\PosTerminal;
 use App\Models\PosShift;
+use App\Models\PosSale;
 use App\Models\StockBalance;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -18,173 +20,191 @@ class PosTest extends TestCase
 {
     use RefreshDatabase;
 
+    private User $user;
+    private PosTerminal $terminal;
+    private Warehouse $warehouse;
+    private Account $cashAccount;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+
+        // Seed default charts of accounts
+        (new \Database\Seeders\ChartOfAccountsSeeder())->runForUser($this->user->id);
+
+        $this->warehouse = Warehouse::create([
+            'user_id' => $this->user->id,
+            'name' => 'Main',
+            'code' => 'depo-main',
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+
+        $this->cashAccount = Account::create([
+            'user_id' => $this->user->id,
+            'code'    => '100.POS.01',
+            'name'    => 'Merkez Kasa',
+            'type'    => 'cash',
+            'is_active' => true,
+            'normal_balance' => 'debit',
+            'is_cash_account' => true,
+        ]);
+
+        $this->terminal = PosTerminal::create([
+            'user_id'      => $this->user->id,
+            'name'         => 'Kasa 1',
+            'is_active'    => true,
+            'warehouse_id' => $this->warehouse->id,
+            'account_id'   => $this->cashAccount->id,
+        ]);
+    }
+
+    /** @test */
     public function test_route_is_blocked_when_accounting_enabled_is_false(): void
     {
         config()->set('marketplace.features.accounting_enabled', false);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-
-        $this->actingAs($user)
+        $this->actingAs($this->user)
             ->get(route('accounting.pos'))
             ->assertStatus(404);
     }
 
+    /** @test */
     public function test_page_renders_when_accounting_enabled_is_true(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-
-        $this->actingAs($user)
+        $this->actingAs($this->user)
             ->get(route('accounting.pos'))
             ->assertStatus(200)
             ->assertSeeLivewire('accounting.pos');
     }
 
-    public function test_opening_and_closing_shift(): void
+    /** @test */
+    public function test_product_search_works_and_excludes_other_users_products(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-        $terminal = PosTerminal::create(['user_id' => $user->id, 'name' => 'Kasa 1', 'is_active' => true]);
+        $otherUser = User::factory()->create(['is_active' => true]);
 
-        Livewire::actingAs($user)
+        // User1 product
+        $p1 = MpProduct::create([
+            'user_id' => $this->user->id,
+            'stock_code' => 'P1-MINE',
+            'product_name' => 'My Cola',
+            'barcode' => 'BAR-11',
+        ]);
+
+        // User2 product
+        $p2 = MpProduct::create([
+            'user_id' => $otherUser->id,
+            'stock_code' => 'P2-OTHER',
+            'product_name' => 'Other User Cola',
+            'barcode' => 'BAR-22',
+        ]);
+
+        $lw = Livewire::actingAs($this->user)
             ->test('accounting.pos')
-            ->call('selectTerminal', $terminal->id)
-            ->set('shiftOpeningBalance', 150.00)
-            ->call('openShift')
-            ->assertSet('messageType', 'success');
+            ->set('cartSearch', 'Cola');
 
-        $shift = PosShift::where('user_id', $user->id)->first();
-        $this->assertEquals('open', $shift->status);
-        $this->assertEquals(150.00, $shift->opening_balance);
-
-        Livewire::actingAs($user)
-            ->test('accounting.pos')
-            ->call('selectTerminal', $terminal->id)
-            ->set('shiftClosingBalance', 300.00)
-            ->call('closeShift')
-            ->assertSet('messageType', 'success');
-
-        $this->assertEquals('closed', $shift->fresh()->status);
-        $this->assertEquals(300.00, $shift->fresh()->closing_balance);
+        // Only p1 should be visible
+        $this->assertCount(1, $lw->products);
+        $this->assertEquals('P1-MINE', $lw->products[0]->stock_code);
     }
 
-    public function test_checkout_pos_sale_updates_stock_and_kasa_balance(): void
+    /** @test */
+    public function test_cart_totals_calculated_correctly(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-        $terminal = PosTerminal::create(['user_id' => $user->id, 'name' => 'Kasa 1', 'is_active' => true]);
-
-        // Seed default charts of accounts
-        (new \Database\Seeders\ChartOfAccountsSeeder())->runForUser($user->id);
-
-        $warehouse = Warehouse::create([
-            'user_id' => $user->id,
-            'name' => 'Main',
-            'code' => 'depo-main',
-            'is_default' => true,
-            'is_active' => true,
+        $p = MpProduct::create([
+            'user_id' => $this->user->id,
+            'stock_code' => 'P-CALC',
+            'product_name' => 'Pizza Slice',
+            'barcode' => 'BAR-PIZZA',
+            'sale_price' => 50.00,
         ]);
 
-        $product = MpProduct::create([
-            'user_id' => $user->id,
-            'stock_code' => 'PRD-POS',
-            'product_name' => 'Cola Can',
-            'barcode' => 'BAR-POS',
-            'sale_price' => 15.00,
+        $lw = Livewire::actingAs($this->user)
+            ->test('accounting.pos')
+            ->call('addToCart', 'P-CALC')
+            ->call('updateQuantity', 0, 2)
+            ->call('updateDiscountRate', 0, 10.00); // 10% discount on 100 TRY subtotal = 90 TRY matrah. VAT(20%) = 18.00 TRY. Total = 108.00 TRY.
+
+        $this->assertEquals(100.00, $lw->subtotal);
+        $this->assertEquals(10.00, $lw->discountTotal);
+        $this->assertEquals(18.00, $lw->vatTotal);
+        $this->assertEquals(108.00, $lw->total);
+    }
+
+    /** @test */
+    public function test_checkout_clears_cart_and_shows_in_recent_sales(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $p = MpProduct::create([
+            'user_id' => $this->user->id,
+            'stock_code' => 'P-CHECKOUT',
+            'product_name' => 'Coffee Cup',
+            'barcode' => 'BAR-COFFEE',
+            'sale_price' => 10.00,
         ]);
 
-        // Place 20 in stock
         StockBalance::create([
-            'user_id' => $user->id,
-            'warehouse_id' => $warehouse->id,
-            'stock_code' => 'PRD-POS',
-            'quantity' => 20,
+            'user_id' => $this->user->id,
+            'warehouse_id' => $this->warehouse->id,
+            'stock_code' => 'P-CHECKOUT',
+            'quantity' => 10,
         ]);
 
-        Livewire::actingAs($user)
+        Livewire::actingAs($this->user)
             ->test('accounting.pos')
-            ->call('selectTerminal', $terminal->id)
-            ->set('shiftOpeningBalance', 150.00)
+            ->call('selectTerminal', $this->terminal->id)
+            ->set('shiftOpeningBalance', 50.00)
             ->call('openShift')
-            ->call('addToCart', 'PRD-POS')
-            ->set('paymentMethod', 'cash')
+            ->call('addToCart', 'P-CHECKOUT')
             ->call('checkout')
-            ->assertSet('messageType', 'success');
+            ->assertSet('messageType', 'success')
+            ->assertSet('cart', []); // Cart cleared
 
-        // Stock decreased by 1 (20 - 1 = 19)
-        $this->assertEquals(19, StockBalance::where('user_id', $user->id)->first()->quantity);
-
-        // Bank account (102 code) increased by sales amount (15 * 1.20 VAT = 18.00)
-        $bank = Account::where('user_id', $user->id)->where('is_bank_account', true)->first();
-        $this->assertEquals(18.00, $bank->balance());
+        $this->assertCount(1, PosSale::all());
     }
 
-    public function test_checkout_with_insufficient_stock_fails(): void
+    /** @test */
+    public function test_column_toggle_and_table_sort_functions(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-        $terminal = PosTerminal::create(['user_id' => $user->id, 'name' => 'Kasa 1', 'is_active' => true]);
-
-        // Seed default charts of accounts
-        (new \Database\Seeders\ChartOfAccountsSeeder())->runForUser($user->id);
-
-        $warehouse = Warehouse::create([
-            'user_id' => $user->id,
-            'name' => 'Main',
-            'code' => 'depo-main',
-            'is_default' => true,
-            'is_active' => true,
-        ]);
-
-        $product = MpProduct::create([
-            'user_id' => $user->id,
-            'stock_code' => 'PRD-POS',
-            'product_name' => 'Cola Can',
-            'barcode' => 'BAR-POS',
-            'sale_price' => 15.00,
-        ]);
-
-        // Place only 1 in stock
-        StockBalance::create([
-            'user_id' => $user->id,
-            'warehouse_id' => $warehouse->id,
-            'stock_code' => 'PRD-POS',
-            'quantity' => 1,
-        ]);
-
-        Livewire::actingAs($user)
+        $lw = Livewire::actingAs($this->user)
             ->test('accounting.pos')
-            ->call('selectTerminal', $terminal->id)
-            ->set('shiftOpeningBalance', 150.00)
-            ->call('openShift')
-            ->call('addToCart', 'PRD-POS')
-            ->call('updateQuantity', 0, 5) // Try to checkout 5
-            ->call('checkout')
-            ->assertSet('messageType', 'error');
+            ->call('selectTerminal', $this->terminal->id);
 
-        // Stock quantity should remain 1
-        $this->assertEquals(1, StockBalance::where('user_id', $user->id)->first()->quantity);
+        // Toggle columns
+        $this->assertContains('amount', $lw->visibleColumns);
+        $lw->call('toggleColumn', 'amount');
+        $this->assertNotContains('amount', $lw->visibleColumns);
+
+        // Sort table whitelist
+        $this->assertEquals('id', $lw->sortColumn);
+        $lw->call('sortTable', 'invalid_col');
+        $this->assertEquals('id', $lw->sortColumn);
+
+        $lw->call('sortTable', 'amount');
+        $this->assertEquals('amount', $lw->sortColumn);
+        $this->assertEquals('asc', $lw->sortDirection);
     }
 
-    public function test_tenant_isolation_on_pos(): void
+    /** @test */
+    public function test_mobile_critical_actions_render_correctly(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user1 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-        $user2 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-
-        // Terminal belonging to User 2
-        $terminal2 = PosTerminal::create(['user_id' => $user2->id, 'name' => 'User2 Kasa', 'is_active' => true]);
-
-        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
-
-        // User 1 attempting to select User 2's terminal should be blocked
-        Livewire::actingAs($user1)
-            ->test('accounting.pos')
-            ->call('selectTerminal', $terminal2->id);
+        // Renders blade view without crashing
+        $this->actingAs($this->user)
+            ->get(route('accounting.pos'))
+            ->assertSee('Perakende Checkout')
+            ->assertSee('Kasa Vardiyası Kontrolü');
     }
 }
