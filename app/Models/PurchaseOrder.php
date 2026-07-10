@@ -17,8 +17,35 @@ class PurchaseOrder extends Model
             'total_amount'    => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'exchange_rate'   => 'decimal:6',
+            'approved_at'     => 'datetime',
+            'cancelled_at'    => 'datetime',
+            'due_date'        => 'date',
+            'meta_json'       => 'array',
         ];
     }
+
+    // -------------------------------------------------------
+    // Durum Yardımcıları
+    // -------------------------------------------------------
+
+    public function isDraft(): bool
+    {
+        return $this->status === 'draft';
+    }
+
+    public function isApproved(): bool
+    {
+        return $this->status === 'approved';
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === 'cancelled';
+    }
+
+    // -------------------------------------------------------
+    // İlişkiler
+    // -------------------------------------------------------
 
     public function user(): BelongsTo
     {
@@ -33,6 +60,11 @@ class PurchaseOrder extends Model
     public function legalEntity(): BelongsTo
     {
         return $this->belongsTo(LegalEntity::class);
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     public function items(): HasMany

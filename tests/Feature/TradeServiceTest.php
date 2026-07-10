@@ -685,4 +685,337 @@ class TradeServiceTest extends TestCase
             $this->assertDatabaseMissing('receivables', ['document_number' => 'SO-ROLLBACK']);
         }
     }
+
+    // -------------------------------------------------------
+    // P7 — Satın Alma Siparişi Hardening Testleri
+    // -------------------------------------------------------
+
+    /** @test */
+    public function test_create_purchase_order_requires_supplier_role(): void
+    {
+        // Create a new party for this test that has NO supplier role
+        $noSupplierParty = Party::factory()->create(['user_id' => $this->user->id]);
+        $noSupplierParty->roles()->create(['user_id' => $this->user->id, 'role' => 'customer']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/tedarikçi rol/i');
+
+        $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $noSupplierParty->id,
+            'document_number' => 'ALI-ROLE',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 2, 'unit_price' => 50.00],
+        ]);
+    }
+
+    /** @test */
+    public function test_create_purchase_order_succeeds_with_supplier_role(): void
+    {
+        $order = $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-SUPPLIER-OK',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 3, 'unit_price' => 100.00, 'vat_rate' => 20.00],
+        ]);
+
+        $this->assertEquals('draft', $order->status);
+        $this->assertDatabaseHas('purchase_orders', [
+            'document_number' => 'ALI-SUPPLIER-OK',
+            'status'          => 'draft',
+        ]);
+        // 3 * 100 = 300, KDV = 60, Toplam = 360
+        $this->assertEquals(360.00, (float) $order->total_amount);
+    }
+
+    /** @test */
+    public function test_create_purchase_order_source_key_idempotent_same_payload_returns_existing(): void
+    {
+        $params = [
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-IDEM-001',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'ext_purchase_001',
+        ];
+        $itemParams = [
+            ['stock_code' => 'STOCK-A', 'quantity' => 2, 'unit_price' => 50.00, 'vat_rate' => 20.00, 'discount_rate' => 0.00],
+        ];
+
+        $first  = $this->service->createPurchaseOrder($params, $itemParams);
+        $second = $this->service->createPurchaseOrder($params, $itemParams);
+
+        $this->assertEquals($first->id, $second->id);
+        $this->assertDatabaseCount('purchase_orders', 1);
+    }
+
+    /** @test */
+    public function test_create_purchase_order_source_key_different_payload_throws(): void
+    {
+        $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-IDEM-002',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'ext_purchase_002',
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 2, 'unit_price' => 50.00, 'vat_rate' => 20.00],
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/source_key/i');
+
+        // Same source_key, different quantity
+        $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-IDEM-002',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'ext_purchase_002',
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 99, 'unit_price' => 50.00, 'vat_rate' => 20.00],
+        ]);
+    }
+
+    /** @test */
+    public function test_approve_purchase_order_uses_deterministic_source_key(): void
+    {
+        $order = $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-DETKEY',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 5, 'unit_price' => 40.00, 'vat_rate' => 20.00],
+        ]);
+
+        $this->service->approvePurchaseOrder($order);
+
+        $item = $order->items->first();
+        $expectedKey = 'purchase_order_stock_in_' . $order->id . '_' . $item->id;
+
+        $this->assertDatabaseHas('stock_movements', [
+            'user_id'          => $this->user->id,
+            'source_key'       => $expectedKey,
+            'direction'        => 'in',
+            'warehouse_id'     => $order->warehouse_id,
+            'reference_number' => $order->document_number,
+            'legal_entity_id'  => $order->legal_entity_id,
+            'source_type'      => 'purchase_order',
+            'source_id'        => $order->id,
+        ]);
+    }
+
+    /** @test */
+    public function test_cancel_purchase_order_negative_stock_guard(): void
+    {
+        $order = $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-NEGGUARD',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 10, 'unit_price' => 20.00, 'vat_rate' => 20.00],
+        ]);
+
+        $this->service->approvePurchaseOrder($order);
+
+        // Manually drain most of the stock via a separate out movement so cancel would go negative
+        app(StockService::class)->recordMovement([
+            'user_id'       => $this->user->id,
+            'stock_code'    => 'STOCK-A',
+            'movement_type' => 'out_sale',
+            'direction'     => 'out',
+            'quantity'      => 8, // leaves only 2 of the 10 purchased
+            'unit_cost'     => 20.00,
+            'source_type'   => 'sales_order',
+            'source_id'     => 9999,
+            'movement_date' => now()->toDateString(),
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/yetersiz stok/i');
+
+        $this->service->cancelPurchaseOrder($order->fresh(['items']));
+    }
+
+    /** @test */
+    public function test_cancel_purchase_order_with_allocation_is_blocked(): void
+    {
+        $order = $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-ALLOC',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 5, 'unit_price' => 30.00, 'vat_rate' => 20.00],
+        ]);
+
+        $this->service->approvePurchaseOrder($order->fresh());
+        $order->refresh();
+
+        // Simulate allocation on payable
+        $payable = \App\Models\Payable::find($order->payable_id);
+        $payable->update(['status' => 'partially_paid']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/ödeme/i');
+
+        $this->service->cancelPurchaseOrder($order->fresh(['items']));
+    }
+
+    /** @test */
+    public function test_approve_purchase_order_sets_approved_at(): void
+    {
+        $order = $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-APPRTS',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 2, 'unit_price' => 100.00, 'vat_rate' => 20.00],
+        ]);
+
+        $this->service->approvePurchaseOrder($order);
+        $order->refresh();
+
+        $this->assertNotNull($order->approved_at);
+        $this->assertEquals('approved', $order->status);
+    }
+
+    /** @test */
+    public function test_cancel_purchase_order_sets_cancelled_at_and_reason(): void
+    {
+        $order = $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-CANCTS',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 3, 'unit_price' => 50.00, 'vat_rate' => 20.00],
+        ]);
+
+        $this->service->approvePurchaseOrder($order);
+        $item = $order->items->first();
+
+        $this->service->cancelPurchaseOrder($order->fresh(['items']), 'Test iptali');
+
+        $order->refresh();
+        $this->assertEquals('cancelled', $order->status);
+        $this->assertNotNull($order->cancelled_at);
+        $this->assertEquals('Test iptali', $order->cancel_reason);
+
+        // Verify reverse stock movement was logged correctly
+        $this->assertDatabaseHas('stock_movements', [
+            'user_id' => $this->user->id,
+            'source_type' => 'purchase_order',
+            'source_key' => 'purchase_order_cancel_stock_out_' . $order->id . '_' . $item->id,
+            'movement_type' => 'out_purchase_return',
+            'direction' => 'out',
+            'quantity' => 3,
+        ]);
+    }
+
+    /** @test */
+    public function test_purchase_order_discounts_and_vat_calculation(): void
+    {
+        // Setup:
+        // Item: qty=5, price=100, discount_rate=10% -> base = 500, line_disc = 50, item_total = 450
+        // Header discount: 30
+        // Ara toplam = 500
+        // İndirim toplamı = 50 + 30 = 80
+        // KDV matrahı = 500 - 50 (line discount) = 450. KDV (20%) = 90
+        // Genel Toplam = Matrah - Header_Disc + KDV = 450 - 30 + 90 = 510
+        $order = $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-DISCVAT',
+            'order_date'      => now()->toDateString(),
+            'discount_amount' => 30.00,
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 5, 'unit_price' => 100.00, 'vat_rate' => 20.00, 'discount_rate' => 10.00],
+        ]);
+
+        $this->assertEquals(510.00, (float) $order->total_amount);
+        $this->assertEquals(80.00, (float) $order->discount_amount);
+    }
+
+    /** @test */
+    public function test_create_purchase_order_different_discount_amount_with_same_source_key_throws(): void
+    {
+        $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-IDEM-DISC1',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'idem_disc_key',
+            'discount_amount' => 10.00,
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 2, 'unit_price' => 50.00, 'vat_rate' => 20.00],
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/source_key/i');
+
+        // Same source_key, but different discount_amount
+        $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-IDEM-DISC2',
+            'order_date'      => now()->toDateString(),
+            'source_key'      => 'idem_disc_key',
+            'discount_amount' => 20.00, // conflict
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 2, 'unit_price' => 50.00, 'vat_rate' => 20.00],
+        ]);
+    }
+
+    /** @test */
+    public function test_cancel_purchase_order_with_actual_allocation_is_blocked(): void
+    {
+        $order = $this->service->createPurchaseOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'ALI-REALALLOC',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'STOCK-A', 'quantity' => 5, 'unit_price' => 30.00, 'vat_rate' => 20.00],
+        ]);
+
+        $this->service->approvePurchaseOrder($order);
+        $order->refresh();
+
+        $payable = \App\Models\Payable::find($order->payable_id);
+
+        // Seed a bank account to make a payment
+        $bankAcc = app(\App\Services\Accounting\CashBankService::class)->createBankAccount($this->user->id, [
+            'bank_name'      => 'Test Bankası',
+            'account_number' => '1234567',
+            'currency_code'  => 'TRY',
+        ]);
+        $bankAccount = $bankAcc->account;
+
+        // Record a payment of 50.00
+        $payment = app(\App\Services\Accounting\CollectionPaymentService::class)->recordPayment([
+            'user_id'        => $this->user->id,
+            'party_id'       => $this->party->id,
+            'account_id'     => $bankAccount->id,
+            'amount'         => 50.00,
+            'payment_date'   => now()->toDateString(),
+            'payment_method' => 'bank',
+        ]);
+
+        // Allocate 50.00 to the payable
+        app(\App\Services\Accounting\CollectionPaymentService::class)->allocatePayment($payment, [
+            ['payable_id' => $payable->id, 'amount' => 50.00]
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/ödeme/i');
+
+        $this->service->cancelPurchaseOrder($order->fresh(['items']));
+    }
 }
