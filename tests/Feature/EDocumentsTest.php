@@ -5,8 +5,13 @@ namespace Tests\Feature;
 use App\Models\EDocument;
 use App\Models\MpProduct;
 use App\Models\Party;
+use App\Models\PartyIdentity;
 use App\Models\SalesOrder;
 use App\Models\User;
+use App\Models\Warehouse;
+use App\Services\Accounting\StockService;
+use App\Services\Accounting\TradeService;
+use Database\Seeders\ChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -15,13 +20,66 @@ class EDocumentsTest extends TestCase
 {
     use RefreshDatabase;
 
+    private User $user;
+    private Party $party;
+    private SalesOrder $order;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $this->party = Party::factory()->create(['user_id' => $this->user->id, 'display_name' => 'Müşteri']);
+        $this->party->roles()->create(['user_id' => $this->user->id, 'role' => 'customer']);
+
+        PartyIdentity::create([
+            'user_id'        => $this->user->id,
+            'party_id'       => $this->party->id,
+            'source_type'    => 'manual',
+            'identity_kind'  => 'vkn',
+            'identity_value' => '9998887776',
+        ]);
+
+        $seeder = new ChartOfAccountsSeeder();
+        $seeder->runForUser($this->user->id);
+
+        $warehouse = app(StockService::class)->createWarehouse($this->user->id, 'Merkez Depo', 'depo-merkez', true);
+
+        // MpProduct oluştur
+        MpProduct::create([
+            'user_id'    => $this->user->id,
+            'stock_code' => 'P-1',
+            'name'       => 'Test Ürün P-1',
+            'barcode'    => 'BAR-P-1',
+        ]);
+
+        // Seed stock
+        app(StockService::class)->recordMovement([
+            'user_id'       => $this->user->id,
+            'warehouse_id'  => $warehouse->id,
+            'stock_code'    => 'P-1',
+            'movement_type' => 'in_adjustment',
+            'direction'     => 'in',
+            'quantity'      => 10,
+        ]);
+
+        $trade = app(TradeService::class);
+        $this->order = $trade->createSalesOrder([
+            'user_id'         => $this->user->id,
+            'party_id'        => $this->party->id,
+            'document_number' => 'SO-001',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 100],
+        ]);
+        $trade->approveSalesOrder($this->order);
+    }
+
     public function test_route_is_blocked_when_accounting_enabled_is_false(): void
     {
         config()->set('marketplace.features.accounting_enabled', false);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-
-        $this->actingAs($user)
+        $this->actingAs($this->user)
             ->get(route('accounting.e-documents'))
             ->assertStatus(404);
     }
@@ -30,73 +88,79 @@ class EDocumentsTest extends TestCase
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-
-        $this->actingAs($user)
+        $this->actingAs($this->user)
             ->get(route('accounting.e-documents'))
             ->assertStatus(200)
             ->assertSeeLivewire('accounting.e-documents');
     }
 
-    public function test_creating_e_document_draft(): void
+    public function test_available_sales_orders_sadece_userin_siparislerini_listeler(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-        $party = Party::factory()->create(['user_id' => $user->id]);
-        $party->roles()->create(['user_id' => $user->id, 'role' => 'customer']);
+        // Diğer kullanıcı siparişi
+        $otherUser = User::factory()->create(['is_active' => true]);
+        $otherParty = Party::factory()->create(['user_id' => $otherUser->id]);
+        $otherParty->roles()->create(['user_id' => $otherUser->id, 'role' => 'customer']);
 
-        $tradeService = app(\App\Services\Accounting\TradeService::class);
-        $order = $tradeService->createSalesOrder([
-            'user_id' => $user->id,
-            'party_id' => $party->id,
-            'document_number' => 'SO-001',
-            'order_date' => now()->toDateString(),
+        MpProduct::create([
+            'user_id'    => $otherUser->id,
+            'stock_code' => 'P-1',
+            'name'       => 'Test Ürün P-1',
+            'barcode'    => 'BAR-P-1-OTHER',
+        ]);
+
+        $trade = app(TradeService::class);
+        $otherOrder = $trade->createSalesOrder([
+            'user_id'         => $otherUser->id,
+            'party_id'        => $otherParty->id,
+            'document_number' => 'SO-OTHER',
+            'order_date'      => now()->toDateString(),
         ], [
             ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 100],
         ]);
+        $otherOrder->update([
+            'status'          => 'approved',
+            'subtotal_amount' => 100.00,
+            'discount_amount' => 0.00,
+            'vat_amount'      => 20.00,
+            'total_amount'    => 120.00,
+        ]);
 
-        // Must be approved to create e-document
-        $order->update(['status' => 'approved']);
-
-        Livewire::actingAs($user)
+        Livewire::actingAs($this->user)
             ->test('accounting.e-documents')
-            ->set('selectedSalesOrderId', $order->id)
+            ->set('showCreateForm', true)
+            ->assertSee($this->order->document_number)
+            ->assertDontSee('SO-OTHER');
+    }
+
+    public function test_creating_e_document_draft_ui(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        Livewire::actingAs($this->user)
+            ->test('accounting.e-documents')
+            ->set('selectedSalesOrderId', $this->order->id)
             ->set('documentType', 'e_invoice')
+            ->set('buyerTaxNumber', '9998887776')
             ->call('createEDocument')
             ->assertSet('messageType', 'success');
 
         $this->assertDatabaseHas('e_documents', [
-            'user_id' => $user->id,
-            'sales_order_id' => $order->id,
-            'document_type' => 'e_invoice',
-            'status' => 'draft',
+            'user_id'        => $this->user->id,
+            'sales_order_id' => $this->order->id,
+            'document_type'  => 'e_invoice',
+            'status'         => 'draft',
         ]);
     }
 
-    public function test_sending_to_gib(): void
+    public function test_sending_to_gib_ui(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-        $party = Party::factory()->create(['user_id' => $user->id]);
-        $party->roles()->create(['user_id' => $user->id, 'role' => 'customer']);
+        $doc = app(\App\Services\Accounting\EDocumentService::class)->createDraft($this->order, 'e_invoice', [], $this->user->id);
 
-        $tradeService = app(\App\Services\Accounting\TradeService::class);
-        $order = $tradeService->createSalesOrder([
-            'user_id' => $user->id,
-            'party_id' => $party->id,
-            'document_number' => 'SO-001',
-            'order_date' => now()->toDateString(),
-        ], [
-            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 100],
-        ]);
-        $order->update(['status' => 'approved']);
-
-        $service = app(\App\Services\Accounting\EDocumentService::class);
-        $doc = $service->createDraft($order, 'e_invoice');
-
-        Livewire::actingAs($user)
+        Livewire::actingAs($this->user)
             ->test('accounting.e-documents')
             ->call('sendToGib', $doc->id)
             ->assertSet('messageType', 'success');
@@ -105,69 +169,118 @@ class EDocumentsTest extends TestCase
         $this->assertNotEmpty($doc->fresh()->invoice_number);
     }
 
-    public function test_cancelling_e_document(): void
+    public function test_cancelling_e_document_ui(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-        $party = Party::factory()->create(['user_id' => $user->id]);
-        $party->roles()->create(['user_id' => $user->id, 'role' => 'customer']);
+        $doc = app(\App\Services\Accounting\EDocumentService::class)->createDraft($this->order, 'e_invoice', [], $this->user->id);
+        app(\App\Services\Accounting\EDocumentService::class)->sendToProvider($doc, $this->user->id);
 
-        $tradeService = app(\App\Services\Accounting\TradeService::class);
-        $order = $tradeService->createSalesOrder([
-            'user_id' => $user->id,
-            'party_id' => $party->id,
-            'document_number' => 'SO-001',
-            'order_date' => now()->toDateString(),
-        ], [
-            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 100],
-        ]);
-        $order->update(['status' => 'approved']);
-
-        $service = app(\App\Services\Accounting\EDocumentService::class);
-        $doc = $service->createDraft($order, 'e_invoice');
-        $service->sendToProvider($doc);
-
-        Livewire::actingAs($user)
+        Livewire::actingAs($this->user)
             ->test('accounting.e-documents')
             ->call('openCancelModal', $doc->id)
-            ->set('cancelReason', 'Müşteri vazgeçti')
+            ->set('cancelReason', 'Müşteri iptal istedi')
             ->call('cancelDocument')
             ->assertSet('messageType', 'success');
 
         $this->assertEquals('cancelled', $doc->fresh()->status);
-        $this->assertEquals('Müşteri vazgeçti', $doc->fresh()->response_message);
+        $this->assertEquals('Müşteri iptal istedi', $doc->fresh()->cancel_reason);
     }
 
-    public function test_tenant_isolation_on_e_documents(): void
+    public function test_events_modal_only_opens_allowed_document(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);
 
-        $user1 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
-        $user2 = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $otherUser = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $otherParty = Party::factory()->create(['user_id' => $otherUser->id]);
+        $otherParty->roles()->create(['user_id' => $otherUser->id, 'role' => 'customer']);
 
-        $party2 = Party::factory()->create(['user_id' => $user2->id]);
-        $party2->roles()->create(['user_id' => $user2->id, 'role' => 'customer']);
+        MpProduct::create([
+            'user_id'    => $otherUser->id,
+            'stock_code' => 'P-1',
+            'name'       => 'Test Ürün P-1',
+            'barcode'    => 'BAR-P-1-OTHER-EVENTS',
+        ]);
 
-        $tradeService = app(\App\Services\Accounting\TradeService::class);
-        $order2 = $tradeService->createSalesOrder([
-            'user_id' => $user2->id,
-            'party_id' => $party2->id,
-            'document_number' => 'SO-002',
-            'order_date' => now()->toDateString(),
+        $trade = app(TradeService::class);
+        $otherOrder = $trade->createSalesOrder([
+            'user_id'         => $otherUser->id,
+            'party_id'        => $otherParty->id,
+            'document_number' => 'SO-999',
+            'order_date'      => now()->toDateString(),
         ], [
             ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 100],
         ]);
-        $order2->update(['status' => 'approved']);
+        $otherOrder->update([
+            'status'          => 'approved',
+            'subtotal_amount' => 100.00,
+            'discount_amount' => 0.00,
+            'vat_amount'      => 20.00,
+            'total_amount'    => 120.00,
+        ]);
 
-        $service = app(\App\Services\Accounting\EDocumentService::class);
-        $doc2 = $service->createDraft($order2, 'e_invoice');
+        $otherDoc = app(\App\Services\Accounting\EDocumentService::class)->createDraft($otherOrder, 'e_archive', [], $otherUser->id);
 
+        // User attempting to open other user's event log should throw exception
         $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
 
-        // User 1 attempting to send User 2's document should fail
-        Livewire::actingAs($user1)
+        Livewire::actingAs($this->user)
             ->test('accounting.e-documents')
-            ->call('sendToGib', $doc2->id);
+            ->call('openEventsModal', $otherDoc->id);
+    }
+
+    public function test_tenant_isolation_on_search_ui(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $otherUser = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+        $otherParty = Party::factory()->create(['user_id' => $otherUser->id, 'display_name' => 'OtherBuyerName']);
+        $otherParty->roles()->create(['user_id' => $otherUser->id, 'role' => 'customer']);
+
+        MpProduct::create([
+            'user_id'    => $otherUser->id,
+            'stock_code' => 'P-1',
+            'name'       => 'Test Ürün P-1',
+            'barcode'    => 'BAR-P-1-OTHER-SEARCH',
+        ]);
+
+        $trade = app(TradeService::class);
+        $otherOrder = $trade->createSalesOrder([
+            'user_id'         => $otherUser->id,
+            'party_id'        => $otherParty->id,
+            'document_number' => 'SO-OTHER-SEARCH',
+            'order_date'      => now()->toDateString(),
+        ], [
+            ['stock_code' => 'P-1', 'quantity' => 1, 'unit_price' => 100],
+        ]);
+        $otherOrder->update([
+            'status'          => 'approved',
+            'subtotal_amount' => 100.00,
+            'discount_amount' => 0.00,
+            'vat_amount'      => 20.00,
+            'total_amount'    => 120.00,
+        ]);
+
+        $otherDoc = app(\App\Services\Accounting\EDocumentService::class)->createDraft($otherOrder, 'e_archive', [], $otherUser->id);
+
+        Livewire::actingAs($this->user)
+            ->test('accounting.e-documents')
+            ->set('search', 'OtherBuyerName')
+            ->assertDontSee('OtherBuyerName');
+    }
+
+    public function test_sorting_and_toggling_columns(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        Livewire::actingAs($this->user)
+            ->test('accounting.e-documents')
+            ->call('toggleColumn', 'issue_date')
+            ->assertSet('visibleColumns', ['id', 'invoice_number', 'document_type', 'buyer', 'total_amount', 'status', 'action'])
+            ->call('sortTable', 'total_amount')
+            ->assertSet('sortColumn', 'total_amount')
+            ->assertSet('sortDirection', 'asc')
+            ->call('sortTable', 'total_amount')
+            ->assertSet('sortDirection', 'desc');
     }
 }
