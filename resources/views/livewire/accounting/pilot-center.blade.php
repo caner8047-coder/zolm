@@ -89,6 +89,34 @@
                 </p>
             </div>
         </div>
+
+        <!-- Fix Sprint Backlog Özeti -->
+        <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                <p class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Fix Now</p>
+                <p class="mt-1 text-xl font-bold {{ $this->backlogSummary['fix_now_count'] > 0 ? 'text-rose-600' : 'text-slate-900' }}">
+                    {{ $this->backlogSummary['fix_now_count'] }}
+                </p>
+                <p class="text-[10px] text-slate-400">P23 hotfix</p>
+            </div>
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                <p class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Fix Next</p>
+                <p class="mt-1 text-xl font-bold {{ $this->backlogSummary['fix_next_count'] > 0 ? 'text-amber-600' : 'text-slate-900' }}">
+                    {{ $this->backlogSummary['fix_next_count'] }}
+                </p>
+                <p class="text-[10px] text-slate-400">P24 sprint</p>
+            </div>
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                <p class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Watch</p>
+                <p class="mt-1 text-xl font-bold text-slate-900">{{ $this->backlogSummary['watch_count'] }}</p>
+                <p class="text-[10px] text-slate-400">İzlemede</p>
+            </div>
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                <p class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Document</p>
+                <p class="mt-1 text-xl font-bold text-slate-900">{{ $this->backlogSummary['document_count'] }}</p>
+                <p class="text-[10px] text-slate-400">Dokümantasyon</p>
+            </div>
+        </div>
     </section>
 
     <!-- Bilgi Mesajı -->

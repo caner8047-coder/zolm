@@ -177,4 +177,10 @@ class PilotCenter extends Component
             'decision' => $decision,
         ];
     }
+
+    public function getBacklogSummaryProperty(): array
+    {
+        $backlogService = app(\App\Services\Accounting\AccountingPilotBacklogService::class);
+        return $backlogService->summary(auth()->id());
+    }
 }
