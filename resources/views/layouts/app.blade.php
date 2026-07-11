@@ -277,6 +277,11 @@
                                       {{ request()->routeIs('accounting.dashboard') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
                                 Muhasebe Paneli
                             </a>
+                            <a href="{{ route('accounting.pilot-center') }}" @click="sidebarOpen = false"
+                               class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                      {{ request()->routeIs('accounting.pilot-center') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                Pilot Merkezi
+                            </a>
                             <a href="{{ route('accounting.parties') }}" @click="sidebarOpen = false"
                                class="block px-4 py-2 text-sm rounded-lg transition-colors
                                       {{ request()->routeIs('accounting.parties') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">

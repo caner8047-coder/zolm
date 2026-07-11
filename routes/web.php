@@ -152,6 +152,11 @@ Route::middleware('auth')->group(function () {
         ->middleware('mp.feature:accounting_enabled')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
+    Route::get('/accounting/pilot-center', \App\Livewire\Accounting\PilotCenter::class)
+        ->name('accounting.pilot-center')
+        ->middleware('mp.feature:accounting_enabled')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
     Route::get('/accounting/parties', \App\Livewire\Accounting\Parties::class)
         ->name('accounting.parties')
         ->middleware('mp.feature:accounting_enabled')
