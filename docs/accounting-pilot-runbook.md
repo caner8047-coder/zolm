@@ -117,8 +117,31 @@ Deployment sonrası aşağıdaki adresleri tarayıcıda smoke test edin:
 - **Pilot Merkezi:** `/accounting/pilot-center`
 - **Cariler:** `/accounting/parties`
 - **Cari Bakiye / Ekstre:** `/accounting/party-ledger`
+- **Hesap Planı:** `/accounting/chart-of-accounts`
+- **Ürün Kartları:** `/accounting/products`
+- **Denetim Günlüğü:** `/accounting/audit-logs`
 - **Satış Siparişleri:** `/accounting/sales`
 - **Satın Alma Siparişleri:** `/accounting/purchases`
 - **Stok / Envanter:** `/accounting/stock`
 - **Kasa / Banka:** `/accounting/cash-bank`
 - **Finansal Raporlar:** `/accounting/reports`
+
+---
+
+## 10. Otomatik Smoke Test Komutu
+
+Erişim durumunu ve route'ların kayıtlı olduğunu otomatik taramak için:
+```bash
+php artisan accounting:pilot-smoke-test --user={pilot_user_id} --json
+```
+
+---
+
+## 11. Checker & Smoke Test Sonuçlarının Yorumlanması
+
+- **Release Checker (`pilot-release-check`):** Veritabanı tablolarının mevcudiyeti, dokümanlar, production guard kontrolleri ve seeder durumunu inceler.
+- **Smoke Test (`pilot-smoke-test`):** Arayüzün, feature flag'lerin ve whitelisted route'ların erişilebilirlik durumunu doğrular.
+- **Minimum Kabul Kriteri:**
+  - Release checker durumunun `failed` olmaması gerekir.
+  - Smoke test durumunun `failed` olmaması gerekir.
+  - Warning (uyarı) durumları mevcutsa, riskler gözden geçirilip onaylanarak işleme devam edilebilir.

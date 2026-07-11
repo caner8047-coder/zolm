@@ -64,11 +64,15 @@ Canlı yayına çıkış esnasında izlenecek sıra:
 - `[ ]` Yeni migration'ları uygulayın: `php artisan migrate --force`
 - `[ ]` Uygulama cache'ini temizleyin: `php artisan config:cache`, `php artisan route:cache`, `php artisan view:clear`
 - `[ ]` Feature flag'leri aktifleştirin (`ACCOUNTING_ENABLED=true`).
-- `[ ]` **Post-Deploy Smoke Test:** Aşağıdaki URL'lerin 200 döndüğünü ve düzgün render olduğunu doğrula:
+- `[ ]` **Post-Deploy Smoke Test:** Aşağıdaki URL'lerin 200 döndüğünü ve otomatik smoke testlerin geçtiğini doğrula:
+  - Otomatik tarama: `php artisan accounting:pilot-smoke-test --user={admin_id}`
   - Dashboard: `/accounting`
   - Pilot Merkezi: `/accounting/pilot-center`
   - Cariler: `/accounting/parties`
   - Cari Bakiye: `/accounting/party-ledger`
+  - Hesap Planı: `/accounting/chart-of-accounts`
+  - Ürün Kartları: `/accounting/products`
+  - Denetim Günlüğü: `/accounting/audit-logs`
   - Satışlar: `/accounting/sales`
   - Satın Alma: `/accounting/purchases`
   - Kasa & Banka: `/accounting/cash-bank`

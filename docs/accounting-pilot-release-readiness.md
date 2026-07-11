@@ -99,6 +99,9 @@ Deploy tamamlandıktan sonra sırayla aşağıdaki URL adreslerini ziyaret edip 
 - [ ] `/accounting/pilot-center` (Pilot Merkezi)
 - [ ] `/accounting/parties` (Cariler)
 - [ ] `/accounting/party-ledger` (Cari Ekstre / Açık Hesap)
+- [ ] `/accounting/chart-of-accounts` (Hesap Planı)
+- [ ] `/accounting/products` (Ürün Kartları)
+- [ ] `/accounting/audit-logs` (Denetim Günlüğü)
 - [ ] `/accounting/sales` (Satışlar)
 - [ ] `/accounting/purchases` (Satın Alma)
 - [ ] `/accounting/stock` (Stok / Envanter)
@@ -138,5 +141,7 @@ Canlı pilot ortamında bilinen limitler:
 
 - [ ] [P1] Tüm güvenlik guard'ları test edildi.
 - [ ] [P1] Test suite %100 yeşil.
+- [ ] [P1] `php artisan accounting:pilot-release-check` çalıştırıldı ve hata (`failed`) tespit edilmedi.
+- [ ] [P1] `php artisan accounting:pilot-smoke-test` çalıştırıldı ve route hatası bulunmadı.
 - [ ] [P2] Pilot Center touch target uyumluluğu sağlandı.
 - [ ] [P2] Idempotent migration doğrulandı.
