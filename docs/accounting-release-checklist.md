@@ -84,5 +84,15 @@ Canlı yayına çıkış esnasında izlenecek sıra:
 
 ---
 
-## 6. Bilinen Harici Test Bağımlılıkları (Known Issues)
+## 6. P21 Pilot Release Kanıt Paketi Kontrolü
+- `[ ]` **P21 Evidence Pack** tamamlandı mı?
+- `[ ]` `accounting-pilot-release-evidence.md` dokümanı oluşturuldu mu?
+- `[ ]` Release checker JSON çıktısı kanıt dosyasına eklendi mi?
+- `[ ]` Smoke test JSON çıktısı kanıt dosyasına eklendi mi?
+- `[ ]` Test sonuçları (QA ve regresyon setleri) kanıt dosyasına eklendi mi?
+- `[ ]` Rollback tatbikat kaydı kanıt dosyasına yazıldı mı?
+
+---
+
+## 7. Bilinen Harici Test Bağımlılıkları (Known Issues)
 - **MarketplaceReportDigestTest:** Bu test sınıfı (`test_send_due_delivers_mail_and_creates_report_history`), SQLite in-memory veritabanı yerine doğrudan gerçek MySQL veritabanı bağlantısı (`database.default = mysql`) yapılandırmasını zorlamaktadır. Ortamdaki MySQL veritabanı durumuna veya mail fakelerine bağlı olarak processed sayısının 0 dönmesinden ötürü başarısız olabilmektedir. Bu durum ERP/Ön Muhasebe kapsamındaki değişikliklerle ilgili olmayıp, harici bir test setup bağımlılığıdır. Canlıya çıkışta veya yerel test koşumlarında bu test bilinen bir riskli durum (Known Issue) olarak göz ardı edilebilir.
