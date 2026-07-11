@@ -46,7 +46,25 @@
         </div>
 
         <!-- Üst KPI Kartları -->
-        <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                <p class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Pilot Kararı</p>
+                <div class="mt-2 flex items-center">
+                    @if($this->monitoringSummary['decision']['status'] === 'blocked')
+                        <span class="inline-flex items-center gap-1 rounded bg-rose-50 border border-rose-200 px-2 py-0.5 text-xs font-mono font-semibold text-rose-700">
+                            🔴 BLOCKED
+                        </span>
+                    @elseif($this->monitoringSummary['decision']['status'] === 'proceed_with_fixes')
+                        <span class="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs font-mono font-semibold text-amber-700">
+                            🟡 WITH FIXES
+                        </span>
+                    @else
+                        <span class="inline-flex items-center gap-1 rounded bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-xs font-mono font-semibold text-emerald-700">
+                            🟢 PROCEED
+                        </span>
+                    @endif
+                </div>
+            </div>
             <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
                 <p class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Health Score</p>
                 <div class="mt-2 flex items-baseline gap-2">

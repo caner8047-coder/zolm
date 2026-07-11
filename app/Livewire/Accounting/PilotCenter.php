@@ -165,4 +165,16 @@ class PilotCenter extends Component
             'feedbacks' => $feedbacks,
         ])->layout('layouts.app');
     }
+
+    public function getMonitoringSummaryProperty(): array
+    {
+        $monitoringService = app(\App\Services\Accounting\AccountingPilotMonitoringService::class);
+        $summary = $monitoringService->summary(auth()->id());
+        $decision = $monitoringService->decision(auth()->id());
+
+        return [
+            'summary' => $summary,
+            'decision' => $decision,
+        ];
+    }
 }
