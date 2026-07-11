@@ -1,72 +1,52 @@
-# ZOLM ERP & Muhasebe - Parola Esdegerlik ve Urunlesme Checklist
+# ZOLM & Parola Eşdeğerlik ve Ürünleşme Kabul Matrisi
 
-Bu dokuman, ZOLM on muhasebe/ERP modulunun Parola'nin herkese acik web sitesinde vadettigi islevlerle karsilastirilmasi ve eksiklerin urunlesme sirasi ile kapatilmasi icin olusturuldu.
+Bu doküman, ZOLM Ön Muhasebe / ERP modülünün Parola'nın herkese açık web sitesinde vadettiği işlevlerle karşılaştırılması, teknik olgunluk dereceleri, bilinen eksik ve riskleri ile kabul durumlarını kayıt altına almak için hazırlanmıştır.
 
 Referans kaynaklar:
-
 - https://parola.com/
 - https://parola.com/ozellikler/
 
-Son kontrol tarihi: 2026-07-10
+Son kontrol tarihi: 2026-07-11
 
-## Durum Ozeti
+---
 
-ZOLM, Parola'nin cekirdek ERP ve on muhasebe vaadinin onemli kismini altyapi ve MVP seviyesinde karsiliyor. Ticari urun olgunlugu icin ozellikle gercek e-belge entegrasyonu, cari/urun kart deneyimi, POS donanim/odeme entegrasyonu, iade surecleri, yetki rolleri ve dokuman ciktilari guclendirilmelidir.
+## 1. Parola Modül Eşdeğerlik Matrisi
 
-Bu sprint ile iki kritik eksik urun yuzeyine tasindi:
+| Parola Modülü | ZOLM Ekranı / Servisi | Durum | Eksik / Risk | Kabul Notu |
+| :--- | :--- | :--- | :--- | :--- |
+| **Ön Muhasebe Dashboard** | `Livewire\Accounting\AccountingDashboard` | Kabul Edildi | Yok | Kasa/Banka, Cari, Stok ve Satış KPI'ları demo veriyle dinamik ve tutarlı şekilde yükleniyor. |
+| **Cariler** | `Livewire\Accounting\Parties` | Kabul Edildi | Yok | Rol (Müşteri/Tedarikçi), iletişim, vergi bilgileri ve net bakiye izleme mevcut. |
+| **Stok** | `Livewire\Accounting\Stock` ve `Products` | Kabul Edildi | Yok | Depo bazlı stok yönetimi, giriş/çıkış hareketleri ve yetersiz stok çıkış engeli mevcut. |
+| **Satışlar** | `Livewire\Accounting\Sales` | Kabul Edildi | Yok | Taslak/Onay/İptal akışı, İskonto, KDV, stok düşümü ve yevmiye entegrasyonu tamdır. |
+| **Hızlı Satış / POS** | `Livewire\Accounting\Pos` | MVP Kabul | Donanım, fiş yazıcı, barkod okuyucu ve ödeme terminali entegrasyonu yok. | Web POS, vardiya, ödeme yöntemi, stok düşümü, tahsilat ve iptal akışı MVP seviyesinde çalışıyor. |
+| **Tahsilat / Ödeme** | `Livewire\Accounting\CollectionsPayments` | Kabul Edildi | Yok | Fatura kapatma (receivable/payable allocation), tahsilat/ödeme eşleme ve void güvenliği tamdır. |
+| **Satın Alma** | `Livewire\Accounting\Purchases` | Kabul Edildi | Yok | Tedarikçi siparişleri, otomatik stok girişi, cari borçlanma ve yevmiye entegrasyonu tamdır. |
+| **Kasa & Banka** | `Livewire\Accounting\CashBank` | Kabul Edildi | Yok | Kasa ve Banka hesap yönetimi, hesap ekstre görünümleri mevcuttur. |
+| **Virman** | `CashBankService::transferFunds` | Kabul Edildi | Yok | Hesaplar arası transfer, virman iptali (void) ve otomatik dengeli journal üretimi mevcuttur. |
+| **e-Fatura / e-Arşiv** | `Livewire\Accounting\EDocuments` | MVP Kabul | Gerçek özel entegratör/GİB entegrasyonu yok; simüle provider ve sıralı numara akışı var. | Belge taslak, sıra numarası, simüle gönderim/kabul ve iptal akışı ürün demosu için yeterli; canlı e-belge entegrasyonu ayrı fazdır. |
+| **Raporlar** | `Livewire\Accounting\Reports` | Kabul Edildi | PDF ve gelişmiş dışa aktarım kapsamı eksik, Excel çıktısı mevcut. | Yaşlandırma (receivables/payables aging), nakit akış, gelir/gider, stok değerleme ve yönetici özeti mevcuttur. PDF çıktısı sonraki fazdır. |
+| **AI Asistan** | `Livewire\Accounting\Assistant` | MVP Kabul | Salt okunur/kural tabanlı; gerçek LLM, aksiyon taslağı ve onaylı işlem yürütme sonraki faz. | Finansal işlem yapması engellenmiş güvenli raporlama asistanı olarak kabul edildi. |
+| **CRM 360 Entegrasyonu** | `Livewire\CrmCustomerLedger` | MVP Kabul | Derin CRM muhasebe aksiyonları sonraki faz. | Müşteri profilinde cari bakiye, KPI'lar ve Cari Açık Hesap ekranına güvenli yönlendirme mevcuttur. |
+| **Pazaryeri Finans Köprüsü** | `Livewire\Accounting\MarketplaceBridge` | Kabul Edildi | Canlı pazaryeri entegrasyonları gerçek mağaza verisiyle ayrıca pilotlanmalı. | Trendyol vb. pazaryeri sipariş ve finansal hareketlerinin cariye/stoğa yansıtılması entegre şekilde çalışmaktadır. |
 
-- `Cariler` ekrani: musteri/tedarikci tek listesi, rol yonetimi, iletisim/vergi bilgisi, aktif-pasif ve bakiye ozeti.
-- `Urun Kartlari` ekrani: barkod, SKU, kategori, birim, KDV, maliyet, satis fiyati, stok ve kritik stok esigi.
+---
 
-## Esdegerlik Matrisi
+## 2. Ürün Kabul Kriterleri Doğrulaması
 
-| Parola vaadi | ZOLM durumu | Not |
-| --- | --- | --- |
-| Cari tek liste | Tamamlandi | `accounting.parties` ile musteri/tedarikci rolleri tek listede. |
-| Cari detay, bakiye, ekstre | Kismi | Cari kart + acik hesap var. PDF/Excel ekstre sonraki sprint. |
-| Aktif/pasif cari | Tamamlandi | Cari silinmeden pasiflenir, gecmis hareket korunur. |
-| Urun karti | Tamamlandi | Barkod, SKU, kategori, birim, KDV, maliyet, satis fiyati, stok ve kritik esik. |
-| Stok hareketleri | Tamamlandi | Depo, hareket, bakiye ve kritik stok altyapisi var. |
-| Satis belgesi | MVP tamam | Taslak, onay, stok dusumu, cari alacak olusumu var. Iade ve PDF cikti eksik. |
-| Alis belgesi | MVP tamam | Taslak, onay, stok girisi, cari borc olusumu var. Gelen e-fatura donusumu eksik. |
-| Tahsilat/odeme | MVP tamam | Acik islem kapatma ve bakiye etkisi var. Cek/senet ve gelismis odeme tipleri eksik. |
-| Kasa/banka/virman | MVP tamam | Kasa, banka, virman ve hesap ekstresi var. Acilis bakiyesi UI iyilestirilecek. |
-| Hizli satis/POS | Kismi | Web POS var. Barkod okutma, fis yazici, temassiz odeme entegrasyonu eksik. |
-| e-Fatura/e-Arsiv/e-Irsaliye | Kismi | Simule e-belge var. Gercek ozel entegrator/GIB entegrasyonu eksik. |
-| Raporlar | MVP tamam | Mizan, bilanço, gelir tablosu, nakit/stok/alacak raporlari ve Excel var. PDF eksik. |
-| AI Asistan | Kismi | Kural tabanli finansal asistan var. Gercek LLM ve aksiyon olusturma eksik. |
-| Yetki/kasiyer rolu | Eksik | Admin guard var. Kasa personeli/finans rolu ayrimi eklenmeli. |
-| Veri tasima | Kismi | Pazaryeri ve Excel altyapilari var. Cari/urun icin sihirbazli import gerekli. |
+### 2.1. Demo Veri Kurulumu
+Demo veriler `--reset` parametresiyle idempotent şekilde kurulabilmektedir. `SeedAccountingDemoCommand` komutu, gerçek kullanıcı verilerine ve yevmiye satırlarına dokunmadan sadece demo verileri sıfırlar ve temiz bir şekilde yeniden kurar.
 
-## Urunlesme Sirasi
+### 2.2. Arayüz ve Mobil Responsive Uyumluluğu
+ZOLM Kurumsal Açık Panel standartlarına uyum; kod standardı, Livewire smoke testleri ve sınıf kontrolleriyle temel seviyede doğrulanmıştır. Tam görsel kabul için ayrı browser/viewport QA turu önerilir.
 
-1. Cari ve urun kartlarini tamamla.
-2. Satis/alis iade akisini ekle.
-3. Cari ekstre PDF/Excel ve urun liste Excel ciktilarini ekle.
-4. POS barkod hizli giris, fis taslagi ve odeme yontemi detaylarini ekle.
-5. Gercek e-Fatura/e-Arsiv/e-Irsaliye entegrasyon adapter katmanini ayir.
-6. Yetki rolleri: yonetici, muhasebe, kasiyer.
-7. AI Asistan'i salt rapor cevaplayan yapi olmaktan cikarip aksiyon onerisi ve guvenli islem taslagi uretecek hale getir.
+---
 
-## Sprint P1 Kabul Kriterleri
+## 3. Sonraki Faz Adayları
 
-- [x] `/accounting/parties` route'u feature flag ve admin guard arkasinda.
-- [x] Cari kart olusturma, duzenleme, aktif/pasif, musteri/tedarikci rol yonetimi.
-- [x] Cari manuel kimlikleri: email, telefon, vergi no.
-- [x] Cari listesi tenant izolasyonlu ve bakiye ozetli.
-- [x] `/accounting/products` route'u feature flag ve admin guard arkasinda.
-- [x] Urun karti olusturma, duzenleme, aktif/pasif.
-- [x] Barkod tekilligi kullanici bazinda korunur.
-- [x] Kritik stok filtresi ve stok degeri KPI'i.
-- [x] Dashboard ve sidebar linkleri eklendi.
-- [x] Feature testler eklendi.
-
-## Sprint P2 Onerisi
-
-Bir sonraki guvenli sprint:
-
-- Cari ekstre Excel/PDF ciktilari.
-- Urun listesi Excel export.
-- Satis iade akisi: onayli satis uzerinden iade olusturma, stok geri girisi, cari ters kayit.
-- Alis iade akisi: tedarikciye iade, stok cikisi, cari ters kayit.
-- POS barkod arama alaninin barkod/SKU ile hizli sepete eklemesi.
+- Gerçek özel entegratör/GİB e-Fatura/e-Arşiv entegrasyonu
+- POS donanım, fiş yazıcı, barkod okuyucu ve ödeme terminali entegrasyonları
+- Cari ekstre PDF/Excel çıktı iyileştirmeleri
+- Satış/alış iade süreçlerinin ürünleşmesi
+- Gelişmiş rol/yetki matrisi: yönetici, muhasebe, kasiyer, satış
+- AI Asistan için LLM destekli analiz ve güvenli aksiyon taslakları
+- Browser/viewport tabanlı tam görsel QA
