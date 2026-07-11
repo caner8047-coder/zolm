@@ -8,15 +8,23 @@ Bu doküman, ZOLM Ön Muhasebe / ERP modülünü pilot kullanıcılara açma, iz
 
 Canlı pilot aşamasını başlatmak için sırasıyla aşağıdaki adımlar uygulanmalıdır:
 1. **Veritabanı Yedeği:** Canlı veritabanının yedeğini alın.
-2. **Migration:** Yeni pilot ve geri bildirim tablolarını uygulayın:
+2. **Release Checker:** Ortamın hazır olduğunu Artisan komutuyla doğrulayın:
+   ```bash
+   php artisan accounting:pilot-release-check --user=1
+   ```
+   JSON formatında çıktı almak için:
+   ```bash
+   php artisan accounting:pilot-release-check --user=1 --json
+   ```
+3. **Migration:** Yeni pilot ve geri bildirim tablolarını uygulayın:
    ```bash
    php artisan migrate --force
    ```
-3. **Feature Flag:** Canlı ortam `.env` dosyasında flag'i aktif edin:
+4. **Feature Flag:** Canlı ortam `.env` dosyasında flag'i aktif edin:
    ```env
    ACCOUNTING_ENABLED=true
    ```
-4. **Cache Temizleme:**
+5. **Cache Temizleme:**
    ```bash
    php artisan config:cache
    php artisan route:cache
@@ -75,7 +83,9 @@ Canlı pilot esnasında veri bütünlüğünü bozan veya kritik sistem kesintis
    ```bash
    php artisan config:cache
    ```
-3. **Migration Rollback (Gerekirse):**
+3. **Deploy Rollback (Gerekirse):** Bir önceki stabil git tag'ine geri dönün.
+4. **Database Restore (Gerekirse):** En kritik durumlarda önceden alınan veritabanı yedeğini yükleyin.
+5. **Migration Rollback (Gerekirse):**
    ```bash
    php artisan migrate:rollback --step=1
    ```
@@ -88,3 +98,27 @@ Pilot kullanıcılara ve demo izleyicilerine aşağıdaki limitasyonlar önceden
 1. **e-Fatura Entegrasyonu:** Gerçek bir özel entegratör veya GİB portal entegrasyonu yoktur. Belge süreçleri simüledir.
 2. **POS Donanım Entegrasyonu:** Barkod okuyucu, fiş yazıcı veya temassız ödeme cihazı entegrasyonu yoktur; POS arayüzü Web POS olarak çalışır.
 3. **AI Asistan:** Salt okunur çalışır; veritabanı üzerinde fatura oluşturma, silme veya güncelleme gibi yazma yetkisi güvenlik gereği engellenmiştir.
+
+---
+
+## 8. Release Git Tag Önerisi
+
+Değişiklikler canlıya gönderilmeden önce git tag ile etiketlenmelidir:
+```bash
+git tag -a zolm-erp-pilot-v0.9 -m "ZOLM ERP pilot v0.9"
+```
+
+---
+
+## 9. Post-Deploy Smoke Test Listesi
+
+Deployment sonrası aşağıdaki adresleri tarayıcıda smoke test edin:
+- **Dashboard:** `/accounting`
+- **Pilot Merkezi:** `/accounting/pilot-center`
+- **Cariler:** `/accounting/parties`
+- **Cari Bakiye / Ekstre:** `/accounting/party-ledger`
+- **Satış Siparişleri:** `/accounting/sales`
+- **Satın Alma Siparişleri:** `/accounting/purchases`
+- **Stok / Envanter:** `/accounting/stock`
+- **Kasa / Banka:** `/accounting/cash-bank`
+- **Finansal Raporlar:** `/accounting/reports`

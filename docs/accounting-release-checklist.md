@@ -56,13 +56,27 @@ Tüm ekranların ZOLM Kurumsal Açık Panel visual diliyle uyumluluğunu doğrul
 
 ## 5. Deployment & Rollback Adımları
 Canlı yayına çıkış esnasında izlenecek sıra:
+- `[ ]` **Release Checker:** Canlıya kod gönderilmeden önce durum kontrolü yapılır:
+  `php artisan accounting:pilot-release-check --user={admin_id}`
+- `[ ]` **Release Git Tag:** Stabil durum git tag ile işaretlenir:
+  `git tag -a zolm-erp-pilot-v0.9 -m "ZOLM ERP pilot v0.9"`
 - `[ ]` Yayına çıkış öncesi veritabanı yedeğini (backup) alın.
 - `[ ]` Yeni migration'ları uygulayın: `php artisan migrate --force`
 - `[ ]` Uygulama cache'ini temizleyin: `php artisan config:cache`, `php artisan route:cache`, `php artisan view:clear`
 - `[ ]` Feature flag'leri aktifleştirin (`ACCOUNTING_ENABLED=true`).
+- `[ ]` **Post-Deploy Smoke Test:** Aşağıdaki URL'lerin 200 döndüğünü ve düzgün render olduğunu doğrula:
+  - Dashboard: `/accounting`
+  - Pilot Merkezi: `/accounting/pilot-center`
+  - Cariler: `/accounting/parties`
+  - Cari Bakiye: `/accounting/party-ledger`
+  - Satışlar: `/accounting/sales`
+  - Satın Alma: `/accounting/purchases`
+  - Kasa & Banka: `/accounting/cash-bank`
 - `[ ]` **Hata Durumunda Geri Dönüş (Rollback):**
   - Feature flag'i `.env` dosyasında `ACCOUNTING_ENABLED=false` olarak değiştirerek tüm ERP modüllerini anında kapatabilirsiniz (Tüm route'lar otomatik olarak 404 dönecektir).
-  - Migration rollback için: `php artisan migrate:rollback`
+  - deploy rollback yaparak bir önceki tag'e dönün.
+  - gerekirse veritabanı restore adımlarını uygulayın.
+  - migration rollback için: `php artisan migrate:rollback`
 
 ---
 
