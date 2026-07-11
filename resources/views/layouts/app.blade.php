@@ -256,7 +256,7 @@
                     </div>
                 @endif
 
-                @if(config('marketplace.features.accounting_enabled', false))
+                @if(config('marketplace.features.accounting_enabled', false) && auth()->user()?->roleSlug() === 'admin')
                     <div x-data="{ accountingOpen: {{ request()->routeIs('accounting.*') ? 'true' : 'false' }} }">
                         <button @click="accountingOpen = !accountingOpen"
                             class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
