@@ -40,11 +40,16 @@ use Illuminate\Support\Facades\DB;
 
 class SeedAccountingDemoCommand extends Command
 {
-    protected $signature = 'accounting:seed-demo {--user= : Zorunlu User ID} {--reset : Demo verileri sıfırlar ve baştan kurar}';
+    protected $signature = 'accounting:seed-demo {--user= : Zorunlu User ID} {--reset : Demo verileri sıfırlar ve baştan kurar} {--force : Production ortamında çalışmayı zorlar}';
     protected $description = 'Kullanıcı için ZOLM ERP demo verileri oluşturur veya resetler.';
 
     public function handle()
     {
+        if (app()->environment('production') && !$this->option('force')) {
+            $this->error('Hata: Canlı (Production) ortamda demo veri seeder sadece --force opsiyonu ile çalıştırılabilir.');
+            return 1;
+        }
+
         $userId = $this->option('user');
         if (!$userId) {
             $this->error('Hata: --user parametresi zorunludur (örn: --user=1).');
