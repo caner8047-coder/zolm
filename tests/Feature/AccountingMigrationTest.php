@@ -128,18 +128,18 @@ class AccountingMigrationTest extends TestCase
             ->assertExitCode(0);
 
         // Check seeded accounts
-        $this->assertTrue(Account::where('user_id', $user->id)->where('code', '100')->exists());
-        $this->assertTrue(Account::where('user_id', $user->id)->where('code', '500')->exists());
+        $this->assertTrue(Account::where('user_id', $user->id)->where('code', '120')->exists());
+        $this->assertTrue(Account::where('user_id', $user->id)->where('code', '320')->exists());
 
         // Check seeded parties
         $this->assertTrue(Party::where('user_id', $user->id)->where('primary_email', 'musteri@example.com')->exists());
         $this->assertTrue(Party::where('user_id', $user->id)->where('primary_email', 'tedarikci@example.com')->exists());
 
         // Check seeded warehouse
-        $this->assertTrue(Warehouse::where('user_id', $user->id)->where('code', 'DEMO-DEP')->exists());
+        $this->assertTrue(Warehouse::where('user_id', $user->id)->where('code', 'demo-depo-merkez')->exists());
 
         // Check seeded opening journal entry
-        $this->assertTrue(JournalEntry::where('user_id', $user->id)->where('source_key', 'demo-opening-capital')->exists());
+        $this->assertTrue(JournalEntry::where('user_id', $user->id)->where('source_key', 'demo_journal_entry_1')->exists());
     }
 
     public function test_artisan_accounting_seed_demo_is_idempotent(): void
