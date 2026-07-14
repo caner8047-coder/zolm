@@ -26,7 +26,7 @@ Seller Panel'de:
 2. Sağ üstten `Geliştirici modu`nu aç.
 3. `Paketlenmemiş öğe yükle` seçeneğiyle bu klasörü seç:
    `browser-extensions/trendyol-booster-companion`
-4. Chrome kartında sürümün `0.14.1` göründüğünü kontrol et. Eski sürüm görünüyorsa doğru klasörü seçip `Yeniden yükle` düğmesine bas.
+4. Chrome kartında sürümün `0.15.1` göründüğünü kontrol et. Eski sürüm görünüyorsa doğru klasörü seçip `Yeniden yükle` düğmesine bas.
 5. ZOLM panelinde oturum aç.
 6. Eklenti popup'ında ZOLM adresini `http://localhost` olarak bırak veya kendi adresini gir.
 7. ZOLM paneli açıkken popup içinden `Oturumu test et` düğmesine bas; panel oturumu doğrulanınca modüller eklenti köprüsünü kullanır.
@@ -63,6 +63,7 @@ Chrome'da test ederken `build/trendyol-booster-companion` klasörünü `Paketlen
 - ZOLM ürün analizi düğmesi yorum ve social-proof servislerini kullanıcının Trendyol tarayıcı oturumundan çağırır; son 10 yorumu, sepete eklenme ve son 24 saat görüntüleme dahil yayınlanan güncel metrikleri analiz geçmişine kaydeder.
 - Trendyol bazı ürünlerde sepete eklenme veya görüntüleme metriğini yayınlamaz; bu durumda ZOLM değer uydurmaz ve alanı `Yayınlanmıyor` olarak gösterir.
 - ZOLM stok ekranındaki sorgu düğmesi eklenti köprüsü hazırsa ürünü kullanıcı tarayıcısında arka planda açar, veriyi kaydeder ve geçici sekmeyi kapatır.
+- Anahtar Kelime Aratma ekranı, Trendyol sunucu isteğini engellediğinde arama sonucunu kullanıcının tarayıcı oturumunda açar; ilk 40 ürün başlığını okuyup SEO kelime özetini ZOLM'e kaydeder.
 - Mağaza sayfasında panel `Mağaza` modunda açılır ve yakalanan ürün kartı ile fiyatlı kart sayısını gösterir.
 - Yorum modülü doğrulanmış mağaza URL'si ve merchant ID ile çalışır; seçilen mağaza arka planda açılır, ürünleri ön izlenir ve farklı satıcılara ait yorumlar içeri alınmaz.
 - ZOLM Tedarikçi Radar ekranı, ürün sayfasındaki kimliği doğrulanabilen ana satıcı ve diğer satıcıları ilk grup olarak kaydeder; ardından Google Alışveriş (`udm=28`) ve hedef pazaryeri `site:` aramalarını okur. Marka, model kodu ve ayırt edici teknik özellikler güçlü eşleşmiyorsa sonucu göndermez.

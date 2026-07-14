@@ -12,8 +12,9 @@ class SupportChannel extends Model
     use HasFactory;
 
     protected $fillable = [
-        'store_id', 'key', 'name', 'status', 'is_enabled',
+        'store_id', 'key', 'public_key', 'name', 'status', 'is_enabled',
         'config_json', 'last_sync_at', 'last_health_check_at',
+        'last_health_status', 'last_health_error',
     ];
 
     protected function casts(): array

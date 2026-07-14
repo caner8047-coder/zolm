@@ -64,6 +64,7 @@ use App\Services\Marketplace\TrendyolBoosterSupplierResearchService;
 use App\Services\Marketplace\TrendyolBoosterSyncHealthService;
 use App\Services\Marketplace\TrendyolBoosterTrendKeywordService;
 use App\Services\Marketplace\TrendyolCategoryDictionary;
+use App\Services\Marketplace\TrendyolKeywordIntelligenceService;
 use App\Services\Marketplace\TrendyolProductPageReader;
 use App\Services\Marketplace\TrendyolSearchResultReader;
 use App\Services\Marketplace\TrendyolSellerLevelService;
@@ -4074,6 +4075,163 @@ class TrendyolBoosterTest extends TestCase
             'user_id' => $user->id,
             'keyword' => 'booster test',
         ]);
+        $this->assertSame(3, (int) data_get($result['lookup']->raw_payload, 'intelligence.version'));
+    }
+
+    public function test_keyword_intelligence_engine_scores_ranked_semantic_opportunities_and_filters_brands(): void
+    {
+        $analysis = app(TrendyolKeywordIntelligenceService::class)->analyze('berjer', [
+            ['rank' => 1, 'brand' => 'DEKOZUM', 'title' => 'DEKOZUM Retro Ahşap Ayaklı Berjer Koltuk Krem'],
+            ['rank' => 2, 'brand' => 'Zem', 'title' => 'Zem Ahşap Ayaklı Berjer Koltuk Bej'],
+            ['rank' => 3, 'brand' => 'GOOD NIGHT', 'title' => 'GOOD NIGHT Teddy Kumaş Berjer Koltuk Yıkanabilir'],
+            ['rank' => 4, 'brand' => 'Nova', 'title' => 'Nova Modern Ahşap Ayaklı Berjer Koltuk'],
+            ['rank' => 5, 'brand' => 'PufyHome', 'title' => 'PufyHome Peluş Berjer Koltuk Ayak Uzatma Puflu'],
+            ['rank' => 6, 'brand' => 'Dekortif', 'title' => 'Dekortif Ahşap Ayaklı Retro Berjer Koltuk'],
+            ['rank' => 7, 'brand' => 'EvModa', 'title' => 'EvModa Teddy Kumaş Tekli Berjer Koltuk Gri'],
+            ['rank' => 8, 'brand' => 'Loft', 'title' => 'Loft Modern Berjer Koltuk Makyaj Masası Sandalyesi'],
+        ], 12555);
+
+        $keywordKeys = collect($analysis['keywords'])->pluck('key');
+
+        $this->assertSame(3, $analysis['version']);
+        $this->assertSame(8, $analysis['sample_size']);
+        $this->assertGreaterThan(0, data_get($analysis, 'scores.opportunity'));
+        $this->assertGreaterThan(0, data_get($analysis, 'scores.competition'));
+        $this->assertTrue($keywordKeys->contains('berjer'));
+        $this->assertTrue($keywordKeys->contains('ahsap ayakli'));
+        $this->assertFalse($keywordKeys->contains('dekozum'));
+        $this->assertFalse($keywordKeys->contains('retro ahsap'));
+        $this->assertFalse($keywordKeys->contains('koltuk krem'));
+        $this->assertFalse($keywordKeys->contains('kumas berjer'));
+        $this->assertArrayHasKey('material', $analysis['clusters']);
+        $this->assertArrayHasKey('feature', $analysis['clusters']);
+        $this->assertStringContainsString('Berjer', data_get($analysis, 'title_plan.recommended_title'));
+        $this->assertNotEmpty($analysis['recommendations']);
+    }
+
+    public function test_keyword_intelligence_rejects_category_drift_duplicate_catalogs_and_unsafe_title_terms(): void
+    {
+        $analysis = app(TrendyolKeywordIntelligenceService::class)->analyze('orta sehpa', [
+            ['rank' => 1, 'source_url' => 'https://www.trendyol.com/uygamo/lirio-dresuar-konsol-p-1', 'brand' => 'UYGAMO', 'title' => 'UYGAMOLirio Metal Dresuar Dekoratif Kahve Köşesi Konsol Gold Şeffaf Cam Antre Hol Sehpası'],
+            ['rank' => 2, 'source_url' => 'https://www.trendyol.com/uygamo/letra-dresuar-konsol-p-2', 'brand' => 'UYGAMO', 'title' => 'UYGAMOLetra Metal Dresuar Dekoratif Kahve Köşesi Konsol Gold Şeffaf Cam Antre Hol Uzun Sehpa'],
+            ['rank' => 3, 'source_url' => 'https://www.trendyol.com/uygamo/fumo-dresuar-konsol-p-3', 'brand' => 'UYGAMO', 'title' => 'UYGAMOFumo Metal Dresuar Dekoratif Kahve Köşesi Konsol Gold Şeffaf Cam Antre Yan Sehpa Konsol'],
+            ['rank' => 4, 'source_url' => 'https://www.trendyol.com/uygamo/aire-dresuar-konsol-p-4', 'brand' => 'UYGAMO', 'title' => 'UYGAMOAire Metal Dresuar Dekoratif Kahve Köşesi Konsol Gold Şeffaf Cam Antre Yan Sehpa'],
+            ['rank' => 5, 'source_url' => 'https://www.trendyol.com/bofigo/metal-orta-sehpa-p-5', 'brand' => 'Bofigo Metal Orta Sehpa', 'title' => 'Bofigo Metal Orta Sehpa 2 Raflı Dekoratif Sehpa Çam'],
+            ['rank' => 6, 'source_url' => 'https://www.trendyol.com/skandi-homeworks/maya-orta-sehpa-p-6', 'brand' => 'Skandi homeworks Maya 2li Orta Sehpa Seti', 'title' => 'Skandi homeworks Maya 2li Orta Sehpa Seti'],
+            ['rank' => 7, 'source_url' => 'https://www.trendyol.com/skandi-homeworks/maya-orta-sehpa-p-7', 'brand' => 'Skandi homeworks Maya 2li Orta Sehpa Seti', 'title' => 'Skandi homeworks Maya 2li Orta Sehpa Seti'],
+            ['rank' => 8, 'source_url' => 'https://www.trendyol.com/dekor-mobilyacim/fortune-yuvarlak-orta-sehpa-p-8', 'title' => 'DEKOR MOBİLYACIM Fortune Yuvarlak Orta Sehpa Modern Dekoratif Salon Sehpası'],
+            ['rank' => 9, 'source_url' => 'https://www.trendyol.com/zem/benetta-yuvarlak-orta-sehpa-p-9', 'title' => 'Zem Benetta Yuvarlak Orta Sehpa Natürel Ahşap Kırık Beyaz'],
+            ['rank' => 10, 'source_url' => 'https://www.trendyol.com/goldfalez/gold-orta-sehpa-p-10', 'title' => 'GOLDFALEZ Gold Orta Sehpa Yuvarlak Traverten'],
+            ['rank' => 11, 'source_url' => 'https://www.trendyol.com/dekopratik/uranus-orta-sehpa-p-11', 'title' => 'DEKOPRATİKUranüs Metal Orta Sehpa Siyah Şeffaf Cam'],
+            ['rank' => 12, 'source_url' => 'https://www.trendyol.com/effe-yapi-dekor/cam-orta-sehpa-p-12', 'title' => 'EFFE YAPI DEKOR Orta Sehpa Gold Şeffaf Cam Modern'],
+            ['rank' => 13, 'source_url' => 'https://www.trendyol.com/noise/child-product-p-13', 'title' => 'Small Beden Şişme Deniz Kolluğu 1-4 Yaş'],
+        ], 16718);
+
+        $keywordKeys = collect($analysis['keywords'])->pluck('key');
+
+        $this->assertSame(3, $analysis['version']);
+        $this->assertSame(5, data_get($analysis, 'quality.off_topic_count'));
+        $this->assertSame(1, data_get($analysis, 'quality.duplicate_count'));
+        $this->assertLessThan(100, data_get($analysis, 'scores.confidence'));
+        $this->assertTrue($keywordKeys->contains('orta sehpa'));
+        $this->assertTrue($keywordKeys->contains('metal'));
+        $this->assertTrue($keywordKeys->contains('yuvarlak'));
+        $this->assertFalse($keywordKeys->contains(fn (string $key): bool => str_contains($key, 'dresuar')));
+        $this->assertFalse($keywordKeys->contains(fn (string $key): bool => str_contains($key, 'konsol')));
+        $this->assertFalse($keywordKeys->contains(fn (string $key): bool => str_contains($key, 'antre')));
+        $this->assertStringContainsString('[Malzeme]', data_get($analysis, 'title_plan.recommended_title'));
+        $this->assertStringNotContainsString('Dresuar', data_get($analysis, 'title_plan.recommended_title'));
+        $this->assertArrayHasKey('form', $analysis['clusters']);
+        $this->assertArrayHasKey('material', $analysis['clusters']);
+    }
+
+    public function test_keyword_lookup_livewire_dispatches_browser_companion_before_server_reader(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $this->actingAs($user);
+
+        Livewire::withQueryParams(['booster' => 'keyword'])
+            ->test(TrendyolBooster::class)
+            ->set('keywordLookupInput', 'puf koltuk')
+            ->call('runKeywordLookup')
+            ->assertDispatched(
+                'booster:keyword-lookup-bridge',
+                keyword: 'puf koltuk',
+                url: 'https://www.trendyol.com/sr?q=puf%20koltuk',
+            );
+    }
+
+    public function test_keyword_lookup_livewire_persists_valid_browser_companion_result(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $this->actingAs($user);
+
+        Livewire::withQueryParams(['booster' => 'keyword'])
+            ->test(TrendyolBooster::class)
+            ->call('keywordLookupBridgeCompleted', 'puf', [
+                'ok' => true,
+                'data' => [
+                    'source_url' => 'https://www.trendyol.com/sr?q=puf',
+                    'result_count' => 77143,
+                    'checked_result_count' => 2,
+                    'scan_limit' => 40,
+                    'product_ids' => ['1147501701', '844413270'],
+                    'top_products' => [
+                        [
+                            'trendyol_product_id' => '1147501701',
+                            'source_url' => 'https://www.trendyol.com/dekozum/pufly-pelus-p-1147501701',
+                            'title' => 'DEKOZUM Pufly Peluş Dekoratif Puf',
+                            'brand' => 'DEKOZUM',
+                            'rank' => 1,
+                        ],
+                        [
+                            'trendyol_product_id' => '844413270',
+                            'source_url' => 'https://www.trendyol.com/bounteous/dekoratif-puf-p-844413270',
+                            'title' => 'Bounteous Ahşap Ayaklı Dekoratif Puf',
+                            'brand' => 'Bounteous',
+                            'rank' => 2,
+                        ],
+                    ],
+                ],
+            ])
+            ->assertSet('messageType', 'success')
+            ->call('sortKeywordIntelligenceTable', 'semantic')
+            ->assertSet('keywordIntelligenceSortField', 'semantic')
+            ->assertSet('keywordIntelligenceSortDirection', 'desc')
+            ->call('toggleKeywordIntelligenceColumn', 'difficulty')
+            ->assertSet('keywordIntelligenceVisibleColumns', ['keyword', 'intent', 'semantic', 'coverage', 'opportunity']);
+
+        $this->assertDatabaseHas('trendyol_booster_keyword_lookups', [
+            'user_id' => $user->id,
+            'keyword' => 'puf',
+            'result_count' => 77143,
+        ]);
+
+        $lookup = \App\Models\TrendyolBoosterKeywordLookup::query()
+            ->where('user_id', $user->id)
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertSame('browser_companion', data_get($lookup->raw_payload, 'source'));
+        $this->assertSame('Dekozum', data_get($lookup->top_products, '0.brand'));
+        $this->assertSame(1, data_get($lookup->top_products, '0.rank'));
+        $this->assertSame(3, (int) data_get($lookup->raw_payload, 'intelligence.version'));
+        $this->assertCount(2, $lookup->top_products);
+    }
+
+    public function test_keyword_lookup_server_fallback_explains_trendyol_403(): void
+    {
+        [$user] = $this->createBoosterGraph();
+        $this->actingAs($user);
+        Http::fake([
+            'https://www.trendyol.com/sr*' => Http::response('Forbidden', 403),
+        ]);
+
+        Livewire::withQueryParams(['booster' => 'keyword'])
+            ->test(TrendyolBooster::class)
+            ->call('keywordLookupServerFallback', 'puf')
+            ->assertSet('messageType', 'error')
+            ->assertSet('message', 'Trendyol sunucu erişimini sınırladı. Chrome Companion 0.15.0 veya üzerini yeniden yükleyip tekrar deneyin.');
     }
 
     public function test_companion_stock_and_store_endpoints_persist_browser_payloads(): void

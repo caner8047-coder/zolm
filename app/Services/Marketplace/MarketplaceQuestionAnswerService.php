@@ -7,6 +7,7 @@ use App\Models\MarketplaceQuestionAnswerLog;
 use App\Models\User;
 use App\Services\Marketplace\Contracts\AnswersCustomerQuestions;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class MarketplaceQuestionAnswerService
@@ -104,6 +105,19 @@ class MarketplaceQuestionAnswerService
                     'error_message' => $exception->getMessage(),
                 ])->save();
             });
+        }
+
+        if ($log->fresh()->status === 'sent' && config('customer-care.enabled', false)) {
+            try {
+                app(\App\Services\Support\SupportProjectionService::class)
+                    ->projectQuestion($question->fresh(['store']));
+            } catch (Throwable $exception) {
+                Log::warning('Gönderilen ürün cevabı AI Müşteri Merkezi projeksiyonuna aktarılamadı.', [
+                    'marketplace_question_id' => $question->id,
+                    'store_id' => $question->store_id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
         }
 
         return $log->fresh();

@@ -27,6 +27,7 @@ class IntegrationConnection extends Model
     {
         return [
             'credentials_encrypted' => 'encrypted:array',
+            'webhook_secret' => 'encrypted',
             'last_verified_at' => 'datetime',
         ];
     }

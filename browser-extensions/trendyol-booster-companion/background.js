@@ -119,6 +119,13 @@ async function handleMessage(message) {
     );
   }
 
+  if (message.type === 'ZOLM_BOOSTER_KEYWORD_LOOKUP_FROM_URL') {
+    return await keywordLookupFromUrl(
+      message.source_url || '',
+      message.keyword || ''
+    );
+  }
+
   if (message.type === 'ZOLM_BOOSTER_SUPPLIER_RESEARCH_FROM_URL') {
     return await supplierResearchFromUrl(message.source_url || '');
   }
@@ -1770,6 +1777,130 @@ async function keywordTrackingFromUrl(sourceUrl, keywords) {
     product: productPayload,
     keywords: keywordResults,
   };
+}
+
+async function keywordLookupFromUrl(sourceUrl, requestedKeyword = '') {
+  let url;
+
+  try {
+    url = new URL(normalizeTrendyolUrl(sourceUrl));
+  } catch (error) {
+    throw new Error('Geçerli bir Trendyol arama linki oluşturulamadı.');
+  }
+
+  const keyword = String(requestedKeyword || url.searchParams.get('q') || '').replace(/\s+/g, ' ').trim();
+  if (keyword.length < 2) {
+    throw new Error('Anahtar kelime en az 2 karakter olmalı.');
+  }
+
+  url.pathname = '/sr';
+  url.search = '';
+  url.searchParams.set('q', keyword);
+
+  let createdTabId = null;
+
+  try {
+    const tab = await chrome.tabs.create({ url: url.href, active: false });
+    createdTabId = tab.id;
+
+    if (!createdTabId) {
+      throw new Error('Trendyol arama sekmesi açılamadı.');
+    }
+
+    await waitForTabComplete(createdTabId, 30000);
+    await waitForBestsellerCards(createdTabId, 20000);
+
+    const [execution] = await chrome.scripting.executeScript({
+      target: { tabId: createdTabId },
+      args: [keyword],
+      func: (searchKeyword) => {
+        const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+        const productLinks = Array.from(document.querySelectorAll([
+          'main a[data-testid="product-card-link"]',
+          'main a.product-card-link',
+          'main a.product-card[href*="-p-"]',
+          '.p-card-wrppr a[href*="-p-"]',
+          '.prdct-cntnr-wrppr a[href*="-p-"]',
+          'main a[href*="-p-"]',
+        ].join(', ')));
+        const seen = new Set();
+        const topProducts = [];
+
+        for (const link of productLinks) {
+          const href = String(link.getAttribute('href') || '');
+          const productId = href.match(/-p-(\d+)/i)?.[1] || '';
+          if (!productId || seen.has(productId)) continue;
+
+          const root = link.closest(
+            '[data-testid*="product-card"], .product-card, .p-card-wrppr, .p-card-chldrn-cntnr, article, li',
+          ) || link;
+          const heading = root.querySelector('h2, [role="heading"], .product-name, .prdct-desc-cntnr-name, [class*="product-name"]');
+          const image = root.querySelector('img[alt]');
+          const sourceUrl = new URL(href, window.location.origin);
+          const title = clean(
+            heading?.textContent
+            || link.getAttribute('title')
+            || image?.getAttribute('alt')
+            || '',
+          ).slice(0, 500);
+          const brandSlug = decodeURIComponent(sourceUrl.pathname.split('/').filter(Boolean)[0] || '');
+          const brand = brandSlug
+            .split('-')
+            .filter(Boolean)
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ')
+            .slice(0, 120);
+
+          if (!title) continue;
+
+          seen.add(productId);
+          topProducts.push({
+            trendyol_product_id: productId,
+            source_url: sourceUrl.href,
+            title,
+            brand,
+            rank: topProducts.length + 1,
+          });
+
+          if (topProducts.length >= 40) break;
+        }
+
+        const mainText = clean(document.querySelector('main')?.innerText || '');
+        const resultCountText = mainText.match(/([\d.]+)\+?\s*Ürün\b/i)?.[1] || '';
+        const stateText = Array.from(document.scripts)
+          .map((script) => String(script.textContent || ''))
+          .find((text) => /"totalCount"\s*:\s*\d+/i.test(text)) || '';
+        const stateCountText = stateText.match(/"totalCount"\s*:\s*(\d+)/i)?.[1] || '';
+        const parsedCount = Number.parseInt(String(resultCountText || stateCountText).replace(/\./g, ''), 10);
+
+        return {
+          keyword: clean(searchKeyword).slice(0, 180),
+          source_url: window.location.href,
+          product_ids: topProducts.map((product) => product.trendyol_product_id),
+          result_count: Number.isFinite(parsedCount) ? parsedCount : topProducts.length,
+          checked_result_count: topProducts.length,
+          scan_limit: 40,
+          top_products: topProducts,
+        };
+      },
+    });
+
+    const data = execution?.result || null;
+    if (!data || !Array.isArray(data.top_products) || data.top_products.length === 0) {
+      throw new Error('Trendyol arama sayfası açıldı ancak ürün kartları okunamadı.');
+    }
+
+    return {
+      ok: true,
+      message: `${data.top_products.length} ürün başlığı tarayıcıdan okundu.`,
+      data,
+      source: 'browser_bridge',
+    };
+  } finally {
+    if (createdTabId) {
+      await chrome.tabs.remove(createdTabId).catch(() => undefined);
+    }
+  }
 }
 
 function bestsellerDirectCategory(keyword) {

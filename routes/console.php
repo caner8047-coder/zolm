@@ -171,3 +171,39 @@ Schedule::call(fn () => $runInlineCommand('whatsapp:check-sla-breaches'))
     ->name('whatsapp-check-sla-breaches')
     ->everyFiveMinutes()
     ->withoutOverlapping(4);
+
+// Support Modülü - Outbox işlemcisi: her dakika çalışır
+Schedule::call(fn () => $runInlineCommand('support:process-outbox'))
+    ->name('support-process-outbox')
+    ->everyMinute()
+    ->withoutOverlapping(5);
+
+Schedule::call(fn () => $runInlineCommand('customer-care:process-integration-outbox'))
+    ->name('customer-care-process-integration-outbox')
+    ->everyMinute()
+    ->when(fn () => config('customer-care.enabled', false) && config('customer-care.integration_hub_enabled', false))
+    ->withoutOverlapping(5);
+
+// Tenant sınırları içinde düşük güven/cevapsız soru kümelerini gece analiz eder.
+Schedule::call(fn () => $runInlineCommand('customer-care:generate-knowledge-suggestions'))
+    ->name('customer-care-knowledge-suggestions')
+    ->dailyAt('02:30')
+    ->when(fn () => config('customer-care.enabled', false) && config('customer-care.knowledge_enabled', false))
+    ->withoutOverlapping(120);
+
+// Pilot otomasyon monitor: her 15 dakikada bir çalışır, circuit breaker ve health kontrolü yapar.
+Schedule::call(fn () => $runInlineCommand('customer-care:pilot-monitor'))
+    ->name('customer-care-pilot-monitor')
+    ->everyFifteenMinutes()
+    ->when(fn () => config('customer-care.enabled', false) && config('customer-care.pilot_dashboard_enabled', false))
+    ->withoutOverlapping();
+
+// Reconciliation cron: aktif tüm mağazaları tenant bazında tarar ve kanıtı kalıcılaştırır.
+Schedule::call(fn () => $runInlineCommand('customer-care:reconcile-projections', [
+    '--all' => true,
+    '--execute' => true,
+]))
+    ->name('customer-care-reconciliation')
+    ->dailyAt('04:30')
+    ->when(fn () => config('customer-care.enabled', false) && config('customer-care.reconciliation_enabled', false))
+    ->withoutOverlapping();

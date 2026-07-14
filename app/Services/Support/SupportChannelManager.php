@@ -13,6 +13,12 @@ class SupportChannelManager
         $this->register(new WhatsAppSupportChannelAdapter());
         $this->register(new TrendyolSupportChannelAdapter());
         $this->register(new HepsiburadaSupportChannelAdapter());
+        $this->register(new N11SupportChannelAdapter());
+        $this->register(new MetaSocialSupportChannelAdapter('meta_social'));
+        $this->register(new MetaSocialSupportChannelAdapter('instagram'));
+        $this->register(new MetaSocialSupportChannelAdapter('facebook'));
+        $this->register(new GoogleBusinessSupportChannelAdapter());
+        $this->register(new WebChatSupportChannelAdapter());
         $this->register(new NullSupportChannelAdapter());
     }
 

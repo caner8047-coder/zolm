@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ZOLM Trendyol Booster Companion",
-  "version": "0.14.1",
+  "version": "0.15.1",
   "description": "Trendyol ürünlerini ZOLM Booster Radar'a ekler; Seller Panel fiyatlandırma, kampanya ve sipariş sayfalarında karlılık gösterir.",
   "permissions": ["storage", "activeTab", "tabs", "scripting", "alarms"],
   "host_permissions": [

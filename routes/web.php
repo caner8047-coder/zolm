@@ -496,6 +496,117 @@ Route::middleware('auth')->group(function () {
         Route::get('/users', \App\Livewire\Admin\UserManager::class)->name('admin.users');
         Route::get('/logs', \App\Livewire\Admin\ActivityLogs::class)->name('admin.logs');
     });
+
+    Route::get('/customer-care', \App\Livewire\CustomerCare\Home::class)
+        ->name('customer-care.home')
+        ->middleware('customer-care.feature:inbox_enabled');
+
+    Route::get('/customer-care/inbox', \App\Livewire\CustomerCare\Inbox::class)
+        ->name('customer-care.inbox')
+        ->middleware('customer-care.feature:inbox_enabled');
+
+    Route::get('/customer-care/pilot', \App\Livewire\CustomerCare\PilotDashboard::class)
+        ->name('customer-care.pilot')
+        ->middleware('customer-care.feature:pilot_dashboard_enabled');
+
+    Route::get('/customer-care/suggestions', \App\Livewire\CustomerCare\KnowledgeSuggestions::class)
+        ->name('customer-care.suggestions')
+        ->middleware('customer-care.feature:knowledge_enabled');
+
+    Route::get('/customer-care/product-questions', \App\Livewire\CustomerCare\ProductQuestions::class)
+        ->name('customer-care.product-questions')
+        ->middleware('customer-care.feature:knowledge_enabled');
+
+    Route::get('/customer-care/analytics', \App\Livewire\CustomerCare\Analytics::class)
+        ->name('customer-care.analytics')
+        ->middleware('customer-care.feature:analytics_enabled');
+
+    Route::get('/customer-care/settings', \App\Livewire\CustomerCare\Settings::class)
+        ->name('customer-care.settings')
+        ->middleware('customer-care.feature:settings_enabled');
+
+    Route::get('/customer-care/onboarding', \App\Livewire\CustomerCare\Onboarding::class)
+        ->name('customer-care.onboarding')
+        ->middleware('customer-care.feature:onboarding_enabled');
+
+    Route::get('/customer-care/admin', \App\Livewire\CustomerCare\AdminCenter::class)
+        ->name('customer-care.admin')
+        ->middleware('customer-care.feature:admin_center_enabled');
+
+    Route::get('/customer-care/quality', \App\Livewire\CustomerCare\QualityCenter::class)
+        ->name('customer-care.quality')
+        ->middleware('customer-care.feature:quality_center_enabled');
+
+    Route::get('/customer-care/integrations', \App\Livewire\CustomerCare\Integrations::class)
+        ->name('customer-care.integrations')
+        ->middleware('customer-care.feature:integration_hub_enabled');
+
+    Route::get('/customer-care/ops', \App\Livewire\CustomerCare\OpsCenter::class)
+        ->name('customer-care.ops')
+        ->middleware('customer-care.feature:ops_center_enabled');
+
+    Route::get('/customer-care/governance', \App\Livewire\CustomerCare\Governance::class)
+        ->name('customer-care.governance')
+        ->middleware('customer-care.feature:governance_enabled');
+
+    Route::get('/customer-care/compliance', \App\Livewire\CustomerCare\Compliance::class)
+        ->name('customer-care.compliance')
+        ->middleware('customer-care.feature:compliance_enabled');
+
+    Route::get('/customer-care/reliability', \App\Livewire\CustomerCare\Reliability::class)
+        ->name('customer-care.reliability')
+        ->middleware('customer-care.feature:reliability_enabled');
+
+    Route::get('/customer-care/launch', \App\Livewire\CustomerCare\Launch::class)
+        ->name('customer-care.launch')
+        ->middleware('customer-care.feature:launch_center_enabled');
+
+    Route::get('/customer-care/reconciliation', \App\Livewire\CustomerCare\Reconciliation::class)
+        ->name('customer-care.reconciliation')
+        ->middleware('customer-care.feature:reconciliation_enabled');
+
+    Route::get('/customer-care/releases', \App\Livewire\CustomerCare\Releases::class)
+        ->name('customer-care.releases')
+        ->middleware('customer-care.feature:release_center_enabled');
+
+    // Waves AN / AO / AP
+    Route::get('/customer-care/success', \App\Livewire\CustomerCare\Success::class)
+        ->name('customer-care.success')
+        ->middleware('customer-care.feature:success_center_enabled');
+
+    Route::get('/customer-care/experiments', \App\Livewire\CustomerCare\Experiments::class)
+        ->name('customer-care.experiments')
+        ->middleware('customer-care.feature:experiments_enabled');
+
+    Route::get('/customer-care/security', \App\Livewire\CustomerCare\Security::class)
+        ->name('customer-care.security')
+        ->middleware('customer-care.feature:security_center_enabled');
+
+    // Waves AQ / AR / AS
+    Route::get('/customer-care/organization', \App\Livewire\CustomerCare\Organization::class)
+        ->name('customer-care.organization')
+        ->middleware('customer-care.feature:org_center_enabled');
+
+    Route::get('/customer-care/api', \App\Livewire\CustomerCare\Api::class)
+        ->name('customer-care.api')
+        ->middleware('customer-care.feature:enterprise_api_enabled');
+
+    Route::get('/customer-care/commercial', \App\Livewire\CustomerCare\Commercial::class)
+        ->name('customer-care.commercial')
+        ->middleware('customer-care.feature:commercial_center_enabled');
+
+    // Waves AT / AU / AV
+    Route::get('/customer-care/agent-workspace', \App\Livewire\CustomerCare\AgentWorkspace::class)
+        ->name('customer-care.agent-workspace')
+        ->middleware('customer-care.feature:agent_workspace_enabled');
+
+    Route::get('/customer-care/certification', \App\Livewire\CustomerCare\Certification::class)
+        ->name('customer-care.certification')
+        ->middleware('customer-care.feature:connector_certification_enabled');
+
+    Route::get('/customer-care/production', \App\Livewire\CustomerCare\Production::class)
+        ->name('customer-care.production')
+        ->middleware('customer-care.feature:production_center_enabled');
 });
 
 // ============================================

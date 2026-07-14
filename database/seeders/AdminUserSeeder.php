@@ -25,5 +25,17 @@ class AdminUserSeeder extends Seeder
             'role_id' => $adminRole?->id,
             'is_active' => true,
         ])->save();
+
+        // Create System Actor
+        $systemUser = User::firstOrNew(['email' => 'system@zolm.com']);
+        if (!$systemUser->exists) {
+            $systemUser->name = 'System Actor';
+            $systemUser->password = Hash::make(bin2hex(random_bytes(16)));
+        }
+        $systemUser->forceFill([
+            'role' => 'admin',
+            'role_id' => $adminRole?->id,
+            'is_active' => true,
+        ])->save();
     }
 }

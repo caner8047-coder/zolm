@@ -13,7 +13,7 @@ class SupportCapabilityService
     public function refreshCapabilities(SupportChannel $channel): array
     {
         $adapter = app(SupportChannelManager::class)->resolveForChannel($channel);
-        $capabilities = $adapter->getCapabilities();
+        $capabilities = $adapter->getCapabilities($channel);
 
         $updated = 0;
         foreach ($capabilities as $cap) {
@@ -39,7 +39,14 @@ class SupportCapabilityService
         $adapter = app(SupportChannelManager::class)->resolveForChannel($channel);
         $result = $adapter->healthCheck($channel);
 
-        $channel->update(['last_health_check_at' => now()]);
+        $status = (string) ($result['status'] ?? 'unknown');
+        $channel->update([
+            'last_health_check_at' => now(),
+            'last_health_status' => $status,
+            'last_health_error' => $status === 'ok'
+                ? null
+                : mb_substr((string) ($result['message'] ?? 'Bilinmeyen kanal sağlık hatası'), 0, 500),
+        ]);
 
         return $result;
     }

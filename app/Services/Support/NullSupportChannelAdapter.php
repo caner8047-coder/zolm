@@ -9,7 +9,7 @@ class NullSupportChannelAdapter implements SupportChannelAdapterInterface
     public function key(): string { return 'unsupported'; }
     public function name(): string { return 'Desteklenmeyen Kanal'; }
 
-    public function getCapabilities(): array
+    public function getCapabilities(?SupportChannel $channel = null): array
     {
         return [
             ['capability' => 'read_messages', 'status' => 'unavailable'],
@@ -38,7 +38,7 @@ class NullSupportChannelAdapter implements SupportChannelAdapterInterface
         return false;
     }
 
-    public function sendReply(SupportChannel $channel, string $conversationExternalId, string $message): array
+    public function sendReply(SupportChannel $channel, string $conversationExternalId, string $message, ?string $idempotencyKey = null): array
     {
         return ['success' => false, 'message' => 'Bu kanal üzerinden mesaj gönderilemez'];
     }
@@ -46,5 +46,10 @@ class NullSupportChannelAdapter implements SupportChannelAdapterInterface
     public function resolveOrderContext(SupportChannel $channel, string $externalConversationId): ?array
     {
         return null;
+    }
+
+    public function getOutboundTargetStatus(): string
+    {
+        return 'failed';
     }
 }

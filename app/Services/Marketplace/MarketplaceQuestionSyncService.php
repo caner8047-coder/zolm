@@ -9,6 +9,7 @@ use App\Models\MarketplaceQuestion;
 use App\Models\MarketplaceStore;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -48,6 +49,19 @@ class MarketplaceQuestionSyncService
                 $wasRecentlyCreated ? $created++ : $updated++;
 
                 $this->syncMessages($question, $item);
+
+                if (config('customer-care.enabled', false)) {
+                    try {
+                        app(\App\Services\Support\SupportProjectionService::class)
+                            ->projectQuestion($question->fresh(['store']));
+                    } catch (Throwable $exception) {
+                        Log::warning('Ürün sorusu AI Müşteri Merkezi projeksiyonu tamamlanamadı.', [
+                            'store_id' => $store->id,
+                            'marketplace_question_id' => $question->id,
+                            'error' => $exception->getMessage(),
+                        ]);
+                    }
+                }
 
                 if ($wasRecentlyCreated && $this->shouldNotifyFreshQuestion($question, $context)) {
                     app(\App\Services\NotificationCenterService::class)->notifyQuestionReceived($question);
@@ -161,6 +175,9 @@ class MarketplaceQuestionSyncService
         if (filled($answerText)) {
             $normalized['answer_text'] = $answerText;
             $normalized['answered_at'] = $this->parseDate($this->firstFilled($item, ['answered_at', 'answeredDate', 'answerDate', 'answer.createdAt', 'answer.creationDate']));
+            if ($normalized['status'] === 'open') {
+                $normalized['status'] = 'answered';
+            }
         }
 
         return $normalized;

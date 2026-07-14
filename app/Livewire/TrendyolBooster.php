@@ -102,6 +102,24 @@ class TrendyolBooster extends Component
         'actions' => 'Aksiyon',
     ];
 
+    public static array $keywordIntelligenceColumnDefinitions = [
+        'keyword' => 'Anahtar kelime',
+        'intent' => 'Niyet',
+        'semantic' => 'Anlam gücü',
+        'coverage' => 'Kapsama',
+        'opportunity' => 'Fırsat',
+        'difficulty' => 'Zorluk',
+    ];
+
+    public static array $keywordIntelligenceSortableColumns = [
+        'keyword' => 'keyword',
+        'intent' => 'intent_label',
+        'semantic' => 'semantic_score',
+        'coverage' => 'coverage_percent',
+        'opportunity' => 'opportunity_score',
+        'difficulty' => 'difficulty_score',
+    ];
+
     public static array $sortableColumns = [
         'platform' => 'platform_label',
         'seller' => 'seller_name',
@@ -272,6 +290,13 @@ class TrendyolBooster extends Component
     public string $stockHistorySort = 'latest';
 
     public string $keywordLookupInput = '';
+
+    /** @var array<int, string> */
+    public array $keywordIntelligenceVisibleColumns = ['keyword', 'intent', 'semantic', 'coverage', 'opportunity', 'difficulty'];
+
+    public string $keywordIntelligenceSortField = 'opportunity';
+
+    public string $keywordIntelligenceSortDirection = 'desc';
 
     public string $storeWatchUrl = '';
 
@@ -791,13 +816,39 @@ class TrendyolBooster extends Component
         if (! $this->boosterKeywordLookupTablesReady()) {
             return [
                 'total' => 0,
+                'successful_total' => 0,
                 'last_result_count' => 0,
                 'latest' => collect(),
                 'unique_keywords' => 0,
+                'current' => null,
+                'intelligence' => [],
             ];
         }
 
         return app(TrendyolBoosterKeywordLookupService::class)->dashboard($this->userId());
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    #[Computed]
+    public function keywordIntelligenceRows(): array
+    {
+        $rows = array_values((array) data_get($this->keywordLookupDashboard, 'intelligence.keywords', []));
+        $sortKey = self::$keywordIntelligenceSortableColumns[$this->keywordIntelligenceSortField]
+            ?? 'opportunity_score';
+        $direction = $this->keywordIntelligenceSortDirection === 'asc' ? 1 : -1;
+
+        usort($rows, function (array $left, array $right) use ($sortKey, $direction): int {
+            $leftValue = $left[$sortKey] ?? null;
+            $rightValue = $right[$sortKey] ?? null;
+
+            if (is_string($leftValue) || is_string($rightValue)) {
+                return strnatcasecmp((string) $leftValue, (string) $rightValue) * $direction;
+            }
+
+            return (($leftValue ?? 0) <=> ($rightValue ?? 0)) * $direction;
+        });
+
+        return $rows;
     }
 
     #[Computed]
@@ -1139,11 +1190,93 @@ class TrendyolBooster extends Component
             'keywordLookupInput' => ['required', 'string', 'min:2', 'max:180'],
         ]);
 
-        $result = app(TrendyolBoosterKeywordLookupService::class)->search($this->userId(), $this->keywordLookupInput);
+        $keyword = trim($this->keywordLookupInput);
+
+        $this->dispatch(
+            'booster:keyword-lookup-bridge',
+            keyword: $keyword,
+            url: 'https://www.trendyol.com/sr?q='.rawurlencode($keyword),
+        );
+    }
+
+    public function keywordLookupServerFallback(string $keyword): void
+    {
+        $validator = \Illuminate\Support\Facades\Validator::make(
+            ['keyword' => $keyword],
+            ['keyword' => ['required', 'string', 'min:2', 'max:180']],
+        );
+
+        if ($validator->fails()) {
+            $this->message = $validator->errors()->first('keyword') ?: 'Geçerli bir ürün adı girin.';
+            $this->messageType = 'error';
+
+            return;
+        }
+
+        $result = app(TrendyolBoosterKeywordLookupService::class)->search($this->userId(), $keyword);
+
+        $this->message = $result['message'];
+        if (! $result['ok'] && str_contains($this->message, 'HTTP durum kodu: 403')) {
+            $this->message = 'Trendyol sunucu erişimini sınırladı. Chrome Companion 0.15.0 veya üzerini yeniden yükleyip tekrar deneyin.';
+        }
+
+        $this->messageType = $result['ok'] ? 'success' : 'error';
+        unset($this->keywordLookupDashboard, $this->keywordIntelligenceRows, $this->activityDashboard);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    public function keywordLookupBridgeCompleted(string $keyword, array $payload): void
+    {
+        if (! ($payload['ok'] ?? false)) {
+            $this->message = Str::limit(
+                trim((string) ($payload['message'] ?? 'Chrome Companion Trendyol arama sonucunu okuyamadı.')),
+                1000,
+                '',
+            );
+            $this->messageType = 'error';
+
+            return;
+        }
+
+        $validator = \Illuminate\Support\Facades\Validator::make([
+            'keyword' => $keyword,
+            'data' => $payload['data'] ?? null,
+        ], [
+            'keyword' => ['required', 'string', 'min:2', 'max:180'],
+            'data' => ['required', 'array'],
+            'data.source_url' => ['required', 'url:http,https', 'max:1000'],
+            'data.result_count' => ['required', 'integer', 'min:0', 'max:4294967295'],
+            'data.checked_result_count' => ['required', 'integer', 'min:1', 'max:500'],
+            'data.scan_limit' => ['required', 'integer', 'min:1', 'max:500'],
+            'data.product_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'data.product_ids.*' => ['required', 'regex:/^\d{1,30}$/'],
+            'data.top_products' => ['required', 'array', 'min:1', 'max:40'],
+            'data.top_products.*.trendyol_product_id' => ['required', 'regex:/^\d{1,30}$/'],
+            'data.top_products.*.source_url' => ['required', 'url:http,https', 'max:1000'],
+            'data.top_products.*.title' => ['required', 'string', 'max:500'],
+            'data.top_products.*.brand' => ['nullable', 'string', 'max:120'],
+            'data.top_products.*.rank' => ['nullable', 'integer', 'min:1', 'max:500'],
+        ]);
+
+        if ($validator->fails()) {
+            $this->message = 'Chrome Companion geçerli bir Trendyol arama sonucu döndürmedi.';
+            $this->messageType = 'error';
+
+            return;
+        }
+
+        $validated = $validator->validated();
+        $result = app(TrendyolBoosterKeywordLookupService::class)->storeBrowserResult(
+            $this->userId(),
+            (string) $validated['keyword'],
+            (array) $validated['data'],
+        );
 
         $this->message = $result['message'];
         $this->messageType = $result['ok'] ? 'success' : 'error';
-        unset($this->keywordLookupDashboard, $this->activityDashboard);
+        unset($this->keywordLookupDashboard, $this->keywordIntelligenceRows, $this->activityDashboard);
     }
 
     public function trackKeywordFromTool(): void
@@ -1629,6 +1762,38 @@ class TrendyolBooster extends Component
         }
 
         unset($this->supplierResearchDashboard);
+    }
+
+    public function toggleKeywordIntelligenceColumn(string $column): void
+    {
+        if (! array_key_exists($column, self::$keywordIntelligenceColumnDefinitions) || $column === 'keyword') {
+            return;
+        }
+
+        if (in_array($column, $this->keywordIntelligenceVisibleColumns, true)) {
+            $this->keywordIntelligenceVisibleColumns = array_values(array_filter(
+                $this->keywordIntelligenceVisibleColumns,
+                fn (string $visible): bool => $visible !== $column,
+            ));
+        } else {
+            $this->keywordIntelligenceVisibleColumns[] = $column;
+        }
+    }
+
+    public function sortKeywordIntelligenceTable(string $column): void
+    {
+        if (! array_key_exists($column, self::$keywordIntelligenceSortableColumns)) {
+            return;
+        }
+
+        if ($this->keywordIntelligenceSortField === $column) {
+            $this->keywordIntelligenceSortDirection = $this->keywordIntelligenceSortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            $this->keywordIntelligenceSortField = $column;
+            $this->keywordIntelligenceSortDirection = in_array($column, ['keyword', 'intent'], true) ? 'asc' : 'desc';
+        }
+
+        unset($this->keywordIntelligenceRows);
     }
 
     public function discoverTrendKeywords(): void

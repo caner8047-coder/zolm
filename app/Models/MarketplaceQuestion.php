@@ -31,6 +31,12 @@ class MarketplaceQuestion extends Model
         'ai_suggested_answer',
         'ai_confidence',
         'ai_status',
+        'learning_status',
+        'learning_suggestion_id',
+        'is_golden_candidate',
+        'learning_excluded_reason',
+        'learning_reviewed_by_user_id',
+        'learning_reviewed_at',
         'matched_rule_id',
         'answered_by_user_id',
         'asked_at',
@@ -44,6 +50,8 @@ class MarketplaceQuestion extends Model
     {
         return [
             'ai_confidence' => 'integer',
+            'is_golden_candidate' => 'boolean',
+            'learning_reviewed_at' => 'datetime',
             'asked_at' => 'datetime',
             'answered_at' => 'datetime',
             'expires_at' => 'datetime',
@@ -80,6 +88,16 @@ class MarketplaceQuestion extends Model
     public function answeredBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'answered_by_user_id');
+    }
+
+    public function learningSuggestion(): BelongsTo
+    {
+        return $this->belongsTo(SupportKnowledgeSuggestion::class, 'learning_suggestion_id');
+    }
+
+    public function learningReviewedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'learning_reviewed_by_user_id');
     }
 
     public function messages(): HasMany

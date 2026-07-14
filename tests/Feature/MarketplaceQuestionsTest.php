@@ -656,16 +656,17 @@ class MarketplaceQuestionsTest extends TestCase
      */
     protected function createStoreGraph(string $marketplace): array
     {
-        $suffix = (string) random_int(100000, 999999);
+        $randStr = \Illuminate\Support\Str::random(12);
+        $taxNumber = '7' . random_int(100000000, 999999999);
         $user = User::factory()->create([
-            'email' => "questions-{$suffix}@example.test",
+            'email' => "questions-" . \Illuminate\Support\Str::uuid() . "@example.test",
             'role' => 'admin',
             'is_active' => true,
         ]);
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Questions Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => $taxNumber,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -675,8 +676,8 @@ class MarketplaceQuestionsTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => $marketplace,
             'store_name' => 'ZEM SORULAR ' . strtoupper($marketplace),
-            'store_code' => 'Q-' . $suffix,
-            'seller_id' => 'SELLER-' . $suffix,
+            'store_code' => 'Q-' . $randStr,
+            'seller_id' => 'SELLER-' . $randStr,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

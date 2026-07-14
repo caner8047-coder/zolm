@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +22,26 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\WhatsApp\AiProviderInterface::class,
             \App\Services\WhatsApp\FakeAiProvider::class,
         );
+        $this->app->bind(
+            \App\Services\Support\AI\CustomerCareAiProviderInterface::class,
+            \App\Services\Support\AI\GeminiCustomerCareAiAdapter::class,
+        );
+        $this->app->bind(
+            \App\Services\Support\MetaSocialConnectorInterface::class,
+            \App\Services\Support\HttpMetaSocialConnector::class,
+        );
+        $this->app->bind(
+            \App\Services\Support\GoogleBusinessConnectorInterface::class,
+            \App\Services\Support\HttpGoogleBusinessConnector::class,
+        );
+        $this->app->bind(
+            \App\Services\Support\Integration\GenericCrmConnectorInterface::class,
+            \App\Services\Support\Integration\GenericHttpCrmConnector::class,
+        );
+        $this->app->bind(
+            \App\Services\Support\Integration\GenericErpConnectorInterface::class,
+            \App\Services\Support\Integration\GenericHttpErpConnector::class,
+        );
     }
 
     /**
@@ -28,6 +51,15 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureViteHotReloadFallback();
         $this->registerWhatsAppEvents();
+        RateLimiter::for('customer-care-enterprise', function (Request $request) {
+            $tokenFingerprint = hash('sha256', (string) $request->bearerToken());
+            return Limit::perMinute(120)->by($tokenFingerprint . '|' . $request->ip());
+        });
+
+        \Illuminate\Support\Facades\Gate::policy(
+            \App\Models\SupportConversation::class,
+            \App\Policies\SupportConversationPolicy::class
+        );
 
         // Livewire endpointlerini sabit path'e alarak tarayici cache/ad-block etkisini azalt.
         Livewire::setScriptRoute(function ($handle) {

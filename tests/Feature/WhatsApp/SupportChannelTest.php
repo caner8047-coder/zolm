@@ -141,6 +141,7 @@ class SupportChannelTest extends WhatsAppTestCase
     public function test_whatsapp_adapter_can_reply_when_capable(): void
     {
         $store = $this->createStore();
+        $this->createAccount($store);
         $channel = SupportChannel::create([
             'store_id' => $store->id,
             'key' => 'whatsapp',
@@ -259,6 +260,16 @@ class SupportChannelTest extends WhatsAppTestCase
             'status' => 'open',
         ]);
 
+        \App\Models\WaInboundMessage::create([
+            'conversation_id' => $waConv->id,
+            'contact_id' => $contact->id,
+            'meta_message_id' => 'msg_xyz',
+            'message_type' => 'text',
+            'body' => 'Merhaba nasılsınız?',
+            'received_at' => now(),
+            'payload_json' => ['raw' => 'data'],
+        ]);
+
         $channel = SupportChannel::create([
             'store_id' => $store->id,
             'key' => 'whatsapp',
@@ -269,6 +280,8 @@ class SupportChannelTest extends WhatsAppTestCase
 
         $adapter = new WhatsAppSupportChannelAdapter();
         $messages = $adapter->fetchMessages($channel, 'wa_' . $waConv->id);
+
+        $this->assertNotEmpty($messages, 'Mesajlar boş dönmemeli.');
 
         // Mesajlar payload_json içerebilir ama body_encrypted ile şifreli olmalı
         foreach ($messages as $msg) {

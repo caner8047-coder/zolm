@@ -20,7 +20,7 @@ class NightlyRepairSyncCommand extends Command
         {--days=30 : Kaç gün geriye bakılacağı}
         {--dry-run : Sadece analiz yap, aksiyon alma}';
 
-    protected $description = 'Gece onarım sync: eksik finansları tamamla, eşleşmeyen ürünleri yeniden eşleştir, snapshot'ları yeniden hesapla.';
+    protected $description = "Gece onarım sync: eksik finansları tamamla, eşleşmeyen ürünleri yeniden eşleştir, snapshot'ları yeniden hesapla.";
 
     public function __construct(protected MarketplaceConnectionReadinessService $connectionReadiness)
     {

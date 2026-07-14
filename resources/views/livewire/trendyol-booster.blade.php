@@ -1698,72 +1698,7 @@
             </div>
         </section>
     @elseif($activeModule === 'keyword')
-        <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-end">
-                <label class="min-w-0 flex-1">
-                    <span class="text-xs font-medium text-slate-600">Satmak İstediğiniz Ürün</span>
-                    <input type="search" wire:model.defer="keywordLookupInput" placeholder="Satmak istediğiniz ürün adını yazın"
-                           class="mt-1.5 w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 outline-none focus:border-slate-400 sm:py-2 sm:text-sm">
-                    @error('keywordLookupInput') <p class="mt-1.5 text-xs text-rose-600">{{ $message }}</p> @enderror
-                </label>
-                <button type="button" wire:click="runKeywordLookup" wire:loading.attr="disabled" wire:target="runKeywordLookup"
-                        @disabled(!$keywordLookupReady)
-                        class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] bg-slate-900 px-4 py-3 text-base font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2 sm:text-sm">
-                    <x-lucide.icon name="search" class="h-4 w-4" />
-                    Popüler Kelimeleri Bul
-                </button>
-            </div>
-
-            <div class="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3"><p class="text-xs text-slate-500">Toplam arama</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ $keywordLookupDashboard['total'] }}</p></div>
-                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3"><p class="text-xs text-slate-500">Tekil kelime</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ $keywordLookupDashboard['unique_keywords'] }}</p></div>
-                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3"><p class="text-xs text-slate-500">Son sonuç</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ $keywordLookupDashboard['last_result_count'] }}</p></div>
-                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3"><p class="text-xs text-slate-500">SEO modu</p><p class="mt-1 text-lg font-semibold text-emerald-700">Hazır</p></div>
-            </div>
-
-            <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
-                @forelse($keywordLookupDashboard['latest'] as $lookup)
-                    @php
-                        $stopWords = ['ve', 'ile', 'icin', 'için', 'bir', 'cok', 'çok', 'adet', 'yeni', 'model', 'renk', 'ozel', 'özel'];
-                        $popularWords = collect((array) $lookup->top_products)
-                            ->flatMap(fn ($product) => preg_split('/\s+/u', mb_strtolower((string) ($product['title'] ?? ''), 'UTF-8')) ?: [])
-                            ->map(fn ($word) => trim(preg_replace('/[^\pL\pN]+/u', '', $word) ?: ''))
-                            ->filter(fn ($word) => mb_strlen($word, 'UTF-8') > 2 && ! in_array($word, $stopWords, true))
-                            ->countBy()
-                            ->sortDesc()
-                            ->take(16);
-                    @endphp
-                    <article class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                                <p class="truncate text-sm font-semibold text-slate-900">{{ $lookup->keyword }}</p>
-                                <p class="mt-1 text-xs text-slate-500">{{ $lookup->searched_at?->format('d.m.Y H:i') }}</p>
-                            </div>
-                            <span class="rounded-[6px] border border-slate-200 bg-white px-2 py-1 font-mono text-xs text-slate-600">{{ $lookup->result_count }} sonuç</span>
-                        </div>
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            @forelse($popularWords as $word => $count)
-                                <span class="rounded-[6px] border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700">{{ $word }} <span class="font-mono text-slate-400">{{ $count }}</span></span>
-                            @empty
-                                <span class="text-xs text-slate-500">Popüler kelime çıkarılamadı.</span>
-                            @endforelse
-                        </div>
-                        <div class="mt-3 space-y-2 border-t border-slate-200 pt-3">
-                            @forelse(array_slice((array) $lookup->top_products, 0, 4) as $product)
-                                <div class="rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-                                    <span class="font-mono text-slate-400">#{{ $product['trendyol_product_id'] ?? '-' }}</span>
-                                    <span class="ml-2">{{ $product['title'] ?: 'Ürün başlığı okunamadı' }}</span>
-                                </div>
-                            @empty
-                                <div class="rounded-[6px] border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500">Trendyol sonucu okunamadı veya erişim sınırlı.</div>
-                            @endforelse
-                        </div>
-                    </article>
-                @empty
-                    <div class="rounded-[8px] border border-dashed border-slate-300 bg-slate-50/70 p-4 text-sm text-slate-500 lg:col-span-2">Popüler kelimeler bekleniyor. Ürün adını girin; Trendyol arama sonuçlarından başlık ve açıklama için kullanılacak kelimeler çıkarılsın.</div>
-                @endforelse
-            </div>
-        </section>
+        @include('livewire.partials.trendyol-booster-keyword-intelligence')
     @elseif($activeModule === 'competitor')
         @if($selectedStoreWatchId && $this->storeDetail)
             @include('livewire.partials.trendyol-booster-store-detail')
@@ -2572,6 +2507,87 @@
             }
         });
     }
+
+    $wire.on('booster:keyword-lookup-bridge', (event) => {
+        const payload = event[0] || event;
+        const keyword = String(payload.keyword || '').trim();
+        const requestId = 'lookup_' + Date.now();
+        let settled = false;
+        let timer = null;
+        let messageHandler = null;
+
+        window.dispatchEvent(new CustomEvent('booster-keyword-lookup-busy'));
+
+        const cleanup = () => {
+            if (timer) window.clearTimeout(timer);
+            if (messageHandler) window.removeEventListener('message', messageHandler);
+        };
+        const finish = () => {
+            cleanup();
+            window.dispatchEvent(new CustomEvent('booster-keyword-lookup-finished'));
+        };
+        const fallbackToServer = async () => {
+            if (settled) return;
+            settled = true;
+
+            try {
+                await $wire.keywordLookupServerFallback(keyword);
+            } finally {
+                finish();
+            }
+        };
+        const versionAtLeast = (current, required) => {
+            const left = String(current || '').split('.').map((part) => Number(part) || 0);
+            const right = String(required || '').split('.').map((part) => Number(part) || 0);
+
+            for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+                if ((left[index] || 0) > (right[index] || 0)) return true;
+                if ((left[index] || 0) < (right[index] || 0)) return false;
+            }
+
+            return true;
+        };
+
+        if (window.__zolmBoosterCompanionReady !== true
+            || !versionAtLeast(window.__zolmBoosterCompanionVersion, '0.15.0')) {
+            fallbackToServer();
+            return;
+        }
+
+        timer = window.setTimeout(fallbackToServer, 65000);
+        messageHandler = async (e) => {
+            if (e.origin !== window.location.origin || e.data?.source !== 'zolm-booster-extension') {
+                return;
+            }
+
+            if (e.data?.type === 'BRIDGE_ERROR') {
+                await fallbackToServer();
+                return;
+            }
+
+            if (e.data?.type !== 'KEYWORD_LOOKUP_RESULT' || e.data?.request_id !== requestId || settled) {
+                return;
+            }
+
+            settled = true;
+            const response = e.data.response || { ok: false, message: 'Chrome Companion geçersiz yanıt döndürdü.' };
+
+            try {
+                await $wire.keywordLookupBridgeCompleted(keyword, response);
+            } finally {
+                finish();
+            }
+        };
+
+        window.addEventListener('message', messageHandler);
+        window.postMessage({
+            source: 'zolm-booster-page',
+            type: 'KEYWORD_LOOKUP_QUERY',
+            request_id: requestId,
+            source_url: payload.url,
+            keyword,
+        }, window.location.origin);
+    });
 
     $wire.on('booster:store-scan-bridge', (event) => {
         const payload = event[0] || event;

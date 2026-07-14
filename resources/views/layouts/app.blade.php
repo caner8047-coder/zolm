@@ -691,6 +691,90 @@
                 </div>
                 @endif
 
+                {{-- AI Müşteri Merkezi Dropdown --}}
+                @if(config('customer-care.enabled', false))
+                @php
+                    $customerCareActive = request()->routeIs('customer-care.*');
+                    $customerCareGroups = [
+                        'Operasyon' => [
+                            ['label' => 'Genel Bakış', 'route' => 'customer-care.home', 'flag' => 'inbox_enabled'],
+                            ['label' => 'Gelen Kutusu', 'route' => 'customer-care.inbox', 'flag' => 'inbox_enabled'],
+                            ['label' => 'Temsilci Çalışma Alanı', 'route' => 'customer-care.agent-workspace', 'flag' => 'agent_workspace_enabled'],
+                            ['label' => 'Ayarlar', 'route' => 'customer-care.settings', 'flag' => 'settings_enabled'],
+                        ],
+                        'Bilgi ve Kalite' => [
+                            ['label' => 'Ürün Soruları ve Eğitim', 'route' => 'customer-care.product-questions', 'flag' => 'knowledge_enabled'],
+                            ['label' => 'Bilgi Bankası Önerileri', 'route' => 'customer-care.suggestions', 'flag' => 'knowledge_enabled'],
+                            ['label' => 'Kalite Denetimi', 'route' => 'customer-care.quality', 'flag' => 'quality_center_enabled'],
+                            ['label' => 'Deney Laboratuvarı', 'route' => 'customer-care.experiments', 'flag' => 'experiments_enabled'],
+                            ['label' => 'Yayın Paketleri', 'route' => 'customer-care.releases', 'flag' => 'release_center_enabled'],
+                        ],
+                        'Pilot ve Üretim' => [
+                            ['label' => 'Onboarding', 'route' => 'customer-care.onboarding', 'flag' => 'onboarding_enabled'],
+                            ['label' => 'Pilot Merkezi', 'route' => 'customer-care.pilot', 'flag' => 'pilot_dashboard_enabled'],
+                            ['label' => 'Lansman Merkezi', 'route' => 'customer-care.launch', 'flag' => 'launch_center_enabled'],
+                            ['label' => 'Canlı Üretim', 'route' => 'customer-care.production', 'flag' => 'production_center_enabled'],
+                            ['label' => 'Konnektör Sertifikasyonu', 'route' => 'customer-care.certification', 'flag' => 'connector_certification_enabled'],
+                        ],
+                        'Yönetim ve Güvenlik' => [
+                            ['label' => 'Analitik', 'route' => 'customer-care.analytics', 'flag' => 'analytics_enabled'],
+                            ['label' => 'Entegrasyonlar', 'route' => 'customer-care.integrations', 'flag' => 'integration_hub_enabled'],
+                            ['label' => 'Organizasyon', 'route' => 'customer-care.organization', 'flag' => 'org_center_enabled'],
+                            ['label' => 'Enterprise API', 'route' => 'customer-care.api', 'flag' => 'enterprise_api_enabled'],
+                            ['label' => 'Ticari Paketler', 'route' => 'customer-care.commercial', 'flag' => 'commercial_center_enabled'],
+                            ['label' => 'Admin Merkezi', 'route' => 'customer-care.admin', 'flag' => 'admin_center_enabled'],
+                            ['label' => 'Governance', 'route' => 'customer-care.governance', 'flag' => 'governance_enabled'],
+                            ['label' => 'Compliance', 'route' => 'customer-care.compliance', 'flag' => 'compliance_enabled'],
+                            ['label' => 'Reliability', 'route' => 'customer-care.reliability', 'flag' => 'reliability_enabled'],
+                            ['label' => 'Ops Center', 'route' => 'customer-care.ops', 'flag' => 'ops_center_enabled'],
+                            ['label' => 'Security', 'route' => 'customer-care.security', 'flag' => 'security_center_enabled'],
+                            ['label' => 'Reconciliation', 'route' => 'customer-care.reconciliation', 'flag' => 'reconciliation_enabled'],
+                            ['label' => 'Customer Success', 'route' => 'customer-care.success', 'flag' => 'success_center_enabled'],
+                        ],
+                    ];
+                @endphp
+                <div x-data="{ customerCareOpen: {{ $customerCareActive ? 'true' : 'false' }} }" data-testid="customer-care-sidebar-menu">
+                    <button @click="customerCareOpen = !customerCareOpen"
+                        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                               {{ $customerCareActive ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                        <span class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+                            </svg>
+                            AI Müşteri Merkezi
+                        </span>
+                        <svg :class="customerCareOpen ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div x-show="customerCareOpen" x-collapse class="ml-8 mt-1 space-y-2">
+                        @foreach($customerCareGroups as $groupLabel => $items)
+                            @php
+                                $visibleItems = collect($items)
+                                    ->filter(fn ($item) => config('customer-care.' . $item['flag'], false));
+                            @endphp
+
+                            @if($visibleItems->isNotEmpty())
+                                <div class="space-y-1" data-testid="customer-care-sidebar-group-{{ \Illuminate\Support\Str::slug($groupLabel) }}">
+                                    <div class="px-4 pt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+                                        {{ $groupLabel }}
+                                    </div>
+
+                                    @foreach($visibleItems as $item)
+                                        <a href="{{ route($item['route']) }}" @click="sidebarOpen = false"
+                                           data-testid="customer-care-sidebar-link-{{ \Illuminate\Support\Str::slug($item['label']) }}"
+                                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                                  {{ request()->routeIs($item['route']) ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                            {{ $item['label'] }}
+                                        </a>
+                                    @endforeach
+                                </div>
+                            @endif
+                        @endforeach
+                    </div>
+                </div>
+                @endif
+
                 <!-- Divider -->
                 <div class="border-t border-gray-200 my-4"></div>
 

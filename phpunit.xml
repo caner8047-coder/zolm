@@ -33,5 +33,12 @@
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="PARTY_CORE_ENABLED" value="false"/>
         <env name="ACCOUNTING_ENABLED" value="false"/>
+        <env name="CUSTOMER_CARE_ENABLED" value="false"/>
+        <env name="CUSTOMER_CARE_INBOX_ENABLED" value="false"/>
+        <env name="CUSTOMER_CARE_AI_COPILOT_ENABLED" value="false"/>
+        <env name="CUSTOMER_CARE_AUTO_REPLY_ENABLED" value="false"/>
+        <env name="CUSTOMER_CARE_KNOWLEDGE_ENABLED" value="false"/>
+        <env name="CUSTOMER_CARE_ANALYTICS_ENABLED" value="false"/>
+        <env name="CUSTOMER_CARE_DEMO_MODE" value="false"/>
     </php>
 </phpunit>

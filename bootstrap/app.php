@@ -12,8 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prepend(\App\Http\Middleware\EnforceCustomerCareTls::class);
         $middleware->alias([
             'mp.feature' => \App\Http\Middleware\EnsureMarketplaceFeatureEnabled::class,
+            'customer-care.feature' => \App\Http\Middleware\EnsureCustomerCareFeatureEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

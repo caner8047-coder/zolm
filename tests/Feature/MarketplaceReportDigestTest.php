@@ -44,6 +44,11 @@ class MarketplaceReportDigestTest extends TestCase
         DB::purge('mysql');
         DB::reconnect('mysql');
         DB::setDefaultConnection('mysql');
+
+        // Eski verileri temizle
+        MarketplaceReportSubscription::query()->delete();
+        Report::query()->delete();
+        MarketplaceReportDigestRun::query()->delete();
     }
 
     public function test_send_due_delivers_mail_and_creates_report_history(): void

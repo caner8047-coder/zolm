@@ -11,12 +11,22 @@ class TrendyolSupportChannelAdapter implements SupportChannelAdapterInterface
     public function key(): string { return 'trendyol'; }
     public function name(): string { return 'Trendyol'; }
 
-    public function getCapabilities(): array
+    public function getCapabilities(?SupportChannel $channel = null): array
     {
-        // Trendyol için resmi mesaj/soru API mevcut — connector'dan doğrula
+        $sendMessagesStatus = 'available';
+        if ($channel) {
+            $channel->load('store.connection');
+            $store = $channel->store;
+            $hasConnection = $store && $store->connection && $store->connection->status === 'configured';
+            $isEnabled = (bool) $channel->is_enabled;
+            if (!$hasConnection || !$isEnabled) {
+                $sendMessagesStatus = 'unavailable';
+            }
+        }
+
         return [
             ['capability' => 'read_messages', 'status' => 'available'],
-            ['capability' => 'send_messages', 'status' => 'available'],
+            ['capability' => 'send_messages', 'status' => $sendMessagesStatus],
             ['capability' => 'sync_orders', 'status' => 'available'],
             ['capability' => 'sync_products', 'status' => 'available'],
             ['capability' => 'webhooks', 'status' => 'available'],
@@ -55,13 +65,63 @@ class TrendyolSupportChannelAdapter implements SupportChannelAdapterInterface
 
     public function canReply(SupportChannel $channel): bool
     {
+        $channel->load('store.connection');
+        $store = $channel->store;
+        $hasConnection = $store && $store->connection && $store->connection->status === 'configured';
+        $isEnabled = (bool) $channel->is_enabled;
+
+        if (!$hasConnection || !$isEnabled) {
+            return false;
+        }
+
         return $channel->hasCapability('send_messages');
     }
 
-    public function sendReply(SupportChannel $channel, string $conversationExternalId, string $message): array
+    public function sendReply(SupportChannel $channel, string $conversationExternalId, string $message, ?string $idempotencyKey = null): array
     {
-        // Mevcut MarketplaceQuestionAnswerService kullanılır
-        return ['success' => false, 'message' => 'Trendyol yanıtı mevcut akış üzerinden'];
+        // Sıkı biçim kontrolü
+        if (!preg_match('/^trendyol_questions_(\d+)$/', $conversationExternalId, $matches)) {
+            return ['success' => false, 'message' => 'Geçersiz konuşma formatı veya soru ID bulunamadı'];
+        }
+
+        $questionId = (int)$matches[1];
+
+        // Tenant Isolation IDOR Protection
+        $question = \App\Models\MarketplaceQuestion::where('id', $questionId)
+            ->where('store_id', $channel->store_id)
+            ->first();
+
+        if (!$question) {
+            return ['success' => false, 'message' => 'Konuşma veya Soru bulunamadı ya da bu mağazaya ait değil'];
+        }
+
+        // Idempotency check
+        $lockKey = null;
+        if ($idempotencyKey) {
+            $lockKey = "idemp_trendyol_reply_" . md5($idempotencyKey);
+            if (\Illuminate\Support\Facades\Cache::has($lockKey)) {
+                return [
+                    'success' => true,
+                    'message' => 'Bu mesaj zaten gönderilmiş (Idempotent)',
+                    'channel_message_id' => \Illuminate\Support\Facades\Cache::get($lockKey),
+                    'is_duplicate' => true,
+                ];
+            }
+        }
+
+        $service = app(\App\Services\Marketplace\MarketplaceQuestionAnswerService::class);
+        $user = auth()->user() ?? TenantContext::getSystemActor();
+        $log = $service->sendAnswer($question, $message, $user, null, null, 'support_outbox');
+
+        if ($log->status === 'sent') {
+            $channelMsgId = (string)($log->external_answer_id ?? uniqid('trendyol_'));
+            if ($lockKey) {
+                \Illuminate\Support\Facades\Cache::put($lockKey, $channelMsgId, now()->addHour());
+            }
+            return ['success' => true, 'channel_message_id' => $channelMsgId];
+        } else {
+            return ['success' => false, 'message' => $log->error_message ?? 'Gönderim başarısız'];
+        }
     }
 
     public function resolveOrderContext(SupportChannel $channel, string $externalConversationId): ?array
@@ -70,5 +130,10 @@ class TrendyolSupportChannelAdapter implements SupportChannelAdapterInterface
             'channel' => 'trendyol',
             'external_conversation_id' => $externalConversationId,
         ];
+    }
+
+    public function getOutboundTargetStatus(): string
+    {
+        return 'sent';
     }
 }

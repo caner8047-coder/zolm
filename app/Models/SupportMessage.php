@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Services\Support\Security\PiiRedactor;
 
 class SupportMessage extends Model
 {
@@ -25,6 +26,16 @@ class SupportMessage extends Model
             'sent_at' => 'datetime',
             'received_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (SupportMessage $message): void {
+            if ($message->body_preview !== null) {
+                $clean = strip_tags((string) $message->body_preview);
+                $message->body_preview = mb_substr(app(PiiRedactor::class)->maskPii($clean), 0, 100);
+            }
+        });
     }
 
     public function conversation(): BelongsTo
