@@ -88,7 +88,7 @@
             <!-- Logo -->
             <div class="h-16 flex items-center justify-between px-6 border-b border-gray-200">
                 <a href="{{ route('dashboard') }}" class="text-2xl font-bold text-gray-900 tracking-tight flex items-baseline">
-                    zolm <span class="text-xs font-normal text-gray-400 ml-1">v.{{ config('version.version', '0.7.0') }}</span>
+                    zolm <span class="text-xs font-normal text-gray-400 ml-1">{{ config('version.label', 'v1') }}</span>
                 </a>
                 <!-- Mobile close button -->
                 <button

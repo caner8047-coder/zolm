@@ -1,5 +1,24 @@
 # ZOLM - Changelog
 
+## V1 - 2026-07-18 (Platform Foundation)
+
+### Sürümleme
+- Uygulama sürüm kaynağı `ZOLM v1` olarak güncellendi.
+- Sidebar sürüm rozeti artık merkezi `config/version.php` etiketi üzerinden `v1` gösterir.
+- Node ve Composer paket metadataları ZOLM projesine göre temizlendi.
+
+### Ürün Kapsamı
+- ERP / Ön Muhasebe pilot akışı; cari, ürün, stok, kasa/banka, satış, satın alma, raporlama ve pilot operasyon merkeziyle v1 kapsamına alındı.
+- Pazaryeri muhasebe, sipariş operasyonları, finans köprüsü ve kârlılık kontrolleri release notlarında tek kaynak altında toplandı.
+- CRM 360, WhatsApp/müşteri iletişim merkezi ve müşteri destek altyapısı v1 platform temelinin parçası olarak belgelendi.
+
+### Release Hazırlığı
+- GitHub release için eksiksiz sürüm notu eklendi: `docs/releases/zolm-v1.md`.
+- README Laravel varsayılan metninden çıkarılıp ZOLM v1 kurulum, modül ve doğrulama rehberine dönüştürüldü.
+- Composer bağımlılıkları güvenli patch/minor sürümlere güncellendi; kullanılmayan eski `maatwebsite/excel` / `PHPExcel` zinciri kaldırıldı.
+
+---
+
 ## V0.7 - 2026-05-08 (Marketplace Live)
 
 ### Yeni Özellikler

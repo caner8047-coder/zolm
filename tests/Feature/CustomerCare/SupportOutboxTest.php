@@ -653,6 +653,7 @@ class SupportOutboxTest extends TestCase
         // Force fail-closed by setting limit = 0
         \Illuminate\Support\Facades\Config::set('customer-care.enabled', true);
         \Illuminate\Support\Facades\Config::set('customer-care.auto_reply_enabled', true);
+        \Illuminate\Support\Facades\Config::set('customer-care.business_hours_auto_reply_enabled', true);
         \Illuminate\Support\Facades\Config::set('customer-care.auto_reply_max_per_hour', 0);
         \Illuminate\Support\Facades\Config::set('customer-care.pilot_store_allowlist', [$store->id]);
         $this->seedPassEval($store->id);

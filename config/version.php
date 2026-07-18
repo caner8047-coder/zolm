@@ -1,7 +1,9 @@
 <?php
 
 return [
-    'version' => '0.8',
-    'release_date' => '2026-07-09',
-    'codename' => 'ERP Foundation Backup',
+    'version' => '1.0.0',
+    'label' => 'v1',
+    'release_name' => 'ZOLM v1',
+    'release_date' => '2026-07-18',
+    'codename' => 'Platform Foundation',
 ];
