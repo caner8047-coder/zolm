@@ -1,11 +1,12 @@
-<div class="w-full space-y-6">
+<div class="w-full space-y-4 lg:space-y-6" data-testid="ads-dashboard">
     {{-- Başlık --}}
-    <section class="rounded-[28px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
+    <section class="rounded-[10px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
         <div class="flex flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-3 lg:gap-4">
             <div>
                 <div class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.24em] text-slate-500">
                     Reklam Zekâsı
                 </div>
+                <span class="ml-2 inline-flex px-2 py-0.5 text-xs font-mono rounded border border-emerald-200 bg-emerald-50 text-emerald-700">6 sprint aktif</span>
                 <h1 class="mt-3 text-xl lg:text-2xl font-bold text-slate-900">Genel Bakış</h1>
                 <p class="mt-1 text-sm text-slate-500">Reklam performansınızı analiz edin ve akıllı öneriler alın.</p>
             </div>
@@ -17,7 +18,7 @@
 
     {{-- Boş Durum --}}
     @if($totalAccounts === 0)
-        <section class="rounded-[28px] border border-slate-200 bg-white p-8 lg:p-12 shadow-sm">
+        <section class="rounded-[10px] border border-slate-200 bg-white p-8 lg:p-12 shadow-sm">
             <div class="text-center max-w-md mx-auto">
                 <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
                     <svg class="h-8 w-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -39,31 +40,35 @@
     @else
         {{-- Özet Kartları --}}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-            <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Reklam Hesabı</p>
-                <p class="mt-3 text-2xl lg:text-3xl font-bold text-slate-900">{{ $totalAccounts }}</p>
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kampanya</p>
+                <p class="mt-3 text-2xl lg:text-3xl font-bold text-slate-900">{{ $totalCampaigns }}</p>
+                <p class="mt-1 text-xs text-slate-500">{{ $totalAccounts }} reklam hesabı</p>
             </div>
-            <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Toplam Import</p>
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">İçe Aktarma</p>
                 <p class="mt-3 text-2xl lg:text-3xl font-bold text-slate-900">{{ $totalImports }}</p>
+                <p class="mt-1 text-xs text-slate-500">{{ $completedImports }} başarılı</p>
             </div>
-            <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Başarılı Import</p>
-                <p class="mt-3 text-2xl lg:text-3xl font-bold text-emerald-600">{{ $completedImports }}</p>
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Yeni Aksiyon</p>
+                <p class="mt-3 text-2xl lg:text-3xl font-bold {{ $newRecommendations > 0 ? 'text-amber-600' : 'text-emerald-600' }}">{{ $newRecommendations }}</p>
+                <p class="mt-1 text-xs text-slate-500">Karar bekleyen öneri</p>
             </div>
-            <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Durum</p>
-                <p class="mt-3 text-sm font-medium text-slate-600">Geliştirme Aşamasında</p>
+            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Operasyon Durumu</p>
+                <p class="mt-3 text-sm font-semibold text-emerald-700">6 sprint aktif</p>
+                <p class="mt-1 text-xs text-slate-500">Tüm çalışma alanları hazır</p>
             </div>
         </div>
 
         {{-- Son Importlar --}}
         @if(count($recentImports) > 0)
-            <section class="rounded-[28px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
-                <h2 class="text-lg font-semibold text-slate-900">Son Importlar</h2>
+            <section class="rounded-[10px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
+                <h2 class="text-lg font-semibold text-slate-900">Son İçe Aktarmalar</h2>
                 <div class="mt-4 space-y-3">
                     @foreach($recentImports as $import)
-                        <div class="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div class="flex items-center justify-between rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
                             <div class="min-w-0 flex-1">
                                 <p class="text-sm font-medium text-slate-900 truncate">{{ $import['source_filename'] }}</p>
                                 <p class="mt-1 text-xs text-slate-500">
@@ -85,30 +90,40 @@
             </section>
         @endif
 
-        {{-- Yakında Gelecekler --}}
-        <section class="rounded-[28px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
-            <h2 class="text-lg font-semibold text-slate-900">Yakında</h2>
+        {{-- Aktif çalışma alanları --}}
+        <section class="rounded-[10px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-900">Aktif çalışma alanları</h2>
+                    <p class="mt-1 text-sm text-slate-500">İçe aktarmadan aksiyona kadar bütün reklam karar yüzeyleri kullanıma hazır.</p>
+                </div>
+                <span class="px-2 py-0.5 text-xs font-mono rounded border border-emerald-200 bg-emerald-50 text-emerald-700">Sprint 1–6 tamamlandı</span>
+            </div>
             <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <a href="{{ route('ads.product-ads') }}" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4 hover:border-slate-300 hover:bg-white transition">
                     <p class="text-sm font-medium text-slate-700">Ürün Reklamları Analizi</p>
-                    <p class="mt-1 text-xs text-slate-500">Sprint 2'de aktif olacak</p>
-                </div>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="mt-1 text-xs text-slate-500">ROAS, doğrudan/dolaylı ciro ve ürün detayı</p>
+                </a>
+                <a href="{{ route('ads.store-ads') }}" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4 hover:border-slate-300 hover:bg-white transition">
                     <p class="text-sm font-medium text-slate-700">Mağaza Reklamları</p>
-                    <p class="mt-1 text-xs text-slate-500">Sprint 3'te aktif olacak</p>
-                </div>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="mt-1 text-xs text-slate-500">Kelime, hedefleme ve GBM performansı</p>
+                </a>
+                <a href="{{ route('ads.influencer-ads') }}" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4 hover:border-slate-300 hover:bg-white transition">
                     <p class="text-sm font-medium text-slate-700">Influencer Reklamları</p>
-                    <p class="mt-1 text-xs text-slate-500">Sprint 4'te aktif olacak</p>
-                </div>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="mt-1 text-xs text-slate-500">Creator cirosu, satış ve dönüşüm takibi</p>
+                </a>
+                <a href="{{ route('ads.profitability') }}" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4 hover:border-slate-300 hover:bg-white transition">
                     <p class="text-sm font-medium text-slate-700">Kârlılık Merkezi</p>
-                    <p class="mt-1 text-xs text-slate-500">Sprint 5'te aktif olacak</p>
-                </div>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="mt-1 text-xs text-slate-500">Net katkı, marj ve başabaş ROAS</p>
+                </a>
+                <a href="{{ route('ads.action-center') }}" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4 hover:border-slate-300 hover:bg-white transition">
                     <p class="text-sm font-medium text-slate-700">AI Aksiyon Merkezi</p>
-                    <p class="mt-1 text-xs text-slate-500">Sprint 6'da aktif olacak</p>
-                </div>
+                    <p class="mt-1 text-xs text-slate-500">İdempotent kural motoru ve karar geçmişi</p>
+                </a>
+                <a href="{{ route('ads.import') }}" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-4 hover:border-slate-300 hover:bg-white transition">
+                    <p class="text-sm font-medium text-slate-700">Veri İçe Aktarma</p>
+                    <p class="mt-1 text-xs text-slate-500">Dört Trendyol rapor türü ve önizleme</p>
+                </a>
             </div>
         </section>
     @endif

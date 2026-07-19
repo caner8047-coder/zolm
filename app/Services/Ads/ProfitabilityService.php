@@ -14,7 +14,7 @@ class ProfitabilityService
      */
     public function calculate(int $userId, int $campaignId, array $costData): AdProfitabilitySnapshot
     {
-        $campaign = AdCampaign::findOrFail($campaignId);
+        $campaign = AdCampaign::where('user_id', $userId)->findOrFail($campaignId);
         $snapshot = AdCampaignSnapshot::where('campaign_id', $campaignId)
             ->latest('captured_at')
             ->first();

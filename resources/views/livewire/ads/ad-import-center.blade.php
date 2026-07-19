@@ -50,7 +50,7 @@
                         <div>
                             <label class="block text-sm font-medium text-slate-700">Reklam Hesabı</label>
                             <div class="mt-1 flex gap-2">
-                                <select wire:model="selectedAccountId" class="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base sm:text-sm text-slate-900 focus:border-slate-400 focus:outline-none">
+                                <select wire:model.live="selectedAccountId" class="flex-1 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base sm:text-sm text-slate-900 focus:border-slate-400 focus:outline-none">
                                     <option value="">Seçin</option>
                                     @foreach($accounts as $account)
                                         <option value="{{ $account['id'] }}">{{ $account['account_name'] }}</option>
@@ -68,7 +68,7 @@
                         {{-- Import Türü --}}
                         <div>
                             <label class="block text-sm font-medium text-slate-700">Rapor Türü</label>
-                            <select wire:model="importType" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base sm:text-sm text-slate-900 focus:border-slate-400 focus:outline-none">
+                            <select wire:model.live="importType" class="mt-1 w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base sm:text-sm text-slate-900 focus:border-slate-400 focus:outline-none">
                                 <option value="">Seçin</option>
                                 @foreach($importTypes as $type)
                                     <option value="{{ $type['value'] }}">{{ $type['label'] }}</option>
@@ -109,8 +109,24 @@
                                 <label class="block text-sm font-medium text-slate-700">Kampanya <span class="text-rose-500">*</span></label>
                                 <select wire:model="selectedCampaignId" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base sm:text-sm text-slate-900 focus:border-slate-400 focus:outline-none">
                                     <option value="">Kampanya seçin</option>
-                                    {{-- Kampanya adayları burada listelenecek --}}
+                                    @foreach($campaignCandidates as $campaign)
+                                        <option value="{{ $campaign['id'] }}">{{ $campaign['name'] }} · {{ $campaign['status'] }}</option>
+                                    @endforeach
                                 </select>
+                                @if(empty($campaignCandidates))
+                                    <p class="mt-1 text-xs text-amber-600">Bu hesap ve rapor türü için eşleşen kampanya bulunamadı.</p>
+                                @endif
+                                <div class="mt-2 flex flex-col sm:flex-row gap-2">
+                                    <input type="text" wire:model.defer="newCampaignName" placeholder="Yeni kampanya adı"
+                                        class="min-w-0 flex-1 rounded-[6px] border border-slate-200 bg-white px-3 py-3 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-slate-400 focus:outline-none">
+                                    <button type="button" wire:click="createCampaignForImport"
+                                        class="w-full sm:w-auto px-4 py-3 sm:py-2 text-sm font-medium border border-slate-200 bg-white text-slate-700 rounded-[6px] hover:bg-slate-50 transition-colors">
+                                        Kampanya Oluştur
+                                    </button>
+                                </div>
+                                @error('newCampaignName')
+                                    <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                                @enderror
                                 @error('selectedCampaignId')
                                     <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
                                 @enderror

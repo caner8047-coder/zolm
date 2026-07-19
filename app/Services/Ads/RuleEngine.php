@@ -4,7 +4,6 @@ namespace App\Services\Ads;
 
 use App\Models\AdCampaign;
 use App\Models\AdCampaignSnapshot;
-use App\Models\AdProductSnapshot;
 use App\Models\AdKeywordSnapshot;
 use App\Models\InfluencerCreatorSnapshot;
 use App\Models\AdRecommendation;
@@ -227,6 +226,51 @@ class RuleEngine
         array $evidence,
         float $confidenceScore
     ): AdRecommendation {
+        ksort($evidence);
+        $evidenceHash = hash('sha256', json_encode($evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        $existing = AdRecommendation::where('user_id', $userId)
+            ->where('channel_code', $channelCode)
+            ->where('entity_type', $entityType)
+            ->where('entity_id', $entityId)
+            ->where('title', $title)
+            ->latest()
+            ->get()
+            ->first(function (AdRecommendation $recommendation) use ($evidenceHash): bool {
+                $metadataHash = $recommendation->metadata['evidence_hash'] ?? null;
+
+                if ($metadataHash) {
+                    return hash_equals($metadataHash, $evidenceHash);
+                }
+
+                $storedEvidence = $recommendation->evidence ?? [];
+                ksort($storedEvidence);
+
+                return hash_equals(
+                    hash('sha256', json_encode($storedEvidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
+                    $evidenceHash
+                );
+            });
+
+        if ($existing) {
+            if (in_array($existing->status, ['new', 'viewed', 'snoozed'], true)) {
+                $existing->update([
+                    'priority' => $priority->value,
+                    'category' => $category->value,
+                    'description' => $description,
+                    'recommended_action' => $recommendedAction,
+                    'confidence_score' => $confidenceScore,
+                    'metadata' => array_merge($existing->metadata ?? [], [
+                        'rule_version' => '1.1.0',
+                        'last_evaluated_at' => now()->toISOString(),
+                        'evidence_hash' => $evidenceHash,
+                    ]),
+                ]);
+            }
+
+            return $existing;
+        }
+
         return AdRecommendation::create([
             'user_id' => $userId,
             'channel_code' => $channelCode,
@@ -242,8 +286,9 @@ class RuleEngine
             'status' => 'new',
             'generated_by' => 'rule',
             'metadata' => [
-                'rule_version' => '1.0.0',
+                'rule_version' => '1.1.0',
                 'generated_at' => now()->toISOString(),
+                'evidence_hash' => $evidenceHash,
             ],
         ]);
     }

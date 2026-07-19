@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class AdCampaign extends Model
 {
@@ -57,17 +58,22 @@ class AdCampaign extends Model
 
     public function adCampaignProducts(): HasMany
     {
-        return $this->hasMany(AdCampaignProduct::class);
+        return $this->hasMany(AdCampaignProduct::class, 'campaign_id');
     }
 
     public function adCampaignSnapshots(): HasMany
     {
-        return $this->hasMany(AdCampaignSnapshot::class);
+        return $this->hasMany(AdCampaignSnapshot::class, 'campaign_id');
+    }
+
+    public function latestSnapshot(): HasOne
+    {
+        return $this->hasOne(AdCampaignSnapshot::class, 'campaign_id')->latestOfMany('captured_at');
     }
 
     public function adProductSnapshots(): HasMany
     {
-        return $this->hasMany(AdProductSnapshot::class);
+        return $this->hasMany(AdProductSnapshot::class, 'campaign_id');
     }
 
     public function scopeForUser($query, int $userId)

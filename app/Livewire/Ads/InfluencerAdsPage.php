@@ -75,12 +75,12 @@ class InfluencerAdsPage extends Component
         $userId = auth()->id();
 
         $query = InfluencerProfile::where('user_id', $userId)
-            ->withCount(['creatorSnapshots as total_revenue' => function ($q) use ($userId) {
+            ->withSum(['creatorSnapshots as total_revenue' => function ($q) use ($userId) {
                 $q->whereHas('campaign', function ($cq) use ($userId) {
                     $cq->where('user_id', $userId)
                        ->where('channel_code', AdChannelCode::InfluencerAds->value);
                 });
-            }])
+            }], 'revenue_total')
             ->withSum(['creatorSnapshots as total_sales_sum' => function ($q) use ($userId) {
                 $q->whereHas('campaign', function ($cq) use ($userId) {
                     $cq->where('user_id', $userId)

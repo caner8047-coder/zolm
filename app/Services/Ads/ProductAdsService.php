@@ -8,7 +8,6 @@ use App\Models\AdProductSnapshot;
 use App\Models\AdReconciliation;
 use App\Enums\AdChannelCode;
 use App\Enums\ReconciliationStatus;
-use Illuminate\Support\Facades\DB;
 
 class ProductAdsService
 {
@@ -17,11 +16,6 @@ class ProductAdsService
      */
     public function getCampaignStats(int $userId): array
     {
-        $snapshotQuery = AdCampaignSnapshot::whereHas('campaign', function ($q) use ($userId) {
-            $q->where('user_id', $userId)
-              ->where('channel_code', AdChannelCode::ProductAds->value);
-        });
-
         // Son snapshot'ları al
         $latestSnapshots = AdCampaignSnapshot::whereIn('id', function ($q) {
             $q->selectRaw('MAX(id)')
@@ -123,15 +117,21 @@ class ProductAdsService
     /**
      * Mutabakat hesapla
      */
-    public function calculateReconciliation(int $campaignId, int $summaryBatchId, int $detailBatchId): AdReconciliation
+    public function calculateReconciliation(int $userId, int $campaignId, int $summaryBatchId, int $detailBatchId): AdReconciliation
     {
+        $campaign = AdCampaign::where('user_id', $userId)->findOrFail($campaignId);
+
         $summarySnapshot = AdCampaignSnapshot::where('campaign_id', $campaignId)
             ->where('import_batch_id', $summaryBatchId)
-            ->first();
+            ->firstOrFail();
 
         $detailSnapshots = AdProductSnapshot::where('campaign_id', $campaignId)
             ->where('import_batch_id', $detailBatchId)
             ->get();
+
+        if ($detailSnapshots->isEmpty()) {
+            throw new \RuntimeException('Mutabakat için ürün detay verisi bulunamadı.');
+        }
 
         $detailSpend = $detailSnapshots->sum('spend');
         $detailRevenue = $detailSnapshots->sum('revenue_total');
@@ -155,7 +155,7 @@ class ProductAdsService
         };
 
         return AdReconciliation::create([
-            'user_id' => auth()->id(),
+            'user_id' => $campaign->user_id,
             'campaign_id' => $campaignId,
             'summary_import_batch_id' => $summaryBatchId,
             'detail_import_batch_id' => $detailBatchId,

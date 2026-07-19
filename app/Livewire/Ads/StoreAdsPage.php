@@ -13,16 +13,18 @@ class StoreAdsPage extends Component
 {
     use WithPagination;
 
+    private const SORTABLE_COLUMNS = ['name', 'status', 'selected_gbm', 'recommended_gbm', 'actual_gbm'];
+
     // ─── Filtreler ──────────────────────────────────────────────
     public string $search = '';
     public string $targetingFilter = '';
-    public string $sortBy = 'roas';
+    public string $sortBy = 'name';
     public string $sortDir = 'desc';
 
     protected $queryString = [
         'search' => ['except' => ''],
         'targetingFilter' => ['except' => ''],
-        'sortBy' => ['except' => 'roas'],
+        'sortBy' => ['except' => 'name'],
         'sortDir' => ['except' => 'desc'],
     ];
 
@@ -97,11 +99,15 @@ class StoreAdsPage extends Component
             $query->where('targeting_type', $this->targetingFilter);
         }
 
-        return $query->paginate(20);
+        return $query->orderBy($this->sortBy, $this->sortDir)->paginate(20);
     }
 
     public function sortTable(string $column): void
     {
+        if (!in_array($column, self::SORTABLE_COLUMNS, true)) {
+            return;
+        }
+
         if ($this->sortBy === $column) {
             $this->sortDir = $this->sortDir === 'asc' ? 'desc' : 'asc';
         } else {

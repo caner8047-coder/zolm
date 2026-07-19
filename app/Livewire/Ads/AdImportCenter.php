@@ -5,7 +5,7 @@ namespace App\Livewire\Ads;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use App\Models\AdAccount;
 use App\Models\AdChannel;
 use App\Models\AdCampaign;
@@ -53,6 +53,7 @@ class AdImportCenter extends Component
     // ─── Kampanya Eşleştirme ────────────────────────────────────
     public array $campaignCandidates = [];
     public bool $showCampaignSelection = false;
+    public string $newCampaignName = '';
 
     protected $queryString = [
         'importType' => ['except' => ''],
@@ -87,13 +88,63 @@ class AdImportCenter extends Component
     public function updatedSelectedAccountId(): void
     {
         $this->selectedCampaignId = null;
-        $this->campaignCandidates = [];
+        $this->loadCampaignCandidates();
     }
 
     public function updatedImportType(): void
     {
         $this->selectedCampaignId = null;
-        $this->campaignCandidates = [];
+        $this->loadCampaignCandidates();
+    }
+
+    public function loadCampaignCandidates(): void
+    {
+        $type = AdImportType::tryFrom($this->importType);
+
+        if (!$type?->requiresCampaignContext() || !$this->selectedAccountId) {
+            $this->campaignCandidates = [];
+            return;
+        }
+
+        $this->campaignCandidates = AdCampaign::where('user_id', auth()->id())
+            ->where('ad_account_id', $this->selectedAccountId)
+            ->where('channel_code', $type->channelCode()->value)
+            ->orderBy('name')
+            ->get(['id', 'name', 'status'])
+            ->toArray();
+    }
+
+    public function createCampaignForImport(): void
+    {
+        $type = AdImportType::tryFrom($this->importType);
+
+        $this->validate([
+            'newCampaignName' => ['required', 'string', 'max:500'],
+            'selectedAccountId' => [
+                'required',
+                'integer',
+                Rule::exists('ad_accounts', 'id')->where(fn ($query) => $query
+                    ->where('user_id', auth()->id())
+                    ->where('is_active', true)),
+            ],
+        ]);
+
+        if (!$type?->requiresCampaignContext()) {
+            $this->addError('importType', 'Bu rapor türü için kampanya bağlamı oluşturulamaz.');
+            return;
+        }
+
+        $campaign = app(AdCampaignMatcher::class)->findOrCreate(
+            auth()->id(),
+            $this->selectedAccountId,
+            $this->newCampaignName,
+            $type->channelCode()->value,
+        );
+
+        $this->newCampaignName = '';
+        $this->loadCampaignCandidates();
+        $this->selectedCampaignId = $campaign->id;
+        $this->statusMessage = "Kampanya hazırlandı: {$campaign->name}";
     }
 
     // ─── Yeni Reklam Hesabı ────────────────────────────────────
@@ -148,8 +199,14 @@ class AdImportCenter extends Component
     {
         $this->validate([
             'file' => 'required|mimes:xlsx,xls,csv|max:51200',
-            'importType' => 'required|string',
-            'selectedAccountId' => 'required|integer',
+            'importType' => ['required', Rule::enum(AdImportType::class)],
+            'selectedAccountId' => [
+                'required',
+                'integer',
+                Rule::exists('ad_accounts', 'id')->where(fn ($query) => $query
+                    ->where('user_id', auth()->id())
+                    ->where('is_active', true)),
+            ],
             'reportPeriodStart' => 'required|date',
             'reportPeriodEnd' => 'required|date|after_or_equal:reportPeriodStart',
         ]);
@@ -163,7 +220,23 @@ class AdImportCenter extends Component
             ]);
         }
 
+        if ($importType->requiresCampaignContext()) {
+            $this->validate([
+                'selectedCampaignId' => [
+                    'required',
+                    'integer',
+                    Rule::exists('ad_campaigns', 'id')->where(fn ($query) => $query
+                        ->where('user_id', auth()->id())
+                        ->where('ad_account_id', $this->selectedAccountId)
+                        ->where('channel_code', $importType->channelCode()->value)),
+                ],
+            ]);
+        }
+
         $this->isUploading = true;
+        $this->currentBatchId = null;
+        $this->campaignCandidates = [];
+        $this->newCampaignName = '';
 
         try {
             $path = $this->file->store('ad-imports');
@@ -189,6 +262,18 @@ class AdImportCenter extends Component
                 ->first();
 
             if ($failedBatch) {
+                $failedBatch->update([
+                    'ad_account_id' => $this->selectedAccountId,
+                    'channel_code' => $importType->channelCode()->value,
+                    'import_type' => $this->importType,
+                    'report_period_start' => $this->reportPeriodStart,
+                    'report_period_end' => $this->reportPeriodEnd,
+                    'exported_at' => $this->exportedAt ? now()->parse($this->exportedAt) : null,
+                    'source_filename' => $this->file->getClientOriginalName(),
+                    'storage_path' => $path,
+                    'campaign_id_context' => $this->selectedCampaignId,
+                    'error_summary' => null,
+                ]);
                 $this->currentBatchId = $failedBatch->id;
                 $this->statusMessage = 'Bu dosya daha önce başarısız olmuş. Yeniden denenecek.';
             }
@@ -216,7 +301,7 @@ class AdImportCenter extends Component
 
             // Parse job'ını başlat
             $importService = app(AdImportService::class);
-            $importService->parseImportBatch($this->currentBatchId, $absolutePath);
+            $importService->parseImportBatch($this->currentBatchId, $absolutePath, auth()->id());
 
             $this->loadPreview();
             $this->statusMessage = 'Dosya başarıyla işlendi. Önizlemeyi kontrol edin.';
@@ -237,6 +322,8 @@ class AdImportCenter extends Component
     public function loadPreview(): void
     {
         if (!$this->currentBatchId) return;
+
+        AdImportBatch::where('user_id', auth()->id())->findOrFail($this->currentBatchId);
 
         $rows = AdImportRow::where('batch_id', $this->currentBatchId)
             ->orderBy('row_number')
@@ -274,7 +361,7 @@ class AdImportCenter extends Component
 
         try {
             $importService = app(AdImportService::class);
-            $importService->executeImport($this->currentBatchId);
+            $importService->executeImport($this->currentBatchId, auth()->id());
 
             $this->statusMessage = 'İçe aktarma başarıyla tamamlandı!';
             $this->showPreview = false;
@@ -296,6 +383,7 @@ class AdImportCenter extends Component
     {
         if ($this->currentBatchId) {
             AdImportBatch::where('id', $this->currentBatchId)
+                ->where('user_id', auth()->id())
                 ->update(['status' => AdImportStatus::Cancelled->value]);
         }
 

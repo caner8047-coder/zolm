@@ -6,13 +6,14 @@ use Livewire\Component;
 use Livewire\WithPagination;
 use App\Models\AdCampaign;
 use App\Models\AdCampaignSnapshot;
-use App\Models\AdCampaignProduct;
 use App\Enums\AdChannelCode;
-use Illuminate\Support\Facades\DB;
+use App\Services\Ads\ProductAdsService;
 
 class ProductAdsPage extends Component
 {
     use WithPagination;
+
+    private const SORTABLE_COLUMNS = ['name', 'status', 'roas'];
 
     // ─── Filtreler ──────────────────────────────────────────────
     public string $search = '';
@@ -67,41 +68,7 @@ class ProductAdsPage extends Component
 
     public function loadStats(): void
     {
-        $userId = auth()->id();
-
-        $query = AdCampaign::where('user_id', $userId)
-            ->where('channel_code', AdChannelCode::ProductAds->value);
-
-        $this->stats['total_campaigns'] = (clone $query)->count();
-        $this->stats['active_campaigns'] = (clone $query)->where('status', 'active')->count();
-
-        // Son snapshot'lardan istatistik hesapla
-        $snapshotQuery = AdCampaignSnapshot::whereHas('campaign', fn($q) => $q->where('user_id', $userId)->where('channel_code', AdChannelCode::ProductAds->value))
-            ->whereIn('id', function ($q) use ($userId) {
-                $q->selectRaw('MAX(id)')
-                    ->from('ad_campaign_snapshots')
-                    ->groupBy('campaign_id');
-            });
-
-        $stats = (clone $snapshotQuery)->selectRaw('
-            COALESCE(SUM(spend), 0) as total_spend,
-            COALESCE(SUM(revenue_total), 0) as total_revenue,
-            COALESCE(SUM(CASE WHEN spend > 0 THEN revenue_total / spend ELSE 0 END) / COUNT(*), 0) as avg_roas,
-            COALESCE(SUM(CASE WHEN spend > 0 THEN revenue_direct / spend ELSE 0 END) / COUNT(*), 0) as direct_roas,
-            COALESCE(SUM(CASE WHEN spend > 0 THEN revenue_indirect / spend ELSE 0 END) / COUNT(*), 0) as indirect_roas
-        ')->first();
-
-        $this->stats['total_spend'] = $stats->total_spend ?? 0;
-        $this->stats['total_revenue'] = $stats->total_revenue ?? 0;
-        $this->stats['avg_roas'] = $stats->avg_roas ?? 0;
-        $this->stats['direct_roas'] = $stats->direct_roas ?? 0;
-        $this->stats['indirect_roas'] = $stats->indirect_roas ?? 0;
-
-        // Sıfır satışlı harcama
-        $this->stats['zero_sale_spend'] = (clone $snapshotQuery)
-            ->where('sales_total', 0)
-            ->where('spend', '>', 0)
-            ->sum('spend');
+        $this->stats = app(ProductAdsService::class)->getCampaignStats(auth()->id());
     }
 
     // ─── Kampanya Sorgusu ──────────────────────────────────────
@@ -136,15 +103,27 @@ class ProductAdsPage extends Component
             });
         }
 
-        // Sıralama
-        $query->with('latestSnapshot');
-        $query->orderBy($this->sortBy === 'roas' ? 'id' : $this->sortBy, $this->sortDir);
+        if ($this->sortBy === 'roas') {
+            $query->orderBy(
+                AdCampaignSnapshot::select('roas')
+                    ->whereColumn('campaign_id', 'ad_campaigns.id')
+                    ->latest('captured_at')
+                    ->limit(1),
+                $this->sortDir
+            );
+        } else {
+            $query->orderBy($this->sortBy, $this->sortDir);
+        }
 
         return $query->paginate(20);
     }
 
     public function sortTable(string $column): void
     {
+        if (!in_array($column, self::SORTABLE_COLUMNS, true)) {
+            return;
+        }
+
         if ($this->sortBy === $column) {
             $this->sortDir = $this->sortDir === 'asc' ? 'desc' : 'asc';
         } else {

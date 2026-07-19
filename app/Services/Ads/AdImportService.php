@@ -8,7 +8,7 @@ use App\Enums\AdImportStatus;
 use App\Services\Ads\Parsers\ProductGeneralReportParser;
 use App\Services\Ads\Parsers\ProductCampaignReportParser;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
 class AdImportService
 {
@@ -21,25 +21,28 @@ class AdImportService
     /**
      * Parse import batch - ham Excel satırlarını normalize eder
      */
-    public function parseImportBatch(int $batchId, string $filePath): void
+    public function parseImportBatch(int $batchId, string $filePath, ?int $userId = null): void
     {
-        $batch = AdImportBatch::findOrFail($batchId);
+        $batch = AdImportBatch::query()
+            ->when($userId !== null, fn ($query) => $query->where('user_id', $userId))
+            ->findOrFail($batchId);
 
         $batch->update(['status' => AdImportStatus::Parsing->value]);
+        $batch->adImportRows()->delete();
 
         try {
             $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
             $sheet = $spreadsheet->getActiveSheet();
 
-            $rows = [];
             $headerRow = null;
             $headerMap = [];
+            $highestColumn = Coordinate::columnIndexFromString($sheet->getHighestColumn());
 
             // İlk 15 satırda başlık ara
             for ($i = 1; $i <= min(15, $sheet->getHighestRow()); $i++) {
                 $rowData = [];
-                for ($col = 1; $col <= $sheet->getHighestColumn(); $col++) {
-                    $cellValue = $sheet->getCellByColumnAndRow($col, $i)->getValue();
+                for ($col = 1; $col <= $highestColumn; $col++) {
+                    $cellValue = $sheet->getCell([$col, $i])->getValue();
                     $rowData[] = $this->cleanCellValue($cellValue);
                 }
 
@@ -60,8 +63,8 @@ class AdImportService
             for ($i = $headerRow + 1; $i <= $sheet->getHighestRow(); $i++) {
                 $rowNumber++;
                 $rowData = [];
-                for ($col = 1; $col <= $sheet->getHighestColumn(); $col++) {
-                    $cellValue = $sheet->getCellByColumnAndRow($col, $i)->getValue();
+                for ($col = 1; $col <= $highestColumn; $col++) {
+                    $cellValue = $sheet->getCell([$col, $i])->getValue();
                     $rowData[] = $this->cleanCellValue($cellValue);
                 }
 
@@ -111,13 +114,22 @@ class AdImportService
     /**
      * Import'u çalıştır - normalize edilmiş verileri snapshot tablolarına yazar
      */
-    public function executeImport(int $batchId): void
+    public function executeImport(int $batchId, ?int $userId = null): void
     {
-        $batch = AdImportBatch::findOrFail($batchId);
+        $batch = AdImportBatch::query()
+            ->when($userId !== null, fn ($query) => $query->where('user_id', $userId))
+            ->findOrFail($batchId);
+
+        if ($batch->status !== AdImportStatus::PreviewReady->value) {
+            throw new \RuntimeException('Yalnızca önizlemesi hazır bir dosya içe aktarılabilir.');
+        }
+
+        if ($batch->valid_row_count < 1) {
+            throw new \RuntimeException('İçe aktarılabilecek geçerli satır bulunamadı.');
+        }
 
         // Source fingerprint hesapla
         $fingerprint = $this->calculateSourceFingerprint($batch);
-        $batch->update(['source_fingerprint' => $fingerprint]);
 
         // Fingerprint duplicate kontrolü
         $existingBatch = AdImportBatch::where('user_id', $batch->user_id)
@@ -134,6 +146,8 @@ class AdImportService
             return;
         }
 
+        $batch->update(['source_fingerprint' => $fingerprint]);
+
         DB::beginTransaction();
 
         try {
@@ -146,6 +160,8 @@ class AdImportService
             match ($batch->import_type) {
                 'product_general' => $this->processProductGeneralReport($batch, $validRows),
                 'product_campaign' => $this->processProductCampaignReport($batch, $validRows),
+                'store_keyword' => $this->processStoreKeywordReport($batch, $validRows),
+                'influencer' => $this->processInfluencerReport($batch, $validRows),
                 default => throw new \RuntimeException("Desteklenmeyen import türü: {$batch->import_type}"),
             };
 
@@ -252,10 +268,98 @@ class AdImportService
             $data = $parser->parse($row->normalized_payload);
 
             // Ürün eşleştir
-            $product = $this->matchProduct($batch->user_id, $batch->ad_account_id, $data);
+            $product = $this->matchProduct($campaign, $data);
 
             // Product snapshot oluştur
             $this->createProductSnapshot($batch, $campaign, $product, $data);
+        }
+    }
+
+    /**
+     * Mağaza reklamları kelime raporunu işle.
+     */
+    protected function processStoreKeywordReport(AdImportBatch $batch, $rows): void
+    {
+        if (!$batch->campaign_id_context) {
+            throw new \RuntimeException('Kelime raporu için kampanya seçimi zorunludur.');
+        }
+
+        $campaign = $this->campaignMatcher->findById($batch->campaign_id_context, $batch->user_id);
+
+        foreach ($rows as $row) {
+            $data = $row->normalized_payload;
+            $keyword = trim((string) ($data['keyword'] ?? ''));
+            $spend = $this->numberParser->parse($data['spend'] ?? 0);
+            $revenue = $this->numberParser->parse($data['revenue_total'] ?? 0);
+
+            \App\Models\AdKeywordSnapshot::create([
+                'campaign_id' => $campaign->id,
+                'import_batch_id' => $batch->id,
+                'keyword' => $keyword,
+                'normalized_keyword' => mb_strtolower(preg_replace('/\s+/u', ' ', $keyword)),
+                'match_type' => $data['match_type'] ?? null,
+                'period_start' => $batch->report_period_start,
+                'period_end' => $batch->report_period_end,
+                'captured_at' => now(),
+                'spend' => $spend,
+                'impressions' => (int) ($data['impressions'] ?? 0),
+                'clicks' => (int) ($data['clicks'] ?? 0),
+                'ctr' => $this->numberParser->parse($data['ctr'] ?? 0),
+                'sales_total' => (int) ($data['sales_total'] ?? 0),
+                'revenue_total' => $revenue,
+                'roas' => $this->calculateRoas($revenue, $spend),
+                'recommended_gbm' => $this->numberParser->parse($data['recommended_gbm'] ?? null),
+                'selected_gbm' => $this->numberParser->parse($data['selected_gbm'] ?? null),
+                'actual_gbm' => $this->numberParser->parse($data['actual_gbm'] ?? null),
+                'actual_cpc' => $this->numberParser->parse($data['actual_cpc'] ?? null),
+            ]);
+        }
+    }
+
+    /**
+     * Influencer performans raporunu işle.
+     */
+    protected function processInfluencerReport(AdImportBatch $batch, $rows): void
+    {
+        if (!$batch->campaign_id_context) {
+            throw new \RuntimeException('Influencer raporu için kampanya seçimi zorunludur.');
+        }
+
+        $campaign = $this->campaignMatcher->findById($batch->campaign_id_context, $batch->user_id);
+
+        foreach ($rows as $row) {
+            $data = $row->normalized_payload;
+            $handle = ltrim(trim((string) ($data['handle'] ?? '')), '@');
+            $platform = mb_strtolower(trim((string) ($data['platform'] ?? 'unknown')));
+
+            $profile = \App\Models\InfluencerProfile::firstOrCreate(
+                [
+                    'user_id' => $batch->user_id,
+                    'platform' => $platform ?: 'unknown',
+                    'handle' => $handle,
+                ],
+                ['display_name' => $data['display_name'] ?? null]
+            );
+
+            \App\Models\InfluencerCampaignMember::firstOrCreate([
+                'campaign_id' => $campaign->id,
+                'influencer_profile_id' => $profile->id,
+            ]);
+
+            \App\Models\InfluencerCreatorSnapshot::create([
+                'campaign_id' => $campaign->id,
+                'influencer_profile_id' => $profile->id,
+                'import_batch_id' => $batch->id,
+                'period_start' => $batch->report_period_start,
+                'period_end' => $batch->report_period_end,
+                'captured_at' => now(),
+                'link_visits' => (int) ($data['link_visits'] ?? 0),
+                'sales_total' => (int) ($data['sales_total'] ?? 0),
+                'revenue_total' => $this->numberParser->parse($data['revenue_total'] ?? 0),
+                'new_customers' => (int) ($data['new_customers'] ?? 0),
+                'estimated_payment' => $this->numberParser->parse($data['estimated_payment'] ?? null),
+                'actual_payment' => $this->numberParser->parse($data['actual_payment'] ?? null),
+            ]);
         }
     }
 
@@ -324,13 +428,15 @@ class AdImportService
     /**
      * Ürün eşleştirme
      */
-    protected function matchProduct(int $userId, int $adAccountId, array $data): \App\Models\AdCampaignProduct
+    protected function matchProduct(\App\Models\AdCampaign $campaign, array $data): \App\Models\AdCampaignProduct
     {
         $contentId = $data['content_id'] ?? null;
 
         // Content ID varsa mevcut kaydı bul
         if ($contentId) {
-            $existing = \App\Models\AdCampaignProduct::where('marketplace_content_id', $contentId)->first();
+            $existing = \App\Models\AdCampaignProduct::where('campaign_id', $campaign->id)
+                ->where('marketplace_content_id', $contentId)
+                ->first();
             if ($existing) {
                 return $existing;
             }
@@ -338,7 +444,7 @@ class AdImportService
 
         // Yeni ürün oluştur
         return \App\Models\AdCampaignProduct::create([
-            'campaign_id' => $data['campaign_id'] ?? 0, // Bu çağrılmadan önce ayarlanmalı
+            'campaign_id' => $campaign->id,
             'marketplace_content_id' => $contentId,
             'marketplace_model_code' => $data['model_code'] ?? null,
             'product_name_snapshot' => $data['product_name'] ?? 'Bilinmeyen Ürün',
@@ -407,6 +513,42 @@ class AdImportService
                 'Toplam Reklam Cirosu' => 'revenue_total',
                 'Harcama Getirisi' => 'roas',
             ],
+            'store_keyword' => [
+                'Anahtar Kelime' => 'keyword',
+                'Kelime' => 'keyword',
+                'Eşleme Tipi' => 'match_type',
+                'Harcanan Bütçe' => 'spend',
+                'Harcama' => 'spend',
+                'Gösterim Sayısı' => 'impressions',
+                'Gösterim' => 'impressions',
+                'Tıklanma Sayısı' => 'clicks',
+                'Tıklanma' => 'clicks',
+                'Tıklanma Oranı' => 'ctr',
+                'Toplam Satış Adedi' => 'sales_total',
+                'Satış Adedi' => 'sales_total',
+                'Toplam Reklam Cirosu' => 'revenue_total',
+                'Ciro' => 'revenue_total',
+                'Önerilen GBM' => 'recommended_gbm',
+                'Seçilen GBM' => 'selected_gbm',
+                'Gerçekleşen GBM' => 'actual_gbm',
+                'Gerçekleşen TBM' => 'actual_cpc',
+            ],
+            'influencer' => [
+                'Kullanıcı Adı' => 'handle',
+                'Influencer' => 'handle',
+                'İçerik Üreticisi' => 'handle',
+                'Görünen Ad' => 'display_name',
+                'Platform' => 'platform',
+                'Link Ziyareti' => 'link_visits',
+                'Ziyaret' => 'link_visits',
+                'Toplam Satış Adedi' => 'sales_total',
+                'Satış Adedi' => 'sales_total',
+                'Toplam Ciro' => 'revenue_total',
+                'Ciro' => 'revenue_total',
+                'Yeni Müşteri' => 'new_customers',
+                'Tahmini Ödeme' => 'estimated_payment',
+                'Gerçekleşen Ödeme' => 'actual_payment',
+            ],
             default => [],
         };
     }
@@ -466,9 +608,38 @@ class AdImportService
     {
         $errors = [];
 
-        // Ortak validasyonlar
-        if (empty($row['spend']) && empty($row['clicks']) && empty($row['impressions'])) {
-            $errors[] = 'Harcama, tıklama veya görüntülenme verisi bulunamadı.';
+        if (in_array($importType, ['product_general', 'product_campaign'], true)) {
+            if ($importType === 'product_general' && empty($row['campaign_name'])) {
+                $errors[] = 'Kampanya adı bulunamadı.';
+            }
+
+            if ($importType === 'product_campaign' && empty($row['product_name']) && empty($row['content_id'])) {
+                $errors[] = 'Ürün bilgisi bulunamadı.';
+            }
+
+            if (empty($row['spend']) && empty($row['clicks']) && empty($row['impressions'])) {
+                $errors[] = 'Harcama, tıklama veya görüntülenme verisi bulunamadı.';
+            }
+        }
+
+        if ($importType === 'store_keyword') {
+            if (empty($row['keyword'])) {
+                $errors[] = 'Anahtar kelime bulunamadı.';
+            }
+
+            if (empty($row['spend']) && empty($row['clicks']) && empty($row['impressions'])) {
+                $errors[] = 'Kelime performans verisi bulunamadı.';
+            }
+        }
+
+        if ($importType === 'influencer') {
+            if (empty($row['handle'])) {
+                $errors[] = 'Influencer kullanıcı adı bulunamadı.';
+            }
+
+            if (empty($row['link_visits']) && empty($row['sales_total']) && empty($row['revenue_total'])) {
+                $errors[] = 'Influencer performans verisi bulunamadı.';
+            }
         }
 
         return $errors;

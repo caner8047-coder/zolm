@@ -24,8 +24,8 @@ class AdNumberParser
         // Para birimi sembollerini kaldır
         $value = str_replace(['₺', 'TL', 'TRY', '$', '€'], '', $value);
 
-        // Boşlukları temizle
-        $value = trim($value);
+        // Normal ve kırılmaz boşlukları temizle
+        $value = preg_replace('/[\s\x{00A0}]+/u', '', trim($value));
 
         // Negatif kontrolü
         $isNegative = str_starts_with($value, '-');
@@ -55,14 +55,9 @@ class AdNumberParser
             }
         }
 
-        // Nokta varsa ve binlik ayracı olup olmadığını kontrol et
-        if (str_contains($value, '.')) {
-            $parts = explode('.', $value);
-            if (count($parts) === 2 && strlen($parts[1]) === 3 && strlen($parts[0]) > 3) {
-                // Binlik ayracı: 1.234.567,89 (virgül zaten yukarıda işlendi)
-                // Bu durumda nokta binlik ayracıdır
-                $value = str_replace('.', '', $value);
-            }
+        // Türkçe raporlarda 1.234 ve 1.234.567 biçimleri binlik ayracıdır.
+        if (preg_match('/^\d{1,3}(\.\d{3})+$/', $value)) {
+            $value = str_replace('.', '', $value);
         }
 
         $result = (float) $value;
