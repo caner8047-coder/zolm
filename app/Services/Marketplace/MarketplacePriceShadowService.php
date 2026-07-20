@@ -11,6 +11,7 @@ class MarketplacePriceShadowService
 {
     public function __construct(
         protected MarketplaceBuyboxRecommendationService $recommendationService,
+        protected MarketplacePricePilotNotificationService $notificationService,
     ) {
     }
 
@@ -60,6 +61,7 @@ class MarketplacePriceShadowService
             ->get();
 
         $count = 0;
+        $wins = 0;
 
         foreach ($records as $record) {
             $currentListing = MpBuyboxListing::where('store_id', $store->id)
@@ -79,6 +81,10 @@ class MarketplacePriceShadowService
             $unnecessaryDrop = $record->recommendation_type === 'LOWER_TO_WIN' && $rank === 1 && $actualBuybox >= (float) $record->current_price;
             $raiseCorrect = $record->recommendation_type === 'RAISE_WHILE_KEEPING_BUYBOX' && $rank === 1;
 
+            if ($wouldWin) {
+                $wins++;
+            }
+
             MpPriceShadowEvaluation::create([
                 'shadow_record_id' => $record->id,
                 'store_id' => $store->id,
@@ -95,6 +101,13 @@ class MarketplacePriceShadowService
             ]);
 
             $count++;
+        }
+
+        if ($count > 0) {
+            $accuracy = ($wins / $count) * 100;
+            if ($accuracy < 70.0) {
+                $this->notificationService->notifyShadowAccuracyDrop($store->id, round($accuracy, 1));
+            }
         }
 
         return $count;
