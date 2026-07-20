@@ -4,6 +4,14 @@
             <a href="{{ route('hr.personnel') }}" class="text-gray-400 hover:text-gray-600">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </a>
+            <!-- Fotoğraf veya Avatar -->
+            <div class="w-16 h-16 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                @if($employee->photo)
+                    <img src="{{ $employee->photo->disk_path }}" alt="{{ $employee->full_name }}" class="w-full h-full object-cover">
+                @else
+                    <span class="text-xl font-bold text-gray-500">{{ substr($employee->first_name, 0, 1 }}{{ substr($employee->last_name, 0, 1) }}</span>
+                @endif
+            </div>
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">{{ $employee->full_name }}</h1>
                 <p class="text-gray-500">{{ $employee->employee_number }} — {{ $employee->activeEmployment?->position?->title ?? 'Pozisyon tanımlı değil' }}</p>

@@ -7,6 +7,10 @@ use App\Modules\Hr\Core\Http\Middleware\ResolveHrTenant;
 use App\Modules\Hr\Core\Livewire\HrDashboard;
 use App\Modules\Hr\Core\Livewire\HrSettings;
 use App\Modules\Hr\Organization\Livewire\OrganizationSettings;
+use App\Modules\Hr\Organization\Livewire\TeamForm;
+use App\Modules\Hr\Organization\Livewire\TeamList;
+use App\Modules\Hr\Organization\Livewire\UnitForm;
+use App\Modules\Hr\Organization\Livewire\UnitList;
 use App\Modules\Hr\Personnel\Livewire\EmployeeCreate;
 use App\Modules\Hr\Personnel\Livewire\EmployeeDetail;
 use App\Modules\Hr\Personnel\Livewire\EmployeeEdit;
@@ -26,6 +30,22 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
     // Organizasyon ayarları
     Route::get('/settings/organization', OrganizationSettings::class)->name('settings.organization')
         ->middleware('hr.authorize:hr.org_structure.view');
+
+    // Birim CRUD
+    Route::get('/settings/units', UnitList::class)->name('settings.units')
+        ->middleware('hr.authorize:hr.org_structure.view');
+    Route::get('/settings/units/create', UnitForm::class)->name('settings.units.create')
+        ->middleware('hr.authorize:hr.org_structure.manage');
+    Route::get('/settings/units/{unit}/edit', UnitForm::class)->name('settings.units.edit')
+        ->middleware('hr.authorize:hr.org_structure.manage');
+
+    // Ekip CRUD
+    Route::get('/settings/teams', TeamList::class)->name('settings.teams')
+        ->middleware('hr.authorize:hr.org_structure.view');
+    Route::get('/settings/teams/create', TeamForm::class)->name('settings.teams.create')
+        ->middleware('hr.authorize:hr.org_structure.manage');
+    Route::get('/settings/teams/{team}/edit', TeamForm::class)->name('settings.teams.edit')
+        ->middleware('hr.authorize:hr.org_structure.manage');
 
     // Personel
     Route::get('/personnel', EmployeeList::class)->name('personnel')

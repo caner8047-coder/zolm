@@ -88,6 +88,24 @@
             </div>
         </div>
 
+        <!-- Fotoğraf -->
+        <div class="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
+            <h2 class="text-lg font-medium text-gray-900">Fotoğraf</h2>
+            <div class="flex items-center space-x-6">
+                <div class="w-20 h-20 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                    @if($employee->photo)
+                        <img src="{{ $employee->photo->disk_path }}" alt="{{ $employee->full_name }}" class="w-full h-full object-cover">
+                    @else
+                        <span class="text-2xl font-bold text-gray-500">{{ substr($employee->first_name, 0, 1 }}{{ substr($employee->last_name, 0, 1) }}</span>
+                    @endif
+                </div>
+                <div>
+                    <input type="file" wire:model="photo" accept="image/jpeg,image/png,image/webp" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200">
+                    <p class="text-xs text-gray-400 mt-1">JPEG, PNG veya WebP. Maks. 5MB.</p>
+                </div>
+            </div>
+        </div>
+
         <div class="flex justify-end space-x-3">
             <a href="{{ route('hr.personnel.show', $employee->id) }}" class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">İptal</a>
             <button type="submit" class="px-6 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800">Güncelle</button>

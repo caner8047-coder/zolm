@@ -2,14 +2,20 @@
 
 namespace App\Modules\Hr\Personnel\Livewire;
 
+use App\Modules\Hr\Core\Services\HrAuditService;
+use App\Modules\Hr\Core\Services\HrFileService;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Personnel\Actions\UpdateEmployeeAction;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class EmployeeEdit extends Component
 {
+    use WithFileUploads;
+
     public HrEmployee $employee;
+    public $photo = null;
 
     public string $first_name = '';
     public string $last_name = '';
@@ -85,6 +91,14 @@ class EmployeeEdit extends Component
 
         $action = app(UpdateEmployeeAction::class);
         $action->execute($this->employee, $data);
+
+        // Fotoğraf güncelleme
+        if ($this->photo) {
+            $fileService = app(HrFileService::class);
+            $hrFile = $fileService->upload($this->photo, 'photos', $this->employee->id, \App\Modules\Hr\Personnel\Models\HrEmployee::class);
+            $this->employee->update(['photo_file_id' => $hrFile->id]);
+            app(HrAuditService::class)->log('employee_photo_updated', $this->employee);
+        }
 
         session()->flash('success', 'Çalışan bilgileri güncellendi.');
 
