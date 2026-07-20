@@ -90,221 +90,444 @@
         <!-- Main Section -->
         <section class="rounded-[10px] border border-slate-200 bg-white shadow-sm flex flex-col h-full">
             
-            <!-- Filters & Command Bar -->
-            <div class="p-4 lg:p-6 border-b border-slate-200 flex flex-col gap-4 bg-slate-50/50 rounded-t-[10px]">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <!-- Filters Left -->
-                    <div class="flex flex-wrap items-center gap-2">
-                        <input type="text" wire:model.live.debounce.300ms="filterBarcode" placeholder="Barkod / SKU ara..." class="rounded-[6px] border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 w-44 focus:ring-slate-500">
+            <!-- Tab Headers -->
+            <div class="border-b border-slate-200">
+                <nav class="-mb-px flex space-x-6 px-6" aria-label="Tabs">
+                    <button wire:click="$set('activeTab', 'analysis')" class="shrink-0 border-b-2 py-4 px-1 text-sm font-medium {{ $activeTab === 'analysis' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700' }}">
+                        📋 Öneriler ve Analiz
+                    </button>
+                    <button wire:click="$set('activeTab', 'pilot')" class="shrink-0 border-b-2 py-4 px-1 text-sm font-medium {{ $activeTab === 'pilot' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700' }}">
+                        🛡️ Pilot & Gölge Mod (Shadow)
+                    </button>
+                    <button wire:click="$set('activeTab', 'actions')" class="shrink-0 border-b-2 py-4 px-1 text-sm font-medium {{ $activeTab === 'actions' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700' }}">
+                        📜 Aksiyon Geçmişi
+                    </button>
+                </nav>
+            </div>
 
-                        <select wire:model.live="filterRecommendationType" class="rounded-[6px] border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900">
-                            <option value="">Tüm Öneri Türleri</option>
-                            <option value="LOWER_TO_WIN">Fiyat Düşür (Kazan)</option>
-                            <option value="RAISE_WHILE_KEEPING_BUYBOX">Fiyat Yükselt (Koru)</option>
-                            <option value="MATCH_BUYBOX">Buybox'a Eşitle</option>
-                            <option value="PROTECT_MARGIN">Marj Korumalı (Aksiyon Yok)</option>
-                            <option value="MISSING_COST">Maliyet Eksik</option>
-                            <option value="STALE_BUYBOX_DATA">Veri Eski</option>
-                        </select>
+            @if($activeTab === 'analysis')
+                <!-- Filters & Command Bar -->
+                <div class="p-4 lg:p-6 border-b border-slate-200 flex flex-col gap-4 bg-slate-50/50">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <!-- Filters Left -->
+                        <div class="flex flex-wrap items-center gap-2">
+                            <input type="text" wire:model.live.debounce.300ms="filterBarcode" placeholder="Barkod / SKU ara..." class="rounded-[6px] border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 w-44 focus:ring-slate-500">
 
-                        <select wire:model.live="filterRiskLevel" class="rounded-[6px] border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900">
-                            <option value="">Tüm Riskler</option>
-                            <option value="low">Düşük Risk</option>
-                            <option value="medium">Orta Risk</option>
-                            <option value="high">Yüksek Risk</option>
-                            <option value="blocked">Engellendi</option>
-                        </select>
+                            <select wire:model.live="filterRecommendationType" class="rounded-[6px] border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900">
+                                <option value="">Tüm Öneri Türleri</option>
+                                <option value="LOWER_TO_WIN">Fiyat Düşür (Kazan)</option>
+                                <option value="RAISE_WHILE_KEEPING_BUYBOX">Fiyat Yükselt (Koru)</option>
+                                <option value="MATCH_BUYBOX">Buybox'a Eşitle</option>
+                                <option value="PROTECT_MARGIN">Marj Korumalı (Aksiyon Yok)</option>
+                                <option value="MISSING_COST">Maliyet Eksik</option>
+                                <option value="STALE_BUYBOX_DATA">Veri Eski</option>
+                            </select>
 
-                        <select wire:model.live="filterActionable" class="rounded-[6px] border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900">
-                            <option value="">Tüm Durumlar</option>
-                            <option value="actionable">Aksiyon Alınabilir</option>
-                            <option value="blocked">Engellenmiş / Kısıtlı</option>
-                        </select>
+                            <select wire:model.live="filterRiskLevel" class="rounded-[6px] border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900">
+                                <option value="">Tüm Riskler</option>
+                                <option value="low">Düşük Risk</option>
+                                <option value="medium">Orta Risk</option>
+                                <option value="high">Yüksek Risk</option>
+                                <option value="blocked">Engellendi</option>
+                            </select>
 
-                        <button wire:click="clearFilters" class="text-xs text-slate-500 hover:text-slate-900 underline px-2 py-1">Filtreleri Temizle</button>
-                    </div>
+                            <select wire:model.live="filterActionable" class="rounded-[6px] border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900">
+                                <option value="">Tüm Durumlar</option>
+                                <option value="actionable">Aksiyon Alınabilir</option>
+                                <option value="blocked">Engellenmiş / Kısıtlı</option>
+                            </select>
 
-                    <!-- Actions Right -->
-                    <div class="flex items-center gap-2">
-                        @if(count($selectedRecommendationIds) > 0)
-                            <button wire:click="openBulkPreviewModal" class="rounded-[6px] bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition">
-                                Toplu Aksiyon Uygula ({{ count($selectedRecommendationIds) }})
-                            </button>
-                        @endif
+                            <button wire:click="clearFilters" class="text-xs text-slate-500 hover:text-slate-900 underline px-2 py-1">Filtreleri Temizle</button>
+                        </div>
+
+                        <!-- Actions Right -->
+                        <div class="flex items-center gap-2">
+                            @if(count($selectedRecommendationIds) > 0)
+                                <button wire:click="openBulkPreviewModal" class="rounded-[6px] bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition">
+                                    Toplu Aksiyon Uygula ({{ count($selectedRecommendationIds) }})
+                                </button>
+                            @endif
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Table Container Desktop -->
-            <div class="hidden md:block overflow-x-auto rounded-b-[10px]">
-                <table id="buyboxTable" class="min-w-full text-left text-sm text-slate-600">
-                    <thead class="bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-500 uppercase tracking-wider">
-                        <tr>
-                            <th class="px-4 py-3 w-10">
-                                <input type="checkbox" @change="
-                                    let ids = {{ json_encode($recommendations->pluck('id')->toArray()) }};
-                                    if ($event.target.checked) {
-                                        $wire.selectedRecommendationIds = [...new Set([...$wire.selectedRecommendationIds, ...ids])];
-                                    } else {
-                                        $wire.selectedRecommendationIds = $wire.selectedRecommendationIds.filter(id => !ids.includes(id));
-                                    }
-                                " class="rounded border-slate-300 text-slate-600">
-                            </th>
-                            @foreach(self::$allColumnDefs as $key => $label)
-                                @if(in_array($key, $visibleColumns))
-                                    <th class="px-4 py-3 {{ isset(self::$sortableColumns[$key]) ? 'sortable-th' : '' }}" 
-                                        @if(isset(self::$sortableColumns[$key])) wire:click="sortTable('{{ $key }}')" @endif>
-                                        <div class="flex items-center justify-between">
-                                            <span>{{ $label }}</span>
-                                            @if(isset(self::$sortableColumns[$key]))
-                                                <span class="text-[10px] text-slate-400 ml-1">
-                                                    @if($sortBy === self::$sortableColumns[$key])
-                                                        {{ $sortDir === 'asc' ? '▲' : '▼' }}
-                                                    @else
-                                                        ⇅
-                                                    @endif
-                                                </span>
+                <!-- Table Container Desktop -->
+                <div class="hidden md:block overflow-x-auto rounded-b-[10px]">
+                    <table id="buyboxTable" class="min-w-full text-left text-sm text-slate-600">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="px-4 py-3 w-10">
+                                    <input type="checkbox" @change="
+                                        let ids = {{ json_encode($recommendations->pluck('id')->toArray()) }};
+                                        if ($event.target.checked) {
+                                            $wire.selectedRecommendationIds = [...new Set([...$wire.selectedRecommendationIds, ...ids])];
+                                        } else {
+                                            $wire.selectedRecommendationIds = $wire.selectedRecommendationIds.filter(id => !ids.includes(id));
+                                        }
+                                    " class="rounded border-slate-300 text-slate-600">
+                                </th>
+                                @foreach(self::$allColumnDefs as $key => $label)
+                                    @if(in_array($key, $visibleColumns))
+                                        <th class="px-4 py-3 {{ isset(self::$sortableColumns[$key]) ? 'sortable-th' : '' }}" 
+                                            @if(isset(self::$sortableColumns[$key])) wire:click="sortTable('{{ $key }}')" @endif>
+                                            <div class="flex items-center justify-between">
+                                                <span>{{ $label }}</span>
+                                                @if(isset(self::$sortableColumns[$key]))
+                                                    <span class="text-[10px] text-slate-400 ml-1">
+                                                        @if($sortBy === self::$sortableColumns[$key])
+                                                            {{ $sortDir === 'asc' ? '▲' : '▼' }}
+                                                        @else
+                                                            ⇅
+                                                        @endif
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        </th>
+                                    @endif
+                                @endforeach
+                                <th class="px-4 py-3 text-right">İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200">
+                            @forelse($recommendations as $rec)
+                                <tr class="hover:bg-slate-50/50">
+                                    <td class="px-4 py-3">
+                                        <input type="checkbox" value="{{ $rec->id }}" wire:model.live="selectedRecommendationIds" class="rounded border-slate-300 text-slate-600">
+                                    </td>
+
+                                    @if(in_array('barcode', $visibleColumns))
+                                        <td class="px-4 py-3 font-medium text-slate-900">
+                                            {{ $rec->barcode }}
+                                        </td>
+                                    @endif
+
+                                    @if(in_array('buybox_price', $visibleColumns))
+                                        <td class="px-4 py-3 text-slate-900">
+                                            ₺{{ number_format($rec->buybox_price, 2, ',', '.') }}
+                                        </td>
+                                    @endif
+
+                                    @if(in_array('my_price', $visibleColumns))
+                                        <td class="px-4 py-3 text-slate-900">
+                                            ₺{{ number_format($rec->current_price, 2, ',', '.') }}
+                                        </td>
+                                    @endif
+
+                                    @if(in_array('minimum_safe_price', $visibleColumns))
+                                        <td class="px-4 py-3 font-semibold text-slate-700">
+                                            ₺{{ number_format($rec->minimum_safe_price, 2, ',', '.') }}
+                                        </td>
+                                    @endif
+
+                                    @if(in_array('recommended_price', $visibleColumns))
+                                        <td class="px-4 py-3 font-bold text-indigo-700">
+                                            @if($rec->recommended_price)
+                                                ₺{{ number_format($rec->recommended_price, 2, ',', '.') }}
+                                            @else
+                                                <span class="text-slate-400 font-normal">-</span>
                                             @endif
-                                        </div>
-                                    </th>
-                                @endif
-                            @endforeach
-                            <th class="px-4 py-3 text-right">İşlemler</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-200">
-                        @forelse($recommendations as $rec)
-                            <tr class="hover:bg-slate-50/50">
-                                <td class="px-4 py-3">
-                                    <input type="checkbox" value="{{ $rec->id }}" wire:model.live="selectedRecommendationIds" class="rounded border-slate-300 text-slate-600">
-                                </td>
+                                        </td>
+                                    @endif
 
-                                @if(in_array('barcode', $visibleColumns))
-                                    <td class="px-4 py-3 font-medium text-slate-900">
-                                        {{ $rec->barcode }}
-                                    </td>
-                                @endif
+                                    @if(in_array('price_diff', $visibleColumns))
+                                        <td class="px-4 py-3">
+                                            @if($rec->price_difference < 0)
+                                                <span class="text-rose-600 font-medium">₺{{ number_format($rec->price_difference, 2, ',', '.') }}</span>
+                                            @elseif($rec->price_difference > 0)
+                                                <span class="text-emerald-600 font-medium">+₺{{ number_format($rec->price_difference, 2, ',', '.') }}</span>
+                                            @else
+                                                <span class="text-slate-500">₺0,00</span>
+                                            @endif
+                                        </td>
+                                    @endif
 
-                                @if(in_array('buybox_price', $visibleColumns))
-                                    <td class="px-4 py-3 text-slate-900">
-                                        ₺{{ number_format($rec->buybox_price, 2, ',', '.') }}
-                                    </td>
-                                @endif
+                                    @if(in_array('recommendation_type', $visibleColumns))
+                                        <td class="px-4 py-3">
+                                            @switch($rec->recommendation_type)
+                                                @case('LOWER_TO_WIN')
+                                                    <span class="px-2 py-0.5 text-xs font-mono rounded bg-indigo-100 text-indigo-800">Fiyat Düşür (Kazan)</span>
+                                                    @break
+                                                @case('RAISE_WHILE_KEEPING_BUYBOX')
+                                                    <span class="px-2 py-0.5 text-xs font-mono rounded bg-emerald-100 text-emerald-800">Fiyat Yükselt</span>
+                                                    @break
+                                                @case('MATCH_BUYBOX')
+                                                    <span class="px-2 py-0.5 text-xs font-mono rounded bg-blue-100 text-blue-800">Buybox'a Eşitle</span>
+                                                    @break
+                                                @case('PROTECT_MARGIN')
+                                                    <span class="px-2 py-0.5 text-xs font-mono rounded bg-amber-100 text-amber-800">Marj Korumalı</span>
+                                                    @break
+                                                @case('MISSING_COST')
+                                                    <span class="px-2 py-0.5 text-xs font-mono rounded bg-rose-100 text-rose-800">Maliyet Eksik</span>
+                                                    @break
+                                                @case('STALE_BUYBOX_DATA')
+                                                    <span class="px-2 py-0.5 text-xs font-mono rounded bg-slate-100 text-slate-700">Veri Eski</span>
+                                                    @break
+                                                @default
+                                                    <span class="px-2 py-0.5 text-xs font-mono rounded bg-slate-100 text-slate-600">{{ $rec->recommendation_type }}</span>
+                                            @endswitch
+                                        </td>
+                                    @endif
 
-                                @if(in_array('my_price', $visibleColumns))
-                                    <td class="px-4 py-3 text-slate-900">
-                                        ₺{{ number_format($rec->current_price, 2, ',', '.') }}
-                                    </td>
-                                @endif
+                                    @if(in_array('risk_level', $visibleColumns))
+                                        <td class="px-4 py-3">
+                                            @switch($rec->risk_level)
+                                                @case('low')
+                                                    <span class="text-xs text-emerald-600 font-medium">● Düşük</span>
+                                                    @break
+                                                @case('medium')
+                                                    <span class="text-xs text-amber-600 font-medium">● Orta</span>
+                                                    @break
+                                                @case('high')
+                                                    <span class="text-xs text-rose-600 font-medium">● Yüksek</span>
+                                                    @break
+                                                @case('blocked')
+                                                    <span class="text-xs text-slate-400 font-medium">🚫 Engellendi</span>
+                                                    @break
+                                            @endswitch
+                                        </td>
+                                    @endif
 
-                                @if(in_array('minimum_safe_price', $visibleColumns))
-                                    <td class="px-4 py-3 font-semibold text-slate-700">
-                                        ₺{{ number_format($rec->minimum_safe_price, 2, ',', '.') }}
-                                    </td>
-                                @endif
+                                    @if(in_array('status', $visibleColumns))
+                                        <td class="px-4 py-3">
+                                            <span class="px-2 py-0.5 text-xs font-mono rounded border bg-slate-50 text-slate-700">
+                                                {{ strtoupper($rec->status) }}
+                                            </span>
+                                        </td>
+                                    @endif
 
-                                @if(in_array('recommended_price', $visibleColumns))
-                                    <td class="px-4 py-3 font-bold text-indigo-700">
-                                        @if($rec->recommended_price)
-                                            ₺{{ number_format($rec->recommended_price, 2, ',', '.') }}
-                                        @else
-                                            <span class="text-slate-400 font-normal">-</span>
+                                    <td class="px-4 py-3 text-right space-x-2">
+                                        <button wire:click="openDetailModal({{ $rec->id }})" class="text-xs text-slate-700 hover:text-slate-900 font-medium underline">Detay</button>
+
+                                        @if($rec->isActionable() && $flags['manual_push'])
+                                            <button wire:click="applySingleAction({{ $rec->id }})" class="rounded bg-slate-900 px-2.5 py-1 text-xs text-white hover:bg-slate-800 transition font-medium">
+                                                Uygula
+                                            </button>
                                         @endif
                                     </td>
-                                @endif
-
-                                @if(in_array('price_diff', $visibleColumns))
-                                    <td class="px-4 py-3">
-                                        @if($rec->price_difference < 0)
-                                            <span class="text-rose-600 font-medium">₺{{ number_format($rec->price_difference, 2, ',', '.') }}</span>
-                                        @elseif($rec->price_difference > 0)
-                                            <span class="text-emerald-600 font-medium">+₺{{ number_format($rec->price_difference, 2, ',', '.') }}</span>
-                                        @else
-                                            <span class="text-slate-500">₺0,00</span>
-                                        @endif
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="100%" class="px-4 py-8 text-center text-slate-500">
+                                        Filtrelere uygun öneri bulunamadı. "Önerileri Hesapla" butonuna basarak güncel analizleri alabilirsiniz.
                                     </td>
-                                @endif
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
 
-                                @if(in_array('recommendation_type', $visibleColumns))
-                                    <td class="px-4 py-3">
-                                        @switch($rec->recommendation_type)
-                                            @case('LOWER_TO_WIN')
-                                                <span class="px-2 py-0.5 text-xs font-mono rounded bg-indigo-100 text-indigo-800">Fiyat Düşür (Kazan)</span>
-                                                @break
-                                            @case('RAISE_WHILE_KEEPING_BUYBOX')
-                                                <span class="px-2 py-0.5 text-xs font-mono rounded bg-emerald-100 text-emerald-800">Fiyat Yükselt</span>
-                                                @break
-                                            @case('MATCH_BUYBOX')
-                                                <span class="px-2 py-0.5 text-xs font-mono rounded bg-blue-100 text-blue-800">Buybox'a Eşitle</span>
-                                                @break
-                                            @case('PROTECT_MARGIN')
-                                                <span class="px-2 py-0.5 text-xs font-mono rounded bg-amber-100 text-amber-800">Marj Korumalı</span>
-                                                @break
-                                            @case('MISSING_COST')
-                                                <span class="px-2 py-0.5 text-xs font-mono rounded bg-rose-100 text-rose-800">Maliyet Eksik</span>
-                                                @break
-                                            @case('STALE_BUYBOX_DATA')
-                                                <span class="px-2 py-0.5 text-xs font-mono rounded bg-slate-100 text-slate-700">Veri Eski</span>
-                                                @break
-                                            @default
-                                                <span class="px-2 py-0.5 text-xs font-mono rounded bg-slate-100 text-slate-600">{{ $rec->recommendation_type }}</span>
-                                        @endswitch
+                <div class="p-4 border-t border-slate-200">
+                    @if(method_exists($recommendations, 'links'))
+                        {{ $recommendations->links() }}
+                    @endif
+                </div>
+            @endif
+
+            @if($activeTab === 'pilot')
+                <!-- Pilot & Shadow Mode Panel -->
+                <div class="p-6 space-y-6">
+                    
+                    @if($emergencyStopActive)
+                        <div class="rounded-lg bg-rose-50 border border-rose-200 p-4 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">⚠️</span>
+                                <div>
+                                    <h3 class="text-sm font-bold text-rose-800">ACİL DURDURMA (EMERGENCY STOP) AKTİF</h3>
+                                    <p class="text-xs text-rose-700 mt-0.5">Tüm fiyat aksiyonları ve otomatik gönderimler şu an bloke edilmiştir.</p>
+                                </div>
+                            </div>
+                            <button wire:click="clearStoreEmergencyStop" class="rounded-[6px] bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 transition">
+                                Kilidi Kaldır (Normal Mod)
+                            </button>
+                        </div>
+                    @else
+                        <div class="flex justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-4">
+                            <div class="text-sm text-slate-600">
+                                <span class="font-bold text-slate-900">Güvenlik Kontrolü:</span> Herhangi bir kural dışı durumda veya beklenmeyen fiyat hareketlerinde sistem akışını anında kesebilirsiniz.
+                            </div>
+                            <button @click="$wire.showEmergencyStopModal = true" class="rounded-[6px] bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 transition">
+                                🛑 Acil Durdurma (Emergency Stop)
+                            </button>
+                        </div>
+                    @endif
+
+                    <!-- Add to Pilot Whitelist Form -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border p-4 rounded-lg bg-slate-50/50">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Eklenecek Ürün Barkodu</label>
+                            <input type="text" wire:model="pilotSearchBarcode" placeholder="Barkod girin..." class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Çalışma Modu</label>
+                            <select wire:model="pilotMode" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm">
+                                <option value="shadow">Shadow (Sadece Gölge Öneri)</option>
+                                <option value="manual_pilot">Manual Pilot (Kullanıcı Onaylı)</option>
+                                <option value="canary_auto">Canary (Kontrollü Otomatik)</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end gap-2">
+                            <div class="grow">
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Eklenme Gerekçesi</label>
+                                <input type="text" wire:model="pilotReason" placeholder="Örn: Buybox kazanım takibi" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm">
+                            </div>
+                            <button wire:click="addToPilotList" class="rounded-[6px] bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-800 transition">
+                                Ekle
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Whitelist Table -->
+                    <div class="border rounded-lg overflow-hidden bg-white">
+                        <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/70">
+                            <h3 class="text-sm font-bold text-slate-900">Aktif Pilot ve Gölge Ürünler ({{ $pilotProducts->count() }} / {{ min(10, max(1, ceil($summary['total'] * 0.01))) }})</h3>
+                            <button wire:click="exportPilotExcelReport" class="text-xs text-indigo-600 hover:text-indigo-900 font-semibold underline">
+                                📥 Raporu Excel Olarak İndir
+                            </button>
+                        </div>
+
+                        <table class="min-w-full text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-500 uppercase">
+                                <tr>
+                                    <th class="px-4 py-3">Barkod</th>
+                                    <th class="px-4 py-3">Çalışma Modu</th>
+                                    <th class="px-4 py-3">Eklenme Gerekçesi</th>
+                                    <th class="px-4 py-3">Fiyat Durumu</th>
+                                    <th class="px-4 py-3">Fiyat Kilidi</th>
+                                    <th class="px-4 py-3 text-right">İşlem</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200">
+                                @forelse($pilotProducts as $p)
+                                    @php
+                                        $rec = \App\Models\MpPriceRecommendation::where('store_id', $store->id)->where('barcode', $p->barcode)->first();
+                                        $isLocked = app(\App\Services\Marketplace\MarketplacePriceLockService::class)->isLocked($store->id, $p->barcode);
+                                    @endphp
+                                    <tr class="hover:bg-slate-50/50">
+                                        <td class="px-4 py-3 font-semibold text-slate-900">
+                                            {{ $p->barcode }}
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <select @change="$wire.updatePilotMode('{{ $p->barcode }}', $event.target.value)" class="rounded-[6px] border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900">
+                                                <option value="shadow" {{ $p->mode === 'shadow' ? 'selected' : '' }}>Shadow Mod (Gölge)</option>
+                                                <option value="manual_pilot" {{ $p->mode === 'manual_pilot' ? 'selected' : '' }}>Manual Pilot (Onaylı)</option>
+                                                <option value="canary_auto" {{ $p->mode === 'canary_auto' ? 'selected' : '' }}>Canary (Otomatik)</option>
+                                                <option value="paused" {{ $p->mode === 'paused' ? 'selected' : '' }}>Duraklatıldı (Paused)</option>
+                                            </select>
+                                        </td>
+                                        <td class="px-4 py-3 text-xs text-slate-500">
+                                            {{ $p->inclusion_reason }}
+                                        </td>
+                                        <td class="px-4 py-3 text-xs">
+                                            @if($rec)
+                                                Mevcut: ₺{{ number_format($rec->current_price, 2, ',', '.') }} | Önerilen: <span class="font-bold text-indigo-600">₺{{ number_format($rec->recommended_price, 2, ',', '.') }}</span>
+                                            @else
+                                                <span class="text-slate-400">Analiz yapılmadı</span>
+                                            @endif
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            @if($isLocked)
+                                                <button @click="$wire.toggleManualLock('{{ $p->barcode }}', false)" class="px-2 py-1 rounded text-xs bg-rose-100 text-rose-800 hover:bg-rose-200 transition font-mono">
+                                                    🔒 KİLİTLİ
+                                                </button>
+                                            @else
+                                                <button @click="$wire.toggleManualLock('{{ $p->barcode }}', true)" class="px-2 py-1 rounded text-xs bg-slate-100 text-slate-600 hover:bg-slate-200 transition font-mono">
+                                                    🔓 KİLİTSİZ
+                                                </button>
+                                            @endif
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <button @click="$wire.removeFromPilotList('{{ $p->barcode }}')" class="text-xs text-rose-600 hover:text-rose-950 underline font-medium">Kapsam Dışı Yap</button>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="100%" class="px-4 py-8 text-center text-slate-500">
+                                            Pilot kapsamına alınmış ürün bulunmamaktadır.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            @endif
+
+            @if($activeTab === 'actions')
+                <!-- Action History Panel -->
+                <div class="overflow-x-auto rounded-b-[10px]">
+                    <table class="min-w-full text-left text-sm text-slate-600">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-500 uppercase">
+                            <tr>
+                                <th class="px-4 py-3">Zaman</th>
+                                <th class="px-4 py-3">Barkod</th>
+                                <th class="px-4 py-3">Tetikleme</th>
+                                <th class="px-4 py-3">Eski Fiyat</th>
+                                <th class="px-4 py-3">Yeni Fiyat</th>
+                                <th class="px-4 py-3">Trendyol Batch ID</th>
+                                <th class="px-4 py-3">Doğrulama</th>
+                                <th class="px-4 py-3">Durum</th>
+                                <th class="px-4 py-3 text-right">Geri Al</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200">
+                            @forelse($recentActions as $act)
+                                <tr class="hover:bg-slate-50/50">
+                                    <td class="px-4 py-3 text-xs text-slate-500">
+                                        {{ $act->created_at->format('d.m.Y H:i:s') }}
                                     </td>
-                                @endif
-
-                                @if(in_array('risk_level', $visibleColumns))
-                                    <td class="px-4 py-3">
-                                        @switch($rec->risk_level)
-                                            @case('low')
-                                                <span class="text-xs text-emerald-600 font-medium">● Düşük</span>
-                                                @break
-                                            @case('medium')
-                                                <span class="text-xs text-amber-600 font-medium">● Orta</span>
-                                                @break
-                                            @case('high')
-                                                <span class="text-xs text-rose-600 font-medium">● Yüksek</span>
-                                                @break
-                                            @case('blocked')
-                                                <span class="text-xs text-slate-400 font-medium">🚫 Engellendi</span>
-                                                @break
-                                        @endswitch
+                                    <td class="px-4 py-3 font-semibold text-slate-900">
+                                        {{ $act->barcode }}
                                     </td>
-                                @endif
-
-                                @if(in_array('status', $visibleColumns))
-                                    <td class="px-4 py-3">
-                                        <span class="px-2 py-0.5 text-xs font-mono rounded border bg-slate-50 text-slate-700">
-                                            {{ strtoupper($rec->status) }}
+                                    <td class="px-4 py-3 text-xs">
+                                        <span class="px-2 py-0.5 rounded font-mono text-[10px] {{ $act->trigger_type === 'automatic' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-800' }}">
+                                            {{ strtoupper($act->trigger_type) }}
                                         </span>
                                     </td>
-                                @endif
-
-                                <td class="px-4 py-3 text-right space-x-2">
-                                    <button wire:click="openDetailModal({{ $rec->id }})" class="text-xs text-slate-700 hover:text-slate-900 font-medium underline">Detay</button>
-
-                                    @if($rec->isActionable() && $flags['manual_push'])
-                                        <button wire:click="applySingleAction({{ $rec->id }})" class="rounded bg-slate-900 px-2.5 py-1 text-xs text-white hover:bg-slate-800 transition font-medium">
-                                            Uygula
-                                        </button>
-                                    @endif
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="100%" class="px-4 py-8 text-center text-slate-500">
-                                    Filtrelere uygun öneri bulunamadı. "Önerileri Hesapla" butonuna basarak güncel analizleri alabilirsiniz.
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="p-4 border-t border-slate-200">
-                @if(method_exists($recommendations, 'links'))
-                    {{ $recommendations->links() }}
-                @endif
-            </div>
+                                    <td class="px-4 py-3">
+                                        ₺{{ number_format($act->old_price, 2, ',', '.') }}
+                                    </td>
+                                    <td class="px-4 py-3 font-semibold text-indigo-700">
+                                        ₺{{ number_format($act->requested_price, 2, ',', '.') }}
+                                    </td>
+                                    <td class="px-4 py-3 text-xs font-mono text-slate-500">
+                                        {{ $act->batch_request_id ?: '-' }}
+                                    </td>
+                                    <td class="px-4 py-3 text-xs">
+                                        @switch($act->verification_status)
+                                            @case('verified_success')
+                                                <span class="text-emerald-600 font-semibold">✓ Fiyat Doğrulandı</span>
+                                                @break
+                                            @case('verification_failed')
+                                                <span class="text-rose-600 font-semibold">✗ Uyuşmazlık Tespit Edildi</span>
+                                                @break
+                                            @default
+                                                <span class="text-slate-400">Bekliyor</span>
+                                        @endswitch
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-0.5 text-xs font-mono rounded {{ $act->status === 'success' ? 'bg-emerald-100 text-emerald-800' : ($act->status === 'failed' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700') }}">
+                                            {{ strtoupper($act->status) }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-right">
+                                        @if($act->canRollback() && $flags['rollback'])
+                                            <button wire:click="rollbackAction({{ $act->id }})" class="text-xs text-rose-600 hover:text-rose-800 font-semibold underline">Geri Yükle</button>
+                                        @else
+                                            <span class="text-xs text-slate-400">-</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="100%" class="px-4 py-8 text-center text-slate-500">
+                                        Aksiyon kaydı bulunamadı.
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            @endif
         </section>
 
         <!-- Detail Slide-Over Modal -->
@@ -441,6 +664,30 @@
                     <div class="flex justify-end gap-3 pt-4 border-t">
                         <button @click="$wire.showPolicyModal = false" class="rounded-[6px] border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">İptal</button>
                         <button wire:click="savePolicySettings" class="rounded-[6px] bg-slate-900 px-4 py-2 text-sm font-medium text-white">Kaydet</button>
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        <!-- Emergency Stop Modal -->
+        @if($showEmergencyStopModal)
+            <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+                <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+                    <div class="text-rose-600 text-xl font-bold flex items-center gap-2">
+                        <span>🛑</span> Acil Durdurma Onayı
+                    </div>
+                    <p class="text-sm text-slate-600">
+                        Bu mağaza için tüm otomatik ve manuel fiyat aksiyonlarını anında durdurmak istediğinize emin misiniz? Kuyruktaki tüm bekleyen fiyatlar iptal edilecektir.
+                    </p>
+                    
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1">Durdurma Nedeni/Gerekçesi (Zorunlu)</label>
+                        <input type="text" wire:model="emergencyStopReason" placeholder="Örn: Trendyol API bağlantı hatası veya yanlış maliyet tespiti" class="w-full rounded-[6px] border border-slate-300 px-3 py-2 text-sm">
+                    </div>
+
+                    <div class="flex justify-end gap-3 pt-4 border-t">
+                        <button @click="$wire.showEmergencyStopModal = false" class="rounded-[6px] border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">İptal</button>
+                        <button wire:click="triggerStoreEmergencyStop" class="rounded-[6px] bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">🛑 Durdur</button>
                     </div>
                 </div>
             </div>

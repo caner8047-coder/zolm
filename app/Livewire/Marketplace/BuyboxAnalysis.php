@@ -47,6 +47,13 @@ class BuyboxAnalysis extends Component
     // Policy Form Data
     public array $policyForm = [];
 
+    // Pilot & Emergency Stop
+    public string $pilotSearchBarcode = '';
+    public string $pilotReason = '';
+    public string $pilotMode = 'shadow';
+    public string $emergencyStopReason = '';
+    public bool $showEmergencyStopModal = false;
+
     // Table Columns & Sorting
     public array $visibleColumns = [
         'barcode', 'buybox_price', 'my_price', 'minimum_safe_price',
@@ -430,6 +437,159 @@ class BuyboxAnalysis extends Component
         $this->dispatch('toast', ['type' => 'success', 'message' => 'Fiyat politikası kaydedildi.']);
     }
 
+    public function addToPilotList(\App\Services\Marketplace\MarketplacePricePilotService $pilotService): void
+    {
+        if (! auth()->user()?->isOperator()) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'Bu işlem için yetkiniz yok.']);
+            return;
+        }
+
+        $store = $this->resolveStore();
+        if (! $store) return;
+
+        if (empty($this->pilotSearchBarcode)) {
+            $this->dispatch('toast', ['type' => 'warning', 'message' => 'Barkod alanı boş olamaz.']);
+            return;
+        }
+
+        try {
+            $pilotService->addProductToPilot($store, $this->pilotSearchBarcode, $this->pilotMode, $this->pilotReason ?: 'UI Ekleme');
+            $this->pilotSearchBarcode = '';
+            $this->pilotReason = '';
+            $this->dispatch('toast', ['type' => 'success', 'message' => 'Ürün pilot listesine başarıyla eklendi.']);
+        } catch (\Exception $e) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => $e->getMessage()]);
+        }
+    }
+
+    public function removeFromPilotList(string $barcode, \App\Services\Marketplace\MarketplacePricePilotService $pilotService): void
+    {
+        if (! auth()->user()?->isOperator()) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'Bu işlem için yetkiniz yok.']);
+            return;
+        }
+
+        $store = $this->resolveStore();
+        if (! $store) return;
+
+        $pilotService->removeProductFromPilot($store->id, $barcode);
+        $this->dispatch('toast', ['type' => 'success', 'message' => 'Ürün pilot listesinden çıkarıldı.']);
+    }
+
+    public function updatePilotMode(string $barcode, string $newMode): void
+    {
+        if (! auth()->user()?->isOperator()) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'Bu işlem için yetkiniz yok.']);
+            return;
+        }
+
+        $store = $this->resolveStore();
+        if (! $store) return;
+
+        \App\Models\MpPricePilotProduct::where('store_id', $store->id)
+            ->where('barcode', $barcode)
+            ->update(['mode' => $newMode]);
+
+        $this->dispatch('toast', ['type' => 'success', 'message' => 'Pilot çalışma modu güncellendi.']);
+    }
+
+    public function toggleManualLock(string $barcode, bool $lockState, \App\Services\Marketplace\MarketplacePriceLockService $lockService): void
+    {
+        if (! auth()->user()?->isOperator()) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'Bu işlem için yetkiniz yok.']);
+            return;
+        }
+
+        $store = $this->resolveStore();
+        if (! $store) return;
+
+        if ($lockState) {
+            $lockService->lockProduct($store->id, $barcode, 'Kullanıcı paneli üzerinden kilitlendi');
+            $this->dispatch('toast', ['type' => 'success', 'message' => 'Fiyat kilidi AKTİF edildi.']);
+        } else {
+            $lockService->unlockProduct($store->id, $barcode);
+            $this->dispatch('toast', ['type' => 'success', 'message' => 'Fiyat kilidi KALDIRILDI.']);
+        }
+    }
+
+    public function triggerStoreEmergencyStop(\App\Services\Marketplace\MarketplacePriceEmergencyStopService $emergencyStopService): void
+    {
+        if (! auth()->user()?->isOperator()) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'Bu işlem için yetkiniz yok.']);
+            return;
+        }
+
+        $store = $this->resolveStore();
+        if (! $store) return;
+
+        if (empty($this->emergencyStopReason)) {
+            $this->dispatch('toast', ['type' => 'warning', 'message' => 'Lütfen durdurma gerekçesini belirtin.']);
+            return;
+        }
+
+        $emergencyStopService->activateEmergencyStop($store->id, $this->emergencyStopReason);
+        $this->showEmergencyStopModal = false;
+        $this->emergencyStopReason = '';
+        $this->dispatch('toast', ['type' => 'success', 'message' => 'Emergency Stop AKTİF EDİLDİ. Tüm fiyat akışları kesildi.']);
+    }
+
+    public function clearStoreEmergencyStop(\App\Services\Marketplace\MarketplacePriceEmergencyStopService $emergencyStopService): void
+    {
+        if (! auth()->user()?->isOperator()) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'Bu işlem için yetkiniz yok.']);
+            return;
+        }
+
+        $store = $this->resolveStore();
+        if (! $store) return;
+
+        $emergencyStopService->deactivateEmergencyStop($store->id);
+        $this->dispatch('toast', ['type' => 'success', 'message' => 'Emergency Stop devreden çıkarıldı.']);
+    }
+
+    public function exportPilotExcelReport(): mixed
+    {
+        $store = $this->resolveStore();
+        if (! $store) return null;
+
+        $pilotProducts = \App\Models\MpPricePilotProduct::where('store_id', $store->id)
+            ->where('mode', '!=', 'disabled')
+            ->get();
+
+        $excelService = app(\App\Services\ExcelService::class);
+        $reportData = [];
+
+        foreach ($pilotProducts as $p) {
+            $rec = \App\Models\MpPriceRecommendation::where('store_id', $store->id)
+                ->where('barcode', $p->barcode)
+                ->first();
+
+            $reportData[] = [
+                'Barkod' => $excelService->cleanString($p->barcode),
+                'Pilot Modu' => $excelService->cleanString($p->mode),
+                'Gerekçe' => $excelService->cleanString($p->inclusion_reason),
+                'Mevcut Fiyat' => (float) ($rec?->current_price ?? 0),
+                'Buybox Fiyatı' => (float) ($rec?->buybox_price ?? 0),
+                'Önerilen Fiyat' => (float) ($rec?->recommended_price ?? 0),
+                'Min Güvenli Fiyat' => (float) ($rec?->minimum_safe_price ?? 0),
+                'Risk Seviyesi' => $excelService->cleanString($rec?->risk_level ?? 'Bilinmiyor'),
+                'Eklenme Tarihi' => $p->created_at ? $p->created_at->toDateTimeString() : '',
+            ];
+        }
+
+        $sheetName = 'Pilot Ürün Raporu';
+        $tempPath = storage_path('app/temp_pilot_report_' . uniqid() . '.xlsx');
+
+        $excelService->exportToXlsx([
+            [
+                'name' => $sheetName,
+                'data' => $reportData,
+            ]
+        ], $tempPath);
+
+        return response()->download($tempPath, 'pilot_urun_raporu.xlsx')->deleteFileAfterSend(true);
+    }
+
     public function render()
     {
         $flags = [
@@ -461,10 +621,14 @@ class BuyboxAnalysis extends Component
 
         $detailRec = null;
         $detailSimulation = null;
+        $pilotProducts = collect();
+        $emergencyStopActive = false;
 
         $store = $this->resolveStore();
 
         if ($store) {
+            $emergencyStopActive = app(\App\Services\Marketplace\MarketplacePriceEmergencyStopService::class)->isEmergencyStopActive($store->id);
+
             // Aggregate summary counts
             $recQuery = MpPriceRecommendation::where('store_id', $store->id);
 
@@ -480,6 +644,10 @@ class BuyboxAnalysis extends Component
 
             $summary['pending_push'] = MpPriceAction::where('store_id', $store->id)->whereIn('status', ['pending', 'processing'])->count();
             $summary['failed_push'] = MpPriceAction::where('store_id', $store->id)->where('status', 'failed')->count();
+
+            // Pilot Count
+            $summary['pilot_count'] = \App\Models\MpPricePilotProduct::where('store_id', $store->id)->where('mode', '!=', 'disabled')->count();
+            $summary['shadow_count'] = \App\Models\MpPriceShadowRecord::where('store_id', $store->id)->count();
 
             // Main Query
             $query = MpPriceRecommendation::where('store_id', $store->id)
@@ -516,6 +684,13 @@ class BuyboxAnalysis extends Component
             $recommendations = $query->orderBy($this->sortBy, $this->sortDir)
                 ->paginate($this->perPage);
 
+            // Fetch pilot list if active tab is pilot
+            if ($this->activeTab === 'pilot') {
+                $pilotProducts = \App\Models\MpPricePilotProduct::where('store_id', $store->id)
+                    ->orderBy('created_at', 'desc')
+                    ->paginate($this->perPage);
+            }
+
             // Fetch recent price actions for history tab
             $recentActions = MpPriceAction::where('store_id', $store->id)
                 ->orderByDesc('created_at')
@@ -548,11 +723,13 @@ class BuyboxAnalysis extends Component
         return view('livewire.marketplace.buybox-analysis', [
             'stores' => $stores,
             'recommendations' => $recommendations,
+            'pilotProducts' => $pilotProducts,
             'recentActions' => $recentActions,
             'summary' => $summary,
             'flags' => $flags,
             'detailRec' => $detailRec,
             'detailSimulation' => $detailSimulation,
+            'emergencyStopActive' => $emergencyStopActive,
         ])->layout('layouts.app');
     }
 }
