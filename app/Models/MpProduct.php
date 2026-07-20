@@ -87,6 +87,11 @@ class MpProduct extends Model
         // Meta
         'import_source',
         'last_synced_at',
+        'source_user_id',
+        'source_product_id',
+        'clone_reason',
+        'clone_correlation_id',
+        'cloned_at',
     ];
 
     protected $casts = [
