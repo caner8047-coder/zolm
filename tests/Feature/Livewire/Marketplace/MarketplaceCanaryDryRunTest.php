@@ -10,6 +10,7 @@ use App\Models\MpPricePilotProduct;
 use App\Models\MpPriceRecommendation;
 use App\Models\MpPriceCanaryCertification;
 use App\Models\IntegrationPushRun;
+use App\Models\IntegrationConnection;
 use App\Models\ChannelListing;
 use App\Models\ChannelProduct;
 use App\Models\User;
@@ -19,6 +20,8 @@ use App\Jobs\PushMarketplacePriceActionJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class MarketplaceCanaryDryRunTest extends TestCase
@@ -39,6 +42,17 @@ class MarketplaceCanaryDryRunTest extends TestCase
             'marketplace' => 'trendyol',
             'seller_id' => '9456',
             'store_name' => 'Trendyol Test Store',
+        ]);
+
+        IntegrationConnection::create([
+            'store_id' => $this->store->id,
+            'provider' => 'trendyol',
+            'auth_type' => 'api_key',
+            'credentials_encrypted' => [
+                'api_key' => 'test_key',
+                'api_secret' => 'test_secret',
+            ],
+            'status' => 'connected',
         ]);
 
         // Mock pilot service risk level
@@ -76,18 +90,20 @@ class MarketplaceCanaryDryRunTest extends TestCase
 
         // 20 API requests
         for ($i = 0; $i < 20; $i++) {
-            IntegrationPushRun::create([
+            DB::table('integration_push_runs')->insert([
                 'store_id' => $this->store->id,
                 'channel_listing_id' => null,
                 'push_type' => 'price',
                 'status' => 'completed',
                 'target_price' => 95.0,
+                'created_at' => now()->subHours(2),
+                'updated_at' => now()->subHours(2),
             ]);
         }
 
         // 20 queue jobs
         for ($i = 0; $i < 20; $i++) {
-            MpPriceAction::create([
+            DB::table('mp_price_actions')->insert([
                 'store_id' => $this->store->id,
                 'barcode' => 'BARCODE1',
                 'status' => 'success',
@@ -95,6 +111,8 @@ class MarketplaceCanaryDryRunTest extends TestCase
                 'requested_price' => 95.0,
                 'action_type' => 'price_change',
                 'trigger_type' => 'manual',
+                'created_at' => now()->subHours(2),
+                'updated_at' => now()->subHours(2),
             ]);
         }
 
@@ -136,6 +154,34 @@ class MarketplaceCanaryDryRunTest extends TestCase
     {
         $this->createBaselineEvidence();
 
+        $sellerId = $this->store->seller_id;
+        $mockPayload = [
+            'content' => [
+                [
+                    'id' => 'EXT-1234',
+                    'barcode' => 'BARCODE1',
+                    'title' => 'Test Product',
+                    'price' => [
+                        'salePrice' => 100.0,
+                        'listPrice' => 120.0,
+                    ],
+                    'stock' => [
+                        'quantity' => 10,
+                    ],
+                    'approved' => true,
+                    'onSale' => true,
+                ]
+            ],
+            'totalPages' => 1,
+            'totalElements' => 1,
+        ];
+
+        Http::fake([
+            "https://apigw.trendyol.com/integration/product/sellers/{$sellerId}/products/approved*" => Http::response($mockPayload, 200),
+            "https://apigw.trendyol.com/integration/product/sellers/{$sellerId}/products*" => Http::response($mockPayload, 200),
+            "*" => Http::response([], 200),
+        ]);
+
         $code = Artisan::call('marketplace:price-pilot', [
             'action' => 'canary-dry-run',
             'store_id' => $this->store->id,
@@ -145,7 +191,6 @@ class MarketplaceCanaryDryRunTest extends TestCase
         ]);
 
         $output = Artisan::output();
-
         $this->assertEquals(0, $code);
         $this->assertStringContainsString('ZOLM Canary Dry-Run Sertifikasyon Raporu', $output);
         $this->assertStringContainsString('Readiness Kontrolü', $output);
