@@ -43,16 +43,34 @@ class MarketplaceListingPushService
         }
 
         if (!isset($context['price_action_id']) && !isset($context['write_context_type'])) {
-            $context = array_merge([
-                'write_context_type' => 'legacy_manual',
-                'actor_type' => 'user',
-                'actor_id' => $triggeredBy ?: auth()->id() ?: 1,
-                'permission' => 'update_price',
-                'store_id' => $listing->store_id,
-                'correlation_id' => 'manual-' . uniqid(),
-                'idempotency_key' => 'key-' . uniqid(),
-                'reason' => 'User manually triggered update via MarketplaceListingPushService',
-            ], $context);
+            $actorId = $triggeredBy ?: auth()->id();
+            if (!$actorId) {
+                if (app()->runningInConsole()) {
+                    $context = array_merge([
+                        'write_context_type' => 'legacy_manual',
+                        'actor_type' => 'system',
+                        'actor_id' => 'system',
+                        'permission' => 'update_price',
+                        'store_id' => $listing->store_id,
+                        'correlation_id' => 'manual-system-' . uniqid(),
+                        'idempotency_key' => 'key-system-' . uniqid(),
+                        'reason' => 'System console triggered update via MarketplaceListingPushService',
+                    ], $context);
+                } else {
+                    throw new \RuntimeException('Fiyat push güncellemesi için yetkili kullanıcı (actor) bilgisi bulunamadı.');
+                }
+            } else {
+                $context = array_merge([
+                    'write_context_type' => 'legacy_manual',
+                    'actor_type' => 'user',
+                    'actor_id' => $actorId,
+                    'permission' => 'update_price',
+                    'store_id' => $listing->store_id,
+                    'correlation_id' => 'manual-' . uniqid(),
+                    'idempotency_key' => 'key-' . uniqid(),
+                    'reason' => 'User manually triggered update via MarketplaceListingPushService',
+                ], $context);
+            }
         }
 
         return $this->queuePush(
@@ -94,6 +112,22 @@ class MarketplaceListingPushService
 
         if (!($connector instanceof PushesStock) || !($capabilities['stock_push'] ?? false)) {
             throw new \RuntimeException('Bu kanal için stok push henüz desteklenmiyor.');
+        }
+
+        if (!isset($context['write_context_type'])) {
+            $actorId = $triggeredBy ?: auth()->id() ?: 'system';
+            $actorType = is_numeric($actorId) ? 'user' : 'system';
+            $context = array_merge([
+                'write_context_type' => 'stock_update',
+                'actor_type' => $actorType,
+                'actor_id' => $actorId,
+                'store_id' => $listing->store_id,
+                'correlation_id' => 'stock-' . uniqid(),
+                'idempotency_key' => 'stock-key-' . uniqid(),
+                'reason' => 'Stock update via MarketplaceListingPushService',
+                'sale_price' => $listing->sale_price,
+                'list_price' => $listing->list_price ?? $listing->sale_price,
+            ], $context);
         }
 
         return $this->queuePush(
