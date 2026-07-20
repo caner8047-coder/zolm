@@ -92,15 +92,26 @@ class BackfillMarketplaceListingsCommand extends Command
         if ($this->option('full-catalog')) {
             $startDate = now()->subYears(2)->format('Y-m-d H:i:s');
             $endDate = now()->format('Y-m-d H:i:s');
-            $modeLabel = "Full Catalog (Son 2 Yıl)";
+            $modeLabel = 'Son 2 Yıl Penceresi (Trendyol approved products endpoint sınırı)';
+            $isTrulyFullCatalog = false;
+            $coverageMode = 'last_2_years';
+            $providerLimit = 'approved_products_only';
         } else {
             $startDate = $startDateOpt ?: now()->subMonths(3)->format('Y-m-d H:i:s');
             $endDate = $endDateOpt ?: now()->format('Y-m-d H:i:s');
-            $modeLabel = "Incremental Catalog";
+            $modeLabel = 'Artımlı Katalog (Son 3 Ay)';
+            $isTrulyFullCatalog = false;
+            $coverageMode = 'incremental';
+            $providerLimit = 'approved_products_only';
         }
 
         $this->line("Zaman Penceresi: {$startDate} ile {$endDate} arası");
         $this->line("Kapsam Modu: {$modeLabel}");
+        $this->line("coverage_start:        {$startDate}");
+        $this->line("coverage_end:          {$endDate}");
+        $this->line("coverage_mode:         {$coverageMode}");
+        $this->line("provider_limit:        {$providerLimit}");
+        $this->line("is_complete_catalog:   " . ($isTrulyFullCatalog ? 'true' : 'false') . " (Trendyol historik kataloğu döndürmez)");
 
         // 1. Resolve connector and call real approved-products API
         try {
