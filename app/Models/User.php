@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 
 class User extends Authenticatable
 {
@@ -74,6 +75,81 @@ class User extends Authenticatable
     public function marketplaceStores(): HasMany
     {
         return $this->hasMany(MarketplaceStore::class);
+    }
+
+    // === HR PERMISSION SYSTEM ===
+
+    public function hrPermissions(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'model_has_roles', 'model_id', 'role_id')
+            ->withPivot('model_type')
+            ->wherePivot('model_type', self::class);
+    }
+
+    /**
+     * Check if user has a specific HR permission via role-based or direct assignment.
+     * No blanket admin bypass — permissions must be explicitly assigned.
+     */
+    public function hasHrPermission(string $permission): bool
+    {
+        // Check via model_has_roles + role_permission (spatie-like pattern)
+        $hasViaModelRole = DB::table('model_has_roles')
+            ->join('role_permission', 'role_permission.role_id', '=', 'model_has_roles.role_id')
+            ->join('permissions', 'permissions.id', '=', 'role_permission.permission_id')
+            ->where('model_has_roles.model_id', $this->id)
+            ->where('model_has_roles.model_type', self::class)
+            ->where('permissions.name', $permission)
+            ->exists();
+
+        if ($hasViaModelRole) {
+            return true;
+        }
+
+        // Check via role_id FK on users table + role_permission
+        $userRoleId = $this->role_id;
+
+        if ($userRoleId) {
+            $hasPermission = DB::table('role_permission')
+                ->join('permissions', 'permissions.id', '=', 'role_permission.permission_id')
+                ->where('role_permission.role_id', $userRoleId)
+                ->where('permissions.name', $permission)
+                ->exists();
+
+            if ($hasPermission) {
+                return true;
+            }
+        }
+
+        // Check via model_has_permissions table (direct permission)
+        $hasDirect = DB::table('model_has_permissions')
+            ->join('permissions', 'permissions.id', '=', 'model_has_permissions.permission_id')
+            ->where('model_has_permissions.model_id', $this->id)
+            ->where('model_has_permissions.model_type', self::class)
+            ->where('permissions.name', $permission)
+            ->exists();
+
+        return $hasDirect;
+    }
+
+    /**
+     * Sync user's HR roles.
+     */
+    public function syncHrRoles(array $roleIds): void
+    {
+        DB::table('model_has_roles')
+            ->where('model_id', $this->id)
+            ->where('model_type', self::class)
+            ->delete();
+
+        foreach ($roleIds as $roleId) {
+            DB::table('model_has_roles')->insert([
+                'role_id' => $roleId,
+                'model_id' => $this->id,
+                'model_type' => self::class,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     public function appNotifications(): HasMany

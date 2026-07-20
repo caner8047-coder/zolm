@@ -16,6 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'mp.feature' => \App\Http\Middleware\EnsureMarketplaceFeatureEnabled::class,
             'customer-care.feature' => \App\Http\Middleware\EnsureCustomerCareFeatureEnabled::class,
+            'hr.authorize' => \App\Modules\Hr\Core\Http\Middleware\HrAuthorize::class,
+            'hr.tenant' => \App\Modules\Hr\Core\Http\Middleware\ResolveHrTenant::class,
+            'hr.module' => \App\Modules\Hr\Core\Http\Middleware\RequireHrModule::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

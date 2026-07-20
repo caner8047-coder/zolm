@@ -55,4 +55,28 @@ class LegalEntity extends Model
     {
         return $this->hasMany(MarketplaceStore::class);
     }
+
+    // === HR Relationships ===
+
+    public function hrLicenses(): HasMany
+    {
+        return $this->hasMany(HrLicense::class);
+    }
+
+    public function hrHolidays(): HasMany
+    {
+        return $this->hasMany(HrHoliday::class);
+    }
+
+    public function hasHrModule(string $moduleKey): bool
+    {
+        return $this->hrLicenses()
+            ->where('module_key', $moduleKey)
+            ->where('is_active', true)
+            ->where(function ($q) {
+                $q->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            })
+            ->exists();
+    }
 }
