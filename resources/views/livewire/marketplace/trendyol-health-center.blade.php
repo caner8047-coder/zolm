@@ -36,8 +36,8 @@
                 <h3 class="text-sm font-medium text-slate-500">Son Senkronizasyon</h3>
                 <div class="mt-2 flex items-baseline gap-2">
                     <span class="text-2xl font-semibold text-slate-900">
-                        @if($runs->count() > 0)
-                            {{ $runs->first()->created_at->diffForHumans() }}
+                        @if($recentRuns->count() > 0)
+                            {{ $recentRuns->first()->created_at->diffForHumans() }}
                         @else
                             Yok
                         @endif
@@ -78,7 +78,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200">
-                        @forelse($runs as $run)
+                        @forelse($recentRuns as $run)
                             <tr class="hover:bg-slate-50/50">
                                 <td class="px-4 py-3 whitespace-nowrap">{{ $run->created_at->format('d.m.Y H:i:s') }}</td>
                                 <td class="px-4 py-3 whitespace-nowrap">

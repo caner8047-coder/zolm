@@ -181,6 +181,15 @@ return [
         'cargo_invoice_sync_enabled' => (bool) env('TRENDYOL_CARGO_INVOICE_SYNC_ENABLED', false), // Safe default
         'reference_sync_enabled' => (bool) env('TRENDYOL_REFERENCE_SYNC_ENABLED', false), // Safe default
         'batch_tracking_enabled' => (bool) env('TRENDYOL_BATCH_TRACKING_ENABLED', false), // Safe default
+        // Sağlık Merkezi scheduler gecikme eşikleri (dakika)
+        'health' => [
+            'warning_multiplier' => (int) env('TRENDYOL_HEALTH_WARNING_MULTIPLIER', 2),
+            'critical_multiplier' => (int) env('TRENDYOL_HEALTH_CRITICAL_MULTIPLIER', 4),
+            'order_stream_interval_minutes' => (int) env('TRENDYOL_HEALTH_ORDER_STREAM_INTERVAL_MINUTES', 15),
+            'buybox_interval_minutes' => (int) env('TRENDYOL_HEALTH_BUYBOX_INTERVAL_MINUTES', 30),
+            'cargo_invoice_interval_minutes' => (int) env('TRENDYOL_HEALTH_CARGO_INVOICE_INTERVAL_MINUTES', 1440),
+            'reference_interval_minutes' => (int) env('TRENDYOL_HEALTH_REFERENCE_INTERVAL_MINUTES', 10080),
+        ],
         'sync_defaults' => [
             'orders_poll_minutes' => 15,
             'finance_poll_minutes' => 60,
