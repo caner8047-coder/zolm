@@ -12,7 +12,7 @@ class TrendyolHealthCenter extends Component
 
     public function mount()
     {
-        $store = MarketplaceStore::where('type', 'trendyol_v2')->where('user_id', auth()->id())->first();
+        $store = MarketplaceStore::where('marketplace', 'trendyol')->where('user_id', auth()->id())->first();
         if ($store) {
             $this->selectedStoreId = $store->id;
         } else {
@@ -20,9 +20,22 @@ class TrendyolHealthCenter extends Component
         }
     }
 
+    public function updatedSelectedStoreId()
+    {
+        if ($this->selectedStoreId) {
+            $exists = MarketplaceStore::where('id', $this->selectedStoreId)
+                ->where('user_id', auth()->id())
+                ->exists();
+            
+            if (! $exists) {
+                $this->selectedStoreId = 0;
+            }
+        }
+    }
+
     public function render()
     {
-        $stores = MarketplaceStore::where('type', 'trendyol_v2')->where('user_id', auth()->id())->get();
+        $stores = MarketplaceStore::where('marketplace', 'trendyol')->where('user_id', auth()->id())->get();
         
         $runs = collect();
         $latestBatch = null;

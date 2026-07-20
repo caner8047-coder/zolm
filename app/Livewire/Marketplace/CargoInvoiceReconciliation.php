@@ -14,7 +14,7 @@ class CargoInvoiceReconciliation extends Component
     public int $selectedStoreId = 0;
     
     // Properties for standard table visibility and sorting
-    public array $visibleColumns = ['invoice_serial_number', 'parcel_unique_id', 'order_number', 'carrier_code', 'desi', 'amount', 'status'];
+    public array $visibleColumns = ['invoice_serial_number', 'parcel_unique_id', 'order_number', 'carrier_code', 'desi', 'amount', 'profit_impact', 'status'];
     public string $sortBy = 'invoice_date';
     public string $sortDir = 'desc';
 
@@ -33,16 +33,30 @@ class CargoInvoiceReconciliation extends Component
         'order_number' => 'Sipariş No',
         'carrier_code' => 'Kargo Firması',
         'desi' => 'Desi',
-        'amount' => 'Tutar',
+        'amount' => 'Fatura Tutarı',
+        'profit_impact' => 'Kâr Etkisi',
         'status' => 'Durum',
         'invoice_date' => 'Fatura Tarihi',
     ];
 
     public function mount()
     {
-        $store = MarketplaceStore::where('type', 'trendyol_v2')->where('user_id', auth()->id())->first();
+        $store = MarketplaceStore::where('marketplace', 'trendyol')->where('user_id', auth()->id())->first();
         if ($store) {
             $this->selectedStoreId = $store->id;
+        }
+    }
+
+    public function updatedSelectedStoreId()
+    {
+        if ($this->selectedStoreId) {
+            $exists = MarketplaceStore::where('id', $this->selectedStoreId)
+                ->where('user_id', auth()->id())
+                ->exists();
+            
+            if (! $exists) {
+                $this->selectedStoreId = 0;
+            }
         }
     }
 
@@ -71,13 +85,35 @@ class CargoInvoiceReconciliation extends Component
 
     public function render()
     {
-        $stores = MarketplaceStore::where('type', 'trendyol_v2')->where('user_id', auth()->id())->get();
+        $stores = MarketplaceStore::where('marketplace', 'trendyol')->where('user_id', auth()->id())->get();
         
         $invoices = collect();
         if ($this->selectedStoreId) {
             $invoices = CargoInvoiceLine::where('store_id', $this->selectedStoreId)
                 ->orderBy($this->sortBy, $this->sortDir)
                 ->paginate(25);
+                
+            // Eager load related orders and their profit snapshots
+            $orderNumbers = $invoices->pluck('order_number')->filter()->unique();
+            $orders = \App\Models\ChannelOrder::with('profitSnapshots')
+                ->whereIn('order_number', $orderNumbers)
+                ->where('store_id', $this->selectedStoreId)
+                ->get()
+                ->keyBy('order_number');
+                
+            foreach ($invoices as $invoice) {
+                $invoice->related_order = $orders->get($invoice->order_number);
+                $invoice->estimated_cargo = 0;
+                $invoice->profit_impact = 0;
+                
+                if ($invoice->related_order && $invoice->related_order->profitSnapshots->isNotEmpty()) {
+                    $snapshot = $invoice->related_order->profitSnapshots->first();
+                    $invoice->estimated_cargo = $snapshot->cargo_total ?? 0;
+                    // Fark = Tahmini - Gerçekleşen
+                    // Eğer gerçek fatura 50, tahmini 40 ise -> -10 kâr etkisi
+                    $invoice->profit_impact = $invoice->estimated_cargo - $invoice->total_amount;
+                }
+            }
         }
 
         return view('livewire.marketplace.cargo-invoice-reconciliation', [

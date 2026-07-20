@@ -36,9 +36,22 @@ class BuyboxAnalysis extends Component
 
     public function mount()
     {
-        $store = MarketplaceStore::where('type', 'trendyol_v2')->where('user_id', auth()->id())->first();
+        $store = MarketplaceStore::where('marketplace', 'trendyol')->where('user_id', auth()->id())->first();
         if ($store) {
             $this->selectedStoreId = $store->id;
+        }
+    }
+
+    public function updatedSelectedStoreId()
+    {
+        if ($this->selectedStoreId) {
+            $exists = MarketplaceStore::where('id', $this->selectedStoreId)
+                ->where('user_id', auth()->id())
+                ->exists();
+            
+            if (! $exists) {
+                $this->selectedStoreId = 0;
+            }
         }
     }
 
@@ -67,7 +80,7 @@ class BuyboxAnalysis extends Component
 
     public function render()
     {
-        $stores = MarketplaceStore::where('type', 'trendyol_v2')->where('user_id', auth()->id())->get();
+        $stores = MarketplaceStore::where('marketplace', 'trendyol')->where('user_id', auth()->id())->get();
         
         $listings = collect();
         if ($this->selectedStoreId) {

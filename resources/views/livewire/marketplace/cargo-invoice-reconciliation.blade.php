@@ -148,7 +148,24 @@
                                 @endif
                                 
                                 @if(in_array('amount', $visibleColumns))
-                                    <td class="px-4 py-3 text-slate-900 font-medium">₺{{ number_format($invoice->total_amount, 2, ',', '.') }}</td>
+                                    <td class="px-4 py-3 text-slate-900 font-medium">
+                                        ₺{{ number_format($invoice->total_amount, 2, ',', '.') }}
+                                        @if($invoice->estimated_cargo > 0)
+                                            <div class="text-[10px] text-slate-400">Tahmini: ₺{{ number_format($invoice->estimated_cargo, 2, ',', '.') }}</div>
+                                        @endif
+                                    </td>
+                                @endif
+
+                                @if(in_array('profit_impact', $visibleColumns))
+                                    <td class="px-4 py-3 font-medium">
+                                        @if($invoice->profit_impact < 0)
+                                            <span class="text-rose-600">₺{{ number_format($invoice->profit_impact, 2, ',', '.') }}</span>
+                                        @elseif($invoice->profit_impact > 0)
+                                            <span class="text-emerald-600">+₺{{ number_format($invoice->profit_impact, 2, ',', '.') }}</span>
+                                        @else
+                                            <span class="text-slate-500">₺0,00</span>
+                                        @endif
+                                    </td>
                                 @endif
 
                                 @if(in_array('status', $visibleColumns))

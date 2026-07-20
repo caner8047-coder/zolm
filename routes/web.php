@@ -343,6 +343,20 @@ Route::middleware('auth')->group(function () {
         ->name('mp.settings')
         ->middleware(\App\Http\Middleware\AdminMiddleware::class);
 
+    // Trendyol V2 UI Modules
+    Route::get('/marketplace-trendyol-health', \App\Livewire\Marketplace\TrendyolHealthCenter::class)
+        ->name('mp.trendyol.health')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+    Route::get('/marketplace-buybox-analysis', \App\Livewire\Marketplace\BuyboxAnalysis::class)
+        ->name('mp.buybox')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+    Route::get('/marketplace-claim-mapping', \App\Livewire\Marketplace\ClaimReasonMapping::class)
+        ->name('mp.claim.mapping')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+    Route::get('/marketplace-cargo-invoice', \App\Livewire\Marketplace\CargoInvoiceReconciliation::class)
+        ->name('mp.cargo.invoice')
+        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+
     // Reçete Modülü
     Route::get('/recipe-materials', \App\Livewire\RecipeMaterialsManager::class)
         ->name('recipe.materials')

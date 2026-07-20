@@ -214,6 +214,26 @@
                                 Finans
                             </a>
                         @endif
+                        <a href="{{ route('mp.buybox') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('mp.buybox') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Buybox Analizi
+                        </a>
+                        <a href="{{ route('mp.cargo.invoice') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('mp.cargo.invoice') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Kargo Faturası Analizi
+                        </a>
+                        <a href="{{ route('mp.claim.mapping') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('mp.claim.mapping') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            İade Nedenleri
+                        </a>
+                        <a href="{{ route('mp.trendyol.health') }}" @click="sidebarOpen = false"
+                           class="block px-4 py-2 text-sm rounded-lg transition-colors
+                                  {{ request()->routeIs('mp.trendyol.health') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                            Trendyol Sağlık Merkezi
+                        </a>
                         <a href="{{ route('mp.settings') }}" @click="sidebarOpen = false"
                            class="block px-4 py-2 text-sm rounded-lg transition-colors
                                   {{ request()->routeIs('mp.settings') ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">

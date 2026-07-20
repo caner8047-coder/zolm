@@ -129,7 +129,7 @@
                                     <td class="px-4 py-3 text-slate-900 overflow-visible">
                                         <select wire:change="updateMapping({{ $reason->id }}, $event.target.value)" class="rounded-[6px] border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-slate-500 focus:ring-slate-500 max-w-full">
                                             <option value="">-- Eşleştirilmedi --</option>
-                                            @foreach($zolmReasons as $code => $label)
+                                            @foreach($this->zolmReasons as $code => $label)
                                                 <option value="{{ $code }}" {{ $reason->mapped_zolm_reason_code === $code ? 'selected' : '' }}>
                                                     {{ $label }}
                                                 </option>
@@ -183,7 +183,7 @@
                                 <span class="text-xs text-slate-500">ZOLM Eşleştirmesi</span>
                                 <select wire:change="updateMapping({{ $reason->id }}, $event.target.value)" class="mt-1 rounded-[6px] border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 w-full">
                                     <option value="">-- Eşleştirilmedi --</option>
-                                    @foreach($zolmReasons as $code => $label)
+                                    @foreach($this->zolmReasons as $code => $label)
                                         <option value="{{ $code }}" {{ $reason->mapped_zolm_reason_code === $code ? 'selected' : '' }}>
                                             {{ $label }}
                                         </option>

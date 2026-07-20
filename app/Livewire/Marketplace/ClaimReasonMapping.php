@@ -18,14 +18,10 @@ class ClaimReasonMapping extends Component
     public string $sortBy = 'name';
     public string $sortDir = 'asc';
 
-    public array $zolmReasons = [
-        'ZOLM_DEFECTIVE' => 'Kusurlu/Bozuk Ürün (Fire)',
-        'ZOLM_WRONG_ITEM' => 'Yanlış Ürün Gönderimi',
-        'ZOLM_CUSTOMER_REGRET' => 'Müşteri Cayma Hakkı',
-        'ZOLM_CARGO_DAMAGE' => 'Kargo Hasarı',
-        'ZOLM_LATE_DELIVERY' => 'Geç Teslimat',
-        'ZOLM_MISSING_PARTS' => 'Eksik Parça',
-    ];
+    public function getZolmReasonsProperty()
+    {
+        return \App\Enums\ZolmClaimReason::options();
+    }
 
     public static array $sortableColumns = [
         'platform_reason_id' => 'platform_reason_id',
@@ -44,9 +40,22 @@ class ClaimReasonMapping extends Component
 
     public function mount()
     {
-        $store = MarketplaceStore::where('type', 'trendyol_v2')->where('user_id', auth()->id())->first();
+        $store = MarketplaceStore::where('marketplace', 'trendyol')->where('user_id', auth()->id())->first();
         if ($store) {
             $this->selectedStoreId = $store->id;
+        }
+    }
+
+    public function updatedSelectedStoreId()
+    {
+        if ($this->selectedStoreId) {
+            $exists = MarketplaceStore::where('id', $this->selectedStoreId)
+                ->where('user_id', auth()->id())
+                ->exists();
+            
+            if (! $exists) {
+                $this->selectedStoreId = 0;
+            }
         }
     }
 
@@ -84,7 +93,7 @@ class ClaimReasonMapping extends Component
 
     public function render()
     {
-        $stores = MarketplaceStore::where('type', 'trendyol_v2')->where('user_id', auth()->id())->get();
+        $stores = MarketplaceStore::where('marketplace', 'trendyol')->where('user_id', auth()->id())->get();
         
         $reasons = collect();
         if ($this->selectedStoreId) {
