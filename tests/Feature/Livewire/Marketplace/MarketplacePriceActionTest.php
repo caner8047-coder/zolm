@@ -52,10 +52,39 @@ class MarketplacePriceActionTest extends TestCase
             'sale_price' => 150.00,
         ]);
 
-        $action = MpPriceAction::create([
+        \App\Models\MpProduct::factory()->create([
+            'user_id' => $user->id,
+            'barcode' => 'PUSHBARCODE01',
+            'cogs' => 50.00,
+            'stock_quantity' => 10,
+        ]);
+
+        $bl = \App\Models\MpBuyboxListing::factory()->create([
             'store_id' => $store->id,
             'barcode' => 'PUSHBARCODE01',
+            'buybox_price' => 140.00,
+            'seller_price' => 150.00,
+            'retrieved_at' => now(),
+        ]);
+
+        $rec = MpPriceRecommendation::factory()->create([
+            'store_id' => $store->id,
+            'mp_buybox_listing_id' => $bl->id,
+            'barcode' => 'PUSHBARCODE01',
+            'current_price' => 150.00,
+            'buybox_price' => 140.00,
+            'recommended_price' => 140.00,
+            'minimum_safe_price' => 100.00,
+            'unit_cost' => 50.00,
+            'risk_level' => 'low',
+        ]);
+
+        $action = MpPriceAction::create([
+            'store_id' => $store->id,
+            'recommendation_id' => $rec->id,
+            'barcode' => 'PUSHBARCODE01',
             'old_price' => 150.00,
+            'expected_current_price' => 150.00,
             'requested_price' => 140.00,
             'status' => 'pending',
             'approved_by' => $user->id,
@@ -95,8 +124,8 @@ class MarketplacePriceActionTest extends TestCase
         $job->handle(app(\App\Services\Marketplace\MarketplaceConnectorManager::class));
 
         $action->refresh();
-        $this->assertEquals('failed', $action->status);
-        $this->assertEquals('FEATURE_DISABLED', $action->failure_code);
+        $this->assertEquals('blocked_feature_disabled', $action->status);
+        $this->assertEquals('BLOCKED_FEATURE_DISABLED', $action->failure_code);
     }
 
     public function test_rollback_action_creates_new_rollback_action(): void
