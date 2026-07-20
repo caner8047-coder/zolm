@@ -317,6 +317,13 @@ class MarketplaceCanaryReadinessService
             'duplicate_action_count' => $duplicateActionCount,
             'evaluated_at' => now()->toDateTimeString(),
             'readiness_version' => '1.1.0',
+            // Raw metrics for UI progress indicators
+            'total_shadow_records' => $totalShadowRecords,
+            'total_evaluations' => $totalEvaluations,
+            'buybox_cycles' => $buyboxCycles,
+            'api_sample_count' => $apiSampleCount,
+            'queue_sample_count' => $queueSampleCount,
+            'min_product_observations_ok' => $minProductObservationsOk,
         ];
     }
 

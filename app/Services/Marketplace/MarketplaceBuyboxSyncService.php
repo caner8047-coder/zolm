@@ -26,6 +26,13 @@ class MarketplaceBuyboxSyncService
             return ['status' => 'skipped', 'message' => 'Connector does not support checkBuyboxRank.'];
         }
 
+        // Evaluate existing shadow records against current buybox data
+        try {
+            app(MarketplacePriceShadowService::class)->evaluateShadowRecords($store);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         // Fetch active barcodes for the store to check buybox
         $barcodes = MpProduct::query()
             ->where('user_id', $store->user_id)
@@ -88,7 +95,7 @@ class MarketplaceBuyboxSyncService
                             'retrieved_at' => $now,
                         ];
 
-                        MpBuyboxListing::updateOrCreate(
+                        $buyboxListing = MpBuyboxListing::updateOrCreate(
                             ['store_id' => $store->id, 'barcode' => $barcode],
                             $data
                         );
@@ -99,6 +106,13 @@ class MarketplaceBuyboxSyncService
                                 $data
                             ));
                             $totalUpdated++;
+                        }
+
+                        // Record new shadow simulation for this listing
+                        try {
+                            app(MarketplacePriceShadowService::class)->recordShadowSimulation($buyboxListing);
+                        } catch (\Throwable $e) {
+                            report($e);
                         }
                     });
                 }

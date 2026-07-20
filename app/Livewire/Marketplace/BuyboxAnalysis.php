@@ -728,6 +728,9 @@ class BuyboxAnalysis extends Component
 
         $canaryReadiness = null;
         $activeApproval = null;
+        $lastSyncTime = null;
+        $lastEvaluationTime = null;
+
         if ($store) {
             $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
             $canaryReadiness = $readinessService->checkReadiness($store);
@@ -736,6 +739,17 @@ class BuyboxAnalysis extends Component
                 ->where('status', 'approved')
                 ->where('expires_at', '>=', now())
                 ->first();
+
+            $lastSync = \App\Models\IntegrationSyncRun::where('store_id', $store->id)
+                ->where('status', 'completed')
+                ->latest('finished_at')
+                ->first();
+            $lastSyncTime = $lastSync?->finished_at ? \Carbon\Carbon::parse($lastSync->finished_at) : null;
+
+            $lastEval = \App\Models\MpPriceShadowEvaluation::where('store_id', $store->id)
+                ->latest('evaluated_at')
+                ->first();
+            $lastEvaluationTime = $lastEval?->evaluated_at ? \Carbon\Carbon::parse($lastEval->evaluated_at) : null;
         }
 
         $latestCertification = null;
@@ -758,6 +772,8 @@ class BuyboxAnalysis extends Component
             'canaryReadiness' => $canaryReadiness,
             'activeApproval' => $activeApproval,
             'latestCertification' => $latestCertification,
+            'lastSyncTime' => $lastSyncTime,
+            'lastEvaluationTime' => $lastEvaluationTime,
         ])->layout('layouts.app');
     }
 

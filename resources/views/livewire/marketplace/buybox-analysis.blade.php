@@ -404,6 +404,76 @@
                                         @endforeach
                                     </div>
                                 </div>
+
+                                <div class="border-t border-slate-100 pt-3 mt-3">
+                                    <h4 class="text-xs font-bold text-slate-700 mb-2">📊 Gölge Kanıt İlerleme Göstergesi (Shadow Progress)</h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                                        <!-- Duration -->
+                                        <div>
+                                            <div class="flex justify-between text-slate-500 mb-1">
+                                                <span>Gölge Çalışma Süresi</span>
+                                                <span class="font-bold text-slate-800">{{ $canaryReadiness['shadow_duration_hours'] }} / 24 Saat</span>
+                                            </div>
+                                            <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                                <div class="bg-indigo-600 h-full rounded-full" style="width: {{ min(100, ($canaryReadiness['shadow_duration_hours'] / 24) * 100) }}%"></div>
+                                            </div>
+                                        </div>
+                                        <!-- Records -->
+                                        <div>
+                                            <div class="flex justify-between text-slate-500 mb-1">
+                                                <span>Gölge Önerisi</span>
+                                                <span class="font-bold text-slate-800">{{ $canaryReadiness['total_shadow_records'] ?? 0 }} / 20</span>
+                                            </div>
+                                            <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                                <div class="bg-indigo-600 h-full rounded-full" style="width: {{ min(100, (($canaryReadiness['total_shadow_records'] ?? 0) / 20) * 100) }}%"></div>
+                                            </div>
+                                        </div>
+                                        <!-- Evaluations -->
+                                        <div>
+                                            <div class="flex justify-between text-slate-500 mb-1">
+                                                <span>Gölge Değerlendirme</span>
+                                                <span class="font-bold text-slate-800">{{ $canaryReadiness['total_evaluations'] ?? 0 }} / 20</span>
+                                            </div>
+                                            <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                                <div class="bg-indigo-600 h-full rounded-full" style="width: {{ min(100, (($canaryReadiness['total_evaluations'] ?? 0) / 20) * 100) }}%"></div>
+                                            </div>
+                                        </div>
+                                        <!-- Cycles -->
+                                        <div>
+                                            <div class="flex justify-between text-slate-500 mb-1">
+                                                <span>Buybox Döngüsü (Cycle)</span>
+                                                <span class="font-bold text-slate-800">{{ $canaryReadiness['buybox_cycles'] ?? 0 }} / 3</span>
+                                            </div>
+                                            <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                                <div class="bg-indigo-600 h-full rounded-full" style="width: {{ min(100, (($canaryReadiness['buybox_cycles'] ?? 0) / 3) * 100) }}%"></div>
+                                            </div>
+                                        </div>
+                                        <!-- API Samples -->
+                                        <div>
+                                            <div class="flex justify-between text-slate-500 mb-1">
+                                                <span>API Örneklemi</span>
+                                                <span class="font-bold text-slate-800">{{ $canaryReadiness['api_sample_count'] ?? 0 }} / 20</span>
+                                            </div>
+                                            <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                                <div class="bg-indigo-600 h-full rounded-full" style="width: {{ min(100, (($canaryReadiness['api_sample_count'] ?? 0) / 20) * 100) }}%"></div>
+                                            </div>
+                                        </div>
+                                        <!-- Queue Samples -->
+                                        <div>
+                                            <div class="flex justify-between text-slate-500 mb-1">
+                                                <span>Kuyruk Örneklemi</span>
+                                                <span class="font-bold text-slate-800">{{ $canaryReadiness['queue_sample_count'] ?? 0 }} / 20</span>
+                                            </div>
+                                            <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                                <div class="bg-indigo-600 h-full rounded-full" style="width: {{ min(100, (($canaryReadiness['queue_sample_count'] ?? 0) / 20) * 100) }}%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-50">
+                                        <div>Son Eşitleme: <span class="font-medium text-slate-600">{{ $lastSyncTime ? $lastSyncTime->format('d.m.Y H:i') : 'Yapılmadı' }}</span></div>
+                                        <div>Son Değerlendirme: <span class="font-medium text-slate-600">{{ $lastEvaluationTime ? $lastEvaluationTime->format('d.m.Y H:i') : 'Yapılmadı' }}</span></div>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Approval Card -->
