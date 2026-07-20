@@ -32,6 +32,48 @@ class MarketplacePriceCanaryService
             return 0;
         }
 
+        // Active approval check
+        $approval = \App\Models\MpPriceCanaryApproval::where('store_id', $store->id)
+            ->where('status', 'approved')
+            ->where('expires_at', '>=', now())
+            ->first();
+
+        if (! $approval) {
+            Log::warning('[MarketplacePriceCanaryService] Canary is disabled because no active and valid approval exists.', ['store_id' => $store->id]);
+            return 0;
+        }
+
+        $approvedBarcodes = $approval->approved_product_ids ?? [];
+        if (empty($approvedBarcodes)) {
+            return 0;
+        }
+
+        if ($approval->approval_scope === 'single_product') {
+            $approvedBarcodes = array_slice($approvedBarcodes, 0, 1);
+
+            // Single product canary limits: Max 1 auto action in 24 hours
+            $last24hCount = MpPriceAction::where('store_id', $store->id)
+                ->where('trigger_type', 'automatic')
+                ->where('created_at', '>=', now()->subHours(24))
+                ->count();
+            if ($last24hCount >= 1) {
+                Log::info('[MarketplacePriceCanaryService] Single product canary limited to 1 action per 24 hours.', ['store_id' => $store->id]);
+                return 0;
+            }
+
+            // 12 hours cooldown since last action
+            $lastAction = MpPriceAction::where('store_id', $store->id)
+                ->where('trigger_type', 'automatic')
+                ->orderBy('created_at', 'desc')
+                ->first();
+            if ($lastAction && Carbon::parse($lastAction->created_at)->addHours(12)->isFuture()) {
+                Log::info('[MarketplacePriceCanaryService] Single product canary cooldown active.', ['store_id' => $store->id]);
+                return 0;
+            }
+        } elseif ($approval->approval_scope === 'three_products') {
+            $approvedBarcodes = array_slice($approvedBarcodes, 0, 3);
+        }
+
         // Hourly limit check (Max 5/hr)
         $hourlyCount = MpPriceAction::where('store_id', $store->id)
             ->where('trigger_type', 'automatic')
@@ -57,6 +99,7 @@ class MarketplacePriceCanaryService
         $recommendations = MpPriceRecommendation::where('store_id', $store->id)
             ->where('status', 'new')
             ->where('risk_level', 'low')
+            ->whereIn('barcode', $approvedBarcodes)
             ->orderBy('updated_at', 'desc')
             ->limit(10)
             ->get();
@@ -67,6 +110,15 @@ class MarketplacePriceCanaryService
         foreach ($recommendations as $rec) {
             if ($dispatched >= $maxPerRun) {
                 break;
+            }
+
+            // Price change limit for single product (Max 1%)
+            if ($approval->approval_scope === 'single_product') {
+                $changePct = abs((float)$rec->recommended_price - (float)$rec->current_price) / (float)$rec->current_price;
+                if ($changePct > 0.01) {
+                    Log::info("[MarketplacePriceCanaryService] Single product price change {$changePct} exceeds 1% limit.", ['barcode' => $rec->barcode]);
+                    continue;
+                }
             }
 
             $eligibility = $this->eligibilityService->evaluateEligibility($rec);
@@ -103,5 +155,30 @@ class MarketplacePriceCanaryService
         ]);
 
         return $dispatched;
+    }
+
+    /**
+     * Store Canary Auto-Pause trigger
+     */
+    public function onStoreCanaryPause(int $storeId, string $reason): void
+    {
+        $affected = \App\Models\MpPriceCanaryApproval::where('store_id', $storeId)
+            ->where('status', 'approved')
+            ->update([
+                'status' => 'revoked',
+                'revoked_at' => now(),
+                'revoked_by' => auth()->id() ?: 1,
+                'approval_reason' => "Otomatik Durdurma (Pause): {$reason}",
+            ]);
+
+        if ($affected > 0) {
+            Log::warning("[MarketplacePriceCanaryService] Canary modu otomatik olarak durduruldu (PAUSED). Gerekçe: {$reason}", [
+                'store_id' => $storeId,
+            ]);
+
+            // Dispatch notification via notification service
+            $notificationService = app(MarketplacePricePilotNotificationService::class);
+            $notificationService->notifyCanaryAutoPaused($storeId, $reason);
+        }
     }
 }

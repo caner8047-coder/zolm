@@ -94,4 +94,74 @@ class MarketplacePricePilotService
 
         return null;
     }
+
+    /**
+     * Determine risk level of a pilot product (low, medium, high, blocked)
+     */
+    public function getRiskLevel(MarketplaceStore $store, string $barcode): string
+    {
+        $exclusion = $this->checkExclusionCriteria($store, $barcode);
+        if ($exclusion) {
+            return 'blocked';
+        }
+
+        // Check manual locks
+        $lockService = app(MarketplacePriceLockService::class);
+        if ($lockService->isLocked($store->id, $barcode)) {
+            return 'blocked';
+        }
+
+        $mpProduct = MpProduct::where('user_id', $store->user_id)
+            ->where('barcode', $barcode)
+            ->first();
+
+        if (!$mpProduct) {
+            return 'blocked';
+        }
+
+        // Fetch buybox details
+        $buyboxListing = MpBuyboxListing::where('store_id', $store->id)
+            ->where('barcode', $barcode)
+            ->first();
+
+        if (!$buyboxListing) {
+            return 'high'; // No buybox observation -> high risk
+        }
+
+        // Check fresh recommendation to evaluate minimum safe price margin
+        $recService = app(MarketplaceBuyboxRecommendationService::class);
+        $rec = $recService->generateForListing($buyboxListing);
+
+        if (!$rec || $rec->risk_level === 'blocked') {
+            return 'blocked';
+        }
+
+        $minSafePrice = (float) $rec->minimum_safe_price;
+        $buyboxPrice = (float) $rec->buybox_price;
+
+        if ($buyboxPrice > 0) {
+            $diffPct = (($buyboxPrice - $minSafePrice) / $buyboxPrice) * 100;
+            if ($diffPct < 2.0) {
+                return 'high'; // Buybox very close to minimum safe price
+            }
+            if ($diffPct < 5.0) {
+                return 'medium';
+            }
+        }
+
+        $returnRate = (float) ($mpProduct->return_rate ?? 0);
+        if ($returnRate > 8.0) {
+            return 'high';
+        }
+        if ($returnRate > 4.0) {
+            return 'medium';
+        }
+
+        $stock = (int) $mpProduct->stock_quantity;
+        if ($stock < 15) {
+            return 'high';
+        }
+
+        return 'low';
+    }
 }

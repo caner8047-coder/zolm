@@ -206,6 +206,15 @@ class MarketplacePilotShadowEmergencyTest extends TestCase
             'retrieved_at' => now(),
         ]);
 
+        \App\Models\MpPriceCanaryApproval::create([
+            'store_id' => $this->store->id,
+            'approved_by' => $this->user->id,
+            'approval_scope' => 'single_product',
+            'approved_product_ids' => ['CANARYBARCODE'],
+            'expires_at' => now()->addHours(24),
+            'status' => 'approved',
+        ]);
+
         $canaryService = app(MarketplacePriceCanaryService::class);
         $dispatched = $canaryService->runCanaryCycle($this->store);
 
