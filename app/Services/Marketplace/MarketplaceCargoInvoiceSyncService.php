@@ -32,6 +32,9 @@ class MarketplaceCargoInvoiceSyncService
             ]);
 
             $items = $response['items'] ?? [];
+            if (count($items) === 0) {
+                dump('TrendyolV2Test Debug: items count is 0 for store ' . $store->id, $response);
+            }
             $totalProcessed = 0;
             $now = Carbon::now();
 
@@ -49,6 +52,7 @@ class MarketplaceCargoInvoiceSyncService
                         'parcel_unique_id' => $parcelUniqueId,
                     ],
                     [
+                        'user_id' => $store->user_id,
                         'order_number' => $orderNumber,
                         'invoice_date' => data_get($item, 'invoiceDate'),
                         'cargo_type' => data_get($item, 'cargoType'), // e.g. RETURN, OUTBOUND

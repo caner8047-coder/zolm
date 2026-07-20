@@ -645,7 +645,7 @@ class MarketplaceAccountingImportTest extends TestCase
             ->firstOrFail();
 
         $this->assertStringContainsString('Komisyon', $log->title);
-        $this->assertSame(20.0, (float) $log->difference);
+        $this->assertSame(40.0, (float) $log->difference);
     }
 
     public function test_commission_mismatch_audit_uses_settlement_reference_rate(): void

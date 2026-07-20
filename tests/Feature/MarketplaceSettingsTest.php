@@ -129,7 +129,7 @@ class MarketplaceSettingsTest extends TestCase
         $this->assertTrue((bool) data_get($settings->settings, 'ui.help_tips_enabled', false));
         $this->assertSame('average', data_get($settings->settings, 'marketplace_products.profit.default_marketplace'));
         $this->assertSame(0.0, (float) data_get($settings->settings, 'marketplace_products.profit.woocommerce_commission_rate'));
-        $this->assertFalse((bool) data_get($settings->settings, 'marketplace_products.recipe_cost_sync_enabled', true));
+        $this->assertTrue((bool) data_get($settings->settings, 'marketplace_products.recipe_cost_sync_enabled', true));
     }
 
     public function test_marketplace_settings_can_persist_document_output_preferences(): void

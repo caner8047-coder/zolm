@@ -28,7 +28,7 @@ class MarketplaceBuyboxSyncService
 
         // Fetch active barcodes for the store to check buybox
         $barcodes = MpProduct::query()
-            ->where('store_id', $store->id)
+            ->where('user_id', $store->user_id)
             ->whereNotNull('barcode')
             ->pluck('barcode')
             ->unique()

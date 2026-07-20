@@ -211,10 +211,26 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                 'nextPageToken' => $nextPageToken,
             ], fn ($value) => $value !== null && $value !== '');
 
-            $response = $this->request($store)
-                ->get($this->approvedProductsV2Path($store), $query)
-                ->throw()
-                ->json();
+            try {
+                $response = $this->request($store)
+                    ->get($this->approvedProductsV2Path($store), $query)
+                    ->throw()
+                    ->json();
+            } catch (\Illuminate\Http\Client\RequestException $e) {
+                if ($e->response->status() === 404) {
+                    $v1Query = array_merge($query, [
+                        'approved' => true,
+                        'dateQueryType' => $query['dateQueryType'] === 'CONTENT_MODIFIED_DATE' ? 'LAST_MODIFIED_DATE' : $query['dateQueryType'],
+                    ]);
+                    
+                    $response = $this->request($store)
+                        ->get("integration/product/sellers/{$this->sellerId($store)}/products", $v1Query)
+                        ->throw()
+                        ->json();
+                } else {
+                    throw $e;
+                }
+            }
 
             $content = Arr::get($response, 'content', []);
 
@@ -594,17 +610,34 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
 
     public function testConnection(MarketplaceStore $store): array
     {
-        $response = $this->request($store)
-            ->get($this->approvedProductsV2Path($store), [
-                'page' => 0,
-                'size' => 1,
-                'dateQueryType' => 'CONTENT_MODIFIED_DATE',
-                'supplierId' => $this->sellerId($store),
-                'startDate' => now()->subDays(30)->valueOf(),
-                'endDate' => now()->valueOf(),
-            ])
-            ->throw()
-            ->json();
+        $query = [
+            'page' => 0,
+            'size' => 1,
+            'dateQueryType' => 'CONTENT_MODIFIED_DATE',
+            'supplierId' => $this->sellerId($store),
+            'startDate' => now()->subDays(30)->valueOf(),
+            'endDate' => now()->valueOf(),
+        ];
+
+        try {
+            $response = $this->request($store)
+                ->get($this->approvedProductsV2Path($store), $query)
+                ->throw()
+                ->json();
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            if ($e->response->status() === 404) {
+                $v1Query = array_merge($query, [
+                    'approved' => true,
+                    'dateQueryType' => 'LAST_MODIFIED_DATE',
+                ]);
+                $response = $this->request($store)
+                    ->get("integration/product/sellers/{$this->sellerId($store)}/products", $v1Query)
+                    ->throw()
+                    ->json();
+            } else {
+                throw $e;
+            }
+        }
 
         return [
             'ok' => true,
@@ -1126,6 +1159,8 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                 'barcode' => data_get($payload, 'barcode'),
                 'stockCode' => $this->stockCodeFromPayload($payload),
                 'status' => data_get($payload, 'status'),
+                'onSale' => data_get($payload, 'onSale') ?? data_get($payload, 'onsale'),
+                'approved' => data_get($payload, 'approved'),
                 'salePrice' => data_get($payload, 'price.salePrice') ?: data_get($payload, 'salePrice'),
                 'listPrice' => data_get($payload, 'price.listPrice') ?: data_get($payload, 'listPrice'),
                 'commissionRate' => $this->trendyolCatalogCommissionRate($payload),

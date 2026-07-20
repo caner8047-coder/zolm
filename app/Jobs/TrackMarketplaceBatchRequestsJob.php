@@ -24,8 +24,8 @@ class TrackMarketplaceBatchRequestsJob implements ShouldQueue
             return;
         }
 
-        $pendingRuns = IntegrationPushRun::whereNotNull('external_batch_id')
-            ->whereIn('status', ['pending', 'processing'])
+        $pendingRuns = IntegrationPushRun::where('status', 'processing')
+            ->whereNotNull('external_batch_id')
             ->get();
 
         foreach ($pendingRuns as $run) {
@@ -35,7 +35,7 @@ class TrackMarketplaceBatchRequestsJob implements ShouldQueue
             }
 
             $store = MarketplaceStore::find($run->store_id);
-            if (!$store) continue;
+            if (!$store) { continue; }
 
             $connector = $connectorManager->resolveForStore($store);
             if (!method_exists($connector, 'checkBatchRequestResult')) {
