@@ -84,7 +84,7 @@ class MpPriceCanaryApproval extends Model
         }
 
         // Validate emergency stop
-        $stopService = app(MarketplacePriceEmergencyStopService::class);
+        $stopService = app(\App\Services\Marketplace\MarketplacePriceEmergencyStopService::class);
         if ($stopService->isEmergencyStopActive($store->id)) {
             return false;
         }

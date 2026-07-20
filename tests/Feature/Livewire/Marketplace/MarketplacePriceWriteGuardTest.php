@@ -75,6 +75,7 @@ class MarketplacePriceWriteGuardTest extends TestCase
         
         MpPriceEmergencyStop::create([
             'store_id' => $this->store->id,
+            'scope' => 'store',
             'is_active' => true,
             'reason' => 'Emergency Stop Triggered',
         ]);
@@ -100,7 +101,7 @@ class MarketplacePriceWriteGuardTest extends TestCase
         $this->expectException(MarketplacePriceWriteBlockedException::class);
         $this->expectExceptionMessage('Feature flagler kapalı.');
 
-        $connector->pushPrice($this->listing, 95.0);
+        $connector->pushPrice($this->listing, 95.0, ['trigger_type' => 'automatic']);
     }
 
     public function test_write_guard_blocks_when_no_active_approval(): void
@@ -116,7 +117,7 @@ class MarketplacePriceWriteGuardTest extends TestCase
         $this->expectException(MarketplacePriceWriteBlockedException::class);
         $this->expectExceptionMessage('Geçerli Canary onayı yok veya barkod kapsam dışı.');
 
-        $connector->pushPrice($this->listing, 95.0);
+        $connector->pushPrice($this->listing, 95.0, ['trigger_type' => 'automatic']);
     }
 
     public function test_write_guard_allows_when_all_conditions_met(): void
@@ -143,7 +144,7 @@ class MarketplacePriceWriteGuardTest extends TestCase
         ]);
 
         $connector = new TrendyolConnector($this->store);
-        $result = $connector->pushPrice($this->listing, 95.0);
+        $result = $connector->pushPrice($this->listing, 95.0, ['trigger_type' => 'automatic']);
 
         $this->assertEquals('queued', $result['status']);
         $this->assertEquals('BATCH-ABC-123', $result['batch_request_id']);
