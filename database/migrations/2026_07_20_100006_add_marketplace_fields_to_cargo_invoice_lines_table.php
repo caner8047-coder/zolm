@@ -10,12 +10,12 @@ return new class extends Migration
     {
         Schema::table('cargo_invoice_lines', function (Blueprint $table) {
             $table->foreignId('store_id')->nullable()->constrained('marketplace_stores')->nullOnDelete();
-            $table->string('invoice_number')->nullable()->index();
-            $table->string('package_id')->nullable()->index();
-            $table->string('cargo_type')->nullable();
-            $table->string('currency')->default('TRY');
+            $table->string('invoice_serial_number')->nullable()->index();
+            $table->string('order_number')->nullable()->index();
+            $table->string('parcel_unique_id')->nullable()->index();
+            $table->string('cargo_type')->nullable(); // OUTBOUND, RETURN
 
-            $table->unique(['store_id', 'invoice_number', 'package_id'], 'cil_store_inv_pkg_unique');
+            $table->unique(['store_id', 'invoice_serial_number', 'parcel_unique_id'], 'cil_store_inv_serial_pkg_unique');
         });
     }
 
@@ -23,9 +23,9 @@ return new class extends Migration
     {
         Schema::table('cargo_invoice_lines', function (Blueprint $table) {
             $table->dropForeign(['store_id']);
-            $table->dropUnique('cil_store_inv_pkg_unique');
+            $table->dropUnique('cil_store_inv_serial_pkg_unique');
             
-            $table->dropColumn(['store_id', 'invoice_number', 'package_id', 'cargo_type', 'currency']);
+            $table->dropColumn(['store_id', 'invoice_serial_number', 'order_number', 'parcel_unique_id', 'cargo_type']);
         });
     }
 };
