@@ -596,13 +596,16 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                 throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Talep edilen fiyat ile gönderilen fiyat uyuşmuyor.");
             }
 
-            // Verify idempotency and correlation fields match action in DB
+            // Idempotency ve correlation her iki alanda da zorunlu ve DB kaydıyla eşleşmeli
             $ctxIdempotency = data_get($context, 'idempotency_key');
             $ctxCorrelation = data_get($context, 'correlation_id');
-            if ($ctxIdempotency && $ctxIdempotency !== $dbAction->idempotency_key) {
+            if (!$ctxIdempotency || !$ctxCorrelation) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Idempotency key veya correlation ID eksik.");
+            }
+            if ($ctxIdempotency !== $dbAction->idempotency_key) {
                 throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Idempotency key uyuşmazlığı.");
             }
-            if ($ctxCorrelation && $ctxCorrelation !== $dbAction->correlation_id) {
+            if ($ctxCorrelation !== $dbAction->correlation_id) {
                 throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Correlation ID uyuşmazlığı.");
             }
 
@@ -678,9 +681,12 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                     throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Kullanıcının bu mağazaya erişim yetkisi yok.");
                 }
             } elseif ($actorType === 'system') {
-                if ($actorId !== 'system') {
-                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz sistem aktörü.");
-                }
+                // Manuel fiyat yolunda sistem aktörü kabul edilmez.
+                // Otomatik/sistem fiyat değişiklikleri kalıcı MpPriceAction kaydı ile price_action_id yolunu kullanmalıdır.
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException(
+                    'Fiyat push işlemi engellendi: Manuel fiyat yolunda sistem aktörü kabul edilemez. '
+                    . 'Otomatik işlemler price_action_id yolunu kullanmalıdır.'
+                );
             } else {
                 throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz aktör tipi.");
             }
@@ -782,6 +788,24 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             } elseif ($actorType === 'system') {
                 if ($actorId !== 'system') {
                     throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz sistem aktörü.");
+                }
+                // Sistem stok job'ları doğrulanmış bir IntegrationPushRun kaydıyla bağlı olmalıdır
+                $pushRunId = data_get($context, 'integration_push_run_id');
+                if (!$pushRunId) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException(
+                        'Stok push işlemi engellendi: Sistem aktörü için integration_push_run_id zorunludur.'
+                    );
+                }
+                $verifiedPushRun = \App\Models\IntegrationPushRun::find($pushRunId);
+                if (!$verifiedPushRun) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException(
+                        'Stok push işlemi engellendi: Belirtilen push run kaydı bulunamadı.'
+                    );
+                }
+                if ((int)$verifiedPushRun->store_id !== (int)$listing->store_id) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException(
+                        'Stok push işlemi engellendi: Push run başka bir mağazaya ait.'
+                    );
                 }
             } else {
                 throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz aktör tipi.");
