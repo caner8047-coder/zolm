@@ -42,6 +42,19 @@ class MarketplaceListingPushService
             throw new \RuntimeException('Bu kanal için fiyat push henüz desteklenmiyor.');
         }
 
+        if (!isset($context['price_action_id']) && !isset($context['write_context_type'])) {
+            $context = array_merge([
+                'write_context_type' => 'legacy_manual',
+                'actor_type' => 'user',
+                'actor_id' => $triggeredBy ?: auth()->id() ?: 1,
+                'permission' => 'update_price',
+                'store_id' => $listing->store_id,
+                'correlation_id' => 'manual-' . uniqid(),
+                'idempotency_key' => 'key-' . uniqid(),
+                'reason' => 'User manually triggered update via MarketplaceListingPushService',
+            ], $context);
+        }
+
         return $this->queuePush(
             $listing,
             'price',

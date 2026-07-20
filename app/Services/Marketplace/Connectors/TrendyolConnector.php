@@ -561,33 +561,80 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Emergency stop aktif.");
         }
 
-        // DB-first trigger type detection — prevents caller spoofing.
-        // If a price_action_id is provided we read the canonical trigger_type from DB.
-        // Legacy / non-canary pushPrice calls that have no price_action_id pass only
-        // the dry-run and emergency-stop guards above.
-        $isCanaryAction = false;
-        $priceActionId  = data_get($context, 'price_action_id');
+        // Strict context checking
+        $priceActionId = data_get($context, 'price_action_id');
+        $writeContextType = data_get($context, 'write_context_type');
+
         if ($priceActionId) {
             $dbAction = \App\Models\MpPriceAction::find($priceActionId);
-            if ($dbAction) {
-                $isCanaryAction = in_array($dbAction->trigger_type, ['automatic', 'canary'], true)
-                    || $dbAction->action_type === 'canary';
-            }
-        }
-
-        if ($isCanaryAction) {
-            if (!config('marketplace.trendyol.automatic_price_actions_enabled', false)
-                || !config('marketplace.trendyol.canary_enabled', false)) {
-                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Feature flagler kapalı.");
+            if (!$dbAction) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Kayıtlı fiyat aksiyonu bulunamadı.");
             }
 
-            $approval = \App\Models\MpPriceCanaryApproval::where('store_id', $listing->store_id)
-                ->where('status', 'approved')
-                ->where('expires_at', '>=', now())
-                ->first();
-            if (!$approval || !in_array($barcode, $approval->approved_product_ids ?? [], true)) {
-                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Geçerli Canary onayı yok veya barkod kapsam dışı.");
+            // Verify store matches
+            if ((int)$dbAction->store_id !== (int)$listing->store_id) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Mağaza uyuşmazlığı.");
             }
+
+            // Verify barcode matches
+            if ($dbAction->barcode !== $barcode) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Barkod uyuşmazlığı.");
+            }
+
+            // Verify requested price matches the pushed price
+            if (abs((float)$dbAction->requested_price - $price) > 0.01) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Talep edilen fiyat ile gönderilen fiyat uyuşmuyor.");
+            }
+
+            $triggerType = $dbAction->trigger_type;
+            $isCanaryAction = in_array($triggerType, ['automatic', 'canary'], true)
+                || $dbAction->action_type === 'canary';
+
+            if ($isCanaryAction) {
+                if (!config('marketplace.trendyol.automatic_price_actions_enabled', false)
+                    || !config('marketplace.trendyol.canary_enabled', false)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Feature flagler kapalı.");
+                }
+
+                $approval = \App\Models\MpPriceCanaryApproval::where('store_id', $listing->store_id)
+                    ->where('status', 'approved')
+                    ->where('expires_at', '>=', now())
+                    ->first();
+
+                if (!$approval || !in_array($barcode, $approval->approved_product_ids ?? [], true)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Geçerli Canary onayı yok veya barkod kapsam dışı.");
+                }
+
+                // Verify readiness fingerprint hash matches
+                $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
+                $readiness = $readinessService->checkReadiness($listing->store);
+                if (!$approval->isValidForCurrentReadiness($readiness)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Canary onayının parmak izi (fingerprint) mevcut durumla uyuşmuyor.");
+                }
+            }
+        } elseif ($writeContextType === 'legacy_manual') {
+            // Verify legacy/manual context parameters
+            $actorType = data_get($context, 'actor_type');
+            $actorId = data_get($context, 'actor_id');
+            $permission = data_get($context, 'permission');
+            $storeId = data_get($context, 'store_id');
+            $correlationId = data_get($context, 'correlation_id');
+            $idempotencyKey = data_get($context, 'idempotency_key');
+            $reason = data_get($context, 'reason');
+
+            if (!$actorType || !$actorId || !$permission || !$storeId || !$correlationId || !$idempotencyKey || !$reason) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Geçersiz manuel yazma bağlamı.");
+            }
+
+            if ((int)$storeId !== (int)$listing->store_id) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Manuel bağlamda mağaza uyuşmazlığı.");
+            }
+
+            if (!config('marketplace.trendyol.manual_price_actions_enabled', false)) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Manuel fiyat değiştirme devre dışı.");
+            }
+        } else {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Doğrulanmış yazma bağlamı bulunamadı.");
         }
 
         $payload = [
@@ -622,6 +669,44 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
 
         if (!$barcode) {
             throw new \RuntimeException('Stok guncellemesi icin listing barkodu zorunludur.');
+        }
+
+        // Connector Write Guard Check for Stock
+        $dryRun = config('marketplace.trendyol.dry_run_enabled') || env('TRENDYOL_PRICE_CANARY_DRY_RUN_ENABLED', false);
+        if ($dryRun) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Dry-run modu aktif.");
+        }
+
+        $stopService = app(\App\Services\Marketplace\MarketplacePriceEmergencyStopService::class);
+        if ($stopService->isEmergencyStopActive($listing->store_id)) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Emergency stop aktif.");
+        }
+
+        // Strict context checking for Stock
+        $priceActionId = data_get($context, 'price_action_id');
+        $writeContextType = data_get($context, 'write_context_type');
+
+        if ($priceActionId) {
+            $dbAction = \App\Models\MpPriceAction::find($priceActionId);
+            if (!$dbAction) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Kayıtlı fiyat aksiyonu bulunamadı.");
+            }
+            if ((int)$dbAction->store_id !== (int)$listing->store_id) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Mağaza uyuşmazlığı.");
+            }
+            if ($dbAction->barcode !== $barcode) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Barkod uyuşmazlığı.");
+            }
+        } elseif ($writeContextType === 'stock_update') {
+            // Assert price immutability: price sent must match current listing price exactly
+            $targetSalePrice = round((float) ($context['sale_price'] ?? $listing->sale_price ?? 0), 2);
+            $currentListingPrice = round((float) ($listing->sale_price ?? 0), 2);
+            
+            if (abs($targetSalePrice - $currentListingPrice) > 0.01) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Stok güncellenirken fiyat değiştirilemez.");
+            }
+        } else {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Doğrulanmış stok yazma bağlamı (stock_update) eksik.");
         }
 
         $payload = [
