@@ -7,6 +7,13 @@ use Illuminate\Support\Facades\Log;
 
 class MarketplacePriceEmergencyStopService
 {
+    protected MarketplacePricePilotNotificationService $notificationService;
+
+    public function __construct(MarketplacePricePilotNotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
+
     public function isEmergencyStopActive(?int $storeId = null, ?string $barcode = null): bool
     {
         // Config level check
@@ -57,6 +64,10 @@ class MarketplacePriceEmergencyStopService
             'user_id' => auth()->id(),
         ]);
 
+        if ($storeId) {
+            $this->notificationService->notifyEmergencyStopActivated($storeId, $reason);
+        }
+
         return $stop;
     }
 
@@ -80,6 +91,10 @@ class MarketplacePriceEmergencyStopService
             'store_id' => $storeId,
             'user_id' => auth()->id(),
         ]);
+
+        if ($storeId && $affected > 0) {
+            $this->notificationService->notifyEmergencyStopDeactivated($storeId);
+        }
 
         return $affected;
     }

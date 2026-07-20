@@ -17,6 +17,7 @@ class MarketplacePriceActionRevalidatorService
         protected MarketplacePricePolicyService $policyService,
         protected MarketplacePriceLockService $lockService,
         protected MarketplacePriceEmergencyStopService $emergencyStopService,
+        protected MarketplacePricePilotNotificationService $notificationService,
     ) {
     }
 
@@ -31,6 +32,14 @@ class MarketplacePriceActionRevalidatorService
 
         if (! $store || ! $store->is_active) {
             $this->blockAction($action, 'blocked_store_unhealthy', 'Mağaza bulunamadı veya pasif durumda.');
+            return false;
+        }
+
+        // 0. Tenant Isolation Check
+        $user = auth()->user();
+        if ($user && $user->id !== $store->user_id && $user->role !== 'admin' && $user->role !== 'operator') {
+            $this->notificationService->notifyTenantIsolationViolation($store->id, $user->id);
+            $this->blockAction($action, 'blocked_tenant_isolation', 'Bu mağaza için işlem yapmaya yetkiniz yok.');
             return false;
         }
 
@@ -82,6 +91,8 @@ class MarketplacePriceActionRevalidatorService
 
         $staleThreshold = now()->subMinutes((int) $policy['stale_threshold_minutes']);
         if (! $buyboxListing || ($buyboxListing->retrieved_at && Carbon::parse($buyboxListing->retrieved_at)->lt($staleThreshold))) {
+            $hoursStale = $buyboxListing && $buyboxListing->retrieved_at ? (int) now()->diffInHours(Carbon::parse($buyboxListing->retrieved_at)) : 24;
+            $this->notificationService->notifyStaleBuyboxData($store->id, $hoursStale);
             $this->blockAction($action, 'blocked_stale_data', 'Buybox verisi bayat (stale). Lütfen veriyi yenileyin.');
             return false;
         }
@@ -98,6 +109,7 @@ class MarketplacePriceActionRevalidatorService
         $requestedPrice = (float) $action->requested_price;
 
         if ($requestedPrice < $minSafePrice) {
+            $this->notificationService->notifyMinimumPriceViolation($store->id, $action->barcode, $requestedPrice, $minSafePrice);
             $this->blockAction($action, 'blocked_margin', "İstenen fiyat (₺{$requestedPrice}) yenilenen minimum güvenli fiyatın (₺{$minSafePrice}) altındadır.");
             return false;
         }
