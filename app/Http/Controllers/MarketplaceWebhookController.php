@@ -26,7 +26,7 @@ class MarketplaceWebhookController extends Controller
             abort(404);
         }
 
-        $connector = $connectorManager->resolve($normalizedProvider);
+        $connector = $connectorManager->resolveForStore($store);
         $metadata = $connector instanceof ReceivesWebhooks
             ? $connector->extractWebhookMetadata($request)
             : [

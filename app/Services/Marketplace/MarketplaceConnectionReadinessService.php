@@ -22,6 +22,20 @@ class MarketplaceConnectionReadinessService
     {
         $provider = MarketplaceProviderRegistry::normalize((string) $store->marketplace);
         $connection = $store->connection;
+
+        if ($connection?->isDemo()) {
+            return [
+                'provider' => $provider,
+                'is_ready' => true,
+                'checks' => [
+                    $this->check('Demo bağlantısı', true, 'Güvenli demo connector etkin; harici API isteği gönderilmez.'),
+                ],
+                'warnings' => [],
+                'failures' => [],
+                'summary' => 'Demo bağlantısı test akışları için hazır.',
+            ];
+        }
+
         $credentials = $connection?->credentials_encrypted ?? [];
 
         $checks = [

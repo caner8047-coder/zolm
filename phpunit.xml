@@ -40,5 +40,7 @@
         <env name="CUSTOMER_CARE_KNOWLEDGE_ENABLED" value="false"/>
         <env name="CUSTOMER_CARE_ANALYTICS_ENABLED" value="false"/>
         <env name="CUSTOMER_CARE_DEMO_MODE" value="false"/>
+        <env name="CUSTOMER_CARE_RELEASE_CENTER_ENABLED" value="false" force="true"/>
+        <env name="CUSTOMER_CARE_COMPLIANCE_ENABLED" value="false" force="true"/>
     </php>
 </phpunit>

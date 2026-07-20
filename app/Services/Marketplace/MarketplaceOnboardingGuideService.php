@@ -69,7 +69,7 @@ class MarketplaceOnboardingGuideService
             'connected_stores' => MarketplaceStore::query()
                 ->where('user_id', $userId)
                 ->where('is_active', true)
-                ->whereHas('connection', fn (Builder $query) => $query->whereIn('status', ['configured', 'verified', 'active', 'connected']))
+                ->whereHas('connection', fn (Builder $query) => $query->whereIn('status', ['configured', 'verified', 'active', 'connected', 'demo']))
                 ->count(),
             'products' => (clone $productQuery)->count(),
             'cost_ready_products' => (clone $productQuery)

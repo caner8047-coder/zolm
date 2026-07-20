@@ -397,6 +397,9 @@ class CargoShipmentService
 
         if ($actualDesi > 0) {
             $financialUpdates['total_desi'] = max((float) $shipment->total_desi, $actualDesi);
+            // Gerçek ağırlığı da kaydet (desi'den türet: ağırlık ≈ desi / 3)
+            $actualWeight = max(0.5, round($actualDesi / 3, 2));
+            $financialUpdates['total_weight'] = max((float) ($shipment->total_weight ?? 0), $actualWeight);
         }
 
         if (!$shippedAt && $this->isCarrierShippedStatus((string) $status)) {
@@ -699,8 +702,13 @@ class CargoShipmentService
                 : ['pieces' => $quantity, 'desi' => (float) ($item->cargo_desi ?? 0) * $quantity, 'own_cargo_cost' => 0];
 
             $pieces += max(1, (int) ($composition['pieces'] ?? $quantity));
-            $desi += (float) ($composition['desi'] ?? 0);
+            $itemDesi = (float) ($composition['desi'] ?? 0);
+            $desi += $itemDesi;
             $cost += (float) ($composition['own_cargo_cost'] ?? 0);
+
+            // Ağırlık: desi'den türet (ağırlık ≈ desi / 3, minimum 0.5 kg)
+            $itemWeight = max(0.5, round($itemDesi / 3, 2));
+            $weight += $itemWeight;
         }
 
         return [

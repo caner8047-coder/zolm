@@ -58,7 +58,7 @@ class DispatchDueMarketplaceSyncsCommand extends Command
                 continue;
             }
 
-            $capabilities = $this->connectorManager->resolve($store->marketplace)->capabilities();
+            $capabilities = $this->connectorManager->resolveForStore($store)->capabilities();
             $readiness = $this->connectionReadiness->inspect($store);
 
             if ($readiness['failures'] !== []) {

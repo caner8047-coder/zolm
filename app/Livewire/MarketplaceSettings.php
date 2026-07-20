@@ -220,7 +220,7 @@ class MarketplaceSettings extends Component
             'ui.help_tips_enabled' => true,
             'marketplace_products.profit.default_marketplace' => 'average',
             'marketplace_products.profit.woocommerce_commission_rate' => 0.00,
-            'marketplace_products.recipe_cost_sync_enabled' => false,
+            'marketplace_products.recipe_cost_sync_enabled' => true,
             'ui.orders_per_page' => 20,
             'ui.products_per_page' => 25,
             'ui.orders_default_date_range_days' => 0,

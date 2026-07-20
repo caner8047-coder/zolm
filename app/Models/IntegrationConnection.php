@@ -10,6 +10,8 @@ class IntegrationConnection extends Model
 {
     use HasFactory;
 
+    public const STATUS_DEMO = 'demo';
+
     protected $fillable = [
         'store_id',
         'provider',
@@ -35,5 +37,10 @@ class IntegrationConnection extends Model
     public function store(): BelongsTo
     {
         return $this->belongsTo(MarketplaceStore::class, 'store_id');
+    }
+
+    public function isDemo(): bool
+    {
+        return $this->status === self::STATUS_DEMO;
     }
 }

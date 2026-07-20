@@ -35,7 +35,7 @@ class MarketplaceListingPushService
             throw new \RuntimeException('Bu mağazada fiyat push özelliği kapalı.');
         }
 
-        $connector = app(MarketplaceConnectorManager::class)->resolve($listing->store->marketplace);
+        $connector = app(MarketplaceConnectorManager::class)->resolveForStore($listing->store);
         $capabilities = $connector->capabilities();
 
         if (!($connector instanceof PushesPrice) || !($capabilities['price_push'] ?? false)) {
@@ -76,7 +76,7 @@ class MarketplaceListingPushService
             throw new \RuntimeException('Bu mağazada stok push özelliği kapalı.');
         }
 
-        $connector = app(MarketplaceConnectorManager::class)->resolve($listing->store->marketplace);
+        $connector = app(MarketplaceConnectorManager::class)->resolveForStore($listing->store);
         $capabilities = $connector->capabilities();
 
         if (!($connector instanceof PushesStock) || !($capabilities['stock_push'] ?? false)) {

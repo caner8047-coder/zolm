@@ -42,7 +42,7 @@ class MarketplaceSyncService
         ])->save();
 
         try {
-            $connector = $this->connectorManager->resolve($store->marketplace);
+            $connector = $this->connectorManager->resolveForStore($store);
             $syncType = $this->normalizeSyncType($run->sync_type);
             $options = $this->buildOptions($run);
 
@@ -215,16 +215,22 @@ class MarketplaceSyncService
             $startDate = $now->subDays(31);
         }
 
+        $cursor = null;
+
         if (!$startDate) {
             $lastCompletedRun = IntegrationSyncRun::query()
                 ->where('store_id', $store->id)
                 ->where('sync_type', $run->sync_type)
-                ->where('status', 'completed')
+                ->whereIn('status', ['completed', 'failed']) // Pick up cursor even if failed previously to resume
                 ->whereNotNull('finished_at')
                 ->latest('finished_at')
                 ->first();
 
-            if ($lastCompletedRun?->finished_at) {
+            if ($lastCompletedRun?->cursor_after && $run->sync_type === 'orders') {
+                $cursor = $lastCompletedRun->cursor_after;
+                // Keep the original start_date of the window if we are continuing via cursor
+                $startDate = $lastCompletedRun->cursor_before ? CarbonImmutable::parse($lastCompletedRun->cursor_before) : CarbonImmutable::parse($lastCompletedRun->started_at);
+            } elseif ($lastCompletedRun?->finished_at) {
                 $startDate = CarbonImmutable::parse($lastCompletedRun->finished_at)->subMinutes(5);
             } else {
                 $startDate = $this->resolveBackfillStart($run);
@@ -234,6 +240,7 @@ class MarketplaceSyncService
         return [
             'start_date' => $startDate->toIso8601String(),
             'end_date' => $endDate->toIso8601String(),
+            'cursor' => $cursor,
             'page_size' => Arr::get($notes, 'options.page_size'),
             'order_number' => Arr::get($notes, 'options.order_number'),
             'shipment_package_ids' => Arr::get($notes, 'options.shipment_package_ids', []),
@@ -325,8 +332,8 @@ class MarketplaceSyncService
 
         if ($connection) {
             $connection->forceFill([
-                'status' => 'configured',
-                'last_verified_at' => now(),
+                'status' => $connection->isDemo() ? IntegrationConnection::STATUS_DEMO : 'configured',
+                'last_verified_at' => $connection->isDemo() ? $connection->last_verified_at : now(),
                 'last_error' => null,
             ])->save();
         }
@@ -345,7 +352,7 @@ class MarketplaceSyncService
 
         if ($connection) {
             $connection->forceFill([
-                'status' => 'error',
+                'status' => $connection->isDemo() ? IntegrationConnection::STATUS_DEMO : 'error',
                 'last_error' => $exception->getMessage(),
             ])->save();
         }

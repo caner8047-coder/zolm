@@ -264,6 +264,7 @@ class MarketplaceIntegrations extends Component
 
         $store = $this->selectedStore;
         $existingConnection = $store->connection;
+        $isDemo = $existingConnection?->isDemo() ?? false;
         $existingCredentials = $existingConnection?->credentials_encrypted ?? [];
 
         $providedSecret = $validated['connectionForm']['apiSecret'] ?? null;
@@ -300,7 +301,9 @@ class MarketplaceIntegrations extends Component
             array_filter($credentials, fn ($value) => filled($value)),
             $resolvedApiBaseUrl,
         );
-        $connectionStatus = $readiness['is_ready'] ? 'configured' : 'draft';
+        $connectionStatus = $isDemo
+            ? IntegrationConnection::STATUS_DEMO
+            : ($readiness['is_ready'] ? 'configured' : 'draft');
         $connectionError = $readiness['is_ready'] ? null : ($readiness['failures'][0] ?? null);
 
         $store->connection()->updateOrCreate(
@@ -319,7 +322,7 @@ class MarketplaceIntegrations extends Component
         );
 
         $store->forceFill([
-            'status' => $connectionStatus,
+            'status' => $isDemo ? $store->status : $connectionStatus,
         ])->save();
 
         $this->loadSelectedStore();
@@ -438,7 +441,7 @@ class MarketplaceIntegrations extends Component
 
         [$featureToggles, $forcedOffSettings] = $this->normalizeSyncFeatureToggles(
             $validated['syncForm'],
-            app(MarketplaceConnectorManager::class)->resolve($marketplace)->capabilities(),
+            app(MarketplaceConnectorManager::class)->resolveForStore($this->selectedStore)->capabilities(),
         );
 
         $this->selectedStore->syncProfile()->updateOrCreate(
@@ -661,7 +664,10 @@ class MarketplaceIntegrations extends Component
         abort_unless($this->selectedStore, 404);
 
         try {
-            $connector = $connectorManager->resolve($this->selectedStore->marketplace);
+            $this->selectedStore->loadMissing('connection');
+            $connection = $this->selectedStore->connection;
+            $isDemo = $connection?->isDemo() ?? false;
+            $connector = $connectorManager->resolveForStore($this->selectedStore);
 
             if (!$connector instanceof TestsConnection) {
                 $this->notify('Bu kanal için bağlantı doğrulama henüz desteklenmiyor.', 'error');
@@ -672,8 +678,8 @@ class MarketplaceIntegrations extends Component
             $result = $connector->testConnection($this->selectedStore);
 
             if (!(bool) ($result['ok'] ?? false)) {
-                $this->selectedStore->connection?->forceFill([
-                    'status' => 'draft',
+                $connection?->forceFill([
+                    'status' => $isDemo ? IntegrationConnection::STATUS_DEMO : 'draft',
                     'last_error' => $result['message'] ?? 'Bağlantı doğrulanamadı.',
                 ])->save();
 
@@ -685,18 +691,18 @@ class MarketplaceIntegrations extends Component
 
             $verifiedAt = now();
 
-            $this->selectedStore->connection?->forceFill([
-                'status' => 'configured',
-                'last_verified_at' => $verifiedAt,
+            $connection?->forceFill([
+                'status' => $isDemo ? IntegrationConnection::STATUS_DEMO : 'configured',
+                'last_verified_at' => $isDemo ? $connection->last_verified_at : $verifiedAt,
                 'last_error' => null,
             ])->save();
 
             $readiness = $connectionReadinessService->inspect($this->selectedStore->fresh(['connection', 'syncProfile']));
 
             if (!(bool) ($readiness['is_ready'] ?? false)) {
-                $this->selectedStore->connection?->forceFill([
-                    'status' => 'draft',
-                    'last_verified_at' => $verifiedAt,
+                $connection?->forceFill([
+                    'status' => $isDemo ? IntegrationConnection::STATUS_DEMO : 'draft',
+                    'last_verified_at' => $isDemo ? $connection->last_verified_at : $verifiedAt,
                     'last_error' => $readiness['failures'][0] ?? 'Bağlantı doğrulandı ancak mağaza henüz sync için hazır değil.',
                 ])->save();
 
@@ -710,9 +716,9 @@ class MarketplaceIntegrations extends Component
                 return;
             }
 
-            $this->selectedStore->connection?->forceFill([
-                'status' => 'configured',
-                'last_verified_at' => $verifiedAt,
+            $connection?->forceFill([
+                'status' => $isDemo ? IntegrationConnection::STATUS_DEMO : 'configured',
+                'last_verified_at' => $isDemo ? $connection->last_verified_at : $verifiedAt,
                 'last_error' => null,
             ])->save();
 
@@ -733,8 +739,12 @@ class MarketplaceIntegrations extends Component
         } catch (\Throwable $exception) {
             $message = $this->friendlyConnectionExceptionMessage($exception);
 
-            $this->selectedStore->connection?->forceFill([
-                'status' => 'error',
+            $failedConnection = $this->selectedStore->connection;
+            $failedStatus = $failedConnection?->isDemo() === true
+                ? IntegrationConnection::STATUS_DEMO
+                : 'error';
+            $failedConnection?->forceFill([
+                'status' => $failedStatus,
                 'last_error' => $message,
             ])->save();
 
@@ -1075,8 +1085,11 @@ class MarketplaceIntegrations extends Component
     {
         $provider = $this->selectedStore?->marketplace ?: ($this->storeForm['marketplace'] ?? 'trendyol');
 
-        return app(MarketplaceConnectorManager::class)
-            ->resolve($provider)
+        $manager = app(MarketplaceConnectorManager::class);
+
+        return ($this->selectedStore
+            ? $manager->resolveForStore($this->selectedStore)
+            : $manager->resolve($provider))
             ->capabilities();
     }
 
@@ -1578,7 +1591,7 @@ class MarketplaceIntegrations extends Component
         $stats = [
             'entities' => $legalEntities->where('is_active', true)->count(),
             'stores' => $stores->where('is_active', true)->count(),
-            'configured' => $stores->filter(fn (MarketplaceStore $store) => $store->connection?->status === 'configured')->count(),
+            'configured' => $stores->filter(fn (MarketplaceStore $store) => in_array($store->connection?->status, ['configured', 'demo'], true))->count(),
             'webhookEnabled' => $stores->filter(fn (MarketplaceStore $store) => $store->syncProfile?->webhook_enabled)->count(),
             'smokeReady' => (int) data_get($this->readinessSummary, 'totals.ready', 0),
             'needsAttention' => (int) data_get($this->readinessSummary, 'totals.warning', 0) + (int) data_get($this->readinessSummary, 'totals.missing', 0),

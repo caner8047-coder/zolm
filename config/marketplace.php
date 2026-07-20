@@ -176,6 +176,11 @@ return [
         'claims_page_size' => (int) env('TRENDYOL_CLAIMS_PAGE_SIZE', 50),
         'max_claim_pages_per_sync' => (int) env('TRENDYOL_MAX_CLAIM_PAGES_PER_SYNC', 20),
         'claim_issue_reason_id' => (int) env('TRENDYOL_CLAIM_ISSUE_REASON_ID', 451),
+        'order_stream_enabled' => (bool) env('TRENDYOL_ORDER_STREAM_ENABLED', true),
+        'buybox_sync_enabled' => (bool) env('TRENDYOL_BUYBOX_SYNC_ENABLED', false), // Safe default
+        'cargo_invoice_sync_enabled' => (bool) env('TRENDYOL_CARGO_INVOICE_SYNC_ENABLED', false), // Safe default
+        'reference_sync_enabled' => (bool) env('TRENDYOL_REFERENCE_SYNC_ENABLED', false), // Safe default
+        'batch_tracking_enabled' => (bool) env('TRENDYOL_BATCH_TRACKING_ENABLED', false), // Safe default
         'sync_defaults' => [
             'orders_poll_minutes' => 15,
             'finance_poll_minutes' => 60,

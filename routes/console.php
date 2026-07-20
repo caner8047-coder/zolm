@@ -207,3 +207,48 @@ Schedule::call(fn () => $runInlineCommand('customer-care:reconcile-projections',
     ->dailyAt('04:30')
     ->when(fn () => config('customer-care.enabled', false) && config('customer-care.reconciliation_enabled', false))
     ->withoutOverlapping();
+
+// Trendyol Sprint 1: Buybox, References, Batch Tracking
+Schedule::call(function () {
+    $stores = \App\Models\MarketplaceStore::where('marketplace', 'trendyol')
+        ->whereHas('connection', fn($q) => $q->where('status', 'active'))
+        ->get();
+
+    foreach ($stores as $store) {
+        dispatch(new \App\Jobs\SyncMarketplaceBuyboxJob($store));
+    }
+})
+    ->name('marketplace-sync-buybox')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
+
+Schedule::call(function () {
+    $stores = \App\Models\MarketplaceStore::where('marketplace', 'trendyol')
+        ->whereHas('connection', fn($q) => $q->where('status', 'active'))
+        ->get();
+
+    foreach ($stores as $store) {
+        dispatch(new \App\Jobs\SyncMarketplaceReferenceJob($store));
+    }
+})
+    ->name('marketplace-sync-references')
+    ->dailyAt('02:00')
+    ->withoutOverlapping();
+
+Schedule::call(function () {
+    $stores = \App\Models\MarketplaceStore::where('marketplace', 'trendyol')
+        ->whereHas('connection', fn($q) => $q->where('status', 'active'))
+        ->get();
+
+    foreach ($stores as $store) {
+        dispatch(new \App\Jobs\SyncMarketplaceCargoInvoiceJob($store));
+    }
+})
+    ->name('marketplace-sync-cargo-invoices')
+    ->dailyAt('05:00')
+    ->withoutOverlapping();
+
+Schedule::job(new \App\Jobs\TrackMarketplaceBatchRequestsJob)
+    ->name('marketplace-track-batch-requests')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();

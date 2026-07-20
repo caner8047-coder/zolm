@@ -46,7 +46,7 @@ class MarketplaceSmokeTestCommand extends Command
             ->with(['connection', 'syncProfile', 'legalEntity'])
             ->findOrFail((int) $this->argument('store'));
 
-        $connector = $this->connectorManager->resolve($store->marketplace);
+        $connector = $this->connectorManager->resolveForStore($store);
         $requestedType = (string) $this->option('type');
         $supportedTypes = $this->supportedTypes($connector);
 
@@ -125,10 +125,6 @@ class MarketplaceSmokeTestCommand extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * @param  object  $connector
-     * @return array<int, string>
-     */
     protected function supportedTypes(object $connector): array
     {
         $capabilities = method_exists($connector, 'capabilities')
@@ -136,11 +132,17 @@ class MarketplaceSmokeTestCommand extends Command
             : [];
 
         return array_values(array_filter([
-            'orders' => $connector instanceof PullsOrders && (bool) ($capabilities['orders'] ?? false) ? 'orders' : null,
-            'products' => $connector instanceof PullsProducts && (bool) ($capabilities['products'] ?? false) ? 'products' : null,
-            'finance' => $connector instanceof PullsFinancials && (bool) ($capabilities['finance'] ?? false) ? 'finance' : null,
-            'questions' => $connector instanceof PullsCustomerQuestions && (bool) ($capabilities['questions'] ?? false) ? 'questions' : null,
-            'claims' => $connector instanceof PullsClaims && (bool) ($capabilities['claims'] ?? false) ? 'claims' : null,
+            'orders' => method_exists($connector, 'pullOrders') ? 'orders' : null,
+            'products' => method_exists($connector, 'pullProducts') ? 'products' : null,
+            'finance' => method_exists($connector, 'pullFinancials') ? 'finance' : null,
+            'questions' => method_exists($connector, 'pullCustomerQuestions') ? 'questions' : null,
+            'claims' => method_exists($connector, 'pullClaims') ? 'claims' : null,
+            'buybox' => method_exists($connector, 'checkBuyboxRank') ? 'buybox' : null,
+            'brands' => method_exists($connector, 'getBrands') ? 'brands' : null,
+            'categories' => method_exists($connector, 'getCategories') ? 'categories' : null,
+            'claim_reasons' => method_exists($connector, 'getClaimIssueReasons') ? 'claim_reasons' : null,
+            'cargo_invoices' => method_exists($connector, 'pullCargoInvoices') ? 'cargo_invoices' : null,
+            'batch_requests' => method_exists($connector, 'checkBatchRequestResult') ? 'batch_requests' : null,
         ]));
     }
 
@@ -160,7 +162,7 @@ class MarketplaceSmokeTestCommand extends Command
             return $supportedTypes;
         }
 
-        if (!in_array($normalizedType, ['orders', 'products', 'finance', 'questions', 'claims'], true)) {
+        if (!in_array($normalizedType, ['orders', 'products', 'finance', 'questions', 'claims', 'buybox', 'brands', 'categories', 'claim_reasons', 'cargo_invoices', 'batch_requests'], true)) {
             throw new \RuntimeException('Gecersiz type: ' . $requestedType);
         }
 
@@ -242,6 +244,12 @@ class MarketplaceSmokeTestCommand extends Command
                 'finance' => $this->pullFinancials($connector, $store, $options),
                 'questions' => $this->pullQuestions($connector, $store, $options),
                 'claims' => $this->pullClaims($connector, $store, $options),
+                'buybox' => ['items' => method_exists($connector, 'checkBuyboxRank') ? $connector->checkBuyboxRank($store, []) : [], 'meta' => []],
+                'brands' => ['items' => method_exists($connector, 'getBrands') ? $connector->getBrands($store, 0, $preview) : [], 'meta' => []],
+                'categories' => ['items' => method_exists($connector, 'getCategories') ? $connector->getCategories($store) : [], 'meta' => []],
+                'claim_reasons' => ['items' => method_exists($connector, 'getClaimIssueReasons') ? $connector->getClaimIssueReasons($store) : [], 'meta' => []],
+                'cargo_invoices' => method_exists($connector, 'pullCargoInvoices') ? $connector->pullCargoInvoices($store, $options) : ['items' => [], 'meta' => []],
+                'batch_requests' => ['items' => [], 'meta' => ['status' => 'skipped (requires batch ID)']],
             };
         } catch (Throwable $exception) {
             if ($persist) {

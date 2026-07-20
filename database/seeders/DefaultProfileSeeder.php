@@ -11,14 +11,22 @@ class DefaultProfileSeeder extends Seeder
     public function run(): void
     {
         $admin = User::where('email', 'admin@zolm.test')->first();
-        
-        if (!$admin) {
+
+        if (! $admin) {
             return;
         }
 
+        $this->runForUser($admin->id);
+    }
+
+    /**
+     * Belirtilen kullanıcı için varsayılan motor profillerini idempotent oluşturur.
+     */
+    public function runForUser(int $userId): void
+    {
         // Varsayılan Üretim Profili
         Profile::firstOrCreate(
-            ['name' => 'Varsayılan Üretim', 'user_id' => $admin->id, 'type' => 'production'],
+            ['name' => 'Varsayılan Üretim', 'user_id' => $userId, 'type' => 'production'],
             [
                 'is_default' => true,
                 'input_config' => [
@@ -43,7 +51,7 @@ class DefaultProfileSeeder extends Seeder
 
         // Varsayılan Operasyon Profili
         Profile::firstOrCreate(
-            ['name' => 'Varsayılan Operasyon', 'user_id' => $admin->id, 'type' => 'operation'],
+            ['name' => 'Varsayılan Operasyon', 'user_id' => $userId, 'type' => 'operation'],
             [
                 'is_default' => true,
                 'input_config' => [

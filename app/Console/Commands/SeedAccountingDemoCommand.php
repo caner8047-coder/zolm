@@ -221,7 +221,11 @@ class SeedAccountingDemoCommand extends Command
 
     protected function seedDemoData(int $userId): void
     {
-        DB::transaction(function () use ($userId) {
+        $scenarioDate = SalesOrder::where('user_id', $userId)
+            ->where('source_key', 'demo_sales_order_1')
+            ->first()?->order_date?->toDateString() ?? now()->toDateString();
+
+        DB::transaction(function () use ($userId, $scenarioDate) {
             // 1. Legal Entity
             $legalEntity = LegalEntity::firstOrCreate([
                 'user_id' => $userId,
@@ -413,13 +417,17 @@ class SeedAccountingDemoCommand extends Command
             }
 
             // 10. Satış Siparişi (SalesOrder)
+            $salesOrderDate = SalesOrder::where('user_id', $userId)
+                ->where('source_key', 'demo_sales_order_1')
+                ->first()?->order_date?->toDateString() ?? $scenarioDate;
+
             $salesOrderHeader = [
                 'user_id' => $userId,
                 'party_id' => $customer1->id,
                 'legal_entity_id' => $legalEntity->id,
                 'warehouse_id' => $warehouse->id,
                 'document_number' => 'DEMO-SO-001',
-                'order_date' => now()->toDateString(),
+                'order_date' => $salesOrderDate,
                 'currency_code' => 'TRY',
                 'exchange_rate' => 1.0,
                 'discount_amount' => 100.0,
@@ -450,13 +458,17 @@ class SeedAccountingDemoCommand extends Command
             }
 
             // 11. Satın Alma Siparişi (PurchaseOrder)
+            $purchaseOrderDate = PurchaseOrder::where('user_id', $userId)
+                ->where('source_key', 'demo_purchase_order_1')
+                ->first()?->order_date?->toDateString() ?? $scenarioDate;
+
             $purchaseOrderHeader = [
                 'user_id' => $userId,
                 'party_id' => $supplier1->id,
                 'legal_entity_id' => $legalEntity->id,
                 'warehouse_id' => $warehouse->id,
                 'document_number' => 'DEMO-PO-001',
-                'order_date' => now()->toDateString(),
+                'order_date' => $purchaseOrderDate,
                 'currency_code' => 'TRY',
                 'exchange_rate' => 1.0,
                 'discount_amount' => 0.0,
@@ -488,7 +500,7 @@ class SeedAccountingDemoCommand extends Command
                     'party_id' => $customer1->id,
                     'account_id' => $cashGlAccount->id,
                     'amount' => 3000.0,
-                    'collection_date' => now()->toDateString(),
+                    'collection_date' => $scenarioDate,
                     'payment_method' => 'cash',
                     'description' => 'Demo Kasa Tahsilatı',
                     'legal_entity_id' => $legalEntity->id,
@@ -517,7 +529,7 @@ class SeedAccountingDemoCommand extends Command
                     'party_id' => $supplier1->id,
                     'account_id' => $bankGlAccount->id,
                     'amount' => 2000.0,
-                    'payment_date' => now()->toDateString(),
+                    'payment_date' => $scenarioDate,
                     'payment_method' => 'bank',
                     'description' => 'Demo Banka Ödemesi',
                     'legal_entity_id' => $legalEntity->id,
@@ -544,7 +556,7 @@ class SeedAccountingDemoCommand extends Command
                 'to_account_id' => $bankAccount->account_id,
                 'amount' => 1000.0,
                 'exchange_rate' => 1.0,
-                'transfer_date' => now()->toDateString(),
+                'transfer_date' => $scenarioDate,
                 'description' => 'Demo Kasadan Bankaya Transfer',
                 'reference_number' => 'REF-TX-001',
                 'legal_entity_id' => $legalEntity->id,
@@ -554,7 +566,7 @@ class SeedAccountingDemoCommand extends Command
             // 15. Manuel Yevmiye Fişi
             app(JournalService::class)->postManual([
                 'user_id' => $userId,
-                'entry_date' => now()->toDateString(),
+                'entry_date' => $scenarioDate,
                 'entry_type' => 'manual',
                 'description' => 'Demo Diğer Giderler Fişi',
                 'currency_code' => 'TRY',

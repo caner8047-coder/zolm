@@ -6,6 +6,7 @@ use App\Models\IntegrationConnection;
 use App\Models\MarketplaceStore;
 use App\Services\Marketplace\Connectors\PazaramaConnector;
 use App\Services\Marketplace\MarketplaceConnectorManager;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -17,6 +18,13 @@ class PazaramaConnectorTest extends TestCase
         parent::setUp();
 
         Cache::flush();
+    }
+
+    protected function tearDown(): void
+    {
+        CarbonImmutable::setTestNow();
+
+        parent::tearDown();
     }
 
     public function test_manager_resolves_pazarama_connector(): void
@@ -125,6 +133,8 @@ class PazaramaConnectorTest extends TestCase
 
     public function test_it_normalizes_pazarama_orders(): void
     {
+        CarbonImmutable::setTestNow('2026-04-21T00:00:00Z');
+
         Http::fake([
             'https://isortagimgiris.pazarama.com/connect/token' => Http::response([
                 'success' => true,
@@ -196,12 +206,69 @@ class PazaramaConnectorTest extends TestCase
         $this->assertSame('LIVA-PUF', data_get($result, 'items.0.items.0.stock_code'));
         $this->assertSame(1419.90, data_get($result, 'items.0.items.0.billable_amount'));
         $this->assertSame('2026-04-24 19:00', data_get($result, 'items.0.items.0.raw_payload.estimatedShippingDate'));
+        $this->assertFalse(data_get($result, 'meta.window_clamped'));
+        $this->assertFalse(data_get($result, 'meta.end_adjusted'));
+        $this->assertSame('2026-04-20T21:00:00+00:00', data_get($result, 'meta.requested_end_date'));
+        $this->assertSame('2026-04-20T21:00:00+00:00', data_get($result, 'meta.effective_end_date'));
 
         Http::assertSent(fn ($request) => $request->url() === 'https://isortagimapi.pazarama.com/order/getOrdersForApi'
             && data_get($request->data(), 'pageSize') === 100
             && data_get($request->data(), 'pageNumber') === 1
             && data_get($request->data(), 'startDate') === '2026-04-19T21:00:00'
             && data_get($request->data(), 'endDate') === '2026-04-20T21:00:00');
+    }
+
+    public function test_it_clamps_outdated_order_window_without_sending_an_inverted_range(): void
+    {
+        CarbonImmutable::setTestNow('2026-07-20T00:00:00Z');
+
+        Http::fake([
+            'https://isortagimgiris.pazarama.com/connect/token' => Http::response([
+                'success' => true,
+                'data' => [
+                    'accessToken' => 'pazarama-token',
+                    'expiresIn' => 3600,
+                    'tokenType' => 'Bearer',
+                ],
+            ], 200),
+            'https://isortagimapi.pazarama.com/order/getOrdersForApi' => Http::response([
+                'data' => [],
+                'success' => true,
+                'messageCode' => 'ORD0',
+            ], 200),
+        ]);
+
+        $result = app(PazaramaConnector::class)->pullOrders($this->makeStore(), [
+            'start_date' => '2026-04-01T00:00:00Z',
+            'end_date' => '2026-04-02T00:00:00Z',
+        ]);
+
+        $this->assertTrue(data_get($result, 'meta.window_clamped'));
+        $this->assertTrue(data_get($result, 'meta.end_adjusted'));
+        $this->assertSame('2026-04-21T00:00:00+00:00', data_get($result, 'meta.effective_start_date'));
+        $this->assertSame('2026-04-21T01:00:00+00:00', data_get($result, 'meta.effective_end_date'));
+        $this->assertSame('2026-04-21T01:00:00+00:00', data_get($result, 'meta.cursor_after'));
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://isortagimapi.pazarama.com/order/getOrdersForApi'
+            && data_get($request->data(), 'startDate') === '2026-04-21T00:00:00'
+            && data_get($request->data(), 'endDate') === '2026-04-21T01:00:00');
+    }
+
+    public function test_it_rejects_an_inverted_requested_order_window(): void
+    {
+        Http::fake();
+
+        try {
+            app(PazaramaConnector::class)->pullOrders($this->makeStore(), [
+                'start_date' => '2026-07-20T12:00:00Z',
+                'end_date' => '2026-07-20T11:00:00Z',
+            ]);
+            $this->fail('Ters sipariş penceresi reddedilmedi.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('başlangıç tarihi bitiş tarihinden sonra olamaz', $exception->getMessage());
+        }
+
+        Http::assertNothingSent();
     }
 
     public function test_it_uses_default_api_base_url_when_pazarama_auth_url_is_saved_as_api_url(): void

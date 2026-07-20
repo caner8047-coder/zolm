@@ -205,7 +205,7 @@ class MarketplaceManualSyncDispatchService
 
     protected function guardSyncType(MarketplaceStore $store, string $syncType): void
     {
-        $connector = $this->connectorManager->resolve($store->marketplace);
+        $connector = $this->connectorManager->resolveForStore($store);
         $capabilities = $connector->capabilities();
 
         if (!in_array($syncType, ['orders', 'products', 'finance', 'questions', 'claims'], true)) {

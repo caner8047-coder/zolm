@@ -123,56 +123,58 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
     public function pullOrders(MarketplaceStore $store, array $options = []): array
     {
         $items = [];
-        $page = 0;
-        $size = min((int) ($options['page_size'] ?? config('marketplace.trendyol.page_size', 200)), 200);
+        $size = min((int) ($options['page_size'] ?? config('marketplace.trendyol.page_size', 500)), 500); // Stream API supports up to 500
         $requestedStartDate = CarbonImmutable::parse($options['start_date'])->setTimezone('UTC');
         $endDate = CarbonImmutable::parse($options['end_date'])->setTimezone('UTC');
-        [$startDate, $orderWindowMeta] = $this->resolveOrderWindow($requestedStartDate, $endDate);
+        [$effectiveStartDate, $orderWindowMeta] = $this->resolveOrderWindow($requestedStartDate, $endDate);
+        
         $requestedPackageIds = collect(Arr::wrap($options['shipment_package_ids'] ?? []))
             ->map(fn ($packageId) => trim((string) $packageId))
             ->filter()
             ->values()
             ->all();
 
-        do {
-            $response = $this->request($store)
-                ->get("integration/order/sellers/{$this->sellerId($store)}/orders", array_filter([
-                    'startDate' => $startDate->valueOf(),
-                    'endDate' => $endDate->valueOf(),
-                    'page' => $page,
-                    'size' => $size,
-                    'orderByField' => 'PackageLastModifiedDate',
-                    'orderByDirection' => 'DESC',
-                    'status' => $options['status'] ?? null,
-                    'orderNumber' => $options['order_number'] ?? null,
-                ]))
-                ->throw()
-                ->json();
+        $cursor = $options['cursor'] ?? null;
+        $pagesProcessed = 0;
+        
+        $response = $this->request($store)
+            ->get("integration/order/sellers/{$this->sellerId($store)}/orders/stream", array_filter([
+                'startDate' => $effectiveStartDate->valueOf(),
+                'endDate' => $endDate->valueOf(),
+                'cursor' => $cursor,
+                'size' => $size,
+                'status' => $options['status'] ?? null,
+                'orderNumber' => $options['order_number'] ?? null,
+            ], fn ($value) => $value !== null && $value !== ''))
+            ->throw()
+            ->json();
 
-            $content = Arr::get($response, 'content', []);
+        $content = Arr::get($response, 'content', []);
 
-            foreach ($content as $packagePayload) {
-                $normalizedPackage = $this->normalizeOrderPackage($packagePayload);
+        foreach ($content as $packagePayload) {
+            $normalizedPackage = $this->normalizeOrderPackage($packagePayload);
 
-                if (
-                    $requestedPackageIds !== []
-                    && !in_array((string) data_get($normalizedPackage, 'package.external_package_id'), $requestedPackageIds, true)
-                ) {
-                    continue;
-                }
-
-                $items[] = $normalizedPackage;
+            if (
+                $requestedPackageIds !== []
+                && !in_array((string) data_get($normalizedPackage, 'package.external_package_id'), $requestedPackageIds, true)
+            ) {
+                continue;
             }
 
-            $totalPages = (int) Arr::get($response, 'totalPages', 1);
-            $page++;
-        } while ($page < $totalPages);
+            $items[] = $normalizedPackage;
+        }
+
+        $hasMore = (bool) Arr::get($response, 'hasMore', false);
+        $nextCursor = (string) Arr::get($response, 'nextCursor');
+        $pagesProcessed++;
 
         return [
             'items' => $items,
             'meta' => array_merge([
                 'items_received' => count($items),
-                'cursor_after' => $endDate->toIso8601String(),
+                'cursor_after' => $hasMore && filled($nextCursor) ? $nextCursor : null,
+                'has_more' => $hasMore,
+                'pages_processed' => $pagesProcessed,
             ], $orderWindowMeta),
         ];
     }
@@ -189,7 +191,6 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
         $status = $options['status'] ?? null;
         $maxPageCount = max(1, (int) ceil(10000 / max(1, $size)));
         $usingNextPageToken = false;
-        $productEndpointMode = 'approved_v2';
 
         if ($status === null && ($options['on_sale'] ?? null) === true) {
             $status = 'onSale';
@@ -210,19 +211,14 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                 'nextPageToken' => $nextPageToken,
             ], fn ($value) => $value !== null && $value !== '');
 
-            $pageResult = $this->fetchApprovedProductsPage($store, $query, $productEndpointMode);
-            $response = $pageResult['payload'];
-            $productEndpointMode = $pageResult['endpoint'];
+            $response = $this->request($store)
+                ->get($this->approvedProductsV2Path($store), $query)
+                ->throw()
+                ->json();
 
             $content = Arr::get($response, 'content', []);
 
             foreach ($content as $productPayload) {
-                if ($productEndpointMode === 'products_v1') {
-                    $items[] = $this->normalizeProduct($productPayload);
-
-                    continue;
-                }
-
                 $items = array_merge($items, $this->normalizeApprovedProductContent($productPayload));
             }
 
@@ -598,14 +594,17 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
 
     public function testConnection(MarketplaceStore $store): array
     {
-        $response = $this->fetchApprovedProductsPage($store, [
-            'page' => 0,
-            'size' => 1,
-            'dateQueryType' => 'CONTENT_MODIFIED_DATE',
-            'supplierId' => $this->sellerId($store),
-            'startDate' => now()->subDays(30)->valueOf(),
-            'endDate' => now()->valueOf(),
-        ])['payload'];
+        $response = $this->request($store)
+            ->get($this->approvedProductsV2Path($store), [
+                'page' => 0,
+                'size' => 1,
+                'dateQueryType' => 'CONTENT_MODIFIED_DATE',
+                'supplierId' => $this->sellerId($store),
+                'startDate' => now()->subDays(30)->valueOf(),
+                'endDate' => now()->valueOf(),
+            ])
+            ->throw()
+            ->json();
 
         return [
             'ok' => true,
@@ -761,88 +760,9 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
         return $sellerId;
     }
 
-    /**
-     * @param  array<string, mixed>  $query
-     * @return array{endpoint: string, payload: array<string, mixed>}
-     */
-    protected function fetchApprovedProductsPage(MarketplaceStore $store, array $query, string $endpointMode = 'approved_v2'): array
-    {
-        if ($endpointMode === 'products_v1') {
-            return [
-                'endpoint' => 'products_v1',
-                'payload' => $this->request($store)
-                    ->get($this->productsV1Path($store), $this->productsV1Query($query))
-                    ->throw()
-                    ->json(),
-            ];
-        }
-
-        $response = $this->request($store)
-            ->get($this->approvedProductsV2Path($store), $query);
-
-        if ($this->shouldFallbackToProductsV1($response)) {
-            return [
-                'endpoint' => 'products_v1',
-                'payload' => $this->request($store)
-                    ->get($this->productsV1Path($store), $this->productsV1Query($query))
-                    ->throw()
-                    ->json(),
-            ];
-        }
-
-        return [
-            'endpoint' => 'approved_v2',
-            'payload' => $response->throw()->json(),
-        ];
-    }
-
     protected function approvedProductsV2Path(MarketplaceStore $store): string
     {
         return "integration/product/sellers/{$this->sellerId($store)}/products/approved";
-    }
-
-    protected function productsV1Path(MarketplaceStore $store): string
-    {
-        return "integration/product/sellers/{$this->sellerId($store)}/products";
-    }
-
-    /**
-     * @param  array<string, mixed>  $query
-     * @return array<string, mixed>
-     */
-    protected function productsV1Query(array $query): array
-    {
-        $legacyQuery = $query;
-        $status = (string) ($legacyQuery['status'] ?? '');
-        unset($legacyQuery['status'], $legacyQuery['nextPageToken']);
-
-        $legacyQuery['approved'] = true;
-
-        if (($legacyQuery['dateQueryType'] ?? null) === 'CONTENT_MODIFIED_DATE' || ($legacyQuery['dateQueryType'] ?? null) === 'VARIANT_MODIFIED_DATE') {
-            $legacyQuery['dateQueryType'] = 'LAST_MODIFIED_DATE';
-        } elseif (($legacyQuery['dateQueryType'] ?? null) === 'VARIANT_CREATED_DATE') {
-            $legacyQuery['dateQueryType'] = 'CREATED_DATE';
-        }
-
-        if ($status === 'onSale') {
-            $legacyQuery['onSale'] = true;
-        } elseif (in_array($status, ['archived', 'blacklisted'], true)) {
-            $legacyQuery[$status] = true;
-        }
-
-        return array_filter($legacyQuery, fn ($value) => $value !== null && $value !== '');
-    }
-
-    protected function shouldFallbackToProductsV1(Response $response): bool
-    {
-        if ($response->status() !== 404) {
-            return false;
-        }
-
-        $body = mb_strtolower($response->body());
-
-        return str_contains($body, 'trendyolnotfoundexception')
-            || str_contains($body, 'products/approved');
     }
 
     /**
@@ -1759,7 +1679,7 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
 
         if ($endDate->lessThan($minAllowedStartDate)) {
             throw new \RuntimeException(sprintf(
-                'Trendyol Siparis Paketlerini Cekme servisi 5 Mart 2026 itibariyla yalnizca son %d gunu destekliyor. %s bitis tarihli sorgu bu limitin disinda kaliyor.',
+                'Trendyol Siparis Paketlerini Cekme servisi 5 Mart 2026 itibariyla klasik API\'de 30 gün limiti getirmişti. Stream API 90 güne kadar desteklese de bu mağaza yapılandırması son %d günü baz alıyor. %s bitiş tarihli sorgu bu limitin dışında kalıyor.',
                 $historyLimitDays,
                 $endDate->toIso8601String()
             ));
@@ -1865,5 +1785,111 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
         }
 
         return trim((string) ($event['order_number'] ?? '')) === $requestedOrderNumber;
+    }
+
+    /**
+     * @param  array<int, string>  $barcodes
+     * @return array<string, mixed>
+     */
+    public function checkBuyboxRank(MarketplaceStore $store, array $barcodes): array
+    {
+        if (count($barcodes) > 10) {
+            throw new \InvalidArgumentException('Trendyol Buybox servisi tek seferde en fazla 10 barkod sorgulanmasına izin verir.');
+        }
+
+        if ($barcodes === []) {
+            return [];
+        }
+
+        $response = $this->request($store)
+            ->post("integration/product/sellers/{$this->sellerId($store)}/products/buybox", [
+                'barcodeList' => array_values($barcodes),
+            ])
+            ->throw()
+            ->json();
+
+        return Arr::get($response, 'content', $response);
+    }
+
+    public function pullCargoInvoices(MarketplaceStore $store, array $options = []): array
+    {
+        $items = [];
+        $startDate = CarbonImmutable::parse($options['start_date'])->setTimezone('UTC');
+        $endDate = CarbonImmutable::parse($options['end_date'])->setTimezone('UTC');
+
+        foreach ($this->dateWindows($startDate, $endDate, 14) as [$windowStart, $windowEnd]) {
+            $page = 0;
+            $totalPages = 1;
+
+            do {
+                $response = $this->request($store)
+                    ->get("integration/finance/che/sellers/{$this->sellerId($store)}/cargo-invoices", array_filter([
+                        'invoiceDateStart' => $windowStart->valueOf(),
+                        'invoiceDateEnd' => $windowEnd->valueOf(),
+                        'page' => $page,
+                        'size' => 500,
+                    ]))
+                    ->throw()
+                    ->json();
+
+                foreach (Arr::get($response, 'content', []) as $invoicePayload) {
+                    $items[] = $invoicePayload;
+                }
+
+                $totalPages = (int) Arr::get($response, 'totalPages', 1);
+                $page++;
+            } while ($page < $totalPages);
+        }
+
+        return [
+            'items' => $items,
+            'meta' => [
+                'items_received' => count($items),
+                'cursor_after' => $endDate->toIso8601String(),
+            ]
+        ];
+    }
+
+    public function getClaimIssueReasons(MarketplaceStore $store): array
+    {
+        $response = $this->request($store)
+            ->get("integration/order/sellers/{$this->sellerId($store)}/claim-issue-reasons")
+            ->throw()
+            ->json();
+
+        return Arr::get($response, 'content', $response);
+    }
+
+    public function checkBatchRequestResult(MarketplaceStore $store, string $batchRequestId): array
+    {
+        $response = $this->request($store)
+            ->get("integration/product/sellers/{$this->sellerId($store)}/products/batch-requests/{$batchRequestId}")
+            ->throw()
+            ->json();
+
+        return is_array($response) ? $response : [];
+    }
+
+    public function getBrands(MarketplaceStore $store, int $page = 0, int $size = 500): array
+    {
+        $response = $this->request($store)
+            ->get("integration/product/brands", [
+                'page' => $page,
+                'size' => $size,
+            ])
+            ->throw()
+            ->json();
+
+        return Arr::get($response, 'brands', Arr::get($response, 'content', []));
+    }
+
+    public function getCategories(MarketplaceStore $store): array
+    {
+        $response = $this->request($store)
+            ->get("integration/product/product-categories")
+            ->throw()
+            ->json();
+
+        return Arr::get($response, 'categories', Arr::get($response, 'content', []));
     }
 }

@@ -115,10 +115,10 @@ class PazaramaConnector extends AbstractMarketplaceConnector implements PullsOrd
         $items = [];
         $page = 1;
         $size = min((int) ($options['page_size'] ?? 100), 100);
-        
+
         $requestedStartDate = CarbonImmutable::parse($options['start_date'])->setTimezone('UTC');
         $endDate = CarbonImmutable::parse($options['end_date'])->setTimezone('UTC');
-        [$startDate, $orderWindowMeta] = $this->resolveOrderWindow($requestedStartDate, $endDate);
+        [$startDate, $endDate, $orderWindowMeta] = $this->resolveOrderWindow($requestedStartDate, $endDate);
 
         do {
             $response = $this->request($store)
@@ -154,10 +154,15 @@ class PazaramaConnector extends AbstractMarketplaceConnector implements PullsOrd
     }
 
     /**
-     * @return array{0: CarbonImmutable, 1: array<string, mixed>}
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable, 2: array<string, mixed>}
      */
     protected function resolveOrderWindow(CarbonImmutable $requestedStartDate, CarbonImmutable $endDate): array
     {
+        $requestedEndDate = $endDate;
+        if ($requestedStartDate->greaterThan($requestedEndDate)) {
+            throw new \InvalidArgumentException('Pazarama sipariş başlangıç tarihi bitiş tarihinden sonra olamaz.');
+        }
+
         $historyLimitDays = max(1, (int) config('marketplace.pazarama.order_history_limit_days', 90));
         $minAllowedStartDate = CarbonImmutable::now('UTC')->subDays($historyLimitDays);
 
@@ -165,17 +170,22 @@ class PazaramaConnector extends AbstractMarketplaceConnector implements PullsOrd
             ? $minAllowedStartDate
             : $requestedStartDate;
 
-        if ($endDate->lessThan($effectiveStartDate)) {
+        $endAdjusted = $endDate->lessThan($effectiveStartDate);
+        if ($endAdjusted) {
             $endDate = $effectiveStartDate->addHour();
         }
 
         return [
             $effectiveStartDate,
+            $endDate,
             [
                 'history_limit_days' => $historyLimitDays,
                 'requested_start_date' => $requestedStartDate->toIso8601String(),
+                'requested_end_date' => $requestedEndDate->toIso8601String(),
                 'effective_start_date' => $effectiveStartDate->toIso8601String(),
-                'window_clamped' => !$effectiveStartDate->equalTo($requestedStartDate),
+                'effective_end_date' => $endDate->toIso8601String(),
+                'end_adjusted' => $endAdjusted,
+                'window_clamped' => ! $effectiveStartDate->equalTo($requestedStartDate) || $endAdjusted,
             ],
         ];
     }
@@ -429,11 +439,11 @@ class PazaramaConnector extends AbstractMarketplaceConnector implements PullsOrd
             }
 
             $token = $response->json('data.accessToken');
-            
+
             if (!$token) {
                 throw new \RuntimeException('Pazarama auth token alinamadi (Response: ' . $response->body() . ')');
             }
-            
+
             return $token;
         });
     }
@@ -447,10 +457,10 @@ class PazaramaConnector extends AbstractMarketplaceConnector implements PullsOrd
     {
         $orderNumber = (string) data_get($payload, 'orderNumber');
         $packageId = (string) (data_get($payload, 'orderId') ?: data_get($payload, 'id') ?: $orderNumber);
-        
+
         $status = $this->pazaramaStatusResolver()->resolveOrderStatus($payload);
         $timeline = $this->pazaramaStatusResolver()->resolvePackageTimeline($payload, $status);
-        
+
         $customerName = trim((string) collect([
             data_get($payload, 'customerName'),
             data_get($payload, 'buyer.firstName'),
@@ -503,13 +513,13 @@ class PazaramaConnector extends AbstractMarketplaceConnector implements PullsOrd
         $unitPrice = $this->toDecimal(data_get($line, 'salePrice.value') ?: data_get($line, 'price')) ?? 0.0;
         $grossAmount = $this->toDecimal(data_get($line, 'totalPrice.value')) ?? ($quantity * $unitPrice);
         $discountAmount = $this->toDecimal(data_get($line, 'discountAmount.value', 0));
-        
+
         $orderNumber = (string) data_get($packagePayload, 'orderNumber');
         $stockCode = $this->stockCodeFromPayload($line, 'product.stockCode');
         if ($stockCode === '') {
             $stockCode = $this->stockCodeFromPayload($line, 'product.code');
         }
-        
+
         $fallbackLineId = sha1(implode('|', array_filter([
             $orderNumber,
             $stockCode,
@@ -708,6 +718,7 @@ class PazaramaConnector extends AbstractMarketplaceConnector implements PullsOrd
             if ($timestamp > 9999999999) {
                 return CarbonImmutable::createFromTimestampMs($timestamp)->toIso8601String();
             }
+
             return CarbonImmutable::createFromTimestamp($timestamp)->toIso8601String();
         }
 
@@ -727,6 +738,7 @@ class PazaramaConnector extends AbstractMarketplaceConnector implements PullsOrd
         if (blank($value)) {
             return null;
         }
+
         return round((float) $value, 2);
     }
 
@@ -738,6 +750,7 @@ class PazaramaConnector extends AbstractMarketplaceConnector implements PullsOrd
     protected function lineGrossAmount(array $line, int $quantity, float $unitPrice): float
     {
         $amount = $this->toDecimal(data_get($line, 'grossAmount')) ?? ($quantity * $unitPrice);
+
         return round($amount, 2);
     }
 

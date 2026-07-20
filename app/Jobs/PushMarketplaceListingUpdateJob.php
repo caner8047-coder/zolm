@@ -51,7 +51,7 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
             return;
         }
 
-        $connector = $connectorManager->resolve($pushRun->store->marketplace);
+        $connector = $connectorManager->resolveForStore($pushRun->store);
 
         if ($this->shouldUseWooBatch($pushRun, $connector)) {
             $this->handleWooBatch($pushRun, $connector);
@@ -139,11 +139,12 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                 throw new \RuntimeException('Desteklenmeyen push tipi: ' . $pushRun->push_type);
             }
 
+            $externalBatchId = data_get($response, 'batch_request_id');
             $pushRun->update([
-                'status' => 'completed',
+                'status' => $externalBatchId ? 'processing' : 'completed',
                 'response_json' => $response,
-                'external_batch_id' => data_get($response, 'batch_request_id'),
-                'finished_at' => now(),
+                'external_batch_id' => $externalBatchId,
+                'finished_at' => $externalBatchId ? null : now(),
             ]);
         } catch (Throwable $exception) {
             $pushRun->update([

@@ -187,6 +187,66 @@ class AccountingAccessAndDemoSeedTest extends TestCase
         $this->assertEquals($initialJournalEntries, JournalEntry::where('user_id', $user->id)->count());
     }
 
+    public function test_seed_demo_command_remains_idempotent_across_calendar_days(): void
+    {
+        config()->set('marketplace.features.accounting_enabled', true);
+
+        $user = User::factory()->create(['is_active' => true, 'role' => 'admin']);
+
+        try {
+            \Carbon\CarbonImmutable::setTestNow('2026-07-19 23:59:00');
+            $this->assertSame(0, Artisan::call('accounting:seed-demo', ['--user' => $user->id]));
+
+            $initialJournalEntries = JournalEntry::where('user_id', $user->id)->count();
+
+            \Carbon\CarbonImmutable::setTestNow('2026-07-20 00:01:00');
+            $this->assertSame(0, Artisan::call('accounting:seed-demo', ['--user' => $user->id]));
+
+            $this->assertSame($initialJournalEntries, JournalEntry::where('user_id', $user->id)->count());
+            $salesOrder = \App\Models\SalesOrder::where('user_id', $user->id)
+                ->where('source_key', 'demo_sales_order_1')
+                ->firstOrFail();
+            $purchaseOrder = \App\Models\PurchaseOrder::where('user_id', $user->id)
+                ->where('source_key', 'demo_purchase_order_1')
+                ->firstOrFail();
+            $collection = Collection::where('user_id', $user->id)
+                ->where('source_key', 'demo_collection_1')
+                ->firstOrFail();
+            $payment = Payment::where('user_id', $user->id)
+                ->where('source_key', 'demo_payment_1')
+                ->firstOrFail();
+            $transfer = \App\Models\MoneyTransfer::where('user_id', $user->id)
+                ->where('source_key', 'demo_transfer_1')
+                ->firstOrFail();
+            $manualEntry = JournalEntry::where('user_id', $user->id)
+                ->where('source_key', 'demo_journal_entry_1')
+                ->firstOrFail();
+
+            $this->assertSame('2026-07-19', $salesOrder->order_date->toDateString());
+            $this->assertSame('2026-07-19', $purchaseOrder->order_date->toDateString());
+            $this->assertSame('2026-07-19', $collection->collection_date->toDateString());
+            $this->assertSame('2026-07-19', $payment->payment_date->toDateString());
+            $this->assertSame('2026-07-19', $transfer->transfer_date->toDateString());
+            $this->assertSame('2026-07-19', $manualEntry->entry_date->toDateString());
+
+            \Carbon\CarbonImmutable::setTestNow('2026-07-21 09:00:00');
+            $this->assertSame(0, Artisan::call('accounting:seed-demo', [
+                '--user' => $user->id,
+                '--reset' => true,
+            ]));
+            $this->assertSame(
+                '2026-07-21',
+                \App\Models\SalesOrder::where('user_id', $user->id)
+                    ->where('source_key', 'demo_sales_order_1')
+                    ->firstOrFail()
+                    ->order_date
+                    ->toDateString()
+            );
+        } finally {
+            \Carbon\CarbonImmutable::setTestNow();
+        }
+    }
+
     public function test_seed_demo_command_reset_clears_only_demo_data(): void
     {
         config()->set('marketplace.features.accounting_enabled', true);

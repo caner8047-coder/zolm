@@ -4601,13 +4601,13 @@ SQL;
 
     public function orderSupportsCapability(ChannelOrder $order, string $capability): bool
     {
-        $marketplace = (string) ($order->store?->marketplace ?? '');
+        $store = $order->store;
 
-        if ($marketplace === '') {
+        if (!$store) {
             return false;
         }
 
-        return $this->marketplaceSupportsCapability($marketplace, $capability);
+        return $this->storeSupportsCapability($store, $capability);
     }
 
     public function packageSupportsAction(ChannelOrderPackage $package, string $actionType): bool
@@ -4622,13 +4622,13 @@ SQL;
             return false;
         }
 
-        $marketplace = (string) ($package->store?->marketplace ?? $package->order?->store?->marketplace ?? '');
+        $store = $package->store ?: $package->order?->store;
 
-        if ($marketplace === '') {
+        if (!$store) {
             return false;
         }
 
-        return $this->marketplaceSupportsCapability($marketplace, $capability);
+        return $this->storeSupportsCapability($store, $capability);
     }
 
     protected function buildPackageActionContext(int $packageId, string $actionType): array
@@ -4683,9 +4683,9 @@ SQL;
         ], true);
     }
 
-    protected function marketplaceSupportsCapability(string $marketplace, string $capability): bool
+    protected function storeSupportsCapability(MarketplaceStore $store, string $capability): bool
     {
-        $capabilities = $this->marketplaceCapabilities($marketplace);
+        $capabilities = $this->storeCapabilities($store);
 
         if (($capabilities[$capability] ?? false) === true) {
             return true;
@@ -4704,15 +4704,18 @@ SQL;
     /**
      * @return array<string, bool>
      */
-    protected function marketplaceCapabilities(string $marketplace): array
+    protected function storeCapabilities(MarketplaceStore $store): array
     {
-        if (!array_key_exists($marketplace, $this->connectorCapabilitiesCache)) {
-            $this->connectorCapabilitiesCache[$marketplace] = app(MarketplaceConnectorManager::class)
-                ->resolve($marketplace)
+        $store->loadMissing('connection');
+        $cacheKey = implode(':', [(string) $store->getKey(), (string) $store->connection?->status]);
+
+        if (!array_key_exists($cacheKey, $this->connectorCapabilitiesCache)) {
+            $this->connectorCapabilitiesCache[$cacheKey] = app(MarketplaceConnectorManager::class)
+                ->resolveForStore($store)
                 ->capabilities();
         }
 
-        return $this->connectorCapabilitiesCache[$marketplace];
+        return $this->connectorCapabilitiesCache[$cacheKey];
     }
 
     /**

@@ -79,8 +79,9 @@ class OrderDetailsService
             $aggVatBalance       = $allOrders->sum('vat_balance');
 
             // ─── Stopaj Konsolidasyonu ───
-            $stopajRate = \App\Models\MpFinancialRule::getRuleFloat('stopaj_rate') ?: 0.01;
-            $defaultVatRate = \App\Models\MpFinancialRule::getRuleFloat('default_product_vat_rate') ?: 0.20;
+            $settingsServiceForVat = new \App\Services\MpSettingsService($order->period?->user_id);
+            $stopajRate = $settingsServiceForVat->getStopajRate();
+            $defaultVatRate = $settingsServiceForVat->getDefaultProductVatRate();
 
             $actualStopajSum = $allOrders->sum(function($o) use ($stopajRate, $defaultVatRate) {
                 $actualStopaj = abs((float) $o->withholding_tax);

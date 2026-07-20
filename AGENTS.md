@@ -184,3 +184,163 @@ Yeni veri tipi import'u eklerken:
 - UI: Türkçe
 - Yorumlar: Türkçe tercih edilir
 - Commit mesajları: Türkçe veya İngilizce
+
+## ZOLM Geliştirme Çalışma Sistemi
+
+Kodun yazılmış olması tek başına bir geliştirmeyi tamamlanmış saymak için yeterli değildir. Her özellik; planlama, uygulama, doğrulama, sürümleme, dokümantasyon ve ekip iletişimiyle birlikte ele alınır.
+
+### Zorunlu Akış
+
+Her özellik geliştirmesinde şu sırayı izle:
+
+1. Mevcut yapıyı ve benzer uygulamaları incele
+2. Kısa ve somut bir uygulama planı hazırla
+3. Küçük ve kontrollü kod değişiklikleri yap
+4. İlgili testleri ve doğrulamaları gerçekleştir
+5. Değişiklikleri küçük ve anlamlı commit gruplarına ayır
+6. Notion dokümantasyonunu oluştur veya taslakla
+7. Önemli kararları decision log'a kaydet
+8. Slack için kısa bir ekip özeti hazırla veya paylaş
+9. Sonuçları, riskleri ve açık kalan konuları raporla
+
+Bir aşama başarısızsa işi tamamlanmış gibi sunma. Harici sistemlerde yapılmamış bir işlemi yapılmış gibi belirtme.
+
+### 1. Ön İnceleme ve Plan
+
+Kod yazmadan önce:
+
+- `AGENTS.md` ile ilgili modülün modellerini, servislerini, Livewire component'lerini, Blade dosyalarını, migration'larını ve testlerini incele
+- Benzer özelliklerde kullanılan mevcut pattern'leri tercih et
+- Çalışma ağacındaki kullanıcı değişikliklerini koru ve ilgisiz dosyalara dokunma
+- Geriye uyumluluk, veri kaybı, performans ve canlı kullanım risklerini değerlendir
+- UI görevi varsa ZOLM Kurumsal Açık Panel Sistemi ön kontrollerini tamamla
+- Varsayımları ve kullanıcı sonucuna etkilerini açıkça belirt
+
+Plan en az şu başlıkları kapsasın:
+
+- Amaç ve beklenen kullanıcı sonucu
+- Değişecek katmanlar veya dosyalar
+- Veri modeli ve migration etkisi
+- Geriye uyumluluk değerlendirmesi
+- Test yaklaşımı
+- Riskler
+- Dokümantasyon ve duyuru kapsamı
+
+Büyük işleri küçük, bağımsız ve doğrulanabilir parçalara böl. Gereksiz kapsam genişletme.
+
+### 2. Kodlama ve Doğrulama
+
+- Mevcut mimariyi ve bu dosyadaki proje convention'larını koru
+- İş mantığını uygun servis katmanında tut
+- Migration'ları backward compatible tasarla
+- Riskli özellikleri gerektiğinde feature flag arkasına al
+- Sessiz hata yutma, açıklamasız davranış değişikliği veya geçici çözüm ekleme
+- Yeni davranış için uygun testleri ekle; başarılı, hatalı ve sınır durumlarını doğrula
+- PHP syntax ve ilgili kalite kontrollerini çalıştır
+- UI değişikliklerini desktop ve mobil boyutlarda kontrol et
+- Excel işlemlerinde gerçek çıktı oluşturarak veri tiplerini ve dosyanın açılabilirliğini doğrula
+- Test edilemeyen noktaları ve nedenlerini sonuç raporunda açıkça yaz
+
+### 3. Commit Sistemi
+
+Değişiklikleri küçük ve anlamlı commit'lere ayır:
+
+- Her commit tek bir mantıksal işi kapsasın
+- Commit doğrulanabilir ve ilgisiz değişikliklerden arındırılmış olsun
+- Kullanıcıya ait ilgisiz değişiklikleri stage etme veya commit'e alma
+- Kullanıcı açıkça commit istemediyse commit oluşturma; önerilen commit sırasını ve mesajlarını sun
+
+Tercih edilen mesaj biçimleri:
+
+- `feat: add marketplace reconciliation filters`
+- `fix: preserve leading zeros in Excel exports`
+- `refactor: extract audit calculation service`
+- `test: cover duplicate marketplace imports`
+- `docs: document production profile workflow`
+
+### 4. Notion Dokümantasyonu
+
+Her tamamlanan özellik için aşağıdaki yapıda Notion dokümantasyonu oluştur veya doğrudan yapıştırılabilir bir taslak hazırla:
+
+- Başlık ve özet
+- İş ihtiyacı ve kullanıcıya etkisi
+- Teknik yaklaşım
+- Değiştirilen bileşenler
+- Veri modeli veya migration değişiklikleri
+- Kullanım adımları
+- Yetki ve feature flag bilgileri
+- Test kapsamı
+- Bilinen sınırlamalar
+- Geri alma planı
+- İlgili commit veya PR bağlantıları
+- Yayın tarihi ve sorumlu kişi
+
+Notion bağlantısı ve yazma yetkisi varsa kullanıcı talebinin kapsamına göre sayfayı oluştur veya güncelle. Yetki yoksa çıktıyı açıkça `Notion taslağı` olarak işaretle.
+
+### 5. Decision Log
+
+Şu durumlardan biri oluştuysa decision log kaydı hazırla:
+
+- Mimari yaklaşım seçimi
+- Birden fazla makul seçenek arasından tercih
+- Veri modeli değişikliği
+- Geriye uyumluluk için özel çözüm
+- Yeni bağımlılık
+- Performans, güvenlik veya kullanılabilirlik arasında önemli tercih
+- Feature flag kullanma veya kullanmama kararı
+
+Kayıt formatı:
+
+- Karar başlığı ve tarih
+- Durum: Önerildi / Kabul Edildi / Değiştirildi
+- Bağlam
+- Değerlendirilen seçenekler
+- Seçilen yaklaşım ve gerekçe
+- Olumlu ve olumsuz sonuçlar
+- Geri dönüş veya yeniden değerlendirme koşulları
+
+Önemli bir karar oluşmadıysa gereksiz kayıt üretme; `Yeni mimari karar oluşmadı` diye belirt.
+
+### 6. Slack Duyurusu
+
+Her tamamlanan geliştirme için kısa ve ekip genelinin anlayabileceği bir Slack özeti hazırla:
+
+```text
+🚀 [Özellik adı] tamamlandı
+
+- Ne değişti:
+- Kullanıcıya etkisi:
+- Test durumu:
+- Yayın / feature flag durumu:
+- Dikkat edilmesi gerekenler:
+- Dokümantasyon:
+- PR / commit:
+```
+
+Slack mesajını yalnızca kullanıcı açıkça göndermeni istediğinde ve yazma yetkisi bulunduğunda gönder. Diğer durumlarda çıktıyı `Slack taslağı` olarak işaretle.
+
+### 7. Tamamlama Raporu
+
+Her geliştirme sonunda şu başlıklarla rapor ver:
+
+- **Tamamlananlar:** Kullanıcı sonucu üzerinden kısa özet
+- **Değişen dosyalar:** Önemli dosyalar ve amaçları
+- **Doğrulama:** Çalıştırılan testler ve sonuçları
+- **Commit planı:** Önerilen commit grupları veya oluşturulan commit hash'leri
+- **Notion:** Sayfa bağlantısı veya hazır taslak
+- **Decision log:** Kayıt veya yeni karar oluşmadığı bilgisi
+- **Slack:** Gönderilen mesaj bilgisi veya gönderime hazır taslak
+- **Açık konular:** Riskler, manuel kontroller ve sonraki adımlar
+
+### Tamamlanma Kriteri
+
+Bir özellik ancak aşağıdaki koşullar karşılandığında tamamlanmıştır:
+
+- İstenen davranış uygulanmış ve mevcut işlevler korunmuş
+- Uygun testler geçmiş
+- Kod proje standartlarına uygun
+- Commit planı hazırlanmış veya yetki varsa commit'ler oluşturulmuş
+- Notion dokümantasyonu hazırlanmış
+- Gerekli kararlar decision log'a işlenmiş
+- Slack duyurusu hazırlanmış
+- Riskler ve açık konular raporlanmış
