@@ -27,9 +27,13 @@ class MarketplacePriceCanaryService
             return 0;
         }
 
-        if (! config('marketplace.trendyol.automatic_price_actions_enabled', false)
-            || ! config('marketplace.trendyol.canary_enabled', false)) {
-            return 0;
+        $dryRun = config('marketplace.trendyol.dry_run_enabled') || env('TRENDYOL_PRICE_CANARY_DRY_RUN_ENABLED', false);
+
+        if (!$dryRun) {
+            if (! config('marketplace.trendyol.automatic_price_actions_enabled', false)
+                || ! config('marketplace.trendyol.canary_enabled', false)) {
+                return 0;
+            }
         }
 
         // Active approval check
@@ -41,6 +45,27 @@ class MarketplacePriceCanaryService
         if (! $approval) {
             Log::warning('[MarketplacePriceCanaryService] Canary is disabled because no active and valid approval exists.', ['store_id' => $store->id]);
             return 0;
+        }
+
+        // Hardened validity checks
+        if (!$approval->isValidForCurrentReadiness($store)) {
+            Log::warning('[MarketplacePriceCanaryService] Canary approval is no longer valid due to readiness fingerprint mismatch or emergency stop.', [
+                'store_id' => $store->id,
+                'approval_id' => $approval->id,
+            ]);
+            $this->onStoreCanaryPause($store->id, 'approval_invalidated_readiness_changed');
+            return 0;
+        }
+
+        if ($approval->approval_scope === 'three_products') {
+            $hasSuccessCert = \App\Models\MpPriceCanaryStageResult::where('store_id', $store->id)
+                ->where('stage', 'single_product')
+                ->where('status', 'approved_for_expansion')
+                ->exists();
+            if (!$hasSuccessCert) {
+                Log::warning('[MarketplacePriceCanaryService] Canary is scope-limited because single product stage success certificate is missing or not approved.', ['store_id' => $store->id]);
+                return 0;
+            }
         }
 
         $approvedBarcodes = $approval->approved_product_ids ?? [];

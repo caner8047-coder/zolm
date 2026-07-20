@@ -20,6 +20,11 @@ class MpPriceCanaryApproval extends Model
             'readiness_snapshot' => 'array',
             'expires_at' => 'datetime',
             'revoked_at' => 'datetime',
+            'shadow_data_cutoff' => 'datetime',
+            'api_metrics_cutoff' => 'datetime',
+            'queue_metrics_cutoff' => 'datetime',
+            'approved_product_snapshot' => 'array',
+            'approved_price_policy_snapshot' => 'array',
         ];
     }
 
@@ -55,6 +60,30 @@ class MpPriceCanaryApproval extends Model
         }
 
         if ($this->revoked_at !== null) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function isValidForCurrentReadiness(MarketplaceStore $store): bool
+    {
+        if (!$this->isValid()) {
+            return false;
+        }
+
+        // Compute current readiness
+        $service = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
+        $currentReadiness = $service->checkReadiness($store);
+        $currentHash = $service->generateReadinessHash($currentReadiness);
+
+        if ($this->readiness_hash !== $currentHash) {
+            return false;
+        }
+
+        // Validate emergency stop
+        $stopService = app(MarketplacePriceEmergencyStopService::class);
+        if ($stopService->isEmergencyStopActive($store->id)) {
             return false;
         }
 
