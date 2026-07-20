@@ -59,8 +59,8 @@ class BuyboxAnalysisTest extends TestCase
         $store1 = MarketplaceStore::factory()->create(['user_id' => $user1->id, 'marketplace' => 'trendyol']);
         $store2 = MarketplaceStore::factory()->create(['user_id' => $user2->id, 'marketplace' => 'trendyol']);
 
-        MpBuyboxListing::factory()->create(['store_id' => $store1->id, 'barcode' => 'MYBARCODE001']);
-        MpBuyboxListing::factory()->create(['store_id' => $store2->id, 'barcode' => 'OTHERBARCODE']);
+        \App\Models\MpPriceRecommendation::factory()->create(['store_id' => $store1->id, 'barcode' => 'MYBARCODE001']);
+        \App\Models\MpPriceRecommendation::factory()->create(['store_id' => $store2->id, 'barcode' => 'OTHERBARCODE']);
 
         $this->actingAs($user1);
 
@@ -68,8 +68,8 @@ class BuyboxAnalysisTest extends TestCase
             ->set('selectedStoreId', $store1->id)
             ->set('filterBarcode', 'MYBARCODE001');
 
-        // The component should only show user1's store data
-        $component->assertSee('MYBARCODE001');
+        $component->assertSee('MYBARCODE001')
+            ->assertDontSee('OTHERBARCODE');
     }
 
     // ─── Filters ─────────────────────────────────────────────────
@@ -79,8 +79,8 @@ class BuyboxAnalysisTest extends TestCase
         $user = User::factory()->create();
         $store = MarketplaceStore::factory()->create(['user_id' => $user->id, 'marketplace' => 'trendyol']);
 
-        MpBuyboxListing::factory()->create(['store_id' => $store->id, 'barcode' => 'SEARCHME123']);
-        MpBuyboxListing::factory()->create(['store_id' => $store->id, 'barcode' => 'DIFFERENT456']);
+        \App\Models\MpPriceRecommendation::factory()->create(['store_id' => $store->id, 'barcode' => 'SEARCHME123']);
+        \App\Models\MpPriceRecommendation::factory()->create(['store_id' => $store->id, 'barcode' => 'DIFFERENT456']);
 
         $this->actingAs($user);
 
@@ -96,8 +96,11 @@ class BuyboxAnalysisTest extends TestCase
         $user = User::factory()->create();
         $store = MarketplaceStore::factory()->create(['user_id' => $user->id, 'marketplace' => 'trendyol']);
 
-        MpBuyboxListing::factory()->winning()->create(['store_id' => $store->id, 'barcode' => 'WINNER001']);
-        MpBuyboxListing::factory()->losing()->create(['store_id' => $store->id, 'barcode' => 'LOSER001']);
+        $l1 = MpBuyboxListing::factory()->winning()->create(['store_id' => $store->id, 'barcode' => 'WINNER001']);
+        $l2 = MpBuyboxListing::factory()->losing()->create(['store_id' => $store->id, 'barcode' => 'LOSER001']);
+
+        \App\Models\MpPriceRecommendation::factory()->create(['store_id' => $store->id, 'barcode' => 'WINNER001', 'mp_buybox_listing_id' => $l1->id]);
+        \App\Models\MpPriceRecommendation::factory()->create(['store_id' => $store->id, 'barcode' => 'LOSER001', 'mp_buybox_listing_id' => $l2->id]);
 
         $this->actingAs($user);
 
@@ -113,14 +116,23 @@ class BuyboxAnalysisTest extends TestCase
         $user = User::factory()->create();
         $store = MarketplaceStore::factory()->create(['user_id' => $user->id, 'marketplace' => 'trendyol']);
 
-        MpBuyboxListing::factory()->stale()->create(['store_id' => $store->id, 'barcode' => 'STALE_ITEM']);
-        MpBuyboxListing::factory()->create(['store_id' => $store->id, 'barcode' => 'FRESH_ITEM', 'retrieved_at' => now()]);
+        \App\Models\MpPriceRecommendation::factory()->create([
+            'store_id' => $store->id,
+            'barcode' => 'STALE_ITEM',
+            'recommendation_type' => 'STALE_BUYBOX_DATA',
+        ]);
+
+        \App\Models\MpPriceRecommendation::factory()->create([
+            'store_id' => $store->id,
+            'barcode' => 'FRESH_ITEM',
+            'recommendation_type' => 'LOWER_TO_WIN',
+        ]);
 
         $this->actingAs($user);
 
         Livewire::test(BuyboxAnalysis::class)
             ->set('selectedStoreId', $store->id)
-            ->set('filterStale', 'stale')
+            ->set('filterRecommendationType', 'STALE_BUYBOX_DATA')
             ->assertSee('STALE_ITEM')
             ->assertDontSee('FRESH_ITEM');
     }
