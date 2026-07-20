@@ -561,7 +561,20 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Emergency stop aktif.");
         }
 
-        $isCanaryAction = data_get($context, 'trigger_type') === 'automatic' || data_get($context, 'action_type') === 'canary';
+        // DB-first trigger type detection — prevents caller spoofing.
+        // If a price_action_id is provided we read the canonical trigger_type from DB.
+        // Legacy / non-canary pushPrice calls that have no price_action_id pass only
+        // the dry-run and emergency-stop guards above.
+        $isCanaryAction = false;
+        $priceActionId  = data_get($context, 'price_action_id');
+        if ($priceActionId) {
+            $dbAction = \App\Models\MpPriceAction::find($priceActionId);
+            if ($dbAction) {
+                $isCanaryAction = in_array($dbAction->trigger_type, ['automatic', 'canary'], true)
+                    || $dbAction->action_type === 'canary';
+            }
+        }
+
         if ($isCanaryAction) {
             if (!config('marketplace.trendyol.automatic_price_actions_enabled', false)
                 || !config('marketplace.trendyol.canary_enabled', false)) {

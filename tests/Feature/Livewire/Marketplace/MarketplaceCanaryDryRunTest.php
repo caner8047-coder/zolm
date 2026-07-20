@@ -8,6 +8,7 @@ use App\Models\MpPriceShadowRecord;
 use App\Models\MpPriceShadowEvaluation;
 use App\Models\MpPricePilotProduct;
 use App\Models\MpPriceRecommendation;
+use App\Models\MpPriceCanaryCertification;
 use App\Models\IntegrationPushRun;
 use App\Models\ChannelListing;
 use App\Models\ChannelProduct;
@@ -147,8 +148,19 @@ class MarketplaceCanaryDryRunTest extends TestCase
 
         $this->assertEquals(0, $code);
         $this->assertStringContainsString('ZOLM Canary Dry-Run Sertifikasyon Raporu', $output);
-        $this->assertStringContainsString('Readiness Durumu', $output);
+        $this->assertStringContainsString('Readiness Kontrolü', $output);
         $this->assertStringContainsString('Connector Write Guard', $output);
+        $this->assertStringContainsString('Sertifikasyon Sonucu', $output);
+        $this->assertStringContainsString('Correlation ID', $output);
+
+        // Assert certification was persisted
+        $cert = MpPriceCanaryCertification::where('store_id', $this->store->id)->first();
+        $this->assertNotNull($cert);
+        $this->assertEquals(0, $cert->real_price_push_count);
+        $this->assertFalse($cert->listing_price_changed);
+        $this->assertContains($cert->certification_result, [
+            'certified_zero_write', 'blocked_insufficient_evidence', 'blocked_readiness', 'blocked_approval',
+        ]);
     }
 
     public function test_dry_run_job_execution_intercepted(): void

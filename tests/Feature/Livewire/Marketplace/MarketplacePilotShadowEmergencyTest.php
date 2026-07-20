@@ -26,11 +26,12 @@ use App\Services\Marketplace\MarketplacePricePilotService;
 use App\Services\Marketplace\MarketplacePriceShadowService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\CreatesCanaryEvidence;
 use Tests\TestCase;
 
 class MarketplacePilotShadowEmergencyTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshDatabase, CreatesCanaryEvidence;
 
     protected MarketplaceStore $store;
     protected User $user;
@@ -206,6 +207,10 @@ class MarketplacePilotShadowEmergencyTest extends TestCase
             'retrieved_at' => now(),
         ]);
 
+        // Create fingerprinted approval with real readiness hash
+        $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
+        $readiness = $readinessService->checkReadiness($this->store);
+        $readinessHash = $readinessService->generateReadinessHash($readiness);
         \App\Models\MpPriceCanaryApproval::create([
             'store_id' => $this->store->id,
             'approved_by' => $this->user->id,
@@ -213,6 +218,13 @@ class MarketplacePilotShadowEmergencyTest extends TestCase
             'approved_product_ids' => ['CANARYBARCODE'],
             'expires_at' => now()->addHours(24),
             'status' => 'approved',
+            'readiness_hash' => $readinessHash,
+            'readiness_version' => '1.0',
+            'policy_version' => '1.0',
+            'rule_version' => '1.0',
+            'shadow_data_cutoff' => now(),
+            'api_metrics_cutoff' => now(),
+            'queue_metrics_cutoff' => now(),
         ]);
 
         $canaryService = app(MarketplacePriceCanaryService::class);

@@ -11,13 +11,15 @@ use App\Models\MpPriceCanaryApproval;
 use App\Models\MpPriceCanaryStageResult;
 use App\Models\IntegrationPushRun;
 use App\Models\User;
+use App\Services\Marketplace\MarketplaceCanaryReadinessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Tests\Concerns\CreatesCanaryEvidence;
 use Tests\TestCase;
 
 class MarketplaceCanaryExpansionTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshDatabase, CreatesCanaryEvidence;
 
     protected MarketplaceStore $store;
     protected User $adminUser;
@@ -44,69 +46,14 @@ class MarketplaceCanaryExpansionTest extends TestCase
 
     private function createValidBaselineEvidence(): void
     {
-        // 20 shadow records
-        for ($i = 0; $i < 25; $i++) {
-            $rec = MpPriceShadowRecord::create([
-                'store_id' => $this->store->id,
-                'barcode' => 'BARCODE1',
-                'current_price' => 100.0,
-                'risk_level' => 'low',
-                'is_actionable' => true,
-                'recommendation_type' => 'LOWER_TO_WIN',
-                'simulated_at' => now()->subHours(48)->addMinutes($i),
-            ]);
+        // Use shared trait for BARCODE1 baseline
+        $this->createBaselineReadinessEvidence($this->store, 'BARCODE1');
 
-            MpPriceShadowEvaluation::create([
-                'shadow_record_id' => $rec->id,
-                'store_id' => $this->store->id,
-                'barcode' => 'BARCODE1',
-                'evaluated_at' => now()->subHours(24),
-                'actual_buybox_price_after' => 95.0,
-                'actual_seller_rank_after' => 1,
-                'would_win_buybox' => true,
-                'would_preserve_margin' => true,
-                'was_unnecessary_drop' => false,
-            ]);
-        }
-
-        // 20 API requests
-        for ($i = 0; $i < 20; $i++) {
-            IntegrationPushRun::create([
-                'store_id' => $this->store->id,
-                'channel_listing_id' => null,
-                'push_type' => 'price',
-                'status' => 'completed',
-                'target_price' => 95.0,
-            ]);
-        }
-
-        // 20 queue jobs
-        for ($i = 0; $i < 20; $i++) {
-            MpPriceAction::create([
-                'store_id' => $this->store->id,
-                'barcode' => 'BARCODE1',
-                'status' => 'success',
-                'old_price' => 100.0,
-                'requested_price' => 95.0,
-                'action_type' => 'price_change',
-                'trigger_type' => 'manual',
-            ]);
-        }
-
-        // pilot products
-        MpPricePilotProduct::create([
-            'store_id' => $this->store->id,
-            'barcode' => 'BARCODE1',
-            'mode' => 'shadow',
-            'inclusion_reason' => 'test',
-        ]);
-        
-        MpPricePilotProduct::create([
-            'store_id' => $this->store->id,
-            'barcode' => 'BARCODE2',
-            'mode' => 'shadow',
-            'inclusion_reason' => 'test',
-        ]);
+        // Add BARCODE2 pilot product
+        MpPricePilotProduct::firstOrCreate(
+            ['store_id' => $this->store->id, 'barcode' => 'BARCODE2'],
+            ['mode' => 'shadow', 'inclusion_reason' => 'test']
+        );
     }
 
     public function test_expansion_fails_without_confirm(): void
@@ -165,15 +112,8 @@ class MarketplaceCanaryExpansionTest extends TestCase
             'status' => 'approved_for_expansion',
         ]);
 
-        // Create initial approval
-        MpPriceCanaryApproval::create([
-            'store_id' => $this->store->id,
-            'approved_by' => $this->adminUser->id,
-            'approval_scope' => 'single_product',
-            'approved_product_ids' => ['BARCODE1'],
-            'expires_at' => now()->addHours(24),
-            'status' => 'approved',
-        ]);
+        // Create initial approval WITH real readiness fingerprint
+        $this->createFingerprintedApproval($this->store, $this->adminUser->id, ['BARCODE1']);
 
         $code = Artisan::call('marketplace:price-pilot', [
             'action' => 'expand-canary',

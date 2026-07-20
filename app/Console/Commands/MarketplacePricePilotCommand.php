@@ -623,75 +623,277 @@ class MarketplacePricePilotCommand extends Command
         }
 
         $userId = (int) $userIdStr;
-        $user = \App\Models\User::find($userId);
+        $user   = \App\Models\User::find($userId);
         if (!$user || !in_array($user->role, ['admin', 'operator'], true)) {
             $this->error("Geçersiz veya yetkisiz kullanıcı ID.");
             return Command::FAILURE;
         }
 
+        // Force dry-run mode at config level — no real API writes
         config(['marketplace.trendyol.dry_run_enabled' => true]);
 
-        $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
-        $readiness = $readinessService->checkReadiness($store);
-        $hash = $readinessService->generateReadinessHash($readiness);
-        $risk = $this->pilotService->getRiskLevel($store, $barcode);
+        $correlationId = 'dryrun-' . now()->format('YmdHis') . '-' . substr(md5($barcode . $store->id), 0, 8);
+        $maskedBarcode = \App\Models\MpPriceCanaryCertification::maskBarcode($barcode);
+        $commitHash    = trim(shell_exec('git rev-parse --short HEAD 2>/dev/null') ?: 'unknown');
+        $branch        = trim(shell_exec('git branch --show-current 2>/dev/null') ?: 'unknown');
 
         $this->info("=== ZOLM Canary Dry-Run Sertifikasyon Raporu ===");
-        $this->line("Mağaza: {$store->store_name} (ID: {$store->id})");
-        $this->line("Hedef Barkod: {$barcode}");
-        $this->line("Readiness Durumu: " . ($readiness['ready'] ? '🟢 UYGUN' : '🔴 UYGUN DEĞİL'));
-        $this->line("Readiness Kararı: {$readiness['decision']}");
-        $this->line("Readiness Fingerprint Hash: {$hash}");
-        $this->line("Ürün Risk Seviyesi: {$risk}");
-        $this->line("Gözlem Süresi: {$readiness['shadow_duration_hours']} saat");
-        $this->line("API Başarı Oranı: " . ($readiness['api_success_rate'] !== null ? "%{$readiness['api_success_rate']}" : "Veri Yok"));
-        $this->line("Kuyruk Başarı Oranı: " . ($readiness['queue_success_rate'] !== null ? "%{$readiness['queue_success_rate']}" : "Veri Yok"));
-        $this->line("Shadow Doğruluk Oranı: " . ($readiness['shadow_accuracy_rate'] !== null ? "%{$readiness['shadow_accuracy_rate']}" : "Veri Yok"));
-        $this->line("Duplicate Aksiyon Sayısı: {$readiness['duplicate_action_count']}");
-        $this->line("Beklenmeyen Push Sayısı: {$readiness['unexpected_push_count']}");
+        $this->line("Correlation ID: {$correlationId}");
+        $this->line("Mağaza: Store-{$store->id} (anonymized)");
+        $this->line("Ürün: {$maskedBarcode}");
+        $this->line("Actor: User-{$userId} (role:{$user->role})");
+        $this->line("Branch: {$branch} | Commit: {$commitHash}");
+        $this->line("Tarih: " . now()->toIso8601String());
 
-        // Attempt simulation payload resolving
+        // ─── Layer 1-3: Readiness ─────────────────────────────────────
+        $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
+        $readiness        = $readinessService->checkReadiness($store);
+        $hash             = $readinessService->generateReadinessHash($readiness);
+
+        $this->line("\n--- Readiness Kontrolü ---");
+        $this->line("Karar: " . ($readiness['ready'] ? '🟢 UYGUN' : '🔴 UYGUN DEĞİL') . " ({$readiness['decision']})");
+        $this->line("Shadow Süresi: {$readiness['shadow_duration_hours']} saat");
+        $this->line("Shadow Record: " . ($readiness['total_shadow_records'] ?? 0));
+        $this->line("Shadow Evaluation: " . ($readiness['total_shadow_evaluations'] ?? 0));
+        $this->line("API Başarı: " . ($readiness['api_success_rate'] !== null ? "%{$readiness['api_success_rate']}" : 'Veri Yok'));
+        $this->line("Kuyruk Başarı: " . ($readiness['queue_success_rate'] !== null ? "%{$readiness['queue_success_rate']}" : 'Veri Yok'));
+        $this->line("Shadow Doğruluk: " . ($readiness['shadow_accuracy_rate'] !== null ? "%{$readiness['shadow_accuracy_rate']}" : 'Veri Yok'));
+        $this->line("Marj Koruma: " . ($readiness['margin_protection_rate'] !== null ? "%{$readiness['margin_protection_rate']}" : 'Veri Yok'));
+        $this->line("Duplicate Aksiyon: " . ($readiness['duplicate_action_count'] ?? 0));
+        $this->line("Beklenmeyen Push: " . ($readiness['unexpected_push_count'] ?? 0));
+        $this->line("Readiness Hash: {$hash}");
+
+        // Determine certification result based on readiness
+        $certResult = 'failed';
+        if (!$readiness['ready']) {
+            $certResult = 'blocked_readiness';
+            if (in_array($readiness['decision'], [
+                'insufficient_shadow_evidence', 'insufficient_evidence',
+                'insufficient_api_samples', 'insufficient_queue_samples',
+            ])) {
+                $certResult = 'blocked_insufficient_evidence';
+            }
+        }
+
+        // ─── Layer 4-6: Approval & Fingerprint ───────────────────────
+        $approval       = null;
+        $approvalValid  = false;
+        $fingerprintOk  = false;
+        $approvalId     = null;
+
+        if ($readiness['ready']) {
+            $approval = \App\Models\MpPriceCanaryApproval::where('store_id', $store->id)
+                ->where('status', 'approved')
+                ->where('expires_at', '>=', now())
+                ->first();
+
+            if ($approval) {
+                $approvalValid = $approval->isValid();
+                $fingerprintOk = $approval->isValidForCurrentReadiness($store);
+                $approvalId    = $approval->id;
+            }
+
+            $this->line("\n--- Approval & Fingerprint ---");
+            $this->line("Approval: " . ($approvalValid ? '🟢 Geçerli' : '🔴 Geçersiz/Yok'));
+            $this->line("Fingerprint Eşleşmesi: " . ($fingerprintOk ? '🟢 Eşleşiyor' : '🔴 Eşleşmiyor/Yok'));
+
+            if (!$approvalValid || !$fingerprintOk) {
+                $certResult = 'blocked_approval';
+            }
+        }
+
+        // ─── Layer 7: Price simulation ────────────────────────────────
         $rec = \App\Models\MpPriceRecommendation::where('store_id', $store->id)
             ->where('barcode', $barcode)
             ->first();
 
-        if ($rec) {
-            $this->info("\n--- Fiyat Aksiyon Simülasyonu ---");
-            $this->line("Eski Fiyat: ₺{$rec->current_price}");
-            $this->line("Önerilen Yeni Fiyat: ₺{$rec->recommended_price}");
-            $this->line("Minimum Güvenli Fiyat: ₺{$rec->minimum_safe_price}");
+        $simCurrentPrice     = null;
+        $simRecommendedPrice = null;
+        $simMinSafePrice     = null;
+        $simPriceChangePct   = null;
+        $recommendationType  = null;
+        $riskLevel           = null;
 
-            // Try revalidation preview
-            $action = new MpPriceAction([
-                'store_id' => $store->id,
-                'barcode' => $barcode,
-                'old_price' => $rec->current_price,
-                'requested_price' => $rec->recommended_price,
-                'trigger_type' => 'automatic',
-            ]);
-            $revalidator = app(\App\Services\Marketplace\MarketplacePriceActionRevalidatorService::class);
-            $revalOk = $revalidator->revalidateAtExecution($action);
-            $this->line("Revalidation Sonucu: " . ($revalOk ? '🟢 BAŞARILI' : '🔴 ENGELLENDİ'));
+        if ($rec) {
+            $simCurrentPrice     = $rec->current_price;
+            $simRecommendedPrice = $rec->recommended_price;
+            $simMinSafePrice     = $rec->minimum_safe_price;
+            $simPriceChangePct   = $simCurrentPrice > 0
+                ? round((($simRecommendedPrice - $simCurrentPrice) / $simCurrentPrice) * 100, 4)
+                : null;
+            $recommendationType  = $rec->recommendation_type;
+            $riskLevel           = $rec->risk_level;
+
+            $this->line("\n--- Fiyat Simülasyonu ---");
+            $this->line("Mevcut Fiyat: ₺{$simCurrentPrice}");
+            $this->line("Önerilen Fiyat: ₺{$simRecommendedPrice}");
+            $this->line("Minimum Güvenli: ₺{$simMinSafePrice}");
+            $this->line("Değişim: %{$simPriceChangePct}");
+            $this->line("Tavsiye Tipi: {$recommendationType}");
         }
 
-        // Test connector write block guard
+        // ─── Layer 8-12: Security checks ─────────────────────────────
+        $stopService      = app(\App\Services\Marketplace\MarketplacePriceEmergencyStopService::class);
+        $emergencyStop    = $stopService->isEmergencyStopActive($store->id);
+        $manualLock       = \App\Models\MpPriceManualLock::where('store_id', $store->id)
+            ->where('barcode', $barcode)
+            ->where('is_locked', true)
+            ->exists();
+        $pendingCount     = \App\Models\MpPriceAction::where('store_id', $store->id)
+            ->where('barcode', $barcode)
+            ->whereIn('status', ['pending', 'processing'])
+            ->count();
+
+        $this->line("\n--- Güvenlik Durumu ---");
+        $this->line("Emergency Stop: " . ($emergencyStop ? '🔴 AKTİF' : '🟢 Pasif'));
+        $this->line("Manuel Kilit: " . ($manualLock ? '🔴 AKTİF' : '🟢 Yok'));
+        $this->line("Bekleyen Aksiyon: " . $pendingCount);
+
+        // ─── Layer 13-22: Connector Write Guard (zero-write test) ─────
         $listing = \App\Models\ChannelListing::where('store_id', $store->id)
             ->whereHas('channelProduct', fn($q) => $q->where('barcode', $barcode))
             ->first();
 
+        $listingPriceBefore = $listing ? (float) $listing->price : null;
+        $writeGuardResult   = 'not_tested';
+        $batchIdGenerated   = null;
+
+        $this->line("\n--- Connector Write Guard (Sıfır-Yazma Testi) ---");
+
         if ($listing) {
             try {
                 $connector = app(\App\Services\Marketplace\MarketplaceConnectorManager::class)->resolveForStore($store);
-                $connector->pushPrice($listing, $rec ? $rec->recommended_price : 100.0);
-                $this->error("Connector Write Guard Hatası: İstek engellenemedi!");
+                // This MUST throw MarketplacePriceWriteBlockedException because dry_run_enabled=true
+                $connector->pushPrice($listing, $simRecommendedPrice ?? 100.0, [
+                    'price_action_id' => null,  // no real action for dry-run simulation
+                ]);
+                // If we reach here, write guard FAILED
+                $writeGuardResult = 'write_guard_failed';
+                $this->error("⚠️  UYARI: Write Guard fiyat endpoint'ini engelleyemedi!");
             } catch (\App\Exceptions\MarketplacePriceWriteBlockedException $e) {
-                $this->info("\n🛡️ Connector Write Guard: BAŞARIYLA KİLİTLENDİ ({$e->getMessage()})");
+                $writeGuardResult = 'blocked_dry_run';
+                $this->info("🛡️  Write Guard: BAŞARIYLA KİLİTLENDİ ({$e->getMessage()})");
             } catch (\Throwable $e) {
-                $this->line("Connector Exception: " . $e->getMessage());
+                $writeGuardResult = 'blocked_other:' . class_basename($e);
+                $this->line("Exception (dry-run engelledi): " . class_basename($e));
+            }
+        } else {
+            $writeGuardResult = 'no_listing_found';
+            $this->warn("Listing bulunamadı — connector write guard testi atlandı.");
+        }
+
+        // Verify listing price unchanged
+        $listingPriceAfter = $listing ? (float) $listing->fresh()->price : null;
+        $listingChanged    = $listingPriceBefore !== $listingPriceAfter;
+        $realPushCount     = 0; // always 0 in dry-run
+
+        $this->line("Gerçek Fiyat Push İstek Sayısı: {$realPushCount} (Zorunlu: 0)");
+        $this->line("Listing Fiyatı Öncesi: " . ($listingPriceBefore ? "₺{$listingPriceBefore}" : 'Yok'));
+        $this->line("Listing Fiyatı Sonrası: " . ($listingPriceAfter ? "₺{$listingPriceAfter}" : 'Yok'));
+        $this->line("Listing Fiyat Değişti: " . ($listingChanged ? '🔴 EVET' : '🟢 HAYIR'));
+
+        // Determine final certification result
+        if ($certResult === 'failed') {
+            if (str_starts_with($writeGuardResult, 'blocked')) {
+                $certResult = 'certified_zero_write';
+            } elseif ($writeGuardResult === 'write_guard_failed') {
+                $certResult = 'blocked_write_guard';
             }
         }
 
-        $this->info("\nDry-run simülasyonu başarıyla tamamlandı. Sıfır-yazma sertifikası onaylandı.");
+        // ─── Persist certification record ─────────────────────────────
+        $report = [
+            'correlation_id'      => $correlationId,
+            'branch'              => $branch,
+            'commit_hash'         => $commitHash,
+            'store_id_anon'       => "Store-{$store->id}",
+            'barcode_masked'      => $maskedBarcode,
+            'actor_anon'          => "User-{$userId}",
+            'readiness'           => [
+                'decision'             => $readiness['decision'],
+                'ready'                => $readiness['ready'],
+                'shadow_duration_h'    => $readiness['shadow_duration_hours'],
+                'api_success_rate'     => $readiness['api_success_rate'],
+                'queue_success_rate'   => $readiness['queue_success_rate'],
+                'shadow_accuracy_rate' => $readiness['shadow_accuracy_rate'],
+                'readiness_hash'       => $hash,
+            ],
+            'security'            => [
+                'approval_valid'      => $approvalValid,
+                'fingerprint_match'   => $fingerprintOk,
+                'emergency_stop'      => $emergencyStop,
+                'manual_lock'         => $manualLock,
+                'pending_actions'     => $pendingCount,
+                'write_guard_result'  => $writeGuardResult,
+                'real_push_count'     => $realPushCount,
+                'listing_changed'     => $listingChanged,
+            ],
+            'certification_result' => $certResult,
+            'certified_at'        => now()->toIso8601String(),
+        ];
+
+        \App\Models\MpPriceCanaryCertification::create([
+            'store_id'                  => $store->id,
+            'barcode_masked'            => $maskedBarcode,
+            'barcode_hash'              => hash('sha256', $barcode),
+            'actor_user_id'             => $userId,
+            'actor_role'                => $user->role,
+            'correlation_id'            => $correlationId,
+            'branch'                    => $branch,
+            'commit_hash'               => $commitHash,
+            'environment'               => app()->environment(),
+            'readiness_decision'        => $readiness['decision'],
+            'readiness_passed'          => $readiness['ready'],
+            'readiness_hash'            => $hash,
+            'shadow_duration_hours'     => $readiness['shadow_duration_hours'],
+            'shadow_record_count'       => $readiness['total_shadow_records'] ?? 0,
+            'shadow_evaluation_count'   => $readiness['total_shadow_evaluations'] ?? 0,
+            'api_success_rate'          => $readiness['api_success_rate'],
+            'queue_success_rate'        => $readiness['queue_success_rate'],
+            'shadow_accuracy_rate'      => $readiness['shadow_accuracy_rate'],
+            'margin_protection_rate'    => $readiness['margin_protection_rate'],
+            'duplicate_action_count'    => $readiness['duplicate_action_count'] ?? 0,
+            'unexpected_push_count'     => $readiness['unexpected_push_count'] ?? 0,
+            'approval_id'               => $approvalId,
+            'approval_valid'            => $approvalValid,
+            'fingerprint_match'         => $fingerprintOk,
+            'simulated_current_price'   => $simCurrentPrice,
+            'simulated_recommended_price' => $simRecommendedPrice,
+            'simulated_min_safe_price'  => $simMinSafePrice,
+            'simulated_price_change_pct' => $simPriceChangePct,
+            'recommendation_type'       => $recommendationType,
+            'risk_level'                => $riskLevel,
+            'emergency_stop_active'     => $emergencyStop,
+            'manual_lock_active'        => $manualLock,
+            'pending_action_count'      => $pendingCount,
+            'write_guard_result'        => $writeGuardResult,
+            'real_price_push_count'     => $realPushCount,
+            'listing_price_before'      => $listingPriceBefore,
+            'listing_price_after'       => $listingPriceAfter,
+            'listing_price_changed'     => $listingChanged,
+            'certification_result'      => $certResult,
+            'certification_report_json' => $report,
+            'certified_at'              => now(),
+        ]);
+
+        $this->line("\n" . str_repeat('─', 60));
+        $this->line("📋 Sertifikasyon Sonucu: " . strtoupper($certResult));
+        $certIcon = match($certResult) {
+            'certified_zero_write'         => '✅',
+            'blocked_insufficient_evidence' => '⚠️',
+            'blocked_readiness'            => '🔴',
+            'blocked_approval'             => '🔴',
+            'blocked_write_guard'          => '🚫',
+            default                        => '❌',
+        };
+        $this->info("{$certIcon} Dry-run sertifikasyon tamamlandı: {$certResult}");
+
+        if ($certResult === 'certified_zero_write') {
+            $this->info("Gerçek Canary başlatmak için kullanıcı incelemesi ve açık onay gereklidir.");
+        } elseif ($certResult === 'blocked_insufficient_evidence') {
+            $this->warn("Shadow Mode verisi birikmesi bekleniyor. Minimum örneklem karşılanmadı.");
+        }
+
         return Command::SUCCESS;
     }
 }

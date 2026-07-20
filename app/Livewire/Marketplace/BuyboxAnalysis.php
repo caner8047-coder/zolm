@@ -738,6 +738,13 @@ class BuyboxAnalysis extends Component
                 ->first();
         }
 
+        $latestCertification = null;
+        if ($store) {
+            $latestCertification = \App\Models\MpPriceCanaryCertification::where('store_id', $store->id)
+                ->orderByDesc('created_at')
+                ->first();
+        }
+
         return view('livewire.marketplace.buybox-analysis', [
             'stores' => $stores,
             'recommendations' => $recommendations,
@@ -750,6 +757,7 @@ class BuyboxAnalysis extends Component
             'emergencyStopActive' => $emergencyStopActive,
             'canaryReadiness' => $canaryReadiness,
             'activeApproval' => $activeApproval,
+            'latestCertification' => $latestCertification,
         ])->layout('layouts.app');
     }
 
@@ -785,6 +793,11 @@ class BuyboxAnalysis extends Component
             return;
         }
 
+        // Generate fingerprint hash for the approval
+        $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
+        $readiness = $readinessService->checkReadiness($store);
+        $hash = $readinessService->generateReadinessHash($readiness);
+
         \App\Models\MpPriceCanaryApproval::where('store_id', $store->id)
             ->where('status', 'approved')
             ->update(['status' => 'revoked', 'revoked_at' => now(), 'revoked_by' => auth()->id() ?: 1]);
@@ -797,6 +810,13 @@ class BuyboxAnalysis extends Component
             'approval_reason' => 'Approved via UI Dashboard',
             'expires_at' => now()->addHours(24),
             'status' => 'approved',
+            'readiness_hash' => $hash,
+            'readiness_version' => $readiness['readiness_version'] ?? '1.0',
+            'policy_version' => '1.0',
+            'rule_version' => '1.0',
+            'shadow_data_cutoff' => now(),
+            'api_metrics_cutoff' => now(),
+            'queue_metrics_cutoff' => now(),
         ]);
 
         $this->dispatch('toast', ['type' => 'success', 'message' => 'Canary pilot onayı başarıyla oluşturuldu.']);

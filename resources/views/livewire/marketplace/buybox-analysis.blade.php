@@ -453,7 +453,63 @@
                         </div>
                     @endif
 
-                    <!-- Add to Pilot Whitelist Form -->
+                    {{-- Dry-Run Sertifikasyon Kartı --}}
+                    @if($latestCertification)
+                        <div class="rounded-[10px] border border-slate-200 bg-white p-5 shadow-sm mt-4">
+                            <h3 class="text-sm font-bold text-slate-900 mb-3">🛡️ Son Dry-Run Sertifikasyonu</h3>
+
+                            @php
+                                $certResult = $latestCertification->certification_result;
+                                $certColors = [
+                                    'certified_zero_write'         => ['bg-emerald-50 border-emerald-200', 'text-emerald-700', '✅'],
+                                    'blocked_insufficient_evidence' => ['bg-amber-50 border-amber-200', 'text-amber-700', '⚠️'],
+                                    'blocked_readiness'            => ['bg-rose-50 border-rose-200', 'text-rose-700', '🔴'],
+                                    'blocked_approval'             => ['bg-rose-50 border-rose-200', 'text-rose-700', '🔴'],
+                                    'blocked_write_guard'          => ['bg-red-50 border-red-200', 'text-red-700', '🚫'],
+                                    'failed'                       => ['bg-slate-50 border-slate-200', 'text-slate-700', '❌'],
+                                ];
+                                [$cardClass, $textClass, $icon] = $certColors[$certResult] ?? ['bg-slate-50 border-slate-200', 'text-slate-700', '—'];
+                            @endphp
+
+                            <div class="rounded-lg border {{ $cardClass }} px-3 py-2.5 text-xs space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="{{ $textClass }} font-bold">{{ $icon }} {{ strtoupper(str_replace('_', ' ', $certResult)) }}</span>
+                                    <span class="text-slate-400 text-[10px]">{{ $latestCertification->certified_at?->format('d.m.Y H:i') ?? $latestCertification->created_at->format('d.m.Y H:i') }}</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-slate-600 pt-1">
+                                    <div>
+                                        <span class="text-slate-400">Readiness:</span>
+                                        <span class="font-medium {{ $latestCertification->readiness_passed ? 'text-emerald-700' : 'text-rose-600' }}">
+                                            {{ $latestCertification->readiness_passed ? '🟢 UYGUN' : '🔴 UYGUN DEĞİL' }}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400">Write Guard:</span>
+                                        <span class="font-medium text-slate-700">{{ $latestCertification->write_guard_result ?? '—' }}</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400">Gerçek Push:</span>
+                                        <span class="font-mono font-bold {{ $latestCertification->real_price_push_count === 0 ? 'text-emerald-700' : 'text-red-700' }}">
+                                            {{ $latestCertification->real_price_push_count }}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400">Listing Değişti:</span>
+                                        <span class="font-medium {{ $latestCertification->listing_price_changed ? 'text-red-700' : 'text-emerald-700' }}">
+                                            {{ $latestCertification->listing_price_changed ? 'EVET' : 'HAYIR' }}
+                                        </span>
+                                    </div>
+                                </div>
+                                @if($latestCertification->correlation_id)
+                                    <div class="text-[10px] text-slate-400 font-mono truncate pt-0.5 border-t border-slate-100">
+                                        ID: {{ $latestCertification->correlation_id }}
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+                    @endif
+
+                    {{-- Add to Pilot Whitelist Form --}}
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border p-4 rounded-lg bg-slate-50/50">
                         <div>
                             <label class="block text-xs font-medium text-slate-500 mb-1">Eklenecek Ürün Barkodu</label>
