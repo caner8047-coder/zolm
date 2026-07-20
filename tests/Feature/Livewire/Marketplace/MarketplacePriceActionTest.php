@@ -88,6 +88,9 @@ class MarketplacePriceActionTest extends TestCase
             'requested_price' => 140.00,
             'status' => 'pending',
             'approved_by' => $user->id,
+            // Write guard zorunlu kimlik alanları
+            'idempotency_key' => 'test-idem-' . uniqid(),
+            'correlation_id' => 'test-corr-' . uniqid(),
         ]);
 
         Http::fake([
