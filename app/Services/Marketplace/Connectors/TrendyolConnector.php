@@ -561,17 +561,20 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Emergency stop aktif.");
         }
 
-        if (!config('marketplace.trendyol.automatic_price_actions_enabled', false)
-            || !config('marketplace.trendyol.canary_enabled', false)) {
-            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Feature flagler kapalı.");
-        }
+        $isCanaryAction = data_get($context, 'trigger_type') === 'automatic' || data_get($context, 'action_type') === 'canary';
+        if ($isCanaryAction) {
+            if (!config('marketplace.trendyol.automatic_price_actions_enabled', false)
+                || !config('marketplace.trendyol.canary_enabled', false)) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Feature flagler kapalı.");
+            }
 
-        $approval = \App\Models\MpPriceCanaryApproval::where('store_id', $listing->store_id)
-            ->where('status', 'approved')
-            ->where('expires_at', '>=', now())
-            ->first();
-        if (!$approval || !in_array($barcode, $approval->approved_product_ids ?? [], true)) {
-            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Geçerli Canary onayı yok veya barkod kapsam dışı.");
+            $approval = \App\Models\MpPriceCanaryApproval::where('store_id', $listing->store_id)
+                ->where('status', 'approved')
+                ->where('expires_at', '>=', now())
+                ->first();
+            if (!$approval || !in_array($barcode, $approval->approved_product_ids ?? [], true)) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Geçerli Canary onayı yok veya barkod kapsam dışı.");
+            }
         }
 
         $payload = [

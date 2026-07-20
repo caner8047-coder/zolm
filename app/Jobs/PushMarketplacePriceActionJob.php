@@ -135,7 +135,11 @@ class PushMarketplacePriceActionJob implements ShouldQueue
             $response = $connector->pushPrice(
                 $listing,
                 (float) $action->requested_price,
-                ['price_action_id' => $action->id]
+                [
+                    'price_action_id' => $action->id,
+                    'trigger_type' => $action->trigger_type,
+                    'action_type' => $action->action_type,
+                ]
             );
 
             $batchId = data_get($response, 'batch_request_id');
