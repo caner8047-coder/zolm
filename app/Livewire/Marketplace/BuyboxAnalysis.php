@@ -689,6 +689,12 @@ class BuyboxAnalysis extends Component
                 $pilotProducts = \App\Models\MpPricePilotProduct::where('store_id', $store->id)
                     ->orderBy('created_at', 'desc')
                     ->paginate($this->perPage);
+
+                $pilotService = app(\App\Services\Marketplace\MarketplacePricePilotService::class);
+                foreach ($pilotProducts as $p) {
+                    $p->risk_score = $pilotService->getRiskLevel($store, $p->barcode);
+                    $p->exclusion_reason = $pilotService->checkExclusionCriteria($store, $p->barcode);
+                }
             }
 
             // Fetch recent price actions for history tab
@@ -720,6 +726,18 @@ class BuyboxAnalysis extends Component
             }
         }
 
+        $canaryReadiness = null;
+        $activeApproval = null;
+        if ($store) {
+            $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
+            $canaryReadiness = $readinessService->checkReadiness($store);
+
+            $activeApproval = \App\Models\MpPriceCanaryApproval::where('store_id', $store->id)
+                ->where('status', 'approved')
+                ->where('expires_at', '>=', now())
+                ->first();
+        }
+
         return view('livewire.marketplace.buybox-analysis', [
             'stores' => $stores,
             'recommendations' => $recommendations,
@@ -730,6 +748,74 @@ class BuyboxAnalysis extends Component
             'detailRec' => $detailRec,
             'detailSimulation' => $detailSimulation,
             'emergencyStopActive' => $emergencyStopActive,
+            'canaryReadiness' => $canaryReadiness,
+            'activeApproval' => $activeApproval,
         ])->layout('layouts.app');
+    }
+
+    public function approveCanaryUI(string $scope, ?string $barcode = null): void
+    {
+        $store = $this->resolveStore();
+        if (!$store) return;
+
+        if (!in_array(auth()->user()->role, ['admin', 'operator'], true)) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'Bu işlem için yetkiniz yok.']);
+            return;
+        }
+
+        $pilotProducts = \App\Models\MpPricePilotProduct::where('store_id', $store->id)
+            ->where('mode', '!=', 'disabled')
+            ->get();
+
+        $pilotService = app(\App\Services\Marketplace\MarketplacePricePilotService::class);
+        $barcodes = [];
+
+        if ($barcode) {
+            $barcodes = [$barcode];
+        } else {
+            foreach ($pilotProducts as $p) {
+                if ($pilotService->getRiskLevel($store, $p->barcode) === 'low') {
+                    $barcodes[] = $p->barcode;
+                }
+            }
+        }
+
+        if (empty($barcodes)) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'Canary için uygun (düşük riskli) ürün bulunamadı.']);
+            return;
+        }
+
+        \App\Models\MpPriceCanaryApproval::where('store_id', $store->id)
+            ->where('status', 'approved')
+            ->update(['status' => 'revoked', 'revoked_at' => now(), 'revoked_by' => auth()->id() ?: 1]);
+
+        \App\Models\MpPriceCanaryApproval::create([
+            'store_id' => $store->id,
+            'approved_by' => auth()->id() ?: 1,
+            'approval_scope' => $scope,
+            'approved_product_ids' => $barcodes,
+            'approval_reason' => 'Approved via UI Dashboard',
+            'expires_at' => now()->addHours(24),
+            'status' => 'approved',
+        ]);
+
+        $this->dispatch('toast', ['type' => 'success', 'message' => 'Canary pilot onayı başarıyla oluşturuldu.']);
+    }
+
+    public function revokeCanaryUI(): void
+    {
+        $store = $this->resolveStore();
+        if (!$store) return;
+
+        \App\Models\MpPriceCanaryApproval::where('store_id', $store->id)
+            ->where('status', 'approved')
+            ->update([
+                'status' => 'revoked',
+                'revoked_at' => now(),
+                'revoked_by' => auth()->id() ?: 1,
+                'approval_reason' => 'Revoked via UI Dashboard',
+            ]);
+
+        $this->dispatch('toast', ['type' => 'success', 'message' => 'Canary pilot onayı iptal edildi.']);
     }
 }

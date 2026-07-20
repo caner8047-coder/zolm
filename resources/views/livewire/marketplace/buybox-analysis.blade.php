@@ -351,6 +351,108 @@
                         </div>
                     @endif
 
+                    <!-- Canary Readiness & Approval Section -->
+                    @if($canaryReadiness)
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <!-- Readiness Card -->
+                            <div class="rounded-[10px] border border-slate-200 bg-white p-5 shadow-sm space-y-4 lg:col-span-2">
+                                <div class="flex items-center justify-between">
+                                    <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                        🛡️ Canary Hazırlık Durumu (Readiness)
+                                    </h3>
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $canaryReadiness['ready'] ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800' }}">
+                                        {{ $canaryReadiness['ready'] ? 'UYGUN' : 'UYGUN DEĞİL' }}
+                                    </span>
+                                </div>
+
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50/60 rounded-lg p-3 text-xs">
+                                    <div>
+                                        <div class="text-slate-500">Gözlem Süresi</div>
+                                        <div class="font-semibold text-slate-900">{{ $canaryReadiness['shadow_duration_hours'] }} Saat</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-slate-500">API Başarı Oranı</div>
+                                        <div class="font-semibold text-slate-900">%{{ $canaryReadiness['api_success_rate'] }}</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-slate-500">Gölge Doğruluk Oranı</div>
+                                        <div class="font-semibold text-slate-900">%{{ $canaryReadiness['shadow_accuracy_rate'] }}</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-slate-500">Uygun Ürün</div>
+                                        <div class="font-semibold text-slate-900">{{ $canaryReadiness['eligible_product_count'] }} Ürün</div>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-1">
+                                    <div class="text-xs font-bold text-slate-700">Kriter Geçiş Raporu:</div>
+                                    <div class="max-h-32 overflow-y-auto space-y-1 text-xs">
+                                        @foreach($canaryReadiness['passed_criteria'] as $c)
+                                            <div class="text-emerald-700 flex items-center gap-1.5">
+                                                <span>✓</span> {{ $c }}
+                                            </div>
+                                        @endforeach
+                                        @foreach($canaryReadiness['failed_criteria'] as $c)
+                                            <div class="text-rose-700 flex items-center gap-1.5 font-semibold">
+                                                <span>✗</span> {{ $c }}
+                                            </div>
+                                        @endforeach
+                                        @foreach($canaryReadiness['warning_criteria'] as $c)
+                                            <div class="text-amber-700 flex items-center gap-1.5">
+                                                <span>!</span> {{ $c }}
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Approval Card -->
+                            <div class="rounded-[10px] border border-slate-200 bg-white p-5 shadow-sm flex flex-col justify-between">
+                                <div class="space-y-3">
+                                    <h3 class="text-sm font-bold text-slate-900">
+                                        🔑 Aktif Canary Onayı
+                                    </h3>
+                                    
+                                    @if($activeApproval)
+                                        <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-xs space-y-2">
+                                            <div>
+                                                <span class="text-slate-500">Kapsam:</span> 
+                                                <span class="font-bold text-indigo-900 uppercase">{{ $activeApproval->approval_scope }}</span>
+                                            </div>
+                                            <div>
+                                                <span class="text-slate-500">Barkodlar:</span> 
+                                                <span class="font-mono bg-indigo-100/50 px-1.5 py-0.5 rounded text-indigo-900">
+                                                    {{ implode(', ', $activeApproval->approved_product_ids ?? []) }}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span class="text-slate-500">Süre Sonu:</span> 
+                                                <span class="font-semibold text-slate-700">{{ $activeApproval->expires_at->diffForHumans() }}</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <button wire:click="revokeCanaryUI" class="w-full rounded-[6px] border border-rose-200 text-rose-700 bg-white px-3 py-2 text-xs font-semibold hover:bg-rose-50 transition">
+                                            Onayı Geri Çek (İptal Et)
+                                        </button>
+                                    @else
+                                        <div class="text-xs text-slate-500">
+                                            Şu anda aktif bir Canary fiyatlama onayı bulunmuyor. Otomatik fiyat aksiyonu gönderimi devre dışıdır.
+                                        </div>
+                                        
+                                        <div class="flex flex-col gap-2 mt-4">
+                                            <button wire:click="approveCanaryUI('single_product')" @if(!$canaryReadiness['ready']) disabled @endif class="w-full rounded-[6px] bg-slate-900 text-white px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition">
+                                                Tek Ürün İçin Onayla
+                                            </button>
+                                            <button wire:click="approveCanaryUI('three_products')" @if(!$canaryReadiness['ready'] || $canaryReadiness['shadow_duration_hours'] < 72) disabled @endif class="w-full rounded-[6px] border border-slate-200 text-slate-700 bg-white px-3 py-2 text-xs font-semibold hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition">
+                                                Üç Ürün İçin Onayla (72 Saat Gölge Gerekli)
+                                            </button>
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+
                     <!-- Add to Pilot Whitelist Form -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border p-4 rounded-lg bg-slate-50/50">
                         <div>
@@ -390,6 +492,7 @@
                                 <tr>
                                     <th class="px-4 py-3">Barkod</th>
                                     <th class="px-4 py-3">Çalışma Modu</th>
+                                    <th class="px-4 py-3">Risk Skoru</th>
                                     <th class="px-4 py-3">Eklenme Gerekçesi</th>
                                     <th class="px-4 py-3">Fiyat Durumu</th>
                                     <th class="px-4 py-3">Fiyat Kilidi</th>
@@ -413,6 +516,17 @@
                                                 <option value="canary_auto" {{ $p->mode === 'canary_auto' ? 'selected' : '' }}>Canary (Otomatik)</option>
                                                 <option value="paused" {{ $p->mode === 'paused' ? 'selected' : '' }}>Duraklatıldı (Paused)</option>
                                             </select>
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            @if($p->risk_score === 'low')
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800 font-mono">LOW</span>
+                                            @elseif($p->risk_score === 'medium')
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 font-mono">MEDIUM</span>
+                                            @elseif($p->risk_score === 'high')
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 font-mono">HIGH</span>
+                                            @else
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-800 font-mono" title="{{ $p->exclusion_reason }}">BLOCKED</span>
+                                            @endif
                                         </td>
                                         <td class="px-4 py-3 text-xs text-slate-500">
                                             {{ $p->inclusion_reason }}
