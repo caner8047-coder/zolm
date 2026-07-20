@@ -632,6 +632,8 @@ class MarketplacePricePilotCommand extends Command
         // Force dry-run mode at config level — no real API writes
         config(['marketplace.trendyol.dry_run_enabled' => true]);
 
+        // Outbound writes audit and before/after verification will connect to real API Gateway path
+
         $correlationId = 'dryrun-' . now()->format('YmdHis') . '-' . substr(md5($barcode . $store->id), 0, 8);
         $maskedBarcode = \App\Models\MpPriceCanaryCertification::maskBarcode($barcode);
         $commitHash    = trim(shell_exec('git rev-parse --short HEAD 2>/dev/null') ?: 'unknown');
@@ -654,7 +656,7 @@ class MarketplacePricePilotCommand extends Command
         $this->line("Karar: " . ($readiness['ready'] ? '🟢 UYGUN' : '🔴 UYGUN DEĞİL') . " ({$readiness['decision']})");
         $this->line("Shadow Süresi: {$readiness['shadow_duration_hours']} saat");
         $this->line("Shadow Record: " . ($readiness['total_shadow_records'] ?? 0));
-        $this->line("Shadow Evaluation: " . ($readiness['total_shadow_evaluations'] ?? 0));
+        $this->line("Shadow Evaluation: " . ($readiness['total_evaluations'] ?? 0));
         $this->line("API Başarı: " . ($readiness['api_success_rate'] !== null ? "%{$readiness['api_success_rate']}" : 'Veri Yok'));
         $this->line("Kuyruk Başarı: " . ($readiness['queue_success_rate'] !== null ? "%{$readiness['queue_success_rate']}" : 'Veri Yok'));
         $this->line("Shadow Doğruluk: " . ($readiness['shadow_accuracy_rate'] !== null ? "%{$readiness['shadow_accuracy_rate']}" : 'Veri Yok'));
@@ -670,6 +672,8 @@ class MarketplacePricePilotCommand extends Command
             if (in_array($readiness['decision'], [
                 'insufficient_shadow_evidence', 'insufficient_evidence',
                 'insufficient_api_samples', 'insufficient_queue_samples',
+                'insufficient_shadow_records', 'insufficient_shadow_evaluations',
+                'insufficient_product_observations', 'insufficient_buybox_cycles',
             ])) {
                 $certResult = 'blocked_insufficient_evidence';
             }
@@ -689,7 +693,7 @@ class MarketplacePricePilotCommand extends Command
 
             if ($approval) {
                 $approvalValid = $approval->isValid();
-                $fingerprintOk = $approval->isValidForCurrentReadiness($store);
+                $fingerprintOk = $approval->isValidForCurrentReadiness($readiness);
                 $approvalId    = $approval->id;
             }
 
@@ -754,15 +758,45 @@ class MarketplacePricePilotCommand extends Command
             ->whereHas('channelProduct', fn($q) => $q->where('barcode', $barcode))
             ->first();
 
-        $listingPriceBefore = $listing ? (float) $listing->price : null;
-        $writeGuardResult   = 'not_tested';
-        $batchIdGenerated   = null;
+        $writeGuardResult = 'not_tested';
+        $listingPriceBefore = null;
+        $listingPriceAfter = null;
+        $listingPriceVerificationUnavailable = false;
+
+        $connector = app(\App\Services\Marketplace\MarketplaceConnectorManager::class)->resolveForStore($store);
+
+        $pullOptions = [
+            'barcode' => $barcode,
+            'start_date' => now()->subDays(30)->toIso8601String(),
+            'end_date' => now()->toIso8601String(),
+        ];
+
+        // Fetch actual listing price before simulation (salt-okuma API)
+        try {
+            $responseBefore = $connector->pullProducts($store, $pullOptions);
+            $listingPriceBefore = data_get($responseBefore, 'items.0.listing.sale_price');
+        } catch (\Throwable $e) {
+            $listingPriceBefore = null;
+            $this->warn("Listing fiyatı öncesi API'den alınamadı: " . $e->getMessage());
+        }
+
+        $sellerId = (string) ($store->seller_id ?: data_get($store->connection?->credentials_encrypted, 'seller_id') ?: '102493');
 
         $this->line("\n--- Connector Write Guard (Sıfır-Yazma Testi) ---");
 
+        // Outbound request auditing setup
+        $startTime = now();
+        $httpRequestsCount = 0;
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Http\Client\Events\RequestSending::class, function ($event) use (&$httpRequestsCount, $sellerId) {
+            if (str_contains($event->request->url(), 'products/price-and-inventory') || str_contains($event->request->url(), $sellerId . '/products')) {
+                if ($event->request->method() === 'POST') {
+                    $httpRequestsCount++;
+                }
+            }
+        });
+
         if ($listing) {
             try {
-                $connector = app(\App\Services\Marketplace\MarketplaceConnectorManager::class)->resolveForStore($store);
                 // This MUST throw MarketplacePriceWriteBlockedException because dry_run_enabled=true
                 $connector->pushPrice($listing, $simRecommendedPrice ?? 100.0, [
                     'price_action_id' => null,  // no real action for dry-run simulation
@@ -782,23 +816,58 @@ class MarketplacePricePilotCommand extends Command
             $this->warn("Listing bulunamadı — connector write guard testi atlandı.");
         }
 
-        // Verify listing price unchanged
-        $listingPriceAfter = $listing ? (float) $listing->fresh()->price : null;
-        $listingChanged    = $listingPriceBefore !== $listingPriceAfter;
-        $realPushCount     = 0; // always 0 in dry-run
+        // Fetch actual listing price after simulation (salt-okuma API)
+        try {
+            $responseAfter = $connector->pullProducts($store, $pullOptions);
+            $listingPriceAfter = data_get($responseAfter, 'items.0.listing.sale_price');
+        } catch (\Throwable $e) {
+            $listingPriceAfter = null;
+            $this->warn("Listing fiyatı sonrası API'den alınamadı: " . $e->getMessage());
+        }
 
-        $this->line("Gerçek Fiyat Push İstek Sayısı: {$realPushCount} (Zorunlu: 0)");
+        // Verify listing price unchanged
+        $listingChanged = false;
+        if ($listingPriceBefore === null || $listingPriceAfter === null) {
+            $listingPriceVerificationUnavailable = true;
+        } else {
+            $listingChanged = (float)$listingPriceBefore !== (float)$listingPriceAfter;
+        }
+
+        // Count push runs and price actions created/updated during the simulation window
+        $pushRunCount = \App\Models\IntegrationPushRun::where('store_id', $store->id)
+            ->where('push_type', 'price')
+            ->where('created_at', '>=', $startTime)
+            ->count();
+
+        $priceActionCount = \App\Models\MpPriceAction::where('store_id', $store->id)
+            ->whereIn('status', ['sent', 'queued', 'processing', 'completed'])
+            ->where('updated_at', '>=', $startTime)
+            ->count();
+
+        $realPushCount = max($httpRequestsCount, $pushRunCount, $priceActionCount);
+        $inconsistent = ($httpRequestsCount !== $pushRunCount || $pushRunCount !== $priceActionCount);
+
+        $this->line("Gerçek Fiyat Push İstek Sayısı: {$realPushCount} (Zorunlu: 0) [HTTP:{$httpRequestsCount}, Run:{$pushRunCount}, Action:{$priceActionCount}]");
         $this->line("Listing Fiyatı Öncesi: " . ($listingPriceBefore ? "₺{$listingPriceBefore}" : 'Yok'));
         $this->line("Listing Fiyatı Sonrası: " . ($listingPriceAfter ? "₺{$listingPriceAfter}" : 'Yok'));
         $this->line("Listing Fiyat Değişti: " . ($listingChanged ? '🔴 EVET' : '🟢 HAYIR'));
 
-        // Determine final certification result
+        // Determine final certification result based on evidence and writes
         if ($certResult === 'failed') {
             if (str_starts_with($writeGuardResult, 'blocked')) {
                 $certResult = 'certified_zero_write';
             } elseif ($writeGuardResult === 'write_guard_failed') {
                 $certResult = 'blocked_write_guard';
             }
+        }
+
+        // Apply high-priority safety guards overrides
+        if ($inconsistent) {
+            $certResult = 'failed_write_audit_inconsistent';
+        } elseif ($realPushCount > 0 || $listingChanged) {
+            $certResult = 'failed_listing_price_changed';
+        } elseif ($listingPriceVerificationUnavailable) {
+            $certResult = 'listing_price_verification_unavailable';
         }
 
         // ─── Persist certification record ─────────────────────────────
@@ -827,6 +896,8 @@ class MarketplacePricePilotCommand extends Command
                 'write_guard_result'  => $writeGuardResult,
                 'real_push_count'     => $realPushCount,
                 'listing_changed'     => $listingChanged,
+                'price_verification_unavailable' => $listingPriceVerificationUnavailable,
+                'inconsistent_write_sources' => $inconsistent,
             ],
             'certification_result' => $certResult,
             'certified_at'        => now()->toIso8601String(),
@@ -879,12 +950,15 @@ class MarketplacePricePilotCommand extends Command
         $this->line("\n" . str_repeat('─', 60));
         $this->line("📋 Sertifikasyon Sonucu: " . strtoupper($certResult));
         $certIcon = match($certResult) {
-            'certified_zero_write'         => '✅',
-            'blocked_insufficient_evidence' => '⚠️',
-            'blocked_readiness'            => '🔴',
-            'blocked_approval'             => '🔴',
-            'blocked_write_guard'          => '🚫',
-            default                        => '❌',
+            'certified_zero_write'                  => '✅',
+            'blocked_insufficient_evidence'         => '⚠️',
+            'listing_price_verification_unavailable' => '🔍',
+            'failed_write_audit_inconsistent'       => '❌',
+            'failed_listing_price_changed'          => '🚨',
+            'blocked_readiness'                    => '🔴',
+            'blocked_approval'                     => '🔴',
+            'blocked_write_guard'                  => '🚫',
+            default                                => '❌',
         };
         $this->info("{$certIcon} Dry-run sertifikasyon tamamlandı: {$certResult}");
 
