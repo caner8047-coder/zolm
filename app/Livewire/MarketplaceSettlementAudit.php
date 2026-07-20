@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\ChannelOrder;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
+use App\Models\MpAuditLog;
 use App\Services\ExcelService;
 use App\Services\Marketplace\MarketplaceSettlementAuditQueryService;
 use Illuminate\Database\Eloquent\Builder;
@@ -46,6 +47,15 @@ class MarketplaceSettlementAudit extends Component
     public string $sortField = 'severity_score';
     public string $sortDirection = 'desc';
     public array $visibleColumns = ['order', 'store', 'risk', 'commission', 'cargo', 'desi', 'recovery', 'action'];
+
+    // ─── İtiraz Aksiyon Merkezi ─────────────────────────────────
+    public bool $showDisputeModal = false;
+    public ?int $disputeAuditLogId = null;
+    public string $disputeNote = '';
+    public array $selectedDisputeIds = [];
+    public bool $showBulkDisputeModal = false;
+    public string $bulkDisputeNote = '';
+    // ────────────────────────────────────────────────────────────
 
     protected $queryString = [
         'search' => ['except' => ''],
@@ -190,6 +200,160 @@ class MarketplaceSettlementAudit extends Component
         }
     }
 
+    // ─── İtiraz Aksiyon Merkezi Metodları ───────────────────────
+
+    /**
+     * Tekil itiraz modalını aç
+     */
+    public function openDisputeModal(int $auditLogId): void
+    {
+        $log = MpAuditLog::find($auditLogId);
+        if (! $log || ! $log->canBeDisputed()) {
+            session()->flash('warning', 'Bu kayıt itiraz için uygun değil.');
+            return;
+        }
+
+        $this->disputeAuditLogId = $auditLogId;
+        $this->disputeNote       = '';
+        $this->showDisputeModal  = true;
+    }
+
+    public function closeDisputeModal(): void
+    {
+        $this->showDisputeModal  = false;
+        $this->disputeAuditLogId = null;
+        $this->disputeNote       = '';
+    }
+
+    /**
+     * Tekil itirazı kaydet
+     */
+    public function submitDispute(): void
+    {
+        if (! $this->disputeAuditLogId) {
+            return;
+        }
+
+        $log = MpAuditLog::find($this->disputeAuditLogId);
+        if (! $log || ! $log->canBeDisputed()) {
+            session()->flash('warning', 'Bu kayıt itiraz için uygun değil.');
+            $this->closeDisputeModal();
+            return;
+        }
+
+        $log->markAsDisputed($this->disputeNote);
+        $this->closeDisputeModal();
+        session()->flash('success', 'İtiraz kaydedildi. Durum: Beklemede.');
+    }
+
+    /**
+     * Vade takvimi — KAYIP_ODEME kayıtlarını gecikme süresine göre segmentler
+     * Trendyol'un 14 günlük ödeme döngüsünü baz alır (teslimattan itibaren)
+     */
+    #[Computed]
+    public function paymentVadeSegments(): array
+    {
+        $now = now();
+
+        // description alanından gün sayısını regex ile çıkarıyoruz
+        $logs = MpAuditLog::query()
+            ->where('rule_code', 'KAYIP_ODEME')
+            ->whereNull('dispute_status')
+            ->get(['id', 'description', 'difference', 'title']);
+
+        $segments = [
+            '14_gunluk'   => ['label' => '0–14 gün (henüz vadesi gelmemiş)', 'count' => 0, 'total' => 0.0, 'color' => 'slate'],
+            '30_gunluk'   => ['label' => '15–30 gün (takip gerekli)',          'count' => 0, 'total' => 0.0, 'color' => 'amber'],
+            '90_gunluk'   => ['label' => '31–90 gün (kritik gecikme)',          'count' => 0, 'total' => 0.0, 'color' => 'orange'],
+            '90_ustu'     => ['label' => '90+ gün (itiraz öncelikli)',          'count' => 0, 'total' => 0.0, 'color' => 'red'],
+        ];
+
+        foreach ($logs as $log) {
+            // Description'dan "86.264122917245 gün" gibi değeri çek
+            preg_match('/(\d+(?:\.\d+)?)\s*gün/u', $log->description ?? '', $m);
+            $days = isset($m[1]) ? (int) $m[1] : 0;
+            $diff = (float) $log->difference;
+
+            if ($days <= 14) {
+                $segments['14_gunluk']['count']++;
+                $segments['14_gunluk']['total'] += $diff;
+            } elseif ($days <= 30) {
+                $segments['30_gunluk']['count']++;
+                $segments['30_gunluk']['total'] += $diff;
+            } elseif ($days <= 90) {
+                $segments['90_gunluk']['count']++;
+                $segments['90_gunluk']['total'] += $diff;
+            } else {
+                $segments['90_ustu']['count']++;
+                $segments['90_ustu']['total'] += $diff;
+            }
+        }
+
+        // Tutarları yuvarla
+        foreach ($segments as &$seg) {
+            $seg['total'] = round($seg['total'], 2);
+        }
+        unset($seg);
+
+        return $segments;
+    }
+
+    /**
+     * İtiraz durumu özeti
+     */
+    #[Computed]
+    public function disputeSummary(): array
+    {
+        $base = MpAuditLog::query()
+            ->whereIn('rule_code', ['KAYIP_ODEME', 'KARGO_MALIYET_ASIMI', 'HAKEDIS_FARK']);
+
+        return [
+            'total'    => (clone $base)->count(),
+            'disputed' => (clone $base)->whereNotNull('dispute_status')->count(),
+            'pending'  => (clone $base)->where('dispute_status', MpAuditLog::DISPUTE_PENDING)->count(),
+            'accepted' => (clone $base)->where('dispute_status', MpAuditLog::DISPUTE_ACCEPTED)->count(),
+            'open'     => (clone $base)->whereNull('dispute_status')->count(),
+        ];
+    }
+
+    /**
+     * İtiraz paketi Excel'e audit loglarını da ekle
+     */
+    public function exportDisputeExcel(): \Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        $logs = MpAuditLog::query()
+            ->whereIn('rule_code', ['KAYIP_ODEME', 'KARGO_MALIYET_ASIMI', 'HAKEDIS_FARK'])
+            ->whereNull('dispute_status')
+            ->orderByDesc('difference')
+            ->get(['id', 'rule_code', 'title', 'description', 'expected_value', 'actual_value', 'difference', 'created_at']);
+
+        $fileName = 'itiraz-paketi-' . now()->format('Ymd-His') . '.xlsx';
+        $path     = storage_path('app/temp/' . $fileName);
+
+        if (! is_dir(storage_path('app/temp'))) {
+            mkdir(storage_path('app/temp'), 0755, true);
+        }
+
+        app(ExcelService::class)->exportToXlsx([
+            [
+                'name' => 'Itiraz Edilecekler',
+                'data' => $logs->map(fn ($log) => [
+                    'Kural'            => $log->rule_code,
+                    'Başlık'           => $log->title,
+                    'Açıklama'         => $log->description,
+                    'Beklenen (TL)'    => (float) $log->expected_value,
+                    'Gerçekleşen (TL)' => (float) $log->actual_value,
+                    'Fark (TL)'        => (float) $log->difference,
+                    'Tarih'            => $log->created_at,
+                ])->values()->all(),
+            ],
+        ], $path);
+
+        return response()->download($path, $fileName)->deleteFileAfterSend(true);
+    }
+
+    // ────────────────────────────────────────────────────────────
+
     public function exportAppealPackage()
     {
         $audit = $this->audit;
@@ -260,13 +424,15 @@ class MarketplaceSettlementAudit extends Component
     public function render()
     {
         return view('livewire.marketplace-settlement-audit', [
-            'audit' => $this->audit,
-            'marketplaceOptions' => $this->marketplaceOptions,
-            'storeOptions' => $this->storeOptions,
-            'legalEntities' => $this->legalEntities,
-            'riskOptions' => $this->riskOptions(),
-            'columnDefs' => self::$allColumnDefs,
-            'sortableColumns' => self::$sortableColumns,
+            'audit'                => $this->audit,
+            'marketplaceOptions'   => $this->marketplaceOptions,
+            'storeOptions'         => $this->storeOptions,
+            'legalEntities'        => $this->legalEntities,
+            'riskOptions'          => $this->riskOptions(),
+            'columnDefs'           => self::$allColumnDefs,
+            'sortableColumns'      => self::$sortableColumns,
+            'paymentVadeSegments'  => $this->paymentVadeSegments,
+            'disputeSummary'       => $this->disputeSummary,
         ])->layout('layouts.app', ['title' => 'Eksik Ödeme Takibi']);
     }
 

@@ -5,6 +5,7 @@
     $summary = $payload['summary'] ?? [];
     $risk = $payload['risk'] ?? [];
     $campaign = $payload['campaign'] ?? [];
+    $audit = $payload['audit'] ?? [];
     $actions = collect($payload['actions'] ?? [])->take(5);
     $riskItems = collect($payload['risk_items'] ?? [])->take(4);
     $marketplaces = collect($payload['marketplaces'] ?? [])->take(6);
@@ -154,9 +155,55 @@
                         </tr>
                     @endif
 
+
+                    {{-- Geciken Ödemeler Uyarı Bloğu --}}
+                    @if(($audit['missing_payment_count'] ?? 0) > 0 || ($audit['cargo_overcharge_count'] ?? 0) > 0)
+                        <tr>
+                            <td style="padding:10px 28px 10px;">
+                                <div style="border:2px solid #fca5a5;background:#fff1f2;border-radius:8px;padding:16px;">
+                                    <div style="color:#be123c;font-size:15px;font-weight:800;margin-bottom:10px;">⚠️ Geciken Ödemeler Uyarısı</div>
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                        @if(($audit['missing_payment_count'] ?? 0) > 0)
+                                        <tr>
+                                            <td style="color:#64748b;font-size:13px;padding-bottom:8px;">Kayıp ödeme (itiraz bekleyen)</td>
+                                            <td align="right" style="color:#be123c;font-size:16px;font-weight:800;padding-bottom:8px;">
+                                                {{ $number($audit['missing_payment_count']) }} sipariş · {{ $money($audit['missing_payment_total']) }}
+                                            </td>
+                                        </tr>
+                                        @endif
+                                        @if(($audit['cargo_overcharge_count'] ?? 0) > 0)
+                                        <tr>
+                                            <td style="color:#64748b;font-size:13px;padding-bottom:8px;">Kargo maliyet aşımı</td>
+                                            <td align="right" style="color:#ea580c;font-size:16px;font-weight:800;padding-bottom:8px;">
+                                                {{ $number($audit['cargo_overcharge_count']) }} sipariş · {{ $money($audit['cargo_overcharge_total']) }}
+                                            </td>
+                                        </tr>
+                                        @endif
+                                        @if(($audit['pending_dispute_count'] ?? 0) > 0)
+                                        <tr>
+                                            <td style="color:#64748b;font-size:13px;">Bekleyen itiraz</td>
+                                            <td align="right" style="color:#0f172a;font-size:14px;font-weight:700;">
+                                                {{ $number($audit['pending_dispute_count']) }} itiraz işlemde
+                                            </td>
+                                        </tr>
+                                        @endif
+                                    </table>
+                                    @if(!empty($payload['links']['settlement_audit']))
+                                        <div style="margin-top:12px;">
+                                            <a href="{{ $payload['links']['settlement_audit'] }}" style="display:inline-block;background:#be123c;color:#ffffff;text-decoration:none;border-radius:6px;padding:9px 14px;font-size:13px;font-weight:700;">Eksik Ödeme Takibine Git →</a>
+                                        </div>
+                                    @endif
+                                </div>
+                            </td>
+                        </tr>
+                    @endif
+
                     <tr>
                         <td style="padding:20px 28px 28px;border-top:1px solid #e2e8f0;">
                             <a href="{{ $payload['links']['profit_center'] ?? '#' }}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:6px;padding:10px 14px;font-size:13px;font-weight:700;">Kâr Merkezi'ni aç</a>
+                            @if(!empty($payload['links']['settlement_audit']))
+                                <a href="{{ $payload['links']['settlement_audit'] }}" style="display:inline-block;margin-left:8px;color:#be123c;text-decoration:none;border:1px solid #fca5a5;border-radius:6px;padding:9px 13px;font-size:13px;font-weight:700;">Eksik Ödeme Takibi</a>
+                            @endif
                             <a href="{{ $payload['links']['report_settings'] ?? '#' }}" style="display:inline-block;margin-left:8px;color:#334155;text-decoration:none;border:1px solid #e2e8f0;border-radius:6px;padding:9px 13px;font-size:13px;font-weight:700;">Rapor ayarları</a>
                         </td>
                     </tr>

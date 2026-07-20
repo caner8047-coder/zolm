@@ -6,6 +6,7 @@ use App\Mail\MarketplaceReportDigestMail;
 use App\Models\MarketplaceReportDigestRun;
 use App\Models\MarketplaceReportSubscription;
 use App\Models\MarketplaceStore;
+use App\Models\MpAuditLog;
 use App\Models\Report;
 use App\Models\User;
 use App\Services\CampaignDecisionCenterQueryService;
@@ -261,54 +262,104 @@ class MarketplaceReportDigestService
         $marketplaceBreakdown = $this->profitCenter->marketplaceBreakdown((int) $subscription->user_id, $filters, 6);
         $costReadiness = $this->profitCenter->costReadiness((int) $subscription->user_id, $filters);
 
+        // ─── Günlük İtiraz Özeti (Audit) ─────────────────────────────
+        $auditSummary = $this->buildAuditSummary();
+        // ────────────────────────────────────────────────────────────
+
         $payloadSummary = [
-            'gross_revenue' => (float) $summary['gross_revenue'],
-            'profit_value' => (float) $summary['profit_value'],
-            'profit_margin_percent' => (float) $summary['profit_margin_percent'],
-            'net_receivable' => (float) $summary['net_receivable'],
-            'total_orders' => (int) $summary['total_orders'],
-            'loss_order_count' => (int) $summary['loss_order_count'],
+            'gross_revenue'               => (float) $summary['gross_revenue'],
+            'profit_value'                => (float) $summary['profit_value'],
+            'profit_margin_percent'       => (float) $summary['profit_margin_percent'],
+            'net_receivable'              => (float) $summary['net_receivable'],
+            'total_orders'                => (int) $summary['total_orders'],
+            'loss_order_count'            => (int) $summary['loss_order_count'],
             'finance_waiting_order_count' => (int) $summary['finance_waiting_order_count'],
-            'risk_open_count' => (int) $riskDashboard['summary']['open_count'],
-            'risk_critical_count' => (int) $riskDashboard['summary']['critical_count'],
-            'risk_impact_total' => (float) $riskDashboard['summary']['impact_total'],
-            'campaign_potential_profit' => (float) $campaignImpact['potential_profit'],
-            'campaign_risk_exposure' => (float) $campaignImpact['risk_exposure'],
-            'command_score' => (float) $executive['score'],
-            'command_label' => (string) $executive['score_label'],
+            'risk_open_count'             => (int) $riskDashboard['summary']['open_count'],
+            'risk_critical_count'         => (int) $riskDashboard['summary']['critical_count'],
+            'risk_impact_total'           => (float) $riskDashboard['summary']['impact_total'],
+            'campaign_potential_profit'   => (float) $campaignImpact['potential_profit'],
+            'campaign_risk_exposure'      => (float) $campaignImpact['risk_exposure'],
+            'command_score'               => (float) $executive['score'],
+            'command_label'               => (string) $executive['score_label'],
+            // Geciken ödeme özeti
+            'missing_payment_count'       => $auditSummary['missing_payment_count'],
+            'missing_payment_total'       => $auditSummary['missing_payment_total'],
+            'cargo_overcharge_count'      => $auditSummary['cargo_overcharge_count'],
+            'cargo_overcharge_total'      => $auditSummary['cargo_overcharge_total'],
         ];
 
         return [
-            'subject' => $this->subject($subscription, $period),
-            'subscription' => [
-                'id' => $subscription->id,
-                'name' => $subscription->name,
-                'frequency' => $subscription->frequency,
+            'subject'       => $this->subject($subscription, $period),
+            'subscription'  => [
+                'id'              => $subscription->id,
+                'name'            => $subscription->name,
+                'frequency'       => $subscription->frequency,
                 'frequency_label' => $this->frequencyDefinitions()[$subscription->frequency]['label'] ?? Str::headline($subscription->frequency),
-                'store_name' => $subscription->store?->store_name,
+                'store_name'      => $subscription->store?->store_name,
             ],
-            'user' => [
-                'name' => $subscription->user?->name,
+            'user'          => [
+                'name'  => $subscription->user?->name,
                 'email' => $subscription->user?->email,
             ],
-            'period' => $period,
-            'sections' => $sections,
-            'summary' => $payloadSummary,
-            'executive' => $executive,
-            'profit' => $summary,
-            'risk' => $riskDashboard['summary'],
-            'risk_items' => $riskDashboard['priority_actions'],
-            'campaign' => $campaignImpact,
-            'marketplaces' => $marketplaceBreakdown,
-            'actions' => $priorityActions,
+            'period'        => $period,
+            'sections'      => $sections,
+            'summary'       => $payloadSummary,
+            'executive'     => $executive,
+            'profit'        => $summary,
+            'risk'          => $riskDashboard['summary'],
+            'risk_items'    => $riskDashboard['priority_actions'],
+            'campaign'      => $campaignImpact,
+            'marketplaces'  => $marketplaceBreakdown,
+            'actions'       => $priorityActions,
             'cost_readiness' => $costReadiness,
-            'generated_at' => $runAt->copy()->timezone((string) $subscription->timezone)->format('d.m.Y H:i'),
-            'links' => [
-                'profit_center' => route('mp.profit-center'),
-                'risk_center' => route('mp.risk-center'),
+            'audit'         => $auditSummary,
+            'generated_at'  => $runAt->copy()->timezone((string) $subscription->timezone)->format('d.m.Y H:i'),
+            'links'         => [
+                'profit_center'   => route('mp.profit-center'),
+                'risk_center'     => route('mp.risk-center'),
                 'campaign_center' => route('campaigns.decision-center'),
+                'settlement_audit' => route('mp.settlement-audit'),
                 'report_settings' => route('mp.report-digests'),
             ],
+        ];
+    }
+
+    /**
+     * Audit kayıtlarından geciken ödeme ve kargo aşımı özetini hazırlar.
+     *
+     * @return array{missing_payment_count: int, missing_payment_total: float, cargo_overcharge_count: int, cargo_overcharge_total: float, disputed_count: int, pending_dispute_count: int}
+     */
+    protected function buildAuditSummary(): array
+    {
+        $missingPayment = MpAuditLog::query()
+            ->where('rule_code', 'KAYIP_ODEME')
+            ->whereNull('dispute_status')
+            ->selectRaw('COUNT(*) as cnt, SUM(ABS(difference)) as total')
+            ->first();
+
+        $cargoOvercharge = MpAuditLog::query()
+            ->where('rule_code', 'KARGO_MALIYET_ASIMI')
+            ->whereNull('dispute_status')
+            ->selectRaw('COUNT(*) as cnt, SUM(ABS(difference)) as total')
+            ->first();
+
+        $disputed = MpAuditLog::query()
+            ->whereIn('rule_code', ['KAYIP_ODEME', 'KARGO_MALIYET_ASIMI', 'HAKEDIS_FARK'])
+            ->whereNotNull('dispute_status')
+            ->count();
+
+        $pendingDispute = MpAuditLog::query()
+            ->whereIn('rule_code', ['KAYIP_ODEME', 'KARGO_MALIYET_ASIMI', 'HAKEDIS_FARK'])
+            ->where('dispute_status', MpAuditLog::DISPUTE_PENDING)
+            ->count();
+
+        return [
+            'missing_payment_count'  => (int) ($missingPayment->cnt ?? 0),
+            'missing_payment_total'  => (float) ($missingPayment->total ?? 0.0),
+            'cargo_overcharge_count' => (int) ($cargoOvercharge->cnt ?? 0),
+            'cargo_overcharge_total' => (float) ($cargoOvercharge->total ?? 0.0),
+            'disputed_count'         => $disputed,
+            'pending_dispute_count'  => $pendingDispute,
         ];
     }
 
