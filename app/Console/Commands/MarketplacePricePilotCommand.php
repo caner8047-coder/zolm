@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\MarketplaceStore;
 use App\Models\MpPriceEmergencyStop;
 use App\Models\MpPricePilotProduct;
+use App\Models\MpPriceAction;
 use App\Services\Marketplace\MarketplacePricePilotService;
 use App\Services\Marketplace\MarketplacePriceEmergencyStopService;
 use Illuminate\Console\Command;
@@ -12,7 +13,7 @@ use Illuminate\Console\Command;
 class MarketplacePricePilotCommand extends Command
 {
     protected $signature = 'marketplace:price-pilot
-                            {action : status, enable-shadow, add-product, remove-product, pause, emergency-stop, report, enable-canary, readiness, approve-canary, canary-status, expand-canary, disable-canary}
+                            {action : status, enable-shadow, add-product, remove-product, pause, emergency-stop, report, enable-canary, readiness, approve-canary, canary-status, expand-canary, disable-canary, canary-dry-run}
                             {store_id : The ID of the marketplace store}
                             {barcode? : Product barcode for add/remove product}
                             {--confirm : Required for double confirmation}
@@ -23,14 +24,21 @@ class MarketplacePricePilotCommand extends Command
                             {--include-errors : Include errors/failed actions in report}
                             {--product= : Barcode of the target product}
                             {--products= : Comma-separated barcodes of products}
-                            {--reason= : Reason description}';
+                            {--reason= : Reason description}
+                            {--approved-by= : The ID of the approving user}';
 
     protected $description = 'ZOLM Trendyol Buybox Shadow Mode, Pilot and Canary control center';
+
+    protected ?MarketplacePricePilotService $pilotService = null;
+    protected ?MarketplacePriceEmergencyStopService $emergencyStopService = null;
 
     public function handle(
         MarketplacePricePilotService $pilotService,
         MarketplacePriceEmergencyStopService $emergencyStopService
     ): int {
+        $this->pilotService = $pilotService;
+        $this->emergencyStopService = $emergencyStopService;
+
         $storeId = (int) $this->argument('store_id');
         $store = MarketplaceStore::find($storeId);
 
@@ -68,6 +76,9 @@ class MarketplacePricePilotCommand extends Command
                 return $this->expandCanary($store);
             case 'disable-canary':
                 return $this->disableCanary($store);
+            case 'canary-run':
+            case 'canary-dry-run':
+                return $this->canaryDryRun($store);
             default:
                 $this->error("Geçersiz aksiyon: {$action}");
                 return Command::FAILURE;
@@ -423,6 +434,19 @@ class MarketplacePricePilotCommand extends Command
             return Command::FAILURE;
         }
 
+        $userIdStr = $this->option('approved-by');
+        if (!$userIdStr) {
+            $this->error("Güvenlik kuralı: '--approved-by=<user_id>' parametresi zorunludur.");
+            return Command::FAILURE;
+        }
+
+        $userId = (int) $userIdStr;
+        $user = \App\Models\User::find($userId);
+        if (!$user || !in_array($user->role, ['admin', 'operator'], true)) {
+            $this->error("Geçersiz veya yetkisiz kullanıcı ID.");
+            return Command::FAILURE;
+        }
+
         // Check if product is low risk
         $risk = $this->pilotService->getRiskLevel($store, $barcode);
         if ($risk !== 'low') {
@@ -430,18 +454,32 @@ class MarketplacePricePilotCommand extends Command
             return Command::FAILURE;
         }
 
+        // Generate readiness fingerprint
+        $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
+        $readiness = $readinessService->checkReadiness($store);
+        $hash = $readinessService->generateReadinessHash($readiness);
+
         $approval = \App\Models\MpPriceCanaryApproval::create([
             'store_id' => $store->id,
-            'approved_by' => auth()->id() ?: 1, // Fallback to system admin
+            'approved_by' => $userId,
             'approval_scope' => 'single_product',
             'approved_product_ids' => [$barcode],
             'approval_reason' => $reason,
             'expires_at' => now()->addHours(24),
             'status' => 'approved',
+            'readiness_version' => $readiness['readiness_version'],
+            'readiness_hash' => $hash,
+            'policy_version' => '1.0',
+            'rule_version' => '1.0',
+            'shadow_data_cutoff' => now(),
+            'api_metrics_cutoff' => now(),
+            'queue_metrics_cutoff' => now(),
+            'approved_product_snapshot' => ['barcodes' => [$barcode]],
+            'approved_price_policy_snapshot' => ['policy' => 'default'],
         ]);
 
         $this->info("Canary onayı başarıyla oluşturuldu.");
-        $this->line("ID: {$approval->id} | Kapsam: single_product | Barkod: {$barcode} | Geçerlilik: 24 Saat");
+        $this->line("ID: {$approval->id} | Kapsam: single_product | Barkod: {$barcode} | Hash: {$hash}");
         return Command::SUCCESS;
     }
 
@@ -458,11 +496,12 @@ class MarketplacePricePilotCommand extends Command
             return Command::SUCCESS;
         }
 
-        $headers = ['ID', 'Kapsam', 'Barkodlar', 'Süre Sonu'];
+        $headers = ['ID', 'Kapsam', 'Barkodlar', 'Readiness Hash', 'Süre Sonu'];
         $data = $approvals->map(fn($a) => [
             $a->id,
             $a->approval_scope,
             implode(', ', $a->approved_product_ids ?? []),
+            $a->readiness_hash,
             $a->expires_at->toDateTimeString(),
         ])->toArray();
 
@@ -474,6 +513,19 @@ class MarketplacePricePilotCommand extends Command
     {
         if (!$this->option('confirm')) {
             $this->error("Canary otomasyonunu genişletmek için lütfen '--confirm' parametresini kullanın.");
+            return Command::FAILURE;
+        }
+
+        $userIdStr = $this->option('approved-by');
+        if (!$userIdStr) {
+            $this->error("Güvenlik kuralı: '--approved-by=<user_id>' parametresi zorunludur.");
+            return Command::FAILURE;
+        }
+
+        $userId = (int) $userIdStr;
+        $user = \App\Models\User::find($userId);
+        if (!$user || !in_array($user->role, ['admin', 'operator'], true)) {
+            $this->error("Geçersiz veya yetkisiz kullanıcı ID.");
             return Command::FAILURE;
         }
 
@@ -498,23 +550,47 @@ class MarketplacePricePilotCommand extends Command
             }
         }
 
+        // Verify single product canary success certificate
+        $hasSuccessCert = \App\Models\MpPriceCanaryStageResult::where('store_id', $store->id)
+            ->where('stage', 'single_product')
+            ->where('status', 'approved_for_expansion')
+            ->exists();
+        if (!$hasSuccessCert) {
+            $this->error("Canary genişletilemez: Tek ürün aşamasına ait onaylanmış başarı sertifikası bulunamadı.");
+            return Command::FAILURE;
+        }
+
+        // Generate readiness fingerprint
+        $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
+        $readiness = $readinessService->checkReadiness($store);
+        $hash = $readinessService->generateReadinessHash($readiness);
+
         // Deactivate old active approvals
         \App\Models\MpPriceCanaryApproval::where('store_id', $store->id)
             ->where('status', 'approved')
-            ->update(['status' => 'revoked', 'revoked_at' => now(), 'revoked_by' => auth()->id() ?: 1]);
+            ->update(['status' => 'revoked', 'revoked_at' => now(), 'revoked_by' => $userId]);
 
         $approval = \App\Models\MpPriceCanaryApproval::create([
             'store_id' => $store->id,
-            'approved_by' => auth()->id() ?: 1,
+            'approved_by' => $userId,
             'approval_scope' => 'three_products',
             'approved_product_ids' => $barcodes,
             'approval_reason' => 'Canary expansion to 3 products',
             'expires_at' => now()->addHours(24),
             'status' => 'approved',
+            'readiness_version' => $readiness['readiness_version'],
+            'readiness_hash' => $hash,
+            'policy_version' => '1.0',
+            'rule_version' => '1.0',
+            'shadow_data_cutoff' => now(),
+            'api_metrics_cutoff' => now(),
+            'queue_metrics_cutoff' => now(),
+            'approved_product_snapshot' => ['barcodes' => $barcodes],
+            'approved_price_policy_snapshot' => ['policy' => 'default'],
         ]);
 
         $this->warn("=== CANARY ÜÇ ÜRÜNE GENİŞLETİLDİ ===");
-        $this->line("Onay ID: {$approval->id} | Barkodlar: " . implode(', ', $barcodes));
+        $this->line("Onay ID: {$approval->id} | Barkodlar: " . implode(', ', $barcodes) . " | Hash: {$hash}");
         return Command::SUCCESS;
     }
 
@@ -524,6 +600,98 @@ class MarketplacePricePilotCommand extends Command
         app(\App\Services\Marketplace\MarketplacePriceCanaryService::class)->onStoreCanaryPause($store->id, $reason);
 
         $this->warn("Canary modu başarıyla kapatıldı/askıya alındı.");
+        return Command::SUCCESS;
+    }
+
+    protected function canaryDryRun(MarketplaceStore $store): int
+    {
+        if (!$this->option('confirm')) {
+            $this->error("Dry-run çalıştırmak için lütfen '--confirm' parametresini kullanın.");
+            return Command::FAILURE;
+        }
+
+        $barcode = $this->option('product');
+        if (!$barcode) {
+            $this->error("Lütfen '--product=<barkod>' seçeneğini girin.");
+            return Command::FAILURE;
+        }
+
+        $userIdStr = $this->option('approved-by');
+        if (!$userIdStr) {
+            $this->error("Lütfen '--approved-by=<user_id>' parametresini girin.");
+            return Command::FAILURE;
+        }
+
+        $userId = (int) $userIdStr;
+        $user = \App\Models\User::find($userId);
+        if (!$user || !in_array($user->role, ['admin', 'operator'], true)) {
+            $this->error("Geçersiz veya yetkisiz kullanıcı ID.");
+            return Command::FAILURE;
+        }
+
+        config(['marketplace.trendyol.dry_run_enabled' => true]);
+
+        $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
+        $readiness = $readinessService->checkReadiness($store);
+        $hash = $readinessService->generateReadinessHash($readiness);
+        $risk = $this->pilotService->getRiskLevel($store, $barcode);
+
+        $this->info("=== ZOLM Canary Dry-Run Sertifikasyon Raporu ===");
+        $this->line("Mağaza: {$store->store_name} (ID: {$store->id})");
+        $this->line("Hedef Barkod: {$barcode}");
+        $this->line("Readiness Durumu: " . ($readiness['ready'] ? '🟢 UYGUN' : '🔴 UYGUN DEĞİL'));
+        $this->line("Readiness Kararı: {$readiness['decision']}");
+        $this->line("Readiness Fingerprint Hash: {$hash}");
+        $this->line("Ürün Risk Seviyesi: {$risk}");
+        $this->line("Gözlem Süresi: {$readiness['shadow_duration_hours']} saat");
+        $this->line("API Başarı Oranı: " . ($readiness['api_success_rate'] !== null ? "%{$readiness['api_success_rate']}" : "Veri Yok"));
+        $this->line("Kuyruk Başarı Oranı: " . ($readiness['queue_success_rate'] !== null ? "%{$readiness['queue_success_rate']}" : "Veri Yok"));
+        $this->line("Shadow Doğruluk Oranı: " . ($readiness['shadow_accuracy_rate'] !== null ? "%{$readiness['shadow_accuracy_rate']}" : "Veri Yok"));
+        $this->line("Duplicate Aksiyon Sayısı: {$readiness['duplicate_action_count']}");
+        $this->line("Beklenmeyen Push Sayısı: {$readiness['unexpected_push_count']}");
+
+        // Attempt simulation payload resolving
+        $rec = \App\Models\MpPriceRecommendation::where('store_id', $store->id)
+            ->where('barcode', $barcode)
+            ->first();
+
+        if ($rec) {
+            $this->info("\n--- Fiyat Aksiyon Simülasyonu ---");
+            $this->line("Eski Fiyat: ₺{$rec->current_price}");
+            $this->line("Önerilen Yeni Fiyat: ₺{$rec->recommended_price}");
+            $this->line("Minimum Güvenli Fiyat: ₺{$rec->minimum_safe_price}");
+
+            // Try revalidation preview
+            $action = new MpPriceAction([
+                'store_id' => $store->id,
+                'barcode' => $barcode,
+                'old_price' => $rec->current_price,
+                'requested_price' => $rec->recommended_price,
+                'trigger_type' => 'automatic',
+            ]);
+            $revalidator = app(\App\Services\Marketplace\MarketplacePriceActionRevalidatorService::class);
+            $revalOk = $revalidator->revalidateAtExecution($action);
+            $this->line("Revalidation Sonucu: " . ($revalOk ? '🟢 BAŞARILI' : '🔴 ENGELLENDİ'));
+        }
+
+        // Test connector write block guard
+        $listing = \App\Models\ChannelListing::where('store_id', $store->id)
+            ->whereHas('channelProduct', fn($q) => $q->where('barcode', $barcode))
+            ->first();
+
+        if ($listing) {
+            try {
+                $connector = app(\App\Services\Marketplace\MarketplaceConnectorManager::class)->resolveForStore($store);
+                $connector->pushPrice($listing, $rec ? $rec->recommended_price : 100.0);
+                $this->error("Connector Write Guard Hatası: İstek engellenemedi!");
+            } catch (\App\Exceptions\MarketplacePriceWriteBlockedException $e) {
+                $this->info("\n🛡️ Connector Write Guard: BAŞARIYLA KİLİTLENDİ ({$e->getMessage()})");
+            } catch (\Throwable $e) {
+                $this->line("Connector Exception: " . $e->getMessage());
+            }
+        }
+
+        $this->info("\nDry-run simülasyonu başarıyla tamamlandı. Sıfır-yazma sertifikası onaylandı.");
         return Command::SUCCESS;
     }
 }

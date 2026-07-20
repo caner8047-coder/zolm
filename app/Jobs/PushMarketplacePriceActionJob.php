@@ -57,6 +57,28 @@ class PushMarketplacePriceActionJob implements ShouldQueue
             return;
         }
 
+        // Dry-run mode interceptor
+        $dryRun = config('marketplace.trendyol.dry_run_enabled') || env('TRENDYOL_PRICE_CANARY_DRY_RUN_ENABLED', false);
+        if ($dryRun) {
+            $action->update([
+                'status' => 'dry_run_completed',
+                'response_payload' => ['dry_run' => true, 'message' => 'Dry run simulation completed successfully. No price sent to Trendyol.'],
+                'completed_at' => now(),
+            ]);
+
+            if ($action->recommendation) {
+                $action->recommendation->update(['status' => 'success']);
+            }
+
+            Log::info('[PushMarketplacePriceActionJob] DRY-RUN: Fiyat push simülasyonu tamamlandı', [
+                'action_id' => $action->id,
+                'barcode' => $action->barcode,
+                'requested_price' => $action->requested_price,
+            ]);
+
+            return;
+        }
+
         $store = $action->store;
         if (! $store) {
             $action->update([
