@@ -186,6 +186,11 @@ return [
         'bulk_price_actions_enabled' => (bool) env('TRENDYOL_BULK_PRICE_ACTIONS_ENABLED', false),
         'automatic_price_actions_enabled' => (bool) env('TRENDYOL_AUTOMATIC_PRICE_ACTIONS_ENABLED', false),
         'price_rollback_enabled' => (bool) env('TRENDYOL_PRICE_ROLLBACK_ENABLED', false),
+        'shadow_mode_enabled' => (bool) env('TRENDYOL_PRICE_SHADOW_MODE_ENABLED', false),
+        'pilot_enabled' => (bool) env('TRENDYOL_PRICE_PILOT_ENABLED', false),
+        'canary_enabled' => (bool) env('TRENDYOL_PRICE_CANARY_ENABLED', false),
+        'price_verification_enabled' => (bool) env('TRENDYOL_PRICE_VERIFICATION_ENABLED', false),
+        'emergency_stop_enabled' => (bool) env('TRENDYOL_PRICE_EMERGENCY_STOP', false),
         // Sağlık Merkezi scheduler gecikme eşikleri (dakika)
         'health' => [
             'warning_multiplier' => (int) env('TRENDYOL_HEALTH_WARNING_MULTIPLIER', 2),
