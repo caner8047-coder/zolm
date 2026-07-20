@@ -140,6 +140,12 @@ class MarketplacePriceActionRevalidatorService
             $action->recommendation->update(['status' => 'cancelled']);
         }
 
+        // Auto-pause Canary mode on critical revalidation failures
+        if (in_array($status, ['blocked_margin', 'blocked_tenant_isolation', 'blocked_stale_data', 'blocked_store_unhealthy'], true)) {
+            app(\App\Services\Marketplace\MarketplacePriceCanaryService::class)
+                ->onStoreCanaryPause($action->store_id, "Revalidation failure ({$status}): {$reason}");
+        }
+
         Log::warning("[MarketplacePriceActionRevalidatorService] Aksiyon engellendi: {$status}", [
             'action_id' => $action->id,
             'barcode' => $action->barcode,

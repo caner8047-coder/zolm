@@ -134,4 +134,19 @@ class MarketplacePricePilotNotificationService
             'event_key' => "pilot_queue_delay_{$storeId}_{$hourKey}",
         ]);
     }
+
+    public function notifyCanaryAutoPaused(int $storeId, string $reason): ?AppNotification
+    {
+        $store = MarketplaceStore::find($storeId);
+        if (!$store) return null;
+
+        $hourKey = now()->format('YmdH');
+        return $this->notificationCenter->createForStore($store, [
+            'type' => 'risk_critical',
+            'severity' => 'danger',
+            'title' => 'Canary Pilot Otomatik Durduruldu',
+            'body' => "Canary otomatik olarak askıya alındı. Nedeni: {$reason}",
+            'event_key' => "canary_auto_paused_{$storeId}_{$hourKey}",
+        ]);
+    }
 }

@@ -162,6 +162,10 @@ class PushMarketplacePriceActionJob implements ShouldQueue
                 $action->recommendation->update(['status' => 'failed']);
             }
 
+            // Auto-pause Canary mode on API error
+            app(\App\Services\Marketplace\MarketplacePriceCanaryService::class)
+                ->onStoreCanaryPause($action->store_id, "API Push Error: " . $e->getMessage());
+
             Log::error('[PushMarketplacePriceActionJob] Fiyat push hatası', [
                 'action_id' => $action->id,
                 'error' => $e->getMessage(),
