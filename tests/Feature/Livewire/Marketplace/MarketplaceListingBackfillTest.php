@@ -125,6 +125,7 @@ class MarketplaceListingBackfillTest extends TestCase
     {
         $code = Artisan::call('marketplace:listings:backfill', [
             'store_id' => $this->store->id,
+            '--source-user' => $this->adminUser->id,
         ]);
 
         $this->assertEquals(1, $code);
@@ -135,6 +136,7 @@ class MarketplaceListingBackfillTest extends TestCase
     {
         $code = Artisan::call('marketplace:listings:backfill', [
             'store_id' => $this->store->id,
+            '--source-user' => $this->adminUser->id,
             '--dry-run' => true,
         ]);
 
@@ -149,6 +151,7 @@ class MarketplaceListingBackfillTest extends TestCase
     {
         $code = Artisan::call('marketplace:listings:backfill', [
             'store_id' => $this->store->id,
+            '--source-user' => $this->adminUser->id,
             '--confirm' => true,
         ]);
 
