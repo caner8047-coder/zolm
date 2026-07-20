@@ -561,6 +561,12 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Emergency stop aktif.");
         }
 
+        // Manual Price Lock Check
+        $lockService = app(\App\Services\Marketplace\MarketplacePriceLockService::class);
+        if ($lockService->isLocked($listing->store_id, $barcode)) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Ürün üzerinde manuel fiyat kilidi mevcut.");
+        }
+
         // Strict context checking
         $priceActionId = data_get($context, 'price_action_id');
         $writeContextType = data_get($context, 'write_context_type');
@@ -569,6 +575,10 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             $dbAction = \App\Models\MpPriceAction::find($priceActionId);
             if (!$dbAction) {
                 throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Kayıtlı fiyat aksiyonu bulunamadı.");
+            }
+
+            if (in_array($dbAction->status, ['failed', 'cancelled'], true)) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Aksiyon uygun durumda değil.");
             }
 
             // Verify store matches
@@ -584,6 +594,16 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             // Verify requested price matches the pushed price
             if (abs((float)$dbAction->requested_price - $price) > 0.01) {
                 throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Talep edilen fiyat ile gönderilen fiyat uyuşmuyor.");
+            }
+
+            // Verify idempotency and correlation fields match action in DB
+            $ctxIdempotency = data_get($context, 'idempotency_key');
+            $ctxCorrelation = data_get($context, 'correlation_id');
+            if ($ctxIdempotency && $ctxIdempotency !== $dbAction->idempotency_key) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Idempotency key uyuşmazlığı.");
+            }
+            if ($ctxCorrelation && $ctxCorrelation !== $dbAction->correlation_id) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Correlation ID uyuşmazlığı.");
             }
 
             $triggerType = $dbAction->trigger_type;
@@ -611,6 +631,10 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                 if (!$approval->isValidForCurrentReadiness($readiness)) {
                     throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Canary onayının parmak izi (fingerprint) mevcut durumla uyuşmuyor.");
                 }
+            } else {
+                if (!config('marketplace.trendyol.manual_price_actions_enabled', false)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Manuel fiyat değiştirme devre dışı.");
+                }
             }
         } elseif ($writeContextType === 'legacy_manual') {
             // Verify legacy/manual context parameters
@@ -633,6 +657,43 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             if (!config('marketplace.trendyol.manual_price_actions_enabled', false)) {
                 throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Manuel fiyat değiştirme devre dışı.");
             }
+
+            if ($price <= 0) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Geçersiz fiyat.");
+            }
+
+            // Validate actor/system actor
+            if ($actorType === 'user') {
+                $user = \App\Models\User::where('id', $actorId)->where('is_active', true)->first();
+                if (!$user) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Aktif kullanıcı bulunamadı.");
+                }
+                $roleSlug = $user->roleSlug();
+                if (!in_array($roleSlug, ['admin', 'operator'], true)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Kullanıcının fiyat güncelleme yetkisi yok.");
+                }
+                $isOwner = (int)$listing->store->user_id === (int)$actorId;
+                $isAdmin = ($roleSlug === 'admin');
+                if (!$isOwner && !$isAdmin) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Kullanıcının bu mağazaya erişim yetkisi yok.");
+                }
+            } elseif ($actorType === 'system') {
+                if ($actorId !== 'system') {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz sistem aktörü.");
+                }
+            } else {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz aktör tipi.");
+            }
+
+            // Audit manual update
+            \Illuminate\Support\Facades\Log::notice("Marketplace manual price push executed", [
+                'store_id' => $listing->store_id,
+                'barcode' => $barcode,
+                'price' => $price,
+                'actor_id' => $actorId,
+                'actor_type' => $actorType,
+                'correlation_id' => $correlationId,
+            ]);
         } else {
             throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Doğrulanmış yazma bağlamı bulunamadı.");
         }
@@ -683,27 +744,59 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
         }
 
         // Strict context checking for Stock
-        $priceActionId = data_get($context, 'price_action_id');
         $writeContextType = data_get($context, 'write_context_type');
 
-        if ($priceActionId) {
-            $dbAction = \App\Models\MpPriceAction::find($priceActionId);
-            if (!$dbAction) {
-                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Kayıtlı fiyat aksiyonu bulunamadı.");
+        if ($writeContextType === 'stock_update') {
+            $storeId = data_get($context, 'store_id');
+            $correlationId = data_get($context, 'correlation_id');
+            $idempotencyKey = data_get($context, 'idempotency_key');
+            $actorType = data_get($context, 'actor_type');
+            $actorId = data_get($context, 'actor_id');
+            $reason = data_get($context, 'reason');
+            $ctxSalePrice = data_get($context, 'sale_price');
+            $ctxListPrice = data_get($context, 'list_price');
+
+            if (!$storeId || !$correlationId || !$idempotencyKey || !$actorType || !$actorId || !$reason || $ctxSalePrice === null || $ctxListPrice === null) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Eksik parametreler.");
             }
-            if ((int)$dbAction->store_id !== (int)$listing->store_id) {
+
+            if ((int)$storeId !== (int)$listing->store_id) {
                 throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Mağaza uyuşmazlığı.");
             }
-            if ($dbAction->barcode !== $barcode) {
-                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Barkod uyuşmazlığı.");
+
+            // Validate actor/system actor
+            if ($actorType === 'user') {
+                $user = \App\Models\User::where('id', $actorId)->where('is_active', true)->first();
+                if (!$user) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Aktif kullanıcı bulunamadı.");
+                }
+                $roleSlug = $user->roleSlug();
+                if (!in_array($roleSlug, ['admin', 'operator'], true)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Kullanıcının stok güncelleme yetkisi yok.");
+                }
+                $isOwner = (int)$listing->store->user_id === (int)$actorId;
+                $isAdmin = ($roleSlug === 'admin');
+                if (!$isOwner && !$isAdmin) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Kullanıcının bu mağazaya erişim yetkisi yok.");
+                }
+            } elseif ($actorType === 'system') {
+                if ($actorId !== 'system') {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz sistem aktörü.");
+                }
+            } else {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz aktör tipi.");
             }
-        } elseif ($writeContextType === 'stock_update') {
+
             // Assert price immutability: price sent must match current listing price exactly
-            $targetSalePrice = round((float) ($context['sale_price'] ?? $listing->sale_price ?? 0), 2);
-            $currentListingPrice = round((float) ($listing->sale_price ?? 0), 2);
-            
-            if (abs($targetSalePrice - $currentListingPrice) > 0.01) {
+            $currentSalePrice = round((float) ($listing->sale_price ?? 0), 2);
+            $currentListPrice = round((float) ($listing->list_price ?? $listing->sale_price ?? 0), 2);
+
+            if (abs((float)$ctxSalePrice - $currentSalePrice) > 0.01) {
                 throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Stok güncellenirken fiyat değiştirilemez.");
+            }
+
+            if (abs((float)$ctxListPrice - $currentListPrice) > 0.01) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Stok güncellenirken liste fiyatı değiştirilemez.");
             }
         } else {
             throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Doğrulanmış stok yazma bağlamı (stock_update) eksik.");
