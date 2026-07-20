@@ -46,12 +46,12 @@ class PushMarketplacePriceActionJob implements ShouldQueue
             return;
         }
 
-        // Feature flag guard
-        if (! config('marketplace.trendyol.manual_price_actions_enabled', false)) {
-            $action->update([
-                'status' => 'failed',
-                'failure_code' => 'FEATURE_DISABLED',
-                'failure_message' => 'Fiyat aksiyonu özelliği devre dışı.',
+        // Execution-Time Revalidation Guard
+        $revalidator = app(\App\Services\Marketplace\MarketplacePriceActionRevalidatorService::class);
+        if (! $revalidator->revalidateAtExecution($action)) {
+            Log::warning('[PushMarketplacePriceActionJob] Revalidation failed, action blocked.', [
+                'action_id' => $action->id,
+                'status' => $action->status,
             ]);
 
             return;
@@ -139,6 +139,10 @@ class PushMarketplacePriceActionJob implements ShouldQueue
                 $action->recommendation->update([
                     'status' => $batchId ? 'sent' : 'success',
                 ]);
+            }
+
+            if (! $batchId) {
+                \App\Jobs\VerifyMarketplaceListingPriceJob::dispatch($action->id);
             }
 
             Log::info('[PushMarketplacePriceActionJob] Fiyat push gönderildi', [

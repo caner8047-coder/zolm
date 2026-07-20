@@ -105,8 +105,18 @@ return new class extends Migration
 
     protected function indexExists(string $table, string $indexName): bool
     {
-        return collect(\Illuminate\Support\Facades\DB::select("PRAGMA index_list($table)"))
-            ->pluck('name')
-            ->contains($indexName);
+        $conn = \Illuminate\Support\Facades\DB::connection()->getDriverName();
+        if ($conn === 'sqlite') {
+            return collect(\Illuminate\Support\Facades\DB::select("PRAGMA index_list($table)"))
+                ->pluck('name')
+                ->contains($indexName);
+        }
+
+        if ($conn === 'mysql') {
+            $results = \Illuminate\Support\Facades\DB::select("SHOW INDEXES FROM {$table} WHERE Key_name = ?", [$indexName]);
+            return count($results) > 0;
+        }
+
+        return false;
     }
 };
