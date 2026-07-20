@@ -228,8 +228,15 @@ class MarketplaceSyncService
 
             if ($lastCompletedRun?->cursor_after && $run->sync_type === 'orders') {
                 $cursor = $lastCompletedRun->cursor_after;
-                // Keep the original start_date of the window if we are continuing via cursor
-                $startDate = $lastCompletedRun->cursor_before ? CarbonImmutable::parse($lastCompletedRun->cursor_before) : CarbonImmutable::parse($lastCompletedRun->started_at);
+                
+                // Keep the exact same window dates if continuing with a cursor
+                $previousOptions = $lastCompletedRun->notes_json['options'] ?? [];
+                if (!empty($previousOptions['start_date']) && !empty($previousOptions['end_date'])) {
+                    $startDate = CarbonImmutable::parse($previousOptions['start_date']);
+                    $endDate = CarbonImmutable::parse($previousOptions['end_date']);
+                } else {
+                    $startDate = $lastCompletedRun->cursor_before ? CarbonImmutable::parse($lastCompletedRun->cursor_before) : CarbonImmutable::parse($lastCompletedRun->started_at);
+                }
             } elseif ($lastCompletedRun?->finished_at) {
                 $startDate = CarbonImmutable::parse($lastCompletedRun->finished_at)->subMinutes(5);
             } else {
@@ -317,7 +324,7 @@ class MarketplaceSyncService
             'items_created' => $result['created'] ?? 0,
             'items_updated' => $result['updated'] ?? 0,
             'items_skipped' => $result['skipped'] ?? 0,
-            'cursor_after' => (string) ($result['cursor_after'] ?? $options['end_date']),
+            'cursor_after' => isset($result['cursor_after']) ? (string) $result['cursor_after'] : null,
             'notes_json' => array_filter([
                 'options' => $options,
                 'meta' => $result['notes'] ?? [],

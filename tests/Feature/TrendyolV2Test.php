@@ -31,6 +31,14 @@ class TrendyolV2Test extends TestCase
     public function test_it_uses_v2_approved_endpoint_for_products()
     {
         $store = MarketplaceStore::factory()->create(['marketplace' => 'trendyol']);
+        \Illuminate\Support\Facades\DB::table('integration_connections')->insert([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'credentials_encrypted' => json_encode(['api_key' => 'test-key', 'api_secret' => 'test-secret', 'seller_id' => '123']),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $connector = app(TrendyolConnector::class);
 
         Http::fake([
@@ -51,6 +59,14 @@ class TrendyolV2Test extends TestCase
     public function test_stream_first_and_continue_cursor()
     {
         $store = MarketplaceStore::factory()->create(['marketplace' => 'trendyol']);
+        \Illuminate\Support\Facades\DB::table('integration_connections')->insert([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'credentials_encrypted' => json_encode(['api_key' => 'test-key', 'api_secret' => 'test-secret', 'seller_id' => '123']),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $connector = app(TrendyolConnector::class);
 
         Http::fake([
@@ -71,6 +87,14 @@ class TrendyolV2Test extends TestCase
     public function test_buybox_upsert_and_history()
     {
         $store = MarketplaceStore::factory()->create(['marketplace' => 'trendyol']);
+        \Illuminate\Support\Facades\DB::table('integration_connections')->insert([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'credentials_encrypted' => json_encode(['api_key' => 'test-key', 'api_secret' => 'test-secret', 'seller_id' => '123']),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         \App\Models\MpProduct::factory()->create(['store_id' => $store->id, 'barcode' => 'TEST-123']);
         
         $service = app(MarketplaceBuyboxSyncService::class);
@@ -97,6 +121,14 @@ class TrendyolV2Test extends TestCase
     public function test_brands_sync_pagination_and_duplicate_prevention()
     {
         $store = MarketplaceStore::factory()->create(['marketplace' => 'trendyol']);
+        \Illuminate\Support\Facades\DB::table('integration_connections')->insert([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'credentials_encrypted' => json_encode(['api_key' => 'test-key', 'api_secret' => 'test-secret', 'seller_id' => '123']),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $service = app(MarketplaceReferenceSyncService::class);
 
         Http::fake([
@@ -118,6 +150,14 @@ class TrendyolV2Test extends TestCase
     public function test_category_recursive_and_leaf()
     {
         $store = MarketplaceStore::factory()->create(['marketplace' => 'trendyol']);
+        \Illuminate\Support\Facades\DB::table('integration_connections')->insert([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'credentials_encrypted' => json_encode(['api_key' => 'test-key', 'api_secret' => 'test-secret', 'seller_id' => '123']),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $service = app(MarketplaceReferenceSyncService::class);
 
         Http::fake([
@@ -146,6 +186,14 @@ class TrendyolV2Test extends TestCase
     public function test_claim_reasons_sync()
     {
         $store = MarketplaceStore::factory()->create(['marketplace' => 'trendyol']);
+        \Illuminate\Support\Facades\DB::table('integration_connections')->insert([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'credentials_encrypted' => json_encode(['api_key' => 'test-key', 'api_secret' => 'test-secret', 'seller_id' => '123']),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $service = app(MarketplaceReferenceSyncService::class);
 
         Http::fake([
@@ -162,6 +210,14 @@ class TrendyolV2Test extends TestCase
     public function test_cargo_invoice_duplicate_prevention()
     {
         $store = MarketplaceStore::factory()->create(['marketplace' => 'trendyol']);
+        \Illuminate\Support\Facades\DB::table('integration_connections')->insert([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'credentials_encrypted' => json_encode(['api_key' => 'test-key', 'api_secret' => 'test-secret', 'seller_id' => '123']),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $service = app(MarketplaceCargoInvoiceSyncService::class);
 
         Http::fake([
@@ -182,6 +238,14 @@ class TrendyolV2Test extends TestCase
     public function test_batch_tracking_statuses()
     {
         $store = MarketplaceStore::factory()->create(['marketplace' => 'trendyol']);
+        \Illuminate\Support\Facades\DB::table('integration_connections')->insert([
+            'store_id' => $store->id,
+            'provider' => 'trendyol',
+            'credentials_encrypted' => json_encode(['api_key' => 'test-key', 'api_secret' => 'test-secret', 'seller_id' => '123']),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $run = IntegrationPushRun::create(['store_id' => $store->id, 'external_batch_id' => 'batch-1', 'status' => 'processing', 'push_type' => 'price']);
 
         Http::fake([
@@ -206,6 +270,12 @@ class TrendyolV2Test extends TestCase
     {
         Config::set('marketplace.trendyol.buybox_sync_enabled', false);
         $store = MarketplaceStore::factory()->create(['marketplace' => 'trendyol']);
+        \App\Models\IntegrationConnection::create([
+            'store_id' => $store->id,
+            'marketplace' => 'trendyol',
+            'credentials' => ['api_key' => 'test-key', 'api_secret' => 'test-secret', 'seller_id' => '123'],
+            'is_active' => true,
+        ]);
         
         Http::fake();
         $job = new SyncMarketplaceBuyboxJob($store);

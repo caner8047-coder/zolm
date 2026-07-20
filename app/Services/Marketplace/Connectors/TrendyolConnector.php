@@ -1802,13 +1802,31 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
         }
 
         $response = $this->request($store)
-            ->post("integration/product/sellers/{$this->sellerId($store)}/products/buybox", [
-                'barcodeList' => array_values($barcodes),
+            ->post("integration/product/sellers/{$this->sellerId($store)}/products/buybox-information", [
+                'barcodes' => array_values($barcodes),
             ])
             ->throw()
             ->json();
 
-        return Arr::get($response, 'content', $response);
+        $buyboxInfoList = Arr::get($response, 'buyboxInfo', []);
+        $items = [];
+        $now = now();
+
+        foreach ($buyboxInfoList as $info) {
+            $items[] = [
+                'barcode' => data_get($info, 'barcode'),
+                'sellerRank' => data_get($info, 'buyboxOrder'), // Trendyol docs say buyboxOrder
+                'buyboxPrice' => data_get($info, 'buyboxPrice'),
+                'hasMultipleSeller' => data_get($info, 'hasMultipleSeller', false),
+                'secondPrice' => data_get($info, 'secondPrice'),
+                'thirdPrice' => data_get($info, 'thirdPrice'),
+                'listingId' => data_get($info, 'listingId'),
+                'raw_payload' => $info,
+                'retrieved_at' => $now,
+            ];
+        }
+
+        return $items;
     }
 
     public function pullCargoInvoices(MarketplaceStore $store, array $options = []): array
@@ -1817,28 +1835,50 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
         $startDate = CarbonImmutable::parse($options['start_date'])->setTimezone('UTC');
         $endDate = CarbonImmutable::parse($options['end_date'])->setTimezone('UTC');
 
+        $invoiceSerials = [];
+
         foreach ($this->dateWindows($startDate, $endDate, 14) as [$windowStart, $windowEnd]) {
             $page = 0;
             $totalPages = 1;
 
             do {
                 $response = $this->request($store)
-                    ->get("integration/finance/che/sellers/{$this->sellerId($store)}/cargo-invoices", array_filter([
-                        'invoiceDateStart' => $windowStart->valueOf(),
-                        'invoiceDateEnd' => $windowEnd->valueOf(),
+                    ->get("integration/finance/che/sellers/{$this->sellerId($store)}/other-financials", array_filter([
+                        'transactionDateFrom' => $windowStart->valueOf(),
+                        'transactionDateTo' => $windowEnd->valueOf(),
                         'page' => $page,
                         'size' => 500,
                     ]))
                     ->throw()
                     ->json();
 
-                foreach (Arr::get($response, 'content', []) as $invoicePayload) {
-                    $items[] = $invoicePayload;
+                foreach (Arr::get($response, 'content', []) as $tx) {
+                    if (data_get($tx, 'transactionType') === 'DeductionInvoices' && data_get($tx, 'receiptId')) {
+                        $invoiceSerials[] = data_get($tx, 'receiptId');
+                    }
                 }
 
                 $totalPages = (int) Arr::get($response, 'totalPages', 1);
                 $page++;
             } while ($page < $totalPages);
+        }
+
+        $invoiceSerials = array_unique($invoiceSerials);
+
+        foreach ($invoiceSerials as $serial) {
+            try {
+                $cargoResponse = $this->request($store)
+                    ->get("integration/finance/che/sellers/{$this->sellerId($store)}/cargo-invoice/{$serial}/items")
+                    ->throw()
+                    ->json();
+
+                foreach (Arr::get($cargoResponse, 'content', []) as $cargoItem) {
+                    $cargoItem['_invoice_serial'] = $serial;
+                    $items[] = $cargoItem;
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         return [
@@ -1853,11 +1893,19 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
     public function getClaimIssueReasons(MarketplaceStore $store): array
     {
         $response = $this->request($store)
-            ->get("integration/order/sellers/{$this->sellerId($store)}/claim-issue-reasons")
+            ->get("integration/order/claim-issue-reasons")
             ->throw()
             ->json();
 
-        return Arr::get($response, 'content', $response);
+        $items = [];
+        foreach ((array) $response as $reason) {
+            $items[] = [
+                'id' => data_get($reason, 'id'),
+                'name' => data_get($reason, 'name'),
+            ];
+        }
+
+        return $items;
     }
 
     public function checkBatchRequestResult(MarketplaceStore $store, string $batchRequestId): array

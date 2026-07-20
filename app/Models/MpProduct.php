@@ -9,8 +9,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Models\User;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
 class MpProduct extends Model
 {
+    use HasFactory;
+    
     protected static bool $refreshingSetParents = false;
 
     protected const SET_PARENT_REFRESH_FIELDS = [

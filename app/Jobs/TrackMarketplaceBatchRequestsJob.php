@@ -20,7 +20,7 @@ class TrackMarketplaceBatchRequestsJob implements ShouldQueue
 
     public function handle(MarketplaceConnectorManager $connectorManager): void
     {
-        if (!config('marketplace.trendyol.batch_tracking_enabled', true)) {
+        if (!config('marketplace.trendyol.batch_tracking_enabled', false)) {
             return;
         }
 
@@ -45,20 +45,71 @@ class TrackMarketplaceBatchRequestsJob implements ShouldQueue
             try {
                 $result = $connector->checkBatchRequestResult($store, $run->external_batch_id);
                 $status = data_get($result, 'status') ?? data_get($result, 'batchRequestStatus');
+                $items = data_get($result, 'items', []);
+                $failedItemCount = (int) data_get($result, 'failedItemCount', 0);
+                $itemCount = (int) data_get($result, 'itemCount', count($items));
+                
+                $hasFailures = false;
+                $hasSuccesses = false;
+                $failedItems = [];
 
-                if ($status === 'COMPLETED' || $status === 'SUCCESS' || $status === 'DONE') {
-                    $run->update([
-                        'status' => 'success',
-                        'response_json' => $result,
-                        'finished_at' => Carbon::now(),
-                    ]);
-                } elseif ($status === 'FAILED') {
-                    $run->update([
-                        'status' => 'failed',
-                        'error_message' => 'Batch failed remotely',
-                        'response_json' => $result,
-                        'finished_at' => Carbon::now(),
-                    ]);
+                foreach ($items as $item) {
+                    $itemStatus = data_get($item, 'status');
+                    if ($itemStatus === 'SUCCESS') {
+                        $hasSuccesses = true;
+                    } elseif ($itemStatus === 'FAILED' || !empty(data_get($item, 'failureReasons'))) {
+                        $hasFailures = true;
+                        $failedItems[] = [
+                            'barcode' => data_get($item, 'requestItem.barcode') ?? data_get($item, 'barcode'),
+                            'item_status' => $itemStatus ?? 'FAILED',
+                            'failure_code' => data_get($item, 'failureReasons.0.errorCode') ?? data_get($item, 'failureReasons.0.code'),
+                            'failure_message' => data_get($item, 'failureReasons.0.errorMessage') ?? data_get($item, 'failureReasons.0.message') ?? data_get($item, 'failureReason'),
+                            'raw_item_payload' => $item
+                        ];
+                    }
+                }
+
+                if (empty($items) && $itemCount > 0) {
+                    if ($failedItemCount === 0) {
+                        $hasSuccesses = true;
+                    } elseif ($failedItemCount === $itemCount) {
+                        $hasFailures = true;
+                    } else {
+                        $hasSuccesses = true;
+                        $hasFailures = true;
+                    }
+                }
+
+                $isTerminal = in_array($status, ['COMPLETED', 'SUCCESS', 'DONE', 'FAILED']);
+                
+                if ($isTerminal || !empty($items)) {
+                    $finalStatus = 'processing';
+                    
+                    if ($hasSuccesses && !$hasFailures) {
+                        $finalStatus = 'success';
+                    } elseif ($hasSuccesses && $hasFailures) {
+                        $finalStatus = 'partial_success';
+                    } elseif (!$hasSuccesses && $hasFailures) {
+                        $finalStatus = 'failed';
+                    } elseif ($status === 'FAILED') {
+                        $finalStatus = 'failed';
+                    } elseif (in_array($status, ['COMPLETED', 'SUCCESS', 'DONE'])) {
+                        $finalStatus = 'success';
+                    }
+                    
+                    if ($finalStatus !== 'processing') {
+                        $run->update([
+                            'status' => $finalStatus,
+                            'response_json' => [
+                                'raw_response' => $result,
+                                'failed_items' => $failedItems
+                            ],
+                            'error_message' => empty($failedItems) ? ($finalStatus === 'failed' ? 'Batch tamamen başarısız.' : null) : 'Bazı kalemler başarısız oldu.',
+                            'finished_at' => Carbon::now(),
+                        ]);
+                    } else {
+                        $run->increment('attempt_count');
+                    }
                 } else {
                     $run->increment('attempt_count');
                 }

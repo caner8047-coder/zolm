@@ -55,10 +55,13 @@ class MarketplaceBuyboxSyncService
                     $totalProcessed++;
                     
                     $buyboxPrice = data_get($item, 'buyboxPrice');
-                    $sellerPrice = data_get($item, 'sellerPrice');
                     $sellerRank = data_get($item, 'sellerRank');
+                    $hasMultipleSeller = data_get($item, 'hasMultipleSeller', false);
+                    $secondPrice = data_get($item, 'secondPrice');
+                    $thirdPrice = data_get($item, 'thirdPrice');
+                    $listingId = data_get($item, 'listingId');
 
-                    DB::transaction(function () use ($store, $barcode, $buyboxPrice, $sellerPrice, $sellerRank, $item, $now, &$totalUpdated) {
+                    DB::transaction(function () use ($store, $barcode, $buyboxPrice, $sellerRank, $hasMultipleSeller, $secondPrice, $thirdPrice, $listingId, $item, $now, &$totalUpdated) {
                         $current = MpBuyboxListing::where('store_id', $store->id)
                             ->where('barcode', $barcode)
                             ->first();
@@ -68,7 +71,6 @@ class MarketplaceBuyboxSyncService
                         if ($current) {
                             if (
                                 (float) $current->buybox_price === (float) $buyboxPrice &&
-                                (float) $current->seller_price === (float) $sellerPrice &&
                                 $current->seller_rank === $sellerRank
                             ) {
                                 $needsHistory = false;
@@ -77,9 +79,12 @@ class MarketplaceBuyboxSyncService
 
                         $data = [
                             'buybox_price' => $buyboxPrice,
-                            'seller_price' => $sellerPrice,
                             'seller_rank' => $sellerRank,
-                            'raw_payload' => $item,
+                            'has_multiple_sellers' => $hasMultipleSeller,
+                            'second_price' => $secondPrice,
+                            'third_price' => $thirdPrice,
+                            'listing_id' => $listingId,
+                            'raw_payload' => $item['raw_payload'] ?? $item,
                             'retrieved_at' => $now,
                         ];
 

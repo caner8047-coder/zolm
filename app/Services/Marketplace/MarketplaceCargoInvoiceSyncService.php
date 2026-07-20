@@ -36,18 +36,20 @@ class MarketplaceCargoInvoiceSyncService
             $now = Carbon::now();
 
             foreach ($items as $item) {
-                $invoiceNumber = data_get($item, 'invoiceNumber');
-                $packageId = data_get($item, 'packageId'); // or shipmentPackageId/parcelId
+                $invoiceSerialNumber = data_get($item, '_invoice_serial');
+                $parcelUniqueId = data_get($item, 'packageId'); // or shipmentPackageId/parcelId
+                $orderNumber = data_get($item, 'orderNumber');
 
-                if (!$invoiceNumber && !$packageId) continue;
+                if (!$invoiceSerialNumber && !$parcelUniqueId) continue;
 
                 CargoInvoiceLine::updateOrCreate(
                     [
                         'store_id' => $store->id,
-                        'invoice_number' => $invoiceNumber,
-                        'package_id' => $packageId,
+                        'invoice_serial_number' => $invoiceSerialNumber,
+                        'parcel_unique_id' => $parcelUniqueId,
                     ],
                     [
+                        'order_number' => $orderNumber,
                         'invoice_date' => data_get($item, 'invoiceDate'),
                         'cargo_type' => data_get($item, 'cargoType'), // e.g. RETURN, OUTBOUND
                         'desi' => data_get($item, 'desi', 0),
