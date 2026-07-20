@@ -550,6 +550,30 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             throw new \RuntimeException('Fiyat guncellemesi icin listing barkodu zorunludur.');
         }
 
+        // Connector Write Guard Check
+        $dryRun = config('marketplace.trendyol.dry_run_enabled') || env('TRENDYOL_PRICE_CANARY_DRY_RUN_ENABLED', false);
+        if ($dryRun) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Dry-run modu aktif.");
+        }
+
+        $stopService = app(\App\Services\Marketplace\MarketplacePriceEmergencyStopService::class);
+        if ($stopService->isEmergencyStopActive($listing->store_id)) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Emergency stop aktif.");
+        }
+
+        if (!config('marketplace.trendyol.automatic_price_actions_enabled', false)
+            || !config('marketplace.trendyol.canary_enabled', false)) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Feature flagler kapalı.");
+        }
+
+        $approval = \App\Models\MpPriceCanaryApproval::where('store_id', $listing->store_id)
+            ->where('status', 'approved')
+            ->where('expires_at', '>=', now())
+            ->first();
+        if (!$approval || !in_array($barcode, $approval->approved_product_ids ?? [], true)) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Geçerli Canary onayı yok veya barkod kapsam dışı.");
+        }
+
         $payload = [
             'items' => [[
                 'barcode' => $barcode,
