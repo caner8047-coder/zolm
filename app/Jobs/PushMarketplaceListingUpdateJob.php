@@ -112,7 +112,11 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                 $response = $connector->pushStock(
                     $listing,
                     (int) $pushRun->target_quantity,
-                    $pushRun->request_context_json ?? []
+                    array_merge($pushRun->request_context_json ?? [], [
+                        'write_context_type' => 'stock_update',
+                        'sale_price' => $listing->sale_price,
+                        'list_price' => $listing->list_price,
+                    ])
                 );
 
                 $listing->update([
