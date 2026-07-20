@@ -22,6 +22,10 @@ class BackfillMarketplaceListingsCommand extends Command
     protected $signature = 'marketplace:listings:backfill
         {store_id : Mağaza ID}
         {--provider=trendyol : Pazaryeri sağlayıcısı}
+        {--source-user= : Açık kaynak master katalog sahibi kullanıcı ID}
+        {--full-catalog : Tüm kataloğu çekmek için}
+        {--start-date= : Başlangıç tarihi (YYYY-MM-DD HH:MM:SS)}
+        {--end-date= : Bitiş tarihi (YYYY-MM-DD HH:MM:SS)}
         {--dry-run : Sadece analiz et, yazma işlemi yapma}
         {--confirm : Değişiklikleri doğrula ve kaydet}';
 
@@ -50,20 +54,61 @@ class BackfillMarketplaceListingsCommand extends Command
             return self::FAILURE;
         }
 
+        // Source user check (No implicit first admin fallback)
+        $sourceUserId = $this->option('source-user') ?: ($store->syncProfile?->catalog_source_user_id ?? null);
+        if (!$sourceUserId) {
+            $this->error("Kaynak kullanıcı tanımlı değil. Lütfen '--source-user' seçeneğini girin veya Sync Profile üzerinden 'catalog_source_user_id' kolonunu doldurun.");
+            return self::FAILURE;
+        }
+
+        $sourceUser = User::find($sourceUserId);
+        if (!$sourceUser) {
+            $this->error("Belirtilen kaynak kullanıcı bulunamadı (ID: {$sourceUserId})");
+            return self::FAILURE;
+        }
+
+        if (!$sourceUser->is_active) {
+            $this->error("Belirtilen kaynak kullanıcı aktif değil (ID: {$sourceUserId})");
+            return self::FAILURE;
+        }
+
+        if ((int)$store->user_id === (int)$sourceUserId) {
+            $this->error("Kaynak kullanıcı ile hedef tenant aynı olamaz.");
+            return self::FAILURE;
+        }
+
         $this->info("ZOLM — Listings Backfill Başlatıldı");
         $this->line("Mağaza: Store-{$store->id} ({$store->store_name})");
         $this->line("Kullanıcı (Tenant): User-{$store->user_id}");
+        $this->line("Kaynak Kullanıcı (Catalog Source): User-{$sourceUser->id}");
         $this->line("Mod: " . ($dryRun ? '🔴 Dry-Run (Salt Okuma)' : '🟢 Confirm (Yazma Modu)'));
 
         $correlationId = 'backfill_' . now()->format('YmdHis') . '_' . bin2hex(random_bytes(4));
+
+        // Date windows calculation
+        $startDateOpt = $this->option('start-date');
+        $endDateOpt = $this->option('end-date');
+
+        if ($this->option('full-catalog')) {
+            $startDate = now()->subYears(2)->format('Y-m-d H:i:s');
+            $endDate = now()->format('Y-m-d H:i:s');
+            $modeLabel = "Full Catalog (Son 2 Yıl)";
+        } else {
+            $startDate = $startDateOpt ?: now()->subMonths(3)->format('Y-m-d H:i:s');
+            $endDate = $endDateOpt ?: now()->format('Y-m-d H:i:s');
+            $modeLabel = "Incremental Catalog";
+        }
+
+        $this->line("Zaman Penceresi: {$startDate} ile {$endDate} arası");
+        $this->line("Kapsam Modu: {$modeLabel}");
 
         // 1. Resolve connector and call real approved-products API
         try {
             $connector = app(\App\Services\Marketplace\MarketplaceConnectorManager::class)->resolveForStore($store);
             
             $pullOptions = [
-                'start_date' => now()->subMonths(3)->format('Y-m-d H:i:s'),
-                'end_date' => now()->format('Y-m-d H:i:s'),
+                'start_date' => $startDate,
+                'end_date' => $endDate,
                 'page_size' => 100,
             ];
 
@@ -108,17 +153,6 @@ class BackfillMarketplaceListingsCommand extends Command
         }
 
         $this->info("Toplam " . count($items) . " adet onaylı ürün Trendyol API'den alındı.");
-
-        // Find source admin user for catalog cloning
-        $adminUser = User::where('email', 'admin@zolm.test')->first();
-        if (!$adminUser) {
-            $adminUser = User::whereHas('role', fn($q) => $q->where('slug', 'admin'))->first();
-        }
-
-        if (!$adminUser) {
-            $this->error("Klonlama için kaynak admin kullanıcısı bulunamadı.");
-            return self::FAILURE;
-        }
 
         $stats = [
             'total_inspected' => count($items),
@@ -172,23 +206,29 @@ class BackfillMarketplaceListingsCommand extends Command
             
             if (!$tenantProduct) {
                 // Check if we can safely clone from Admin master catalog
-                $masterProducts = MpProduct::where('user_id', $adminUser->id)->where('barcode', $barcode)->get();
+                $masterProducts = MpProduct::where('user_id', $sourceUser->id)->where('barcode', $barcode)->get();
 
                 if ($masterProducts->count() === 1) {
                     $masterProduct = $masterProducts->first();
                     
                     if ($masterProduct->status === 'active') {
                         if ($confirm) {
-                            DB::transaction(function () use ($masterProduct, $adminUser, $store, $correlationId) {
-                                $cloned = $masterProduct->replicate();
-                                $cloned->user_id = $store->user_id;
-                                $cloned->import_source = 'backfill-clone';
-                                $cloned->source_user_id = $adminUser->id;
-                                $cloned->source_product_id = $masterProduct->id;
-                                $cloned->clone_reason = 'On-demand backfill catalog clone';
-                                $cloned->clone_correlation_id = $correlationId;
-                                $cloned->cloned_at = now();
-                                $cloned->save();
+                            DB::transaction(function () use ($masterProduct, $sourceUser, $store, $correlationId) {
+                                // Idempotent check
+                                $exists = MpProduct::where('user_id', $store->user_id)
+                                    ->where('source_product_id', $masterProduct->id)
+                                    ->exists();
+                                if (!$exists) {
+                                    $cloned = $masterProduct->replicate();
+                                    $cloned->user_id = $store->user_id;
+                                    $cloned->import_source = 'backfill-clone';
+                                    $cloned->source_user_id = $sourceUser->id;
+                                    $cloned->source_product_id = $masterProduct->id;
+                                    $cloned->clone_reason = 'On-demand backfill catalog clone';
+                                    $cloned->clone_correlation_id = $correlationId;
+                                    $cloned->cloned_at = now();
+                                    $cloned->save();
+                                }
                             });
                         }
                         $stats['cloned_products']++;
@@ -234,6 +274,9 @@ class BackfillMarketplaceListingsCommand extends Command
         if ($confirm) {
             $this->info("Veri eşitlemesi başlatılıyor...");
 
+            // Compare ChannelListing count before and after
+            $listingCountBefore = ChannelListing::where('store_id', $store->id)->count();
+
             // Create IntegrationSyncRun to run the sync service
             $run = IntegrationSyncRun::create([
                 'store_id' => $store->id,
@@ -275,6 +318,12 @@ class BackfillMarketplaceListingsCommand extends Command
                 if ($verificationSuccess) {
                     $this->info("Bütünlük doğrulama başarıyla tamamlandı. Eşleşmeler ground-truth.");
                 }
+
+                $listingCountAfter = ChannelListing::where('store_id', $store->id)->count();
+                $newListingCount = $listingCountAfter - $listingCountBefore;
+                $this->info("İşlem öncesi listing sayısı: {$listingCountBefore}");
+                $this->info("İşlem sonrası listing sayısı: {$listingCountAfter}");
+                $this->info("Yeni eklenen listing sayısı: {$newListingCount}");
 
                 // Create Audit Log of listing backfill
                 Log::notice("Marketplace listings backfill executed successfully", [
