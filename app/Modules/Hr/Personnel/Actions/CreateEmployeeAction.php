@@ -1,0 +1,76 @@
+<?php
+
+namespace App\Modules\Hr\Personnel\Actions;
+
+use App\Modules\Hr\Core\Services\HrAuditService;
+use App\Modules\Hr\Core\Services\TenantContext;
+use App\Modules\Hr\Personnel\Models\HrEmployee;
+use App\Modules\Hr\Personnel\Models\HrEmploymentRecord;
+use Illuminate\Support\Facades\DB;
+
+class CreateEmployeeAction
+{
+    public function __construct(
+        private HrAuditService $auditService
+    ) {}
+
+    public function execute(array $employeeData, array $employmentData): HrEmployee
+    {
+        return DB::transaction(function () use ($employeeData, $employmentData) {
+            $tenantId = app(TenantContext::class)->getId();
+
+            // national_id hash ve last_four hesapla
+            $nationalId = $employeeData['national_id'] ?? null;
+            if ($nationalId) {
+                $employeeData['national_id_hash'] = hash('sha256', $nationalId . config('app.key'));
+                $employeeData['national_id_last_four'] = substr($nationalId, -4);
+                $employeeData['national_id_encrypted'] = $nationalId;
+                unset($employeeData['national_id']);
+            }
+
+            // Employee number üret
+            if (empty($employeeData['employee_number'])) {
+                $employeeData['employee_number'] = $this->generateEmployeeNumber($tenantId);
+            }
+
+            $employeeData['legal_entity_id'] = $tenantId;
+            $employeeData['created_by'] = auth()->id();
+
+            $employee = HrEmployee::create($employeeData);
+
+            // Employment record oluştur
+            $employmentData['employee_id'] = $employee->id;
+            $employmentData['legal_entity_id'] = $tenantId;
+            $employmentData['created_by'] = auth()->id();
+            $employmentData['status'] = 'active';
+
+            HrEmploymentRecord::create($employmentData);
+
+            // Audit log
+            $this->auditService->log('employee_created', $employee);
+
+            return $employee;
+        });
+    }
+
+    private function generateEmployeeNumber(int $tenantId): string
+    {
+        $prefix = config('hr.employee_number.prefix', 'EMP');
+        $length = config('hr.employee_number.length', 5);
+
+        $lastNumber = HrEmployee::withoutGlobalScope('tenant')
+            ->where('legal_entity_id', $tenantId)
+            ->where('employee_number', 'like', "{$prefix}%")
+            ->orderByDesc('employee_number')
+            ->value('employee_number');
+
+        if ($lastNumber) {
+            $num = (int) substr($lastNumber, strlen($prefix));
+            $num++;
+        } else {
+            $num = 1;
+        }
+
+        return $prefix . str_pad($num, $length, '0', STR_PAD_LEFT);
+    }
+}

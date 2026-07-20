@@ -1,0 +1,111 @@
+<?php
+
+namespace App\Modules\Hr\Personnel\Models;
+
+use App\Models\HrFile;
+use App\Models\LegalEntity;
+use App\Models\User;
+use App\Modules\Hr\Core\Traits\BelongsToLegalEntity;
+use App\Modules\Hr\Personnel\Enums\EmployeeStatus;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class HrEmployee extends Model
+{
+    use BelongsToLegalEntity, SoftDeletes;
+
+    protected $fillable = [
+        'legal_entity_id', 'user_id', 'employee_number',
+        'national_id_encrypted', 'national_id_hash', 'national_id_last_four',
+        'first_name', 'last_name', 'middle_name',
+        'gender', 'date_of_birth', 'marital_status',
+        'photo_file_id', 'phone', 'personal_email',
+        'address', 'city', 'district', 'postal_code',
+        'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
+        'blood_type', 'status',
+        'created_by', 'updated_by',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'date_of_birth' => 'date',
+            'national_id_encrypted' => 'encrypted',
+            'status' => EmployeeStatus::class,
+        ];
+    }
+
+    public function legalEntity(): BelongsTo
+    {
+        return $this->belongsTo(LegalEntity::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function photo(): BelongsTo
+    {
+        return $this->belongsTo(HrFile::class, 'photo_file_id');
+    }
+
+    public function employmentRecords(): HasMany
+    {
+        return $this->hasMany(HrEmploymentRecord::class);
+    }
+
+    public function activeEmployment(): HasOne
+    {
+        return $this->hasOne(HrEmploymentRecord::class)->where('status', 'active');
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('status', EmployeeStatus::Active);
+    }
+
+    public function scopeSearch($query, ?string $search)
+    {
+        if (!$search) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($search) {
+            $q->where('first_name', 'like', "%{$search}%")
+                ->orWhere('last_name', 'like', "%{$search}%")
+                ->orWhere('employee_number', 'like', "%{$search}%")
+                ->orWhere('phone', 'like', "%{$search}%")
+                ->orWhere('personal_email', 'like', "%{$search}%")
+                ->orWhere('national_id_last_four', 'like', "%{$search}%");
+        });
+    }
+
+    public function getFullNameAttribute(): string
+    {
+        return trim($this->first_name . ' ' . $this->middle_name . ' ' . $this->last_name);
+    }
+
+    public function getTenureAttribute(): ?string
+    {
+        $activeRecord = $this->activeEmployment;
+        if (!$activeRecord || !$activeRecord->start_date) {
+            return null;
+        }
+
+        $start = \Carbon\Carbon::parse($activeRecord->start_date);
+        $now = \Carbon\Carbon::now();
+        $months = $start->diffInMonths($now);
+        $years = floor($months / 12);
+        $remainingMonths = $months % 12;
+
+        if ($years > 0) {
+            return "{$years}y {$remainingMonths}a";
+        }
+
+        return "{$remainingMonths}a";
+    }
+}
