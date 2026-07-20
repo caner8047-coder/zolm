@@ -139,6 +139,9 @@ class PushMarketplacePriceActionJob implements ShouldQueue
                     'price_action_id' => $action->id,
                     'trigger_type' => $action->trigger_type,
                     'action_type' => $action->action_type,
+                    // Write guard zorunlu alanları: action kaydından çekilir
+                    'idempotency_key' => $action->idempotency_key,
+                    'correlation_id' => $action->correlation_id,
                 ]
             );
 

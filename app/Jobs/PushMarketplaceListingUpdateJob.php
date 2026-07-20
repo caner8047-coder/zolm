@@ -112,6 +112,7 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                 $stockContext = array_merge([
                     'write_context_type' => 'stock_update',
                     'store_id' => $listing->store_id,
+                    'integration_push_run_id' => $pushRun->id,
                     'correlation_id' => data_get($pushRun->request_context_json, 'correlation_id') ?: ('stock-sync-' . $pushRun->id),
                     'idempotency_key' => data_get($pushRun->request_context_json, 'idempotency_key') ?: ('stock-idem-' . $pushRun->id),
                     'actor_type' => data_get($pushRun->request_context_json, 'actor_type') ?: 'system',
