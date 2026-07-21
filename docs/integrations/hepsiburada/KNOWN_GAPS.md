@@ -1,46 +1,37 @@
 # Hepsiburada API Entegrasyonu Bilinen Eksikler (Known Gaps)
 
-Bu doküman, P0 salt-okuma sprintinin ardından Hepsiburada entegrasyonunda kalan eksikleri ve sonraki sprintler (P1 ve P2) için önerilen geliştirme adımlarını listeler.
+Bu doküman, Hepsiburada P0 salt-okuma sprintinin ardından entegrasyonda kalan eksikleri ve sonraki aşamalar için planları listeler.
 
 ---
 
-## P1 — Operasyon Yazmaları ve Süreç Takibi (P1 Sprint Önerisi)
+## 1. Resmî API Dokümantasyonunda Bulunmayan veya Doğrulanamayan Gaps (P1/P2 Kapsamı)
 
-### 1. Paket Durum Güncellemeleri (Package State Mutations)
-* **API Tanımı:** Sipariş paketini toplandı/hazırlandı veya kargoya verildi durumuna çekme.
-* **Mevcut Durum:** `capabilities()['package_status']` ve `package_picking` false'tur.
-* **Gereksinim:** ZOLM sipariş ekranından paket picking/toplama işleminin Hepsiburada API'sine gönderilmesi.
-
-### 2. Paket Faturalandı Bildirimi & Fatura Linki
-* **API Tanımı:** Paket bazında fatura linki gönderme.
-* **Mevcut Durum:** `capabilities()['invoice_link']` ve `package_invoice_link` false'tur.
-* **Gereksinim:** E-Fatura entegrasyonundan dönen PDF linkinin Hepsiburada'ya POST edilmesi.
-
-### 3. Kargoya Teslim Süresi Güncelleme (Lead Time / Dispatch Time)
-* **API Tanımı:** Ürün listing'inin kargoya verilme süresini (örneğin 2 gün) güncelleme.
-* **Mevcut Durum:** Listing sync'de okunuyor fakat update metodu connector'da yok.
-
-### 4. Fiyat/Stok Batch Sonuç Takip Otomasyonu
-* **API Tanımı:** Gönderilen batch fiyat/stok güncellemelerinin durumunu otomatik çeken bir worker/job zinciri.
-* **Mevcut Durum:** `pullBatchStatus` manuel çağrılabilir fakat otomatik bir poller job'a bağlı değil.
+Aşağıdaki yollar/endpoint'ler Hepsiburada resmî geliştirici portalında doğrudan sunulmadığı veya doğrulanamadığı için capabilities `false` yapılmış ve connector çağrıları devre dışı bırakılmıştır:
+* **Prepared paket endpoint'i** (`packages/.../prepared`) -> `not_verified, not_implemented`
+* **Split paket endpoint'i** (`packages/.../split`) -> `not_verified, not_implemented`
+* **Cancelled paket endpoint'i** (`packages/.../cancelled`) -> `not_verified, not_implemented`
+* **Unpaid veya ödeme bekleyen sipariş endpoint'i** (`packages/.../unpaid`) -> `not_verified, not_implemented`
+* **Marka listesi API'si** (Katalog entegrasyon referanslarında genel marka sorgulama listesi API'si doğrulanmadı) -> `not_implemented`
 
 ---
 
-## P2 — Gelişmiş Entegrasyon ve Ekosistem (P2 Sprint Önerisi)
+## 2. P1 — Operasyon Yazmaları ve Süreç Takibi (P1 Sprint Önerisi)
 
-### 1. Gerçek Zamanlı Sipariş ve Paket Webhook'ları
-* **API Tanımı:** Sipariş oluştuğunda veya paket durumu değiştiğinde anlık webhook alımı.
-* **Mevcut Durum:** `capabilities()['webhooks']` false'tur. `webhook_refresh` istekleri sipariş çekmeye yönlendirilir.
-* **Gereksinim:** HMAC signature doğrulaması içeren endpoint controller'ı ve payload processing job.
+### 2.1 Paket Durum Değişiklikleri (Package Mutations)
+* **Aksiyon:** Sipariş paketini kabul etme, toplandı/hazırlandı statüsüne çekme veya kargoya teslim bildirimleri.
+* **Durum:** `not_implemented` (`package_status => false`, `package_picking => false`).
 
-### 2. E-Fatura ve E-Arşiv Mükellef Sorgulama
-* **API Tanımı:** Hepsiburada E-Faturam altyapısı üzerinden e-fatura sorgulama ve entegrasyonu.
+### 2.2 Paket Fatura Linki Gönderimi
+* **Aksiyon:** E-Fatura entegrasyonu tamamlandığında oluşan fatura PDF linkinin Hepsiburada'ya bildirilmesi.
+* **Durum:** `not_implemented` (`invoice_link => false`, `package_invoice_link => false`).
 
-### 3. Kampanya ve Promosyon Yönetimi
-* **API Tanımı:** Mağaza içi aktif kampanyaları listeleme, uygun ürünleri kampanyaya dahil etme veya komisyon indirimli kampanyaları takip etme.
+---
 
-### 4. Ticket ve Entegrasyon Destek Entegrasyonu
-* **API Tanımı:** API veya katalog yükleme hatalarında satıcı paneline girmeden ZOLM üzerinden destek kaydı açma.
+## 3. P2 — Gelişmiş Entegrasyon ve Ekosistem (P2 Sprint Önerisi)
 
-### 5. Tedarikçi Entegrasyonu (Supplier API)
-* **API Tanımı:** Hepsiburada'nın tedarik veya doğrudan sipariş karşılama (fulfillment) altyapısının entegre edilmesi.
+### 3.1 Gerçek Zamanlı Sipariş ve Paket Webhook'ları
+* **Aksiyon:** Sipariş oluştuğunda veya paket durumu değiştiğinde anlık webhook alımı.
+* **Durum:** `not_implemented` (`webhooks => false`).
+
+### 3.2 E-Fatura Mükellef Sorgulama & Kampanya Yönetimi
+* **Durum:** `not_implemented`.

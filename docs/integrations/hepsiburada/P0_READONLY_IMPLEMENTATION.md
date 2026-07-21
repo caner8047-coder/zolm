@@ -1,41 +1,56 @@
 # Hepsiburada P0 Salt-Okuma Entegrasyonu Geliştirme Raporu
 
-Bu doküman, `antigravity/hepsiburada-p0-readonly` branch'i kapsamında ZOLM sistemine eklenen yeni salt-okuma entegrasyon özelliklerini detaylandırır.
+> [!IMPORTANT]
+> Tüm P0 salt-okuma geliştirmeleri local testler, SQL migrations, mock response fixtures ve tenant izolasyonu kontrolleriyle teknik olarak doğrulanmış, remote branch'e push edilmiştir.
+> Geliştirmenin durum kodu: **`p0_readonly_complete_mock_verified`**
 
 ---
 
-## 1. Geliştirilen Modüller ve Servis Katmanları
+## 1. Doğrulanan Resmî API Endpoint'leri ve Metotlar
 
 ### P0.1 — Kategori Ağacı ve Referans Verileri
-* **Connector Metodu:** `HepsiburadaConnector::getCategories` (tahmini endpoint `product/api/categories/get-all-categories`)
-* **Veritabanı Entegrasyonu:** `MarketplaceReferenceSyncService::syncCategories` recursive şekilde kategori ağacını okur ve `MpCategory` tablosuna unique upsert uygular.
-* **Test Dosyası:** `tests/Feature/Hepsiburada/HepsiburadaReferenceSyncTest.php::test_it_syncs_categories`
+* **Connector Metodu:** `HepsiburadaConnector::getCategories`
+* **Resmî Endpoint:** `GET product/api/categories/get-all-categories`
+* **ZOLM Durumu:** `officially_verified, implemented_mock_verified`
+* **İşlevi:** Hepsiburada kategori ağacını çekerek `MpCategory` tablosuna unique upsert uygular.
+* **Test Senaryosu:** `tests/Feature/Hepsiburada/HepsiburadaReferenceSyncTest.php::test_it_syncs_categories`
 
 ### P0.2 — Kategori Özellikleri ve Değer Sözlüğü
-* **Connector Metodu:** `HepsiburadaConnector::getCategoryAttributes` (tahmini endpoint `product/api/categories/{id}/attributes`)
-* **Veritabanı Entegrasyonu:** `MarketplaceReferenceSyncService::syncCategoryAttributes` metodu eklendi. Yaprak (leaf) kategoriler taranarak zorunlu/seçimli özellikler ve olası değerleri çekilir, `MpCategoryAttribute` ve `MpCategoryAttributeValue` tablolarına kaydedilir.
-* **Reconciliation:** Kategori özellikleri değiştiğinde eski attribute ve değer ilişkileri `delete` edilerek veritabanında güncel tutulması sağlanır.
-* **Test Dosyası:** `tests/Feature/Hepsiburada/HepsiburadaReferenceSyncTest.php::test_it_syncs_category_attributes`
+* **Connector Metodu:** `HepsiburadaConnector::getCategoryAttributes`
+* **Resmî Endpoint:** `GET product/api/categories/{categoryId}/attributes`
+* **ZOLM Durumu:** `officially_verified, implemented_mock_verified`
+* **İşlevi:** Yaprak (leaf) kategoriler taranarak zorunlu/seçimli özellikler ve olası değerleri çekilir, `MpCategoryAttribute` ve `MpCategoryAttributeValue` tablolarına idempotent şekilde kaydedilir. Eski nitelik ve değerler otomatik silinerek (`delete`) reconcile edilir.
+* **Test Senaryosu:** `tests/Feature/Hepsiburada/HepsiburadaReferenceSyncTest.php::test_it_syncs_category_attributes`
 
 ### P0.3 — Tam Katalog Ürün Çekimi (Katalog vs. Listing Ayrımı)
-* **Connector Metodu:** `HepsiburadaConnector::pullCatalogProducts` (tahmini endpoint `product/api/products/merchant/{merchantId}`)
-* **Normalizasyon:** `normalizeCatalogProduct` metodu ile açıklama, görseller (images array), kategori özellikleri (attributes), onay statüsü (approval_status) ve red gerekçeleri (rejection_reasons) normalize edilir.
-* **Veritabanı Entegrasyonu:** `MarketplaceSyncService` içine `catalog_products` senkronizasyon tipi entegre edildi. `MarketplaceCatalogSyncService::sync` metodu yeni katalog alanlarını `ChannelProduct` tablosuna nullable olarak yazar.
-* **Test Dosyası:** `tests/Feature/Hepsiburada/HepsiburadaCatalogProductsTest.php`
+* **Connector Metodu:** `HepsiburadaConnector::pullCatalogProducts`
+* **Resmî Endpoint:** `GET product/api/products/all-products-of-merchant/{merchantId}`
+* **ZOLM Durumu:** `officially_verified, implemented_mock_verified`
+* **İşlevi:** Ürün açıklaması, görsel listesi (images array), kategori özellikleri (attributes), onay statüsü (approval_status) ve red gerekçeleri (rejection_reasons) normalize edilir ve `ChannelProduct` tablosundaki yeni P0 katalog alanlarına kaydedilir.
+* **Test Senaryosu:** `tests/Feature/Hepsiburada/HepsiburadaCatalogProductsTest.php`
 
 ### P0.4 — Batch İşlem Sonuç Takibi
-* **Connector Metodu:** `HepsiburadaConnector::pullBatchStatus` (doğrulanmış endpoint `listings/merchantid/{merchantId}/{op}/id/{batchId}`)
-* **Amacı:** Toplu fiyat veya stok güncelleme (pushPrice/pushStock) işlemlerinin Hepsiburada kuyruğundaki durumlarını (Completed, Failed vb.) sorgulamak için kullanılır. Tamamen salt-okumadır, veri mutasyonu yaratmaz.
-* **Test Dosyası:** `tests/Feature/Hepsiburada/HepsiburadaBatchStatusTest.php`
-
-### P0.5 — Paket Statü Kapsam Genişletmesi
-* **Metot:** `HepsiburadaConnector::packageEndpoints` listesi genişletilerek `Prepared`, `Split`, `Cancelled` ve `Unpaid` (Ödeme bekleyen siparişler) endpoint'leri dahil edildi.
-* **Önemi:** Aynı siparişin farklı endpoint'lerden mükerrer oluşması normalizasyondaki `orderNumber|packageId` unique anahtarı ile engellenmiştir.
+* **Connector Metodu:** `HepsiburadaConnector::pullBatchStatus`
+* **Resmî Endpointler:** 
+  - `GET listings/merchantid/{merchantId}/price-uploads/id/{batchId}`
+  - `GET listings/merchantid/{merchantId}/stock-uploads/id/{batchId}`
+* **ZOLM Durumu:** `officially_verified, implemented_mock_verified`
+* **İşlevi:** Toplu fiyat veya stok güncellemelerinin Hepsiburada kuyruğundaki durumlarını sorgular, tamamen salt-okumadır.
+* **Test Senaryosu:** `tests/Feature/Hepsiburada/HepsiburadaBatchStatusTest.php`
 
 ---
 
-## 2. Tenant İzolasyonu ve Güvenlik Güvenceleri
+## 2. Doğrulanamayan ve Devre Dışı Bırakılan Tahmini Endpoint'ler
 
-* **Cross-Tenant Sızıntı Koruması:** `store_id` tabanlı tenant izolasyonu `ChannelProduct`, `ChannelListing` ve `ChannelOrder` tablolarında unique anahtarlarla zorlanmıştır. Store A, Store B'nin credential veya sipariş verisine hiçbir koşulda erişemez.
+Resmî Hepsiburada dokümanlarında `/packages/...` altında bir endpoint karşılığı bulunmayan veya tahmin yoluyla üretilmiş aşağıdaki durumlar için capabilities `false` set edilmiş, connector çağrıları temizlenmiş ve sync akışında engellenmiştir:
+* **Prepared paket endpoint'i** (`packages/.../prepared`) -> `not_verified, not_implemented`
+* **Split paket endpoint'i** (`packages/.../split`) -> `not_verified, not_implemented`
+* **Cancelled paket endpoint'i** (`packages/.../cancelled`) -> `not_verified, not_implemented`
+* **Unpaid/ödeme bekleyen sipariş endpoint'i** (`packages/.../unpaid`) -> `not_verified, not_implemented`
+
+---
+
+## 3. Tenant İzolasyonu ve Güvenlik Güvenceleri
+
+* **Sızıntı Koruması:** `store_id` ve `legal_entity_id` zorunlulukları hem veritabanında hem de normalizasyon aşamasında korunur. Store A, Store B'ye ait hiçbir credential veya sipariş verisine erişemez (`HepsiburadaTenantIsolationTest`).
 * **Maskeleme:** Basic Auth header'ları, API key ve müşteri kişisel verileri loglardan arındırılmıştır.
-* **Test Dosyası:** `tests/Feature/Hepsiburada/HepsiburadaTenantIsolationTest.php`
