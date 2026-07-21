@@ -1,0 +1,3 @@
+<?php
+use Illuminate\Database\Migrations\Migration;use Illuminate\Database\Schema\Blueprint;use Illuminate\Support\Facades\Schema;
+return new class extends Migration{public function up():void{Schema::create('hr_benefits',function(Blueprint $t){$t->id();$t->foreignId('legal_entity_id')->constrained('legal_entities')->cascadeOnDelete();$t->string('code',60);$t->string('name',160);$t->string('type',40);$t->text('employer_cost_encrypted')->nullable();$t->string('currency',3)->default('TRY');$t->boolean('is_active')->default(true);$t->timestamps();$t->unique(['legal_entity_id','code']);});}public function down():void{Schema::dropIfExists('hr_benefits');}};
