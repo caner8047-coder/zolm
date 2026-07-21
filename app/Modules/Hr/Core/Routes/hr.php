@@ -39,6 +39,11 @@ use App\Modules\Hr\Attendance\Livewire\AttendanceAnomalyInbox;
 use App\Modules\Hr\Attendance\Livewire\AttendanceDeviceManager;
 use App\Modules\Hr\Attendance\Livewire\AttendanceEventList;
 use App\Modules\Hr\Attendance\Livewire\MyAttendanceTerminal;
+use App\Modules\Hr\Timesheet\Livewire\TimesheetDetail;
+use App\Modules\Hr\Timesheet\Livewire\TimesheetPeriodList;
+use App\Modules\Hr\Timesheet\Actions\ExportTimesheetAction;
+use App\Modules\Hr\Overtime\Livewire\OvertimeTypeManager;
+use App\Modules\Hr\Overtime\Livewire\OvertimeWorkspace;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -156,6 +161,26 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
             ->middleware('hr.authorize:hr.attendance.view');
         Route::get('/settings/attendance-devices', AttendanceDeviceManager::class)->name('settings.attendance-devices')
             ->middleware('hr.authorize:hr.attendance.manage');
+    });
+
+    Route::middleware('hr.module:puantaj')->group(function () {
+        Route::get('/timesheet', TimesheetPeriodList::class)->name('timesheets')
+            ->middleware('hr.authorize:hr.timesheet.view');
+        Route::get('/timesheet/{period}', TimesheetDetail::class)->name('timesheets.show')
+            ->middleware('hr.authorize:hr.timesheet.view');
+        Route::get('/timesheet/{period}/export', function (int $period) {
+            $tenantId = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $model = \App\Modules\Hr\Timesheet\Models\HrTimesheetPeriod::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($period);
+            $path = app(ExportTimesheetAction::class)->execute($model);
+            return response()->download(storage_path("app/private/{$path}"), basename($path))->deleteFileAfterSend(true);
+        })->name('timesheets.export')->middleware('hr.authorize:hr.timesheet.view');
+        Route::get('/overtime', OvertimeWorkspace::class)->name('overtime')
+            ->middleware('hr.authorize:hr.timesheet.view');
+        Route::get('/my/overtime', OvertimeWorkspace::class)->name('my-overtime')
+            ->defaults('selfService', true)
+            ->middleware('hr.authorize:hr.timesheet.view');
+        Route::get('/settings/overtime-types', OvertimeTypeManager::class)->name('settings.overtime-types')
+            ->middleware('hr.authorize:hr.timesheet.close');
     });
 
     // Personel

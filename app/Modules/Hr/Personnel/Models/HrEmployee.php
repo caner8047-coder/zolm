@@ -89,6 +89,16 @@ class HrEmployee extends Model
         return $this->hasMany(\App\Modules\Hr\Attendance\Models\HrAttendanceAnomaly::class, 'employee_id');
     }
 
+    public function timesheets(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Timesheet\Models\HrTimesheet::class, 'employee_id');
+    }
+
+    public function overtimeRequests(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Overtime\Models\HrOvertimeRequest::class, 'employee_id');
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', EmployeeStatus::Active);
@@ -112,7 +122,7 @@ class HrEmployee extends Model
 
     public function getFullNameAttribute(): string
     {
-        return trim($this->first_name . ' ' . $this->middle_name . ' ' . $this->last_name);
+        return preg_replace('/\s+/u', ' ', trim($this->first_name . ' ' . $this->middle_name . ' ' . $this->last_name));
     }
 
     public function getTenureAttribute(): ?string

@@ -19,6 +19,7 @@ class HrPhase2BMigrationsRollbackTest extends TestCase
 
     public function test_phase2b_rollback_preserves_shift_tables(): void
     {
+        Artisan::call('migrate:rollback', ['--step' => 5]);
         Artisan::call('migrate:rollback', ['--step' => 3]);
         $this->assertFalse(Schema::hasTable('hr_attendance_devices'));
         $this->assertFalse(Schema::hasTable('hr_attendance_events'));
