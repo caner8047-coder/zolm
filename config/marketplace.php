@@ -272,6 +272,9 @@ return [
             'request_jitter_seconds' => 10,
         ],
         'user_agent_suffix' => env('HEPSIBURADA_USER_AGENT_SUFFIX', 'ZOLM Marketplace Integration'),
+        'p0_reference_sync_enabled' => (bool) env('HEPSIBURADA_P0_REFERENCE_SYNC_ENABLED', false),
+        'p0_catalog_sync_enabled' => (bool) env('HEPSIBURADA_P0_CATALOG_SYNC_ENABLED', false),
+        'p0_batch_status_sync_enabled' => (bool) env('HEPSIBURADA_P0_BATCH_STATUS_SYNC_ENABLED', false),
     ],
 
     'n11' => [

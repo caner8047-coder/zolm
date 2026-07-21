@@ -208,11 +208,13 @@ class MarketplaceManualSyncDispatchService
         $connector = $this->connectorManager->resolveForStore($store);
         $capabilities = $connector->capabilities();
 
-        if (!in_array($syncType, ['orders', 'products', 'finance', 'questions', 'claims'], true)) {
+        if (!in_array($syncType, ['orders', 'products', 'catalog_products', 'finance', 'questions', 'claims'], true)) {
             throw new \RuntimeException('Geçersiz senkron tipi seçildi.');
         }
 
-        if (!(bool) ($capabilities[$syncType] ?? false)) {
+        $capKey = $syncType === 'catalog_products' ? 'catalog_products_pull' : $syncType;
+
+        if (!(bool) ($capabilities[$capKey] ?? false)) {
             throw new \RuntimeException('Bu kanal için ' . mb_strtolower($this->syncTypeLabel($syncType)) . ' sync desteklenmiyor.');
         }
     }
@@ -222,6 +224,7 @@ class MarketplaceManualSyncDispatchService
         return match ($syncType) {
             'orders' => 'Sipariş',
             'products' => 'Ürün',
+            'catalog_products' => 'Katalog Ürün',
             'finance' => 'Finans',
             'questions' => 'Soru',
             'claims' => 'İade',
