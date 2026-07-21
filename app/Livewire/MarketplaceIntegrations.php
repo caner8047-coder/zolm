@@ -29,6 +29,7 @@ use Livewire\Component;
 class MarketplaceIntegrations extends Component
 {
     public ?int $selectedStoreId = null;
+    public ?string $saveResult = null;
 
     public array $entityForm = [];
 
@@ -55,15 +56,16 @@ class MarketplaceIntegrations extends Component
         $this->resetSyncForm();
 
         $requestedStoreId = (int) request()->integer('store');
+        $resolver = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class);
+        $accessible = $resolver->accessibleStores(Auth::user());
 
-        if ($requestedStoreId > 0 && Auth::user()->marketplaceStores()->whereKey($requestedStoreId)->exists()) {
+        if ($requestedStoreId > 0 && (clone $accessible)->whereKey($requestedStoreId)->exists()) {
             $this->selectStore($requestedStoreId);
 
             return;
         }
 
-        $firstStoreId = Auth::user()
-            ->marketplaceStores()
+        $firstStoreId = (clone $accessible)
             ->latest('id')
             ->value('id');
 
@@ -209,15 +211,31 @@ class MarketplaceIntegrations extends Component
 
     public function selectStore(int $storeId): void
     {
-        $this->selectedStoreId = $storeId;
-        $this->loadSelectedStore();
+        try {
+            app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), $storeId);
+            $this->selectedStoreId = $storeId;
+            $this->loadSelectedStore();
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+        }
     }
 
     public function deleteSelectedStore(): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
 
-        $store = $this->selectedStore;
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
+
         $storeName = $store->store_name;
 
         try {
@@ -247,7 +265,21 @@ class MarketplaceIntegrations extends Component
 
     public function saveConnection(): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
+
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForCredentialManagement(
+                Auth::user(),
+                (int) $this->selectedStoreId
+            );
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
 
         $validated = $this->validate([
             'connectionForm.authType' => ['required', 'string', 'max:50'],
@@ -262,7 +294,18 @@ class MarketplaceIntegrations extends Component
             'connectionForm.storeUrl' => ['nullable', 'url', 'max:255'],
         ]);
 
-        $store = $this->selectedStore;
+        $placeholders = ['test-key', 'test-secret', 'your-api-key', 'your-api-secret', 'changeme', 'demo'];
+        $apiKeyToCheck = trim(Str::lower($validated['connectionForm']['apiKey'] ?? ''));
+        $apiSecretToCheck = trim(Str::lower($validated['connectionForm']['apiSecret'] ?? ''));
+
+        if (in_array($apiKeyToCheck, $placeholders, true) || in_array($apiSecretToCheck, $placeholders, true)) {
+            if (app()->environment('production')) {
+                $this->addError('connectionForm.apiKey', 'Geçerli production API bilgileri girilmelidir.');
+                $this->saveResult = 'validation_failed';
+                return;
+            }
+        }
+
         $existingConnection = $store->connection;
         $isDemo = $existingConnection?->isDemo() ?? false;
         $existingCredentials = $existingConnection?->credentials_encrypted ?? [];
@@ -291,39 +334,91 @@ class MarketplaceIntegrations extends Component
             'extra_password' => $extraPassword,
             'store_url' => $validated['connectionForm']['storeUrl'] ?: null,
         ];
+
         $resolvedApiBaseUrl = $this->resolveConnectionApiBaseUrl(
             marketplace: $store->marketplace,
             explicitApiBaseUrl: $validated['connectionForm']['apiBaseUrl'] ?: null,
             storeUrl: $validated['connectionForm']['storeUrl'] ?: null,
         );
+
         $readiness = $this->inspectConnectionDraft(
             $store,
             array_filter($credentials, fn ($value) => filled($value)),
             $resolvedApiBaseUrl,
         );
+
         $connectionStatus = $isDemo
             ? IntegrationConnection::STATUS_DEMO
             : ($readiness['is_ready'] ? 'configured' : 'draft');
         $connectionError = $readiness['is_ready'] ? null : ($readiness['failures'][0] ?? null);
 
-        $store->connection()->updateOrCreate(
-            ['store_id' => $store->id],
-            [
-                'provider' => $store->marketplace,
-                'auth_type' => $validated['connectionForm']['authType'],
-                'credentials_encrypted' => array_filter($credentials, fn ($value) => filled($value)),
-                'webhook_secret' => $validated['connectionForm']['webhookSecret'] ?: ($existingConnection?->webhook_secret ?: Str::random(40)),
-                'webhook_url' => $this->buildWebhookUrl($store),
-                'api_base_url' => $resolvedApiBaseUrl,
-                'status' => $connectionStatus,
-                'last_verified_at' => null,
-                'last_error' => $connectionError,
-            ],
-        );
+        $preUpdateUpdatedAt = $existingConnection ? $existingConnection->updated_at : null;
+        $preUpdateFingerprint = $existingConnection ? hash('sha256', json_encode($existingCredentials)) : null;
 
-        $store->forceFill([
-            'status' => $isDemo ? $store->status : $connectionStatus,
-        ])->save();
+        $targetTenantUserId = $store->user_id;
+        $actingUser = Auth::user();
+        $isCrossTenant = (int) $targetTenantUserId !== (int) $actingUser->id;
+
+        DB::transaction(function () use ($store, $validated, $credentials, $resolvedApiBaseUrl, $connectionStatus, $connectionError, $existingConnection, $isDemo): void {
+            $store->connection()->updateOrCreate(
+                ['store_id' => $store->id],
+                [
+                    'provider' => $store->marketplace,
+                    'auth_type' => $validated['connectionForm']['authType'],
+                    'credentials_encrypted' => array_filter($credentials, fn ($value) => filled($value)),
+                    'webhook_secret' => $validated['connectionForm']['webhookSecret'] ?: ($existingConnection?->webhook_secret ?: Str::random(40)),
+                    'webhook_url' => $this->buildWebhookUrl($store),
+                    'api_base_url' => $resolvedApiBaseUrl,
+                    'status' => $connectionStatus,
+                    'last_verified_at' => null,
+                    'last_error' => $connectionError,
+                ],
+            );
+
+            $store->forceFill([
+                'status' => $isDemo ? $store->status : $connectionStatus,
+            ])->save();
+        });
+
+        $store->refresh();
+        $newConnection = $store->connection;
+        $newCredentials = $newConnection?->credentials_encrypted ?? [];
+        $newFingerprint = hash('sha256', json_encode($newCredentials));
+
+        $updatedAtChanged = $newConnection && (!$preUpdateUpdatedAt || $newConnection->updated_at->gt($preUpdateUpdatedAt));
+        $fingerprintChanged = $preUpdateFingerprint !== $newFingerprint;
+
+        $newApiKeyToCheck = trim(Str::lower($newCredentials['api_key'] ?? ''));
+        $newApiSecretToCheck = trim(Str::lower($newCredentials['api_secret'] ?? ''));
+        $hasPlaceholder = in_array($newApiKeyToCheck, $placeholders, true) || in_array($newApiSecretToCheck, $placeholders, true);
+
+        if (!$newConnection || $hasPlaceholder || (int) $newConnection->store_id !== (int) $store->id) {
+            $this->saveResult = 'credential_save_failed';
+            $this->notify('Bağlantı bilgileri doğrulanırken hata oluştu.', 'error');
+            return;
+        }
+
+        if ($fingerprintChanged) {
+            if ($isCrossTenant) {
+                \App\Models\ActivityLog::log(
+                    'update_connection_credentials',
+                    "Updated store connection credentials via tenant context. Acting user: {$actingUser->id}, Target tenant: {$targetTenantUserId}, Target store: {$store->id}, Reason: credential maintenance",
+                    'MarketplaceStore',
+                    $store->id,
+                    [
+                        'api_key_present' => filled($credentials['api_key'] ?? null),
+                        'api_secret_present' => filled($credentials['api_secret'] ?? null),
+                        'api_key_length' => strlen($credentials['api_key'] ?? ''),
+                        'api_secret_length' => strlen($credentials['api_secret'] ?? ''),
+                        'fingerprint_changed' => true,
+                    ]
+                );
+            }
+
+            $this->saveResult = 'credential_saved';
+        } else {
+            $this->saveResult = 'credential_unchanged';
+        }
 
         $this->loadSelectedStore();
 
@@ -339,7 +434,6 @@ class MarketplaceIntegrations extends Component
             }
 
             $this->notify('Bağlantı bilgileri kaydedildi. Gizli alanları boş bırakırsanız mevcut değer korunur.');
-
             return;
         }
 
@@ -376,7 +470,19 @@ class MarketplaceIntegrations extends Component
 
     public function saveSyncProfile(): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
+
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $this->selectedStore = $store;
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
 
         $marketplace = $this->selectedStore->marketplace;
         $allowedWebhookTopics = IntegrationSyncProfile::recommendedWebhookTopicsForMarketplace($marketplace);
@@ -596,7 +702,19 @@ class MarketplaceIntegrations extends Component
 
     public function runSync(string $syncType): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
+
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $this->selectedStore = $store;
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
 
         $readiness = $this->selectedConnectionReadiness;
 
@@ -651,7 +769,19 @@ class MarketplaceIntegrations extends Component
 
     public function regenerateWebhookSecret(): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
+
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $this->selectedStore = $store;
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
 
         $this->connectionForm['webhookSecret'] = Str::random(40);
     }
@@ -661,7 +791,19 @@ class MarketplaceIntegrations extends Component
         MarketplaceConnectionReadinessService $connectionReadinessService,
     ): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
+
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $this->selectedStore = $store;
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
 
         try {
             $this->selectedStore->loadMissing('connection');
@@ -769,8 +911,8 @@ class MarketplaceIntegrations extends Component
 
     public function exportReadinessCsv()
     {
-        $stores = Auth::user()
-            ->marketplaceStores()
+        $stores = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+            ->accessibleStores(Auth::user())
             ->with(['legalEntity', 'connection', 'syncProfile'])
             ->orderBy('store_name')
             ->get();
@@ -966,10 +1108,12 @@ class MarketplaceIntegrations extends Component
             return null;
         }
 
-        return Auth::user()
-            ->marketplaceStores()
-            ->with(['legalEntity', 'connection', 'syncProfile'])
-            ->find($this->selectedStoreId);
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            return $store->load(['legalEntity', 'connection', 'syncProfile']);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return null;
+        }
     }
 
     /**
@@ -1155,8 +1299,8 @@ class MarketplaceIntegrations extends Component
      */
     public function getReadinessSummaryProperty(): ?array
     {
-        $stores = Auth::user()
-            ->marketplaceStores()
+        $stores = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+            ->accessibleStores(Auth::user())
             ->with(['connection'])
             ->orderBy('store_name')
             ->get();
@@ -1219,8 +1363,8 @@ class MarketplaceIntegrations extends Component
     {
         $service = app(LegacyFinancialProjectionInsightsService::class);
 
-        return Auth::user()
-            ->marketplaceStores()
+        return app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+            ->accessibleStores(Auth::user())
             ->with('legalEntity:id,name')
             ->orderBy('store_name')
             ->get(['id', 'legal_entity_id', 'marketplace', 'store_name'])
@@ -1569,7 +1713,8 @@ class MarketplaceIntegrations extends Component
             ->orderBy('name')
             ->get();
 
-        $stores = $user->marketplaceStores()
+        $stores = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+            ->accessibleStores($user)
             ->with(['legalEntity', 'connection', 'syncProfile'])
             ->latest('updated_at')
             ->get();

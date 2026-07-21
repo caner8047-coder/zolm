@@ -242,6 +242,28 @@
                             </div>
                         @endif
 
+                        @if($saveResult)
+                            <div class="mb-4 p-4 rounded-lg @if($saveResult === 'credential_saved' || $saveResult === 'credential_unchanged') bg-emerald-50 border border-emerald-100 text-emerald-800 @else bg-rose-50 border border-rose-100 text-rose-800 @endif text-sm">
+                                @if($saveResult === 'credential_saved')
+                                    Bağlantı bilgileri başarıyla kaydedildi ve doğrulandı.
+                                @elseif($saveResult === 'credential_unchanged')
+                                    Bağlantı bilgileri değişmedi.
+                                @elseif($saveResult === 'session_expired')
+                                    Oturumunuz sona erdi, lütfen tekrar giriş yapın.
+                                @elseif($saveResult === 'authorization_denied')
+                                    Bu mağazanın bağlantı bilgilerini yönetmeye yetkiniz bulunmamaktadır.
+                                @elseif($saveResult === 'tenant_context_missing')
+                                    Cross-tenant erişim için geçerli bir tenant context bulunmamaktadır.
+                                @elseif($saveResult === 'validation_failed')
+                                    Girdiğiniz bilgileri kontrol edin.
+                                @elseif($saveResult === 'credential_save_failed')
+                                    Bağlantı bilgileri kaydedilemedi. Lütfen tekrar deneyin.
+                                @else
+                                    Bir hata oluştu: {{ $saveResult }}
+                                @endif
+                            </div>
+                        @endif
+
                         <form wire:submit.prevent="saveConnection" class="space-y-4">
                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div class="col-span-1 sm:col-span-2 hidden">

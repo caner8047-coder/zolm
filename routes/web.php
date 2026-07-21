@@ -321,8 +321,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/marketplace-integrations', \App\Livewire\MarketplaceIntegrations::class)
         ->name('mp.integrations')
-        ->middleware('mp.feature:integrations_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware('mp.feature:integrations_enabled');
 
     Route::get('/marketplace-products', \App\Livewire\MpProductsManager::class)
         ->name('mp.products')
