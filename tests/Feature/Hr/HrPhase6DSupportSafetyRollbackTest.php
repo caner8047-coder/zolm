@@ -21,7 +21,7 @@ class HrPhase6DSupportSafetyRollbackTest extends TestCase
 
     public function test_rollback_preserves_workforce_planning(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 1]);
+        Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);
         $this->assertFalse(Schema::hasTable('hr_support_tickets'));
         $this->assertFalse(Schema::hasTable('hr_safety_incidents'));
         $this->assertTrue(Schema::hasTable('hr_workforce_plans'));

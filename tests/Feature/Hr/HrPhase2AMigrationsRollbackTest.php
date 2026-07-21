@@ -20,7 +20,7 @@ class HrPhase2AMigrationsRollbackTest extends TestCase
 
     public function test_phase2a_rollback_preserves_leave_tables(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 4]);Artisan::call('migrate:rollback', ['--step' => 1]);
+        Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 4]);Artisan::call('migrate:rollback', ['--step' => 1]);
         Artisan::call('migrate:rollback', ['--step' => 4]);
         Artisan::call('migrate:rollback', ['--step' => 4]);
         Artisan::call('migrate:rollback', ['--step' => 5]);

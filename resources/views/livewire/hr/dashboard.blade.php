@@ -6,10 +6,11 @@
         </div>
     </section>
 
-    @if(auth()->user()?->hasHrPermission('hr.support.view') || auth()->user()?->hasHrPermission('hr.isg.view'))
+    @if(auth()->user()?->hasHrPermission('hr.support.view') || auth()->user()?->hasHrPermission('hr.isg.view') || auth()->user()?->hasHrPermission('hr.assistant.query'))
         <nav class="flex flex-col gap-2 sm:flex-row">
             @if(auth()->user()?->hasHrPermission('hr.support.view'))<a href="{{ route('hr.support') }}" class="w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-center text-sm text-slate-700 shadow-sm sm:w-auto sm:py-2">Destek merkezi</a>@endif
             @if(auth()->user()?->hasHrPermission('hr.isg.view'))<a href="{{ route('hr.isg') }}" class="w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-center text-sm text-slate-700 shadow-sm sm:w-auto sm:py-2">İSG ve uyum</a>@endif
+            @if(auth()->user()?->hasHrPermission('hr.assistant.query'))<a href="{{ route('hr.assistant') }}" class="w-full rounded-[6px] bg-slate-900 px-4 py-3 text-center text-sm text-white shadow-sm sm:w-auto sm:py-2">İK Asistanı</a>@endif
         </nav>
     @endif
 
