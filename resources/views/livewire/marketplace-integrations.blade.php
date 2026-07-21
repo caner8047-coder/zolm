@@ -568,6 +568,10 @@
                                         <span class="font-mono text-slate-900">{{ $hbMeta['last_correlation_id'] ?: 'N/A' }}</span>
                                     </div>
                                     <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Connection Probe Rollout Gate:</span>
+                                        <span class="font-medium {{ ($hbMeta['connection_gate'] ?? false) ? 'text-emerald-600' : 'text-slate-500' }}">{{ ($hbMeta['connection_gate'] ?? false) ? 'AÇIK' : 'KAPALI' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
                                         <span class="text-slate-500">Kategori Rollout Gate:</span>
                                         <span class="font-medium {{ $hbMeta['reference_gate'] ? 'text-emerald-600' : 'text-slate-500' }}">{{ $hbMeta['reference_gate'] ? 'AÇIK' : 'KAPALI' }}</span>
                                     </div>

@@ -2048,16 +2048,16 @@ class MarketplaceIntegrations extends Component
             ->first();
 
         // Calculate validation status label/tag
-        // Tags: not_configured, configured_not_verified, mock_verified, live_read_verified, authentication_failed, permission_blocked, rate_limited, provider_unavailable
+        // Tags: not_configured, configured_not_verified, live_read_verified, authentication_failed, permission_blocked, rate_limited, provider_unavailable
         $status = 'not_configured';
         if (!$hasCreds) {
             $status = 'not_configured';
         } else {
-            if (!$latestAudit) {
+            if (!$latestAudit || !$latestAudit->http_attempted) {
                 $status = 'configured_not_verified';
             } else {
                 $status = match ($latestAudit->decision) {
-                    'authentication_success', 'read_probe_success' => $latestAudit->confirm_read ? 'live_read_verified' : 'mock_verified',
+                    'authentication_success', 'read_probe_success' => $latestAudit->confirm_read ? 'live_read_verified' : 'configured_not_verified',
                     'authentication_failed' => 'authentication_failed',
                     'permission_blocked' => 'permission_blocked',
                     'rate_limited' => 'rate_limited',
@@ -2075,14 +2075,15 @@ class MarketplaceIntegrations extends Component
             'last_verified_at' => $lastVerified,
             'last_http_status' => $latestAudit?->http_status,
             'last_provider_error' => $latestAudit?->provider_error_code,
+            'connection_gate' => (bool) config('marketplace.hepsiburada.p0_connection_probe_enabled', false),
             'reference_gate' => (bool) config('marketplace.hepsiburada.p0_reference_sync_enabled', false),
             'catalog_gate' => (bool) config('marketplace.hepsiburada.p0_catalog_sync_enabled', false),
             'batch_gate' => (bool) config('marketplace.hepsiburada.p0_batch_status_sync_enabled', false),
             'last_categories_smoke' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('operation', 'categories')->latest('id')->value('decision'),
             'last_catalog_smoke' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('operation', 'catalog')->latest('id')->value('decision'),
             'last_correlation_id' => $latestAudit?->correlation_id,
-            'live_verified' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('confirm_read', true)->exists(),
-            'mock_verified' => true,
+            'live_verified' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('confirm_read', true)->where('http_attempted', true)->exists(),
+            'configuration_ready' => $hasCreds && $hasMerchantId,
             'status' => $status,
         ];
     }
