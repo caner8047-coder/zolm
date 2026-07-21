@@ -81,82 +81,56 @@ class HepsiburadaReadinessService
         }
 
         // Service-level Reason Validation
-        $reason = trim((string) ($options['reason'] ?? ''));
-        $reason = preg_replace('/[\x00-\x1F\x7F]/u', '', $reason);
-        if ($reason === '') {
-            return [
-                'correlation_id'   => $correlationId,
-                'is_ready'         => false,
-                'is_live_verified' => false,
-                'http_attempted'   => false,
-                'decision'         => 'audit_reason_missing',
-                'message'          => 'İşlem gerekçesi (reason) boş olamaz.',
-            ];
+        $reasonInput = (string) ($options['reason'] ?? '');
+        $reasonClean = trim(preg_replace('/[\x00-\x1F\x7F]/u', '', $reasonInput));
+
+        if ($reasonClean === '') {
+            return $this->auditedResult(
+                $correlationId, $store, $actor, '[missing_reason]', $operation,
+                $confirmRead, false, false, null, 'REASON_MISSING', 0, 0,
+                'audit_reason_missing', 'İşlem gerekçesi (reason) boş olamaz.', false, false
+            );
         }
 
-        if (mb_strlen($reason) > 255) {
-            return [
-                'correlation_id'   => $correlationId,
-                'is_ready'         => false,
-                'is_live_verified' => false,
-                'http_attempted'   => false,
-                'decision'         => 'audit_reason_invalid',
-                'message'          => 'İşlem gerekçesi 255 karakterden uzun olamaz.',
-            ];
+        if (mb_strlen($reasonClean) > 255 || preg_match('/(api_key|service_key|bearer\s|secret|password)/i', $reasonClean)) {
+            return $this->auditedResult(
+                $correlationId, $store, $actor, '[rejected_invalid_reason]', $operation,
+                $confirmRead, false, false, null, 'REASON_INVALID', 0, 0,
+                'audit_reason_invalid', 'İşlem gerekçesi geçersiz veya hassas kelimeler içeriyor.', false, false
+            );
         }
 
-        if (preg_match('/(api_key|service_key|bearer\s|secret|password)/i', $reason)) {
-            return [
-                'correlation_id'   => $correlationId,
-                'is_ready'         => false,
-                'is_live_verified' => false,
-                'http_attempted'   => false,
-                'decision'         => 'audit_reason_invalid',
-                'message'          => 'İşlem gerekçesi hassas veri / credential kelimeleri içeremez.',
-            ];
-        }
+        $reason = $reasonClean;
 
         // 0. Mutation Guard Table Existence Check
         foreach (self::GUARDED_TABLES as $guardedTable) {
             if (!Schema::hasTable($guardedTable)) {
-                $this->audit($correlationId, $store, $actor->id, $reason, $operation, $confirmRead, false, false, null, 'TABLE_MISSING', 0, 0, 'mutation_guard_table_missing');
-                return [
-                    'correlation_id'   => $correlationId,
-                    'is_ready'         => false,
-                    'is_live_verified' => false,
-                    'http_attempted'   => false,
-                    'decision'         => 'mutation_guard_table_missing',
-                    'message'          => "Kritik koruma tablosu veritabanında bulunamadı: {$guardedTable}",
-                ];
+                return $this->auditedResult(
+                    $correlationId, $store, $actor, $reason, $operation,
+                    $confirmRead, false, false, null, 'TABLE_MISSING', 0, 0,
+                    'mutation_guard_table_missing', "Kritik koruma tablosu veritabanında bulunamadı: {$guardedTable}", false, false
+                );
             }
         }
 
         $connection = $store->connection;
         if (!$connection) {
-            $this->audit($correlationId, $store, $actor->id, $reason, $operation, $confirmRead, false, false, null, null, 0, 0, 'not_configured');
-            return [
-                'correlation_id'   => $correlationId,
-                'is_ready'         => false,
-                'is_live_verified' => false,
-                'http_attempted'   => false,
-                'decision'         => 'not_configured',
-                'message'          => 'Hepsiburada bağlantı kaydı bulunmuyor.',
-            ];
+            return $this->auditedResult(
+                $correlationId, $store, $actor, $reason, $operation,
+                $confirmRead, false, false, null, null, 0, 0,
+                'not_configured', 'Hepsiburada bağlantı kaydı bulunmuyor.', false, false
+            );
         }
 
         // 1. Decryption Check
         try {
             $credentials = $connection->credentials_encrypted ?? [];
         } catch (\Throwable $e) {
-            $this->audit($correlationId, $store, $actor->id, $reason, $operation, $confirmRead, false, false, null, 'DECRYPT_FAIL', 0, 0, 'credential_decryption_failed');
-            return [
-                'correlation_id'   => $correlationId,
-                'is_ready'         => false,
-                'is_live_verified' => false,
-                'http_attempted'   => false,
-                'decision'         => 'credential_decryption_failed',
-                'message'          => 'Bağlantı şifreli verileri çözülemedi.',
-            ];
+            return $this->auditedResult(
+                $correlationId, $store, $actor, $reason, $operation,
+                $confirmRead, false, false, null, 'DECRYPT_FAIL', 0, 0,
+                'credential_decryption_failed', 'Bağlantı şifreli verileri çözülemedi.', false, false
+            );
         }
 
         // 2. Presence Check
@@ -169,42 +143,30 @@ class HepsiburadaReadinessService
         $hasLegacyAuth = ($legacyUser !== '' && $legacyPass !== '');
 
         if (!$hasNewAuth && !$hasLegacyAuth) {
-            $this->audit($correlationId, $store, $actor->id, $reason, $operation, $confirmRead, false, false, null, null, 0, 0, 'not_configured');
-            return [
-                'correlation_id'   => $correlationId,
-                'is_ready'         => false,
-                'is_live_verified' => false,
-                'http_attempted'   => false,
-                'decision'         => 'not_configured',
-                'message'          => 'Merchant ID / Service Key veya Legacy kullanıcı/şifre alanları eksik.',
-            ];
+            return $this->auditedResult(
+                $correlationId, $store, $actor, $reason, $operation,
+                $confirmRead, false, false, null, null, 0, 0,
+                'not_configured', 'Merchant ID / Service Key veya Legacy kullanıcı/şifre alanları eksik.', false, false
+            );
         }
 
         // 3. Service Key Placeholder Check (Merchant ID is evaluated separately)
         if ($this->containsPlaceholderCredential([$serviceKey, $legacyUser, $legacyPass])) {
-            $this->audit($correlationId, $store, $actor->id, $reason, $operation, $confirmRead, false, false, null, 'PLACEHOLDER', 0, 0, 'credential_placeholder');
-            return [
-                'correlation_id'   => $correlationId,
-                'is_ready'         => false,
-                'is_live_verified' => false,
-                'http_attempted'   => false,
-                'decision'         => 'credential_placeholder',
-                'message'          => 'Giriş yapılan kimlik bilgileri test veya placeholder değerler içeriyor.',
-            ];
+            return $this->auditedResult(
+                $correlationId, $store, $actor, $reason, $operation,
+                $confirmRead, false, false, null, 'PLACEHOLDER', 0, 0,
+                'credential_placeholder', 'Giriş yapılan kimlik bilgileri test veya placeholder değerler içeriyor.', false, false
+            );
         }
 
         // 4. Merchant ID Consistency Check
         $credMerchantId = trim((string) data_get($credentials, 'merchant_id', ''));
         if ($store->seller_id !== '' && $credMerchantId !== '' && $store->seller_id !== $credMerchantId) {
-            $this->audit($correlationId, $store, $actor->id, $reason, $operation, $confirmRead, false, false, null, 'MISMATCH', 0, 0, 'merchant_id_mismatch');
-            return [
-                'correlation_id'   => $correlationId,
-                'is_ready'         => false,
-                'is_live_verified' => false,
-                'http_attempted'   => false,
-                'decision'         => 'merchant_id_mismatch',
-                'message'          => 'Mağaza satıcı kimliği ile bağlantı Merchant ID bilgisi uyuşmuyor.',
-            ];
+            return $this->auditedResult(
+                $correlationId, $store, $actor, $reason, $operation,
+                $confirmRead, false, false, null, 'MISMATCH', 0, 0,
+                'merchant_id_mismatch', 'Mağaza satıcı kimliği ile bağlantı Merchant ID bilgisi uyuşmuyor.', false, false
+            );
         }
 
         // 5. Rollout Gate Status
@@ -224,50 +186,20 @@ class HepsiburadaReadinessService
             $decision = 'configured_not_verified';
             $msg = 'Bağlantı parametreleri ve kimlik bilgileri geçerli. Canlı HTTP okuma doğrulaması için --confirm-read onaylanmalıdır.';
 
-            $auditSaved = $this->audit($correlationId, $store, $actor->id, $reason, $operation, false, $gateEnabled, false, null, null, 0, 0, $decision);
-            if (!$auditSaved) {
-                return [
-                    'correlation_id'   => $correlationId,
-                    'is_ready'         => false,
-                    'is_live_verified' => false,
-                    'http_attempted'   => false,
-                    'decision'         => 'audit_persistence_failed',
-                    'message'          => 'Denetim kaydı veritabanına işlenirken bir hata oluştu (audit_persistence_failed).',
-                ];
-            }
-
-            return [
-                'correlation_id'   => $correlationId,
-                'is_ready'         => true,
-                'is_live_verified' => false,
-                'http_attempted'   => false,
-                'decision'         => $decision,
-                'message'          => $msg,
-            ];
+            return $this->auditedResult(
+                $correlationId, $store, $actor, $reason, $operation,
+                false, $gateEnabled, false, null, null, 0, 0,
+                $decision, $msg, true, false
+            );
         }
 
         // If confirm_read is passed BUT rollout gate is false: Return rollout_disabled (No HTTP request!)
         if (!$gateEnabled) {
-            $auditSaved = $this->audit($correlationId, $store, $actor->id, $reason, $operation, true, false, false, null, null, 0, 0, 'rollout_disabled');
-            if (!$auditSaved) {
-                return [
-                    'correlation_id'   => $correlationId,
-                    'is_ready'         => false,
-                    'is_live_verified' => false,
-                    'http_attempted'   => false,
-                    'decision'         => 'audit_persistence_failed',
-                    'message'          => 'Denetim kaydı veritabanına işlenirken bir hata oluştu (audit_persistence_failed).',
-                ];
-            }
-
-            return [
-                'correlation_id'   => $correlationId,
-                'is_ready'         => false,
-                'is_live_verified' => false,
-                'http_attempted'   => false,
-                'decision'         => 'rollout_disabled',
-                'message'          => "Hepsiburada rollout kapısı kapalı. Bu işlem için ilgili rollout flag'ini aktif edin.",
-            ];
+            return $this->auditedResult(
+                $correlationId, $store, $actor, $reason, $operation,
+                true, false, false, null, null, 0, 0,
+                'rollout_disabled', "Hepsiburada rollout kapısı kapalı. Bu işlem için ilgili rollout flag'ini aktif edin.", false, false
+            );
         }
 
         // 6. Perform Live Bounded HTTP Probe in Transaction + Mutation Guard Listener
@@ -293,6 +225,7 @@ class HepsiburadaReadinessService
             }
         });
 
+        $rollbackFailed = false;
         DB::beginTransaction();
         try {
             if ($operation === 'connection') {
@@ -385,13 +318,23 @@ class HepsiburadaReadinessService
             $errorCode = 'READ_PROBE_ERROR';
             $message = 'Probe kontrolü sırasında bir hata oluştu.';
         } finally {
-            DB::rollBack();
+            try {
+                DB::rollBack();
+            } catch (\Throwable $e) {
+                $rollbackFailed = true;
+            }
+        }
+
+        if ($rollbackFailed) {
+            $decision = 'probe_rollback_failed';
+            $message = 'DB Rollback işlemi sırasında bir hata oluştu.';
+            $errorCode = 'ROLLBACK_FAILED';
         }
 
         $durationMs = (int) (round(microtime(true) - $startTime, 4) * 1000);
 
         // Evaluate DB Mutation Violations
-        if ($attemptedMutations > 0) {
+        if ($attemptedMutations > 0 && !$rollbackFailed) {
             $decision = 'read_probe_mutated_database';
             $message = "Veritabanı değişikliği (mutation) saptandı! Probe sırasında DB yazma/güncelleme yapılamaz.";
             $errorCode = 'DB_MUTATION_VIOLATION';
@@ -399,11 +342,11 @@ class HepsiburadaReadinessService
 
         $isLiveVerified = ($decision === 'authentication_success' || $decision === 'read_probe_success');
 
-        // Persist Audit AFTER Rollback (Fail-Closed if audit fails)
-        $auditSaved = $this->audit(
+        // Central Audited Result Finalizer
+        return $this->auditedResult(
             $correlationId,
             $store,
-            $actor->id,
+            $actor,
             $reason,
             $operation,
             true,
@@ -414,6 +357,51 @@ class HepsiburadaReadinessService
             $itemCount,
             $attemptedMutations,
             $decision,
+            $message,
+            $isLiveVerified,
+            $isLiveVerified,
+            $durationMs,
+            $details
+        );
+    }
+
+    /**
+     * Centralized audited result finalizer to enforce fail-closed behavior across ALL readiness decisions.
+     */
+    private function auditedResult(
+        string $correlationId,
+        MarketplaceStore $store,
+        User $actor,
+        string $reason,
+        string $operation,
+        bool $confirmRead,
+        bool $rolloutGate,
+        bool $httpAttempted,
+        ?int $httpStatus,
+        ?string $errorCode,
+        int $itemCount,
+        int $dbMutationCount,
+        string $decision,
+        string $message,
+        bool $isReady,
+        bool $isLiveVerified,
+        ?int $durationMs = null,
+        array $details = []
+    ): array {
+        $auditSaved = $this->audit(
+            $correlationId,
+            $store,
+            $actor->id,
+            $reason,
+            $operation,
+            $confirmRead,
+            $rolloutGate,
+            $httpAttempted,
+            $httpStatus,
+            $errorCode,
+            $itemCount,
+            $dbMutationCount,
+            $decision,
             $durationMs
         );
 
@@ -422,7 +410,7 @@ class HepsiburadaReadinessService
                 'correlation_id'   => $correlationId,
                 'is_ready'         => false,
                 'is_live_verified' => false,
-                'http_attempted'   => true,
+                'http_attempted'   => $httpAttempted,
                 'decision'         => 'audit_persistence_failed',
                 'message'          => 'Denetim kaydı veritabanına işlenirken bir hata oluştu (audit_persistence_failed).',
                 'duration_ms'      => $durationMs,
@@ -433,9 +421,9 @@ class HepsiburadaReadinessService
 
         return [
             'correlation_id'   => $correlationId,
-            'is_ready'         => $isLiveVerified,
+            'is_ready'         => $isReady,
             'is_live_verified' => $isLiveVerified,
-            'http_attempted'   => true,
+            'http_attempted'   => $httpAttempted,
             'decision'         => $decision,
             'message'          => $message,
             'duration_ms'      => $durationMs,
