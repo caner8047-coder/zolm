@@ -14,6 +14,7 @@ class HepsiburadaReadinessAudit extends Model
         'store_id',
         'connection_id',
         'acting_user_id',
+        'reason',
         'tenant_user_id',
         'release_sha',
         'runtime_id',
@@ -47,5 +48,10 @@ class HepsiburadaReadinessAudit extends Model
     public function connection(): BelongsTo
     {
         return $this->belongsTo(IntegrationConnection::class, 'connection_id');
+    }
+
+    public function actingUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'acting_user_id');
     }
 }

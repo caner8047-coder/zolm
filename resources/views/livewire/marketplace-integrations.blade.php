@@ -568,6 +568,18 @@
                                         <span class="font-mono text-slate-900">{{ $hbMeta['last_correlation_id'] ?: 'N/A' }}</span>
                                     </div>
                                     <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Son Aktör ID:</span>
+                                        <span class="font-mono text-slate-900">{{ $hbMeta['last_acting_user_id'] ?: 'N/A' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Son İşlem Gerekçesi:</span>
+                                        <span class="font-medium text-slate-900 truncate max-w-[200px]" title="{{ $hbMeta['last_reason'] }}">{{ $hbMeta['last_reason'] ?: 'N/A' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">DB Mutation Girişimi:</span>
+                                        <span class="font-medium {{ ($hbMeta['last_mutation_count'] ?? 0) > 0 ? 'text-rose-600 font-bold' : 'text-emerald-600' }}">{{ $hbMeta['last_mutation_count'] ?? 0 }} adet</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
                                         <span class="text-slate-500">Connection Probe Rollout Gate:</span>
                                         <span class="font-medium {{ ($hbMeta['connection_gate'] ?? false) ? 'text-emerald-600' : 'text-slate-500' }}">{{ ($hbMeta['connection_gate'] ?? false) ? 'AÇIK' : 'KAPALI' }}</span>
                                     </div>
