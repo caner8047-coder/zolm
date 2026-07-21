@@ -51,6 +51,20 @@ class HrAuditService
         ]);
     }
 
+    public function logAnonymousEvent(string $action, ?string $description = null, ?array $metadata = null): void
+    {
+        ActivityLog::create([
+            'user_id' => null,
+            'action' => $action,
+            'entity_type' => null,
+            'entity_id' => null,
+            'description' => $description,
+            'metadata' => array_merge(['module' => 'hr', 'anonymous' => true], $metadata ?? []),
+            'ip_address' => null,
+            'user_agent' => null,
+        ]);
+    }
+
     private function maskSensitive(array $data): array
     {
         foreach ($data as $key => &$value) {
