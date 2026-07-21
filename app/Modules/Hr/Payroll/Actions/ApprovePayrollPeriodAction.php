@@ -1,0 +1,4 @@
+<?php
+namespace App\Modules\Hr\Payroll\Actions;
+use App\Modules\Hr\Core\Services\HrAuditService; use App\Modules\Hr\Core\Services\TenantContext; use App\Modules\Hr\Payroll\Models\HrPayrollPeriod;
+class ApprovePayrollPeriodAction { public function __construct(private HrAuditService $audit){} public function execute(HrPayrollPeriod $period):HrPayrollPeriod{abort_unless(auth()->user()?->hasHrPermission('hr.payroll.approve'),403);abort_unless($period->legal_entity_id===app(TenantContext::class)->getId(),404);abort_unless($period->status==='prepared'&&$period->records()->exists(),422,'Hazırlanmamış dönem onaylanamaz.');$period->update(['status'=>'approved','approved_at'=>now(),'approved_by'=>auth()->id()]);$period->records()->update(['status'=>'approved']);$this->audit->log('payroll_period_approved',$period);return $period->fresh();} }

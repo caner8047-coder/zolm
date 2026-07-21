@@ -44,6 +44,8 @@ use App\Modules\Hr\Timesheet\Livewire\TimesheetPeriodList;
 use App\Modules\Hr\Timesheet\Actions\ExportTimesheetAction;
 use App\Modules\Hr\Overtime\Livewire\OvertimeTypeManager;
 use App\Modules\Hr\Overtime\Livewire\OvertimeWorkspace;
+use App\Modules\Hr\Payroll\Livewire\PayrollRuleManager;
+use App\Modules\Hr\Payroll\Livewire\PayrollWorkspace;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -181,6 +183,13 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
             ->middleware('hr.authorize:hr.timesheet.view');
         Route::get('/settings/overtime-types', OvertimeTypeManager::class)->name('settings.overtime-types')
             ->middleware('hr.authorize:hr.timesheet.close');
+    });
+
+    Route::middleware('hr.module:bordro')->group(function () {
+        Route::get('/payroll', PayrollWorkspace::class)->name('payroll')
+            ->middleware('hr.authorize:hr.payroll.view');
+        Route::get('/settings/payroll-rules', PayrollRuleManager::class)->name('settings.payroll-rules')
+            ->middleware('hr.authorize:hr.payroll.manage_rules');
     });
 
     // Personel

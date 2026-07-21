@@ -1,0 +1,4 @@
+<?php
+namespace App\Modules\Hr\Payroll\Models;
+use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use App\Modules\Hr\Timesheet\Models\HrTimesheetPeriod; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\BelongsTo; use Illuminate\Database\Eloquent\Relations\HasMany;
+class HrPayrollPeriod extends Model { use BelongsToLegalEntity; protected $fillable=['legal_entity_id','timesheet_period_id','name','status','source_hash','prepared_at','prepared_by','approved_at','approved_by']; protected function casts():array{return ['prepared_at'=>'datetime','approved_at'=>'datetime'];} public function timesheetPeriod():BelongsTo{return $this->belongsTo(HrTimesheetPeriod::class);} public function records():HasMany{return $this->hasMany(HrPayrollRecord::class,'payroll_period_id');} }

@@ -1,0 +1,4 @@
+<?php
+namespace App\Modules\Hr\Payroll\Models;
+use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use App\Modules\Hr\Personnel\Models\HrEmployee; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\BelongsTo;
+class HrPayrollRecord extends Model { use BelongsToLegalEntity; protected $fillable=['legal_entity_id','payroll_period_id','employee_id','scheduled_minutes','worked_minutes','leave_minutes','overtime_minutes','approved_overtime_minutes','missing_minutes','source_snapshot','source_hash','status']; protected $hidden=['source_hash']; protected function casts():array{return ['source_snapshot'=>'array'];} public function period():BelongsTo{return $this->belongsTo(HrPayrollPeriod::class,'payroll_period_id');} public function employee():BelongsTo{return $this->belongsTo(HrEmployee::class);} }

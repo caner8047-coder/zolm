@@ -1,0 +1,13 @@
+<?php
+namespace Tests\Feature\Hr;
+use App\Models\LegalEntity; use App\Models\User; use App\Modules\Hr\Core\Services\TenantContext; use App\Modules\Hr\Payroll\Actions\ApprovePayrollPeriodAction; use App\Modules\Hr\Payroll\Actions\PreparePayrollPeriodAction; use App\Modules\Hr\Payroll\Models\HrPayrollRule; use App\Modules\Hr\Personnel\Models\HrEmployee; use App\Modules\Hr\Timesheet\Models\HrTimesheet; use App\Modules\Hr\Timesheet\Models\HrTimesheetPeriod; use Illuminate\Support\Facades\DB; use Symfony\Component\HttpKernel\Exception\HttpException; use Tests\TestCase;
+class PayrollPreparationWorkflowTest extends TestCase
+{
+ use RefreshHrDatabase;
+ public function test_closed_timesheet_becomes_immutable_payroll_input_snapshot():void
+ {
+  (new \Database\Seeders\Hr\HrPermissionSeeder)->run();$role=DB::table('roles')->where('slug','hr_admin')->value('id');$user=User::factory()->create(['role_id'=>$role]);$this->actingAs($user);$tenant=LegalEntity::create(['user_id'=>$user->id,'name'=>'Test','tax_number'=>'9999999999','is_active'=>true]);app(TenantContext::class)->set($tenant);$employee=HrEmployee::withoutGlobalScope('tenant')->create(['legal_entity_id'=>$tenant->id,'employee_number'=>'PAY01','national_id_encrypted'=>'enc','national_id_hash'=>'pay-h1','national_id_last_four'=>'0001','first_name'=>'Bordro','last_name'=>'Test','status'=>'active']);$date=now()->subDay();$timesheetPeriod=HrTimesheetPeriod::create(['legal_entity_id'=>$tenant->id,'name'=>'Kapalı Dönem','starts_on'=>$date,'ends_on'=>$date,'status'=>'closed','closed_at'=>now(),'closed_by'=>$user->id]);HrTimesheet::create(['legal_entity_id'=>$tenant->id,'timesheet_period_id'=>$timesheetPeriod->id,'employee_id'=>$employee->id,'work_date'=>$date,'scheduled_minutes'=>480,'worked_minutes'=>510,'overtime_minutes'=>30,'status'=>'closed','source_revision'=>1]);
+  HrPayrollRule::create(['legal_entity_id'=>$tenant->id,'code'=>'OVERTIME','name'=>'Fazla Mesai','version'=>2,'configuration'=>['mode'=>'approved_only'],'effective_from'=>$date,'is_active'=>true]);$prepared=app(PreparePayrollPeriodAction::class)->execute($timesheetPeriod);$this->assertSame('prepared',$prepared->status);$this->assertSame(510,$prepared->records->first()->worked_minutes);$this->assertSame(2,$prepared->records->first()->source_snapshot['rule_versions'][0]['version']);$same=app(PreparePayrollPeriodAction::class)->execute($timesheetPeriod);$this->assertSame($prepared->id,$same->id);$approved=app(ApprovePayrollPeriodAction::class)->execute($prepared);$this->assertSame('approved',$approved->status);
+  $this->expectException(HttpException::class);app(PreparePayrollPeriodAction::class)->execute($timesheetPeriod);
+ }
+}
