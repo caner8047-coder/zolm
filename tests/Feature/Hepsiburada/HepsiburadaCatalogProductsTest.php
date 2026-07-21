@@ -61,7 +61,7 @@ class HepsiburadaCatalogProductsTest extends TestCase
     public function test_it_syncs_catalog_products_successfully(): void
     {
         Http::fake([
-            'https://mpop.hepsiburada.com/product/api/products/merchant/123456*' => Http::response([
+            'https://mpop.hepsiburada.com/product/api/products/all-products-of-merchant/123456*' => Http::response([
                 'items' => [
                     [
                         'hepsiburadaSku' => 'HB-CAT-1',
@@ -124,5 +124,13 @@ class HepsiburadaCatalogProductsTest extends TestCase
 
         $this->assertCount(1, $product->attributes);
         $this->assertSame('materyal', $product->attributes[0]['attributeId'] ?? null);
+
+        // Verify request contract (URL, method, basic auth and user-agent presence)
+        Http::assertSent(function ($request) {
+            return $request->method() === 'GET'
+                && str_contains($request->url(), 'product/api/products/all-products-of-merchant/123456')
+                && $request->hasHeader('Authorization')
+                && $request->hasHeader('User-Agent');
+        });
     }
 }

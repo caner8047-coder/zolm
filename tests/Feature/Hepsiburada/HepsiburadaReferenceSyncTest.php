@@ -99,6 +99,14 @@ class HepsiburadaReferenceSyncTest extends TestCase
             'name' => 'Tencere Setleri',
             'is_leaf' => true,
         ]);
+
+        // Verify request contract (URL, method, basic auth and user-agent presence)
+        Http::assertSent(function ($request) {
+            return $request->method() === 'GET'
+                && str_contains($request->url(), 'product/api/categories/get-all-categories')
+                && $request->hasHeader('Authorization')
+                && $request->hasHeader('User-Agent');
+        });
     }
 
     public function test_it_syncs_category_attributes(): void
@@ -162,5 +170,13 @@ class HepsiburadaReferenceSyncTest extends TestCase
             'platform_value_id' => 'val-blue',
             'name' => 'Mavi',
         ]);
+
+        // Verify request contract (URL, method, basic auth and user-agent presence)
+        Http::assertSent(function ($request) {
+            return $request->method() === 'GET'
+                && str_contains($request->url(), 'product/api/categories/10002/attributes')
+                && $request->hasHeader('Authorization')
+                && $request->hasHeader('User-Agent');
+        });
     }
 }

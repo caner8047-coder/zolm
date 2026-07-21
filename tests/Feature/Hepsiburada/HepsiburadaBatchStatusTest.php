@@ -64,6 +64,14 @@ class HepsiburadaBatchStatusTest extends TestCase
         $this->assertSame(12, $result['success_count']);
         $this->assertSame(2, $result['failure_count']);
         $this->assertCount(2, $result['items']);
+
+        // Verify request contract (URL, method, basic auth and user-agent presence)
+        Http::assertSent(function ($request) {
+            return $request->method() === 'GET'
+                && str_contains($request->url(), 'listings/merchantid/123456/price-uploads/id/batch-abc-123')
+                && $request->hasHeader('Authorization')
+                && $request->hasHeader('User-Agent');
+        });
     }
 
     public function test_it_throws_exception_for_invalid_operation(): void
