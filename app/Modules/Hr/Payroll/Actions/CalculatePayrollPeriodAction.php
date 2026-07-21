@@ -6,6 +6,7 @@ use App\Modules\Hr\Compensation\Models\HrSalaryRecord;
 use App\Modules\Hr\Core\Services\HrAuditService;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Payroll\Models\HrPayrollPeriod;
+use App\Modules\Hr\Payroll\Models\HrPayrollAdjustment;
 use App\Modules\Hr\Payroll\Models\HrPayrollRule;
 use App\Modules\Hr\Payroll\Models\HrPayrollTaxLedger;
 use App\Modules\Hr\Payroll\Models\HrPayrollTaxOpening;
@@ -47,6 +48,7 @@ class CalculatePayrollPeriodAction
 
         $salaries = [];
         $openings = [];
+        $adjustments = HrPayrollAdjustment::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant)->where('payroll_period_id', $period->id)->get()->groupBy('employee_id');
         foreach ($period->records as $record) {
             $salary = HrSalaryRecord::withoutGlobalScope('tenant')
                 ->where('legal_entity_id', $tenant)
@@ -66,6 +68,9 @@ class CalculatePayrollPeriodAction
                 continue;
             }
             $openings[$record->employee_id] = $opening;
+            if (($adjustments[$record->employee_id] ?? collect())->contains(fn ($adjustment) => $adjustment->status !== 'approved')) {
+                $findings[] = ['code' => 'adjustment_pending_approval', 'severity' => 'blocking', 'employee_id' => $record->employee_id, 'message' => 'Çalışanın onay bekleyen bordro düzeltmesi var.'];
+            }
         }
 
         if ($findings !== []) {
@@ -74,7 +79,7 @@ class CalculatePayrollPeriodAction
             abort(422, 'Bordro hesap ön kontrolleri başarısız. Bulguları giderip yeniden deneyin.');
         }
 
-        $period = DB::transaction(function () use ($period, $rule, $rules, $salaries, $openings, $tenant) {
+        $period = DB::transaction(function () use ($period, $rule, $rules, $salaries, $openings, $adjustments, $tenant) {
             $period = HrPayrollPeriod::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant)->lockForUpdate()->findOrFail($period->id);
             abort_unless($period->status === 'prepared', 422, 'Bordro paketi başka bir işlem tarafından değiştirilmiş.');
             $period->load(['records', 'timesheetPeriod']);
@@ -86,12 +91,19 @@ class CalculatePayrollPeriodAction
                     'missing_minutes' => $record->missing_minutes,
                     'approved_overtime_minutes' => $record->approved_overtime_minutes,
                 ];
+                $recordAdjustments = ($adjustments[$record->employee_id] ?? collect())->map(fn ($adjustment) => [
+                    'id' => $adjustment->id, 'code' => $adjustment->code, 'type' => $adjustment->type,
+                    'amount_cents' => $adjustment->amountCents(), 'social_security_exempt' => $adjustment->social_security_exempt,
+                    'income_tax_exempt' => $adjustment->income_tax_exempt, 'pre_tax_deduction' => $adjustment->pre_tax_deduction,
+                ])->values()->all();
                 $trace = $this->engine->calculate(
                     (int) round($salary->grossSalary() * 100),
                     $openings[$record->employee_id],
                     $input,
-                    $rules
+                    $rules,
+                    $recordAdjustments
                 );
+                $trace['adjustments'] = $recordAdjustments;
                 $trace['currency'] = $salary->currency;
                 $trace['salary_version'] = $salary->version;
                 $trace['rule_version'] = $rule->version;

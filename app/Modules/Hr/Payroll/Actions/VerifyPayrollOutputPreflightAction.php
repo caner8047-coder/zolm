@@ -45,6 +45,14 @@ class VerifyPayrollOutputPreflightAction
             $calculationHashes[] = $record->calculation_hash;
             $currencies[] = $trace['currency'] ?? null;
 
+            foreach ($trace['adjustments'] ?? [] as $adjustmentSnapshot) {
+                $adjustment = ! empty($adjustmentSnapshot['id']) ? \App\Modules\Hr\Payroll\Models\HrPayrollAdjustment::withoutGlobalScope('tenant')->where('legal_entity_id', $period->legal_entity_id)->find($adjustmentSnapshot['id']) : null;
+                $current = $adjustment ? ['id' => $adjustment->id, 'code' => $adjustment->code, 'type' => $adjustment->type, 'amount_cents' => $adjustment->amountCents(), 'social_security_exempt' => $adjustment->social_security_exempt, 'income_tax_exempt' => $adjustment->income_tax_exempt, 'pre_tax_deduction' => $adjustment->pre_tax_deduction] : null;
+                if (! $adjustment || $adjustment->status !== 'approved' || $current !== $adjustmentSnapshot) {
+                    $findings[] = $this->finding('adjustment_snapshot_invalid', 'Bordro ek kalemi onayı veya hesap anındaki değeri doğrulanamadı.', $record->employee_id);
+                }
+            }
+
             $salary = $record->salaryRecord;
             if (! $salary || ! in_array($salary->status, ['approved', 'superseded'], true) || $salary->effective_from->gt($period->timesheetPeriod->ends_on)) {
                 $findings[] = $this->finding('salary_snapshot_invalid', 'Onaylı ücret sürümü dönemle eşleşmiyor.', $record->employee_id);

@@ -4,7 +4,7 @@ namespace App\Modules\Hr\Payroll\Services;
 
 class PayrollCalculationEngine
 {
-    public function calculate(int $monthlyGrossCents, int $openingTaxBaseCents, array $input, array $rules): array
+    public function calculate(int $monthlyGrossCents, int $openingTaxBaseCents, array $input, array $rules, array $adjustments = []): array
     {
         $standardMinutes = $rules['standard_monthly_minutes'];
         $payableMinutes = max(0, min($standardMinutes, $input['scheduled_minutes'] - $input['missing_minutes']));
@@ -13,25 +13,47 @@ class PayrollCalculationEngine
             $monthlyGrossCents * $input['approved_overtime_minutes'] * $rules['overtime_multiplier_basis_points'],
             $standardMinutes * 10000
         );
-        $gross = $baseGross + $overtimeGross;
+        $earning = 0; $socialSecurityExemptEarning = 0; $incomeTaxExemptEarning = 0;
+        $preTaxDeduction = 0; $postTaxDeduction = 0; $employerIncentive = 0;
+        foreach ($adjustments as $adjustment) {
+            $amount = (int) $adjustment['amount_cents'];
+            if ($adjustment['type'] === 'earning') {
+                $earning += $amount;
+                $socialSecurityExemptEarning += ($adjustment['social_security_exempt'] ?? false) ? $amount : 0;
+                $incomeTaxExemptEarning += ($adjustment['income_tax_exempt'] ?? false) ? $amount : 0;
+            } elseif ($adjustment['type'] === 'deduction') {
+                if ($adjustment['pre_tax_deduction'] ?? false) $preTaxDeduction += $amount; else $postTaxDeduction += $amount;
+            } elseif ($adjustment['type'] === 'employer_incentive') {
+                $employerIncentive += $amount;
+            }
+        }
+        $gross = $baseGross + $overtimeGross + $earning;
 
-        $employeeSocialSecurity = $this->basisPoints($gross, $rules['employee_social_security_basis_points']);
-        $employeeUnemployment = $this->basisPoints($gross, $rules['employee_unemployment_basis_points']);
-        $employerSocialSecurity = $this->basisPoints($gross, $rules['employer_social_security_basis_points']);
-        $employerUnemployment = $this->basisPoints($gross, $rules['employer_unemployment_basis_points']);
-        $periodTaxBase = max(0, $gross - $employeeSocialSecurity - $employeeUnemployment);
+        $socialSecurityBase = max(0, $gross - $socialSecurityExemptEarning);
+        if (! empty($rules['social_security_ceiling_cents'])) $socialSecurityBase = min($socialSecurityBase, $rules['social_security_ceiling_cents']);
+        $employeeSocialSecurity = $this->basisPoints($socialSecurityBase, $rules['employee_social_security_basis_points']);
+        $employeeUnemployment = $this->basisPoints($socialSecurityBase, $rules['employee_unemployment_basis_points']);
+        $employerSocialSecurity = $this->basisPoints($socialSecurityBase, $rules['employer_social_security_basis_points']);
+        $employerUnemployment = $this->basisPoints($socialSecurityBase, $rules['employer_unemployment_basis_points']);
+        $periodTaxBase = max(0, $gross - $incomeTaxExemptEarning - $employeeSocialSecurity - $employeeUnemployment - $preTaxDeduction);
         $grossIncomeTax = $this->progressiveTax($openingTaxBaseCents + $periodTaxBase, $rules['income_tax_brackets'])
             - $this->progressiveTax($openingTaxBaseCents, $rules['income_tax_brackets']);
         $incomeTax = max(0, $grossIncomeTax - $rules['income_tax_exemption_cents']);
         $grossStampTax = $this->basisPoints($gross, $rules['stamp_tax_basis_points']);
         $stampTax = max(0, $grossStampTax - $rules['stamp_tax_exemption_cents']);
-        $employeeDeductions = $employeeSocialSecurity + $employeeUnemployment + $incomeTax + $stampTax;
-        $employerContributions = $employerSocialSecurity + $employerUnemployment;
+        $employeeDeductions = $employeeSocialSecurity + $employeeUnemployment + $incomeTax + $stampTax + $preTaxDeduction + $postTaxDeduction;
+        $grossEmployerContributions = $employerSocialSecurity + $employerUnemployment;
+        $appliedEmployerIncentive = min($grossEmployerContributions, $employerIncentive);
+        $employerContributions = $grossEmployerContributions - $appliedEmployerIncentive;
 
         return [
             'base_gross_cents' => $baseGross,
             'overtime_gross_cents' => $overtimeGross,
             'gross_pay_cents' => $gross,
+            'additional_earning_cents' => $earning,
+            'social_security_exempt_earning_cents' => $socialSecurityExemptEarning,
+            'income_tax_exempt_earning_cents' => $incomeTaxExemptEarning,
+            'social_security_base_cents' => $socialSecurityBase,
             'employee_social_security_cents' => $employeeSocialSecurity,
             'employee_unemployment_cents' => $employeeUnemployment,
             'employer_social_security_cents' => $employerSocialSecurity,
@@ -46,6 +68,10 @@ class PayrollCalculationEngine
             'stamp_tax_exemption_cents' => min($grossStampTax, $rules['stamp_tax_exemption_cents']),
             'stamp_tax_cents' => $stampTax,
             'employee_deductions_cents' => $employeeDeductions,
+            'pre_tax_deduction_cents' => $preTaxDeduction,
+            'post_tax_deduction_cents' => $postTaxDeduction,
+            'gross_employer_contributions_cents' => $grossEmployerContributions,
+            'employer_incentive_cents' => $appliedEmployerIncentive,
             'employer_contributions_cents' => $employerContributions,
             'net_pay_cents' => max(0, $gross - $employeeDeductions),
             'employer_total_cost_cents' => $gross + $employerContributions,

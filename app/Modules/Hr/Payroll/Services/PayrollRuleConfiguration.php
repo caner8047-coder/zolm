@@ -20,6 +20,7 @@ class PayrollRuleConfiguration
             'stamp_tax_basis_points' => ['required', 'integer', 'min:0', 'max:10000'],
             'income_tax_exemption_cents' => ['required', 'integer', 'min:0'],
             'stamp_tax_exemption_cents' => ['required', 'integer', 'min:0'],
+            'social_security_ceiling_cents' => ['nullable', 'integer', 'min:1'],
             'income_tax_brackets' => ['required', 'array', 'min:1'],
             'income_tax_brackets.*.upper_limit_cents' => ['nullable', 'integer', 'min:1'],
             'income_tax_brackets.*.rate_basis_points' => ['required', 'integer', 'min:0', 'max:10000'],

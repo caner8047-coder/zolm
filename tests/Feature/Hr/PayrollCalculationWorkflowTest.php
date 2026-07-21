@@ -11,6 +11,7 @@ use App\Modules\Hr\Payroll\Actions\ApprovePayrollPeriodAction;
 use App\Modules\Hr\Payroll\Actions\ApprovePayrollRuleAction;
 use App\Modules\Hr\Payroll\Actions\CalculatePayrollPeriodAction;
 use App\Modules\Hr\Payroll\Actions\ExportPayrollControlOutputAction;
+use App\Modules\Hr\Payroll\Actions\ManagePayrollAdjustmentAction;
 use App\Modules\Hr\Payroll\Actions\PreparePayrollPeriodAction;
 use App\Modules\Hr\Payroll\Models\HrPayrollRule;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
@@ -91,18 +92,31 @@ class PayrollCalculationWorkflowTest extends TestCase
         app(ManageSalaryRecordAction::class)->approve($salary);
         app(ApprovePayrollRuleAction::class)->execute($rule->fresh());
         $prepared = app(PreparePayrollPeriodAction::class)->execute($timesheetPeriod);
+        $adjustment = app(ManagePayrollAdjustmentAction::class)->propose($prepared, $employee, [
+            'code' => 'MEAL_EXEMPT', 'name' => 'İstisna Testi', 'type' => 'earning', 'amount_cents' => 100,
+            'social_security_exempt' => true, 'income_tax_exempt' => true, 'reason' => 'Test istisnası',
+        ]);
+        try {
+            app(ManagePayrollAdjustmentAction::class)->approve($adjustment);
+            $this->fail('Düzeltmeyi hazırlayan kişi onaylayamamalı.');
+        } catch (HttpException $exception) {
+            $this->assertSame(422, $exception->getStatusCode());
+        }
+        $this->actingAs($payrollApprover);
+        app(ManagePayrollAdjustmentAction::class)->approve($adjustment->fresh());
+        $this->actingAs($ruleApprover);
         $calculated = app(CalculatePayrollPeriodAction::class)->execute($prepared);
         $record = $calculated->records->first();
 
         $this->assertSame('calculated', $calculated->status);
         $this->assertSame('passed', $calculated->preflight_status);
-        $this->assertSame(11500.0, $record->grossPay());
-        $this->assertSame(8323.0, $record->netPay());
+        $this->assertSame(11501.0, $record->grossPay());
+        $this->assertSame(8323.99, $record->netPay());
         $this->assertSame(690.0, $record->employerContributions());
         $this->assertSame(1023500, $record->calculation_trace['closing_tax_base_cents']);
         $this->assertDatabaseHas('hr_payroll_tax_ledgers', ['payroll_period_id' => $calculated->id, 'employee_id' => $employee->id, 'tax_year' => 2026]);
         $raw = DB::table('hr_payroll_records')->where('id', $record->id)->first();
-        $this->assertStringNotContainsString('8323', $raw->net_pay_encrypted);
+        $this->assertStringNotContainsString('8323.99', $raw->net_pay_encrypted);
         $this->assertStringNotContainsString('1023500', $raw->calculation_trace);
 
         try {
@@ -121,7 +135,7 @@ class PayrollCalculationWorkflowTest extends TestCase
         $workbook = IOFactory::load($fullPath);
         $this->assertSame('Bordro Kontrol', $workbook->getSheet(0)->getTitle());
         $this->assertSame("'=Hesap Test", $workbook->getSheet(0)->getCell('B2')->getValue());
-        $this->assertSame(8323, $workbook->getSheet(0)->getCell('K2')->getValue());
+        $this->assertSame(8323.99, $workbook->getSheet(0)->getCell('K2')->getValue());
         $this->assertSame('RESMÎ BEYAN DEĞİLDİR; onay ve aktarım öncesi yetkili uzman kontrolü gerekir.', $workbook->getSheet(1)->getCell('B2')->getValue());
         $this->assertDatabaseHas('hr_payroll_exports', ['payroll_period_id' => $approved->id, 'classification' => 'control_output']);
         @unlink($fullPath);
