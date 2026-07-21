@@ -96,7 +96,7 @@ class CalculatePayrollPeriodAction
                 $trace['salary_version'] = $salary->version;
                 $trace['rule_version'] = $rule->version;
                 $trace['algorithm_version'] = 1;
-                $hash = hash('sha256', json_encode($trace, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+                $hash = $this->configuration->hash($trace);
 
                 $record->update([
                     'salary_record_id' => $salary->id,
@@ -136,6 +136,11 @@ class CalculatePayrollPeriodAction
                 'calculation_hash' => $calculationHash,
                 'preflight_status' => 'passed',
                 'preflight_findings' => [],
+                'output_preflight_status' => 'pending',
+                'output_preflight_findings' => null,
+                'output_preflight_hash' => null,
+                'output_preflight_at' => null,
+                'output_preflight_by' => null,
             ]);
             return $period->fresh(['records', 'timesheetPeriod']);
         });

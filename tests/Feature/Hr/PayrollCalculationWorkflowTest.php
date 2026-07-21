@@ -10,12 +10,14 @@ use App\Modules\Hr\Overtime\Models\HrOvertimeRequest;
 use App\Modules\Hr\Payroll\Actions\ApprovePayrollPeriodAction;
 use App\Modules\Hr\Payroll\Actions\ApprovePayrollRuleAction;
 use App\Modules\Hr\Payroll\Actions\CalculatePayrollPeriodAction;
+use App\Modules\Hr\Payroll\Actions\ExportPayrollControlOutputAction;
 use App\Modules\Hr\Payroll\Actions\PreparePayrollPeriodAction;
 use App\Modules\Hr\Payroll\Models\HrPayrollRule;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
 use App\Modules\Hr\Timesheet\Models\HrTimesheet;
 use App\Modules\Hr\Timesheet\Models\HrTimesheetPeriod;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
@@ -35,7 +37,7 @@ class PayrollCalculationWorkflowTest extends TestCase
         app(TenantContext::class)->set($tenant);
         $employee = HrEmployee::withoutGlobalScope('tenant')->create([
             'legal_entity_id' => $tenant->id, 'employee_number' => 'CALC1', 'national_id_encrypted' => 'enc',
-            'national_id_hash' => 'payroll-calc-1', 'national_id_last_four' => '0001', 'first_name' => 'Hesap', 'last_name' => 'Test', 'status' => 'active',
+            'national_id_hash' => 'payroll-calc-1', 'national_id_last_four' => '0001', 'first_name' => '=Hesap', 'last_name' => 'Test', 'status' => 'active',
         ]);
         $date = now()->setDate(2026, 1, 31)->startOfDay();
         $timesheetPeriod = HrTimesheetPeriod::create([
@@ -112,5 +114,24 @@ class PayrollCalculationWorkflowTest extends TestCase
         $this->actingAs($payrollApprover);
         $approved = app(ApprovePayrollPeriodAction::class)->execute($calculated->fresh());
         $this->assertSame('approved', $approved->status);
+
+        $relativePath = app(ExportPayrollControlOutputAction::class)->execute($approved);
+        $fullPath = storage_path('app/private/'.$relativePath);
+        $this->assertFileExists($fullPath);
+        $workbook = IOFactory::load($fullPath);
+        $this->assertSame('Bordro Kontrol', $workbook->getSheet(0)->getTitle());
+        $this->assertSame("'=Hesap Test", $workbook->getSheet(0)->getCell('B2')->getValue());
+        $this->assertSame(8323, $workbook->getSheet(0)->getCell('K2')->getValue());
+        $this->assertSame('RESMÎ BEYAN DEĞİLDİR; onay ve aktarım öncesi yetkili uzman kontrolü gerekir.', $workbook->getSheet(1)->getCell('B2')->getValue());
+        $this->assertDatabaseHas('hr_payroll_exports', ['payroll_period_id' => $approved->id, 'classification' => 'control_output']);
+        @unlink($fullPath);
+
+        DB::table('hr_payroll_records')->where('id', $record->id)->update(['calculation_hash' => str_repeat('0', 64)]);
+        try {
+            app(ExportPayrollControlOutputAction::class)->execute($approved->fresh());
+            $this->fail('Bozulmuş hesap izi dışa aktarılamamalı.');
+        } catch (HttpException $exception) {
+            $this->assertSame(422, $exception->getStatusCode());
+        }
     }
 }

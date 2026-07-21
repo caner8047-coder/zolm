@@ -46,6 +46,8 @@ use App\Modules\Hr\Overtime\Livewire\OvertimeTypeManager;
 use App\Modules\Hr\Overtime\Livewire\OvertimeWorkspace;
 use App\Modules\Hr\Payroll\Livewire\PayrollRuleManager;
 use App\Modules\Hr\Payroll\Livewire\PayrollWorkspace;
+use App\Modules\Hr\Payroll\Actions\ExportPayrollControlOutputAction;
+use App\Modules\Hr\Payroll\Models\HrPayrollPeriod;
 use App\Modules\Hr\Expense\Livewire\ExpenseCategoryManager;
 use App\Modules\Hr\Expense\Livewire\ExpenseWorkspace;
 use App\Modules\Hr\Advance\Livewire\AdvanceWorkspace;
@@ -207,6 +209,14 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
     Route::middleware('hr.module:bordro')->group(function () {
         Route::get('/payroll', PayrollWorkspace::class)->name('payroll')
             ->middleware('hr.authorize:hr.payroll.view');
+        Route::get('/payroll/{period}/control-output', function (int $period) {
+            $tenantId = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $model = HrPayrollPeriod::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($period);
+            $path = app(ExportPayrollControlOutputAction::class)->execute($model);
+            return response()->download(storage_path("app/private/{$path}"), basename($path), [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ])->deleteFileAfterSend(true);
+        })->name('payroll.control-output')->middleware(['hr.authorize:hr.payroll.export', 'hr.authorize:hr.salary.view']);
         Route::get('/settings/payroll-rules', PayrollRuleManager::class)->name('settings.payroll-rules')
             ->middleware('hr.authorize:hr.payroll.manage_rules');
     });
