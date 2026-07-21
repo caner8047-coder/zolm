@@ -10,6 +10,11 @@ use Tests\TestCase;
 
 class HepsiburadaBatchStatusTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['marketplace.hepsiburada.p0_batch_status_sync_enabled' => true]);
+    }
     /**
      * @param  array<string, mixed>  $credentials
      */

@@ -17,6 +17,14 @@ use Tests\TestCase;
 class HepsiburadaTenantIsolationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['marketplace.hepsiburada.p0_reference_sync_enabled' => true]);
+        config(['marketplace.hepsiburada.p0_catalog_sync_enabled' => true]);
+        config(['marketplace.hepsiburada.p0_batch_status_sync_enabled' => true]);
+    }
     protected function createStore(int $id, string $sellerId, string $storeName): MarketplaceStore
     {
         $user = \App\Models\User::factory()->create();

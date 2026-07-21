@@ -15,6 +15,12 @@ use Tests\TestCase;
 class HepsiburadaReferenceSyncTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['marketplace.hepsiburada.p0_reference_sync_enabled' => true]);
+    }
     /**
      * @param  array<string, mixed>  $credentials
      */

@@ -1213,6 +1213,10 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
      */
     public function getCategories(MarketplaceStore $store, array $options = []): array
     {
+        if (!config('marketplace.hepsiburada.p0_reference_sync_enabled', false)) {
+            throw new \RuntimeException('Hepsiburada reference sync is disabled (HEPSIBURADA_P0_REFERENCE_SYNC_ENABLED=false).');
+        }
+
         $response = $this->request($store, 'product')
             ->get('product/api/categories/get-all-categories')
             ->throw();
@@ -1238,8 +1242,12 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
      */
     public function getCategoryAttributes(MarketplaceStore $store, string $categoryId, array $options = []): array
     {
+        if (!config('marketplace.hepsiburada.p0_reference_sync_enabled', false)) {
+            throw new \RuntimeException('Hepsiburada reference attributes sync is disabled (HEPSIBURADA_P0_REFERENCE_SYNC_ENABLED=false).');
+        }
+
         if ($categoryId === '') {
-            throw new \RuntimeException('Hepsiburada attribute çekimi için kategori ID zorunludur.');
+            throw new \RuntimeException('Hepsiburada attribute çekimi için kategori ID zorununludur.');
         }
 
         $response = $this->request($store, 'product')
@@ -1337,6 +1345,10 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
      */
     public function pullCatalogProducts(MarketplaceStore $store, array $options = []): array
     {
+        if (!config('marketplace.hepsiburada.p0_catalog_sync_enabled', false)) {
+            throw new \RuntimeException('Hepsiburada catalog sync is disabled (HEPSIBURADA_P0_CATALOG_SYNC_ENABLED=false).');
+        }
+
         $items = $this->fetchPaginated(
             store: $store,
             service: 'product',
@@ -1376,6 +1388,10 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
         string $operation,
         array $options = []
     ): array {
+        if (!config('marketplace.hepsiburada.p0_batch_status_sync_enabled', false)) {
+            throw new \RuntimeException('Hepsiburada batch status sync is disabled (HEPSIBURADA_P0_BATCH_STATUS_SYNC_ENABLED=false).');
+        }
+
         if (!in_array($operation, ['price-uploads', 'stock-uploads'], true)) {
             throw new \InvalidArgumentException(
                 "Geçersiz batch operation: {$operation}. Desteklenenler: price-uploads, stock-uploads"

@@ -14,6 +14,12 @@ use Tests\TestCase;
 class HepsiburadaCatalogProductsTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['marketplace.hepsiburada.p0_catalog_sync_enabled' => true]);
+    }
     /**
      * @param  array<string, mixed>  $credentials
      */
@@ -132,5 +138,15 @@ class HepsiburadaCatalogProductsTest extends TestCase
                 && $request->hasHeader('Authorization')
                 && $request->hasHeader('User-Agent');
         });
+    }
+
+    public function test_it_throws_exception_when_rollout_gate_is_disabled(): void
+    {
+        config(['marketplace.hepsiburada.p0_catalog_sync_enabled' => false]);
+        $store = $this->makeStore();
+        $connector = app(\App\Services\Marketplace\Connectors\HepsiburadaConnector::class);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Hepsiburada catalog sync is disabled');
+        $connector->pullCatalogProducts($store);
     }
 }
