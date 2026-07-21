@@ -48,6 +48,7 @@ use App\Modules\Hr\Payroll\Livewire\PayrollRuleManager;
 use App\Modules\Hr\Payroll\Livewire\PayrollWorkspace;
 use App\Modules\Hr\Expense\Livewire\ExpenseCategoryManager;
 use App\Modules\Hr\Expense\Livewire\ExpenseWorkspace;
+use App\Modules\Hr\Advance\Livewire\AdvanceWorkspace;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -203,6 +204,11 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
         Route::get('/settings/expense-categories', ExpenseCategoryManager::class)->name('settings.expense-categories')
             ->middleware('hr.authorize:hr.expenses.approve');
         Route::get('/expenses/receipts/{file}', [HrFileController::class, 'downloadExpenseReceipt'])->name('expenses.receipt');
+    });
+
+    Route::middleware('hr.module:avans')->group(function () {
+        Route::get('/advances', AdvanceWorkspace::class)->name('advances')->middleware('hr.authorize:hr.advances.view');
+        Route::get('/my/advances', AdvanceWorkspace::class)->name('my-advances')->defaults('selfService', true)->middleware('hr.authorize:hr.advances.create');
     });
 
     // Personel
