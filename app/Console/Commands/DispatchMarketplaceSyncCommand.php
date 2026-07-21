@@ -12,7 +12,7 @@ class DispatchMarketplaceSyncCommand extends Command
 {
     protected $signature = 'marketplace:dispatch-sync
         {store : Mağaza ID}
-        {syncType : orders|products|finance|questions|claims}
+        {syncType : orders|products|catalog_products|finance|questions|claims}
         {--start= : ISO tarih başlangıcı}
         {--end= : ISO tarih bitişi}
         {--order-number= : Tek sipariş no ile sınırla}';
@@ -38,8 +38,8 @@ class DispatchMarketplaceSyncCommand extends Command
 
         $syncType = (string) $this->argument('syncType');
 
-        if (!in_array($syncType, ['orders', 'products', 'finance', 'questions', 'claims'], true)) {
-            $this->error('Geçersiz sync tipi. orders, products, finance, questions veya claims kullanın.');
+        if (!in_array($syncType, ['orders', 'products', 'catalog_products', 'finance', 'questions', 'claims'], true)) {
+            $this->error('Geçersiz sync tipi. orders, products, catalog_products, finance, questions veya claims kullanın.');
 
             return self::FAILURE;
         }

@@ -3,6 +3,8 @@
 namespace App\Services\Marketplace\Connectors;
 
 use App\Models\ChannelOrderPackage;
+use App\Models\MpCategoryAttribute;
+use App\Models\MpCategoryAttributeValue;
 use App\Models\MarketplaceQuestion;
 use App\Models\MarketplaceStore;
 use App\Services\Marketplace\Connectors\Concerns\NormalizesCustomerQuestions;
@@ -14,6 +16,9 @@ use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
 use App\Services\Marketplace\Contracts\PullsClaims;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
+use App\Services\Marketplace\Contracts\PullsBatchStatus;
+use App\Services\Marketplace\Contracts\PullsCatalogProducts;
+use App\Services\Marketplace\Contracts\PullsReferenceCategories;
 use App\Services\Marketplace\Contracts\PushesPrice;
 use App\Services\Marketplace\Contracts\PushesStock;
 use App\Services\Marketplace\Contracts\TestsConnection;
@@ -21,10 +26,25 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class HepsiburadaConnector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PullsFinancials, PullsCustomerQuestions, PullsClaims, ManagesClaims, AnswersCustomerQuestions, PushesPrice, PushesStock, ManagesCommonLabels, TestsConnection
+class HepsiburadaConnector extends AbstractMarketplaceConnector implements
+    PullsOrders,
+    PullsProducts,
+    PullsFinancials,
+    PullsCustomerQuestions,
+    PullsClaims,
+    ManagesClaims,
+    AnswersCustomerQuestions,
+    PushesPrice,
+    PushesStock,
+    ManagesCommonLabels,
+    TestsConnection,
+    PullsReferenceCategories,
+    PullsCatalogProducts,
+    PullsBatchStatus
 {
     use NormalizesCustomerQuestions;
 
@@ -49,25 +69,32 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements Pulls
     public function capabilities(): array
     {
         return [
-            'orders' => true,
-            'products' => true,
-            'finance' => true,
-            'webhooks' => false,
-            'price_push' => true,
-            'stock_push' => true,
-            'package_status' => false,
-            'package_picking' => false,
-            'package_invoiced' => false,
-            'common_label' => true,
+            'orders'                      => true,
+            'products'                    => true,
+            'finance'                     => true,
+            'webhooks'                    => false,
+            'price_push'                  => true,
+            'stock_push'                  => true,
+            'package_status'              => false,
+            'package_picking'             => false,
+            'package_invoiced'            => false,
+            'common_label'                => true,
             'package_common_label_create' => true,
-            'package_common_label_get' => true,
-            'invoice_link' => false,
-            'package_invoice_link' => false,
-            'questions' => true,
-            'question_answer' => true,
-            'claims' => true,
-            'claim_approve' => true,
-            'claim_reject' => true,
+            'package_common_label_get'    => true,
+            'invoice_link'                => false,
+            'package_invoice_link'        => false,
+            'questions'                   => true,
+            'question_answer'             => true,
+            'claims'                      => true,
+            'claim_approve'               => true,
+            'claim_reject'                => true,
+            // P0 salt-okuma — endpoint URL'leri (Hepsiburada portal SPA)
+            'reference_categories_pull'   => true,  // getCategories() uygulandı — resmi doğrulandı
+            'reference_attributes_pull'   => true,  // getCategoryAttributes() uygulandı — resmi doğrulandı
+            'reference_brands_pull'       => false, // Hepsiburada marka listesi API doğrulanamadı
+            'catalog_products_pull'       => true,  // pullCatalogProducts() uygulandı — resmi doğrulandı
+            'pending_orders_pull'         => false, // Hepsiburada unpaid/pending orders endpointi resmi olarak doğrulanamadı
+            'batch_status_pull'           => true,  // polling endpoint connector kodundan kanıtlandı
         ];
     }
 
@@ -1167,5 +1194,303 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements Pulls
     protected function xmlDecimal(float $value): string
     {
         return number_format(round($value, 2), 2, '.', '');
+    }
+
+    // =========================================================================
+    // P0 — Salt-Okuma Genişletme Metodları
+    // NOT: Aşağıdaki endpoint URL'leri not_verified durumdadır.
+    // Hepsiburada developer portal SPA olduğundan statik olarak taranamadı.
+    // Gerçek URL doğrulaması için Hepsiburada hesabına erişim gerekir.
+    // =========================================================================
+
+    /**
+     * Hepsiburada kategori ağacını getirir.
+     *
+     * TODO: not_verified — endpoint URL, Hepsiburada portal erişimi gerektirir.
+     *
+     * @param  array<string, mixed>  $options
+     * @return array<int, array<string, mixed>>
+     */
+    public function getCategories(MarketplaceStore $store, array $options = []): array
+    {
+        // NOT VERIFIED: Gerçek endpoint URL'si Hepsiburada portal erişimi gerektirir.
+        // Aşağıdaki URL olası bir yaklaşımdır; doğrulanmamıştır.
+        $response = $this->request($store, 'product')
+            ->get('product/api/categories/get-all-categories') // TODO: not_verified
+            ->throw();
+
+        $payload = $this->decodeResponse($response);
+
+        $items = $this->extractItems($payload);
+
+        if (empty($items) && array_is_list($payload)) {
+            $items = $payload;
+        }
+
+        return $items;
+    }
+
+    /**
+     * Belirtilen kategori için attribute sözlüğünü getirir.
+     *
+     * TODO: not_verified — endpoint URL, Hepsiburada portal erişimi gerektirir.
+     *
+     * @param  array<string, mixed>  $options
+     * @return array{attributes: array<int, array<string, mixed>>, meta: array<string, mixed>}
+     */
+    public function getCategoryAttributes(MarketplaceStore $store, string $categoryId, array $options = []): array
+    {
+        if ($categoryId === '') {
+            throw new \RuntimeException('Hepsiburada attribute çekimi için kategori ID zorunludur.');
+        }
+
+        // NOT VERIFIED: Olası alternatifler: /product/api/categories/{id}/attributes
+        $response = $this->request($store, 'product')
+            ->get("product/api/categories/{$categoryId}/attributes") // TODO: not_verified
+            ->throw();
+
+        $payload = $this->decodeResponse($response);
+        $rawAttributes = $this->extractItems($payload);
+
+        $attributes = [];
+
+        foreach ($rawAttributes as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $attributeId = (string) (
+                data_get($row, 'id')
+                ?: data_get($row, 'attributeId')
+                ?: data_get($row, 'attribute_id')
+                ?: ''
+            );
+
+            if ($attributeId === '') {
+                continue;
+            }
+
+            $values = collect(
+                data_get($row, 'attributeValues')
+                ?: data_get($row, 'values')
+                ?: data_get($row, 'options')
+                ?: []
+            )
+                ->filter(fn ($v) => is_array($v))
+                ->map(fn (array $v) => [
+                    'platform_value_id' => (string) (data_get($v, 'id') ?: data_get($v, 'valueId') ?: ''),
+                    'name'              => (string) (data_get($v, 'name') ?: data_get($v, 'label') ?: ''),
+                    'raw_payload'       => $v,
+                ])
+                ->filter(fn ($v) => $v['platform_value_id'] !== '')
+                ->values()
+                ->all();
+
+            $attributes[] = [
+                'platform_attribute_id' => $attributeId,
+                'name'                  => (string) (data_get($row, 'name') ?: data_get($row, 'attributeName') ?: ''),
+                'is_required'           => (bool) (data_get($row, 'mandatory') ?? data_get($row, 'required') ?? false),
+                'is_variant'            => (bool) (data_get($row, 'varianter') ?? data_get($row, 'isVariant') ?? false),
+                'is_multi_select'       => (bool) (data_get($row, 'multipleSelect') ?? data_get($row, 'isMultiSelect') ?? false),
+                'data_type'             => (string) (data_get($row, 'allowedDataType') ?? data_get($row, 'dataType') ?? ''),
+                'values'                => $values,
+                'raw_payload'           => $row,
+            ];
+        }
+
+        return [
+            'attributes'        => $attributes,
+            'meta'              => [
+                'category_id'       => $categoryId,
+                'attributes_count'  => count($attributes),
+                'endpoint_verified' => false,
+            ],
+        ];
+    }
+
+    /**
+     * Hepsiburada marka listesi API'si — doğrulanamadı.
+     *
+     * capabilities()['reference_brands_pull'] => false olarak işaretlenmiştir.
+     * MarketplaceReferenceSyncService::syncBrands() bu metodu method_exists() ile
+     * kontrol ettiğinden, capability false olduğu sürece çağrılmaz.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getBrands(MarketplaceStore $store, int $page = 0, int $size = 500): array
+    {
+        // not_available_via_api: Hepsiburada marka listesi endpoint'i
+        // genel entegratör dokümanında yer almıyor veya doğrulanamadı.
+        throw new \RuntimeException(
+            "Hepsiburada marka listesi API'si mevcut değil veya doğrulanamadı. "
+            . 'reference_brands_pull capability false olarak işaretlenmiştir.'
+        );
+    }
+
+    /**
+     * Hepsiburada tam katalog ürünlerini getirir (listing değil, katalog içeriği).
+     *
+     * pullProducts() satıcı listing endpoint'ini çekerken bu metod gerçek
+     * katalog ürün içeriğini (açıklama, görseller, özellikler, onay durumu) getirir.
+     *
+     * TODO: not_verified — endpoint URL, Hepsiburada portal erişimi gerektirir.
+     *
+     * @param  array<string, mixed>  $options
+     * @return array{items: array<int, array<string, mixed>>, meta: array<string, mixed>}
+     */
+    public function pullCatalogProducts(MarketplaceStore $store, array $options = []): array
+    {
+        // NOT VERIFIED: Olası alternatifler:
+        // /product/api/products/merchant/{merchantId}
+        $items = $this->fetchPaginated(
+            store: $store,
+            service: 'product',
+            path: 'product/api/products/merchant/' . $this->merchantId($store), // TODO: not_verified
+            query: array_filter([
+                'status' => $options['status'] ?? null,
+            ], fn ($v) => $v !== null && $v !== ''),
+            pageSize: (int) config('marketplace.hepsiburada.catalog_product_page_size', 50),
+        );
+
+        return [
+            'items' => collect($items)
+                ->map(fn (array $payload) => $this->normalizeCatalogProduct($payload))
+                ->values()
+                ->all(),
+            'meta'  => [
+                'items_received'    => count($items),
+                'cursor_after'      => now()->toIso8601String(),
+                'endpoint_verified' => false,
+            ],
+        ];
+    }
+
+    /**
+     * Daha önce gönderilmiş bir batch işlemin sonucunu sorgular (salt-okuma).
+     *
+     * Endpoint connector kodundan kanıtlandı:
+     * pushPrice/pushStock metodları içindeki polling_endpoint değerinden türetildi.
+     *
+     * @param  string  $operation  'price-uploads' | 'stock-uploads'
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    public function pullBatchStatus(
+        MarketplaceStore $store,
+        string $batchRequestId,
+        string $operation,
+        array $options = []
+    ): array {
+        if (!in_array($operation, ['price-uploads', 'stock-uploads'], true)) {
+            throw new \InvalidArgumentException(
+                "Geçersiz batch operation: {$operation}. Desteklenenler: price-uploads, stock-uploads"
+            );
+        }
+
+        if ($batchRequestId === '') {
+            throw new \RuntimeException('Batch request ID boş olamaz.');
+        }
+
+        // Endpoint kanıtı: pushPrice() içinde polling_endpoint olarak belgelenmiş:
+        // listings/merchantid/{merchantId}/price-uploads/id/{id}
+        $path = 'listings/merchantid/' . $this->merchantId($store) . "/{$operation}/id/{$batchRequestId}";
+
+        $response = $this->request($store, 'listing')
+            ->get($path)
+            ->throw();
+
+        $payload = $this->decodeResponse($response);
+
+        return [
+            'batch_request_id' => $batchRequestId,
+            'operation'        => $operation,
+            'status'           => (string) (
+                data_get($payload, 'status')
+                ?: data_get($payload, 'State')
+                ?: data_get($payload, 'state')
+                ?: 'unknown'
+            ),
+            'success_count'    => (int) (data_get($payload, 'successCount') ?? data_get($payload, 'successfulCount') ?? 0),
+            'failure_count'    => (int) (data_get($payload, 'failureCount') ?? data_get($payload, 'failedCount') ?? 0),
+            'items'            => collect(
+                data_get($payload, 'items')
+                ?: data_get($payload, 'results')
+                ?: data_get($payload, 'errors')
+                ?: []
+            )->all(),
+            'raw_payload'      => $payload,
+        ];
+    }
+
+    /**
+     * Katalog ürün payload'ını normalize eder.
+     *
+     * pullProducts() (listing) ile bu metod (katalog) arasındaki fark:
+     * - Katalog: açıklama, görseller, özellikler, onay/red durumu, is_catalog_product=true
+     * - Listing: fiyat, stok, aktiflik durumu, is_catalog_product=false
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function normalizeCatalogProduct(array $payload): array
+    {
+        $stockCode = data_get($payload, 'merchantSku') ?: data_get($payload, 'stockCode') ?: data_get($payload, 'sku');
+        $barcode   = data_get($payload, 'barcode') ?: data_get($payload, 'gtin');
+
+        $images = collect(
+            data_get($payload, 'images') ?: data_get($payload, 'productImages') ?: []
+        )
+            ->filter(fn ($v) => is_array($v) || is_string($v))
+            ->map(fn ($v) => is_string($v) ? ['url' => $v] : $v)
+            ->values()
+            ->all();
+
+        $attributes = collect(
+            data_get($payload, 'attributes') ?: data_get($payload, 'productAttributes') ?: []
+        )
+            ->filter(fn ($v) => is_array($v))
+            ->values()
+            ->all();
+
+        $rejectionReasons = collect(
+            data_get($payload, 'rejectionReasonList') ?: data_get($payload, 'rejectionReasons') ?: []
+        )
+            ->filter()
+            ->values()
+            ->all();
+
+        return [
+            'external_product_id'   => (string) (
+                data_get($payload, 'hepsiburadaSku')
+                ?: data_get($payload, 'merchantSku')
+                ?: data_get($payload, 'sku')
+                ?: $barcode
+                ?: ''
+            ),
+            'external_parent_id'    => (string) (
+                data_get($payload, 'groupCode') ?: data_get($payload, 'variantGroupCode') ?: ''
+            ),
+            'stock_code'            => $stockCode,
+            'barcode'               => $barcode,
+            'title'                 => data_get($payload, 'productName') ?: data_get($payload, 'name'),
+            'description'           => data_get($payload, 'description') ?: data_get($payload, 'productDescription'),
+            'brand'                 => data_get($payload, 'brand'),
+            'category_name'         => data_get($payload, 'categoryName'),
+            'vat_rate'              => $this->toDecimal(data_get($payload, 'vatRate') ?: data_get($payload, 'taxRate')),
+            'images'                => $images ?: null,
+            'attributes'            => $attributes ?: null,
+            'approval_status'       => (string) (
+                data_get($payload, 'productStatus')
+                ?: data_get($payload, 'catalogStatus')
+                ?: data_get($payload, 'status')
+                ?: ''
+            ) ?: null,
+            'rejection_reasons'     => $rejectionReasons ?: null,
+            'import_tracking_id'    => (string) (
+                data_get($payload, 'trackingId') ?: data_get($payload, 'importId') ?: ''
+            ) ?: null,
+            'is_catalog_product'    => true,
+            'raw_payload'           => $payload,
+        ];
     }
 }

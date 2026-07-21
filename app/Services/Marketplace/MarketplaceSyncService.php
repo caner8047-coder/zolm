@@ -9,6 +9,7 @@ use App\Services\Marketplace\Contracts\PullsFinancials;
 use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
+use App\Services\Marketplace\Contracts\PullsCatalogProducts;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Throwable;
@@ -53,6 +54,7 @@ class MarketplaceSyncService
             $result = match ($syncType) {
                 'orders' => $this->syncOrders($connector, $store, $options),
                 'products' => $this->syncProducts($connector, $store, $options),
+                'catalog_products' => $this->syncCatalogProducts($connector, $store, $options),
                 'finance' => $this->syncFinancials($connector, $store, $options),
                 'questions' => $this->syncQuestions($connector, $store, $options),
                 'claims' => $this->syncClaims($connector, $store, $options),
@@ -109,6 +111,44 @@ class MarketplaceSyncService
         $items = $response['items'] ?? [];
         $diagnostics = $this->payloadDiagnosticsService->analyzeProducts($items);
         $sync = $this->catalogSyncService->sync($store, $items, $options);
+
+        return array_merge($sync, [
+            'impacted_order_ids' => [],
+            'items_received' => $response['meta']['items_received'] ?? count($items),
+            'cursor_after' => $response['meta']['cursor_after'] ?? ($options['end_date'] ?? null),
+            'notes' => $response['meta'] ?? [],
+            'diagnostics' => $diagnostics,
+        ]);
+    }
+
+    /**
+     * @param  object  $connector
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    protected function syncCatalogProducts(object $connector, $store, array $options): array
+    {
+        if (!$connector instanceof PullsCatalogProducts) {
+            throw new \RuntimeException('Bu bağlayıcı tam katalog ürün çekmeyi desteklemiyor.');
+        }
+
+        $response = $connector->pullCatalogProducts($store, $options);
+        $items = $response['items'] ?? [];
+
+        // Structure normalized items for MarketplaceCatalogSyncService
+        $syncItems = [];
+        foreach ($items as $item) {
+            $syncItems[] = [
+                'product' => $item,
+                'listing' => [
+                    'listing_id' => $item['external_product_id'] ?? '',
+                    'listing_status' => 'draft',
+                ],
+            ];
+        }
+
+        $diagnostics = $this->payloadDiagnosticsService->analyzeProducts($syncItems);
+        $sync = $this->catalogSyncService->sync($store, $syncItems, $options);
 
         return array_merge($sync, [
             'impacted_order_ids' => [],

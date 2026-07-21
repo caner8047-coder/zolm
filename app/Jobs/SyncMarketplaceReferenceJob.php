@@ -30,6 +30,7 @@ class SyncMarketplaceReferenceJob implements ShouldQueue
 
         $referenceSyncService->syncBrands($this->store);
         $referenceSyncService->syncCategories($this->store);
+        $referenceSyncService->syncCategoryAttributes($this->store);
         $referenceSyncService->syncClaimReasons($this->store);
     }
 }
