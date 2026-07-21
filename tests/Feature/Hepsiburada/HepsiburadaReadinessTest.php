@@ -11,6 +11,7 @@ use App\Services\Marketplace\HepsiburadaReadinessService;
 use App\Services\Marketplace\HepsiburadaReadinessOutputSanitizer;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -72,7 +73,11 @@ class HepsiburadaReadinessTest extends TestCase
         $store = $this->makeStore($user);
 
         $service = app(HepsiburadaReadinessService::class);
-        $result = $service->inspect($store, ['confirm_read' => false]);
+        $result = $service->inspect($store, [
+            'confirm_read' => false,
+            'actor_id'     => $user->id,
+            'reason'       => 'Audit test run',
+        ]);
 
         $this->assertEquals('configured_not_verified', $result['decision']);
         $this->assertTrue($result['is_ready']);
@@ -89,7 +94,10 @@ class HepsiburadaReadinessTest extends TestCase
         $store->connection->update(['credentials_encrypted' => []]);
 
         $service = app(HepsiburadaReadinessService::class);
-        $result = $service->inspect($store);
+        $result = $service->inspect($store, [
+            'actor_id' => $user->id,
+            'reason'   => 'Audit test run',
+        ]);
 
         $this->assertEquals('not_configured', $result['decision']);
         $this->assertFalse($result['is_ready']);
@@ -102,12 +110,18 @@ class HepsiburadaReadinessTest extends TestCase
         
         // Exact placeholder match
         $storePlaceholder = $this->makeStore($user, ['api_key' => 'service-key']);
-        $result1 = app(HepsiburadaReadinessService::class)->inspect($storePlaceholder);
+        $result1 = app(HepsiburadaReadinessService::class)->inspect($storePlaceholder, [
+            'actor_id' => $user->id,
+            'reason'   => 'Audit test run',
+        ]);
         $this->assertEquals('credential_placeholder', $result1['decision']);
 
         // Realistic key containing substring 'test' - should NOT be false positive
         $storeLegit = $this->makeStore($user, ['api_key' => 'mytestproductionkey987']);
-        $result2 = app(HepsiburadaReadinessService::class)->inspect($storeLegit);
+        $result2 = app(HepsiburadaReadinessService::class)->inspect($storeLegit, [
+            'actor_id' => $user->id,
+            'reason'   => 'Audit test run',
+        ]);
         $this->assertNotEquals('credential_placeholder', $result2['decision']);
     }
 
@@ -122,6 +136,8 @@ class HepsiburadaReadinessTest extends TestCase
         $result = app(HepsiburadaReadinessService::class)->inspect($store, [
             'operation'    => 'connection',
             'confirm_read' => true,
+            'actor_id'     => $user->id,
+            'reason'       => 'Audit test run',
         ]);
 
         $this->assertEquals('rollout_disabled', $result['decision']);
@@ -138,6 +154,8 @@ class HepsiburadaReadinessTest extends TestCase
         $result2 = app(HepsiburadaReadinessService::class)->inspect($store, [
             'operation'    => 'connection',
             'confirm_read' => true,
+            'actor_id'     => $user->id,
+            'reason'       => 'Audit test run',
         ]);
 
         $this->assertEquals('authentication_success', $result2['decision']);
@@ -167,6 +185,8 @@ class HepsiburadaReadinessTest extends TestCase
             'operation'    => 'catalog',
             'confirm_read' => true,
             'max_items'    => 5,
+            'actor_id'     => $user->id,
+            'reason'       => 'Audit test run',
         ]);
 
         $this->assertEquals('read_probe_success', $result['decision']);
@@ -300,11 +320,72 @@ class HepsiburadaReadinessTest extends TestCase
 
         // 401
         Http::fake(['https://mpop.hepsiburada.com/*' => Http::response(['message' => 'Sensitive Internal Token Error'], 401)]);
-        $result = app(HepsiburadaReadinessService::class)->inspect($store, ['operation' => 'catalog', 'confirm_read' => true]);
+        $result = app(HepsiburadaReadinessService::class)->inspect($store, [
+            'operation'    => 'catalog',
+            'confirm_read' => true,
+            'actor_id'     => $user->id,
+            'reason'       => 'Audit test run',
+        ]);
 
         $this->assertEquals('authentication_failed', $result['decision']);
         $audit = HepsiburadaReadinessAudit::where('store_id', $store->id)->latest('id')->first();
         $this->assertEquals('401_UNAUTHORIZED', $audit->provider_error_code);
         $this->assertStringNotContainsString('Sensitive Internal Token Error', $audit->provider_error_code);
+        $this->assertEquals($user->id, $audit->acting_user_id);
+        $this->assertEquals('Audit test run', $audit->reason);
+    }
+
+    /** @test */
+    public function service_enforces_actor_and_reason_validation()
+    {
+        $user = User::factory()->create();
+        $store = $this->makeStore($user);
+
+        // Missing actor
+        $res1 = app(HepsiburadaReadinessService::class)->inspect($store, ['reason' => 'Test reason']);
+        $this->assertEquals('audit_actor_missing', $res1['decision']);
+
+        // Missing reason
+        $res2 = app(HepsiburadaReadinessService::class)->inspect($store, ['actor_id' => $user->id]);
+        $this->assertEquals('audit_reason_missing', $res2['decision']);
+
+        // Reason containing sensitive credentials
+        $res3 = app(HepsiburadaReadinessService::class)->inspect($store, ['actor_id' => $user->id, 'reason' => 'test api_key=secret']);
+        $this->assertEquals('audit_reason_invalid', $res3['decision']);
+    }
+
+    /** @test */
+    public function valid_numeric_merchant_id_is_not_falsely_flagged_as_placeholder()
+    {
+        $user = User::factory()->create();
+        $store = $this->makeStore($user, ['api_key' => 'mysecureapikey12345'], ['seller_id' => '123456']);
+
+        $res = app(HepsiburadaReadinessService::class)->inspect($store, [
+            'actor_id' => $user->id,
+            'reason'   => 'Valid merchant numeric check',
+        ]);
+
+        $this->assertNotEquals('credential_placeholder', $res['decision']);
+    }
+
+    /** @test */
+    public function it_returns_audit_persistence_failed_when_audit_creation_fails()
+    {
+        $user = User::factory()->create();
+        $store = $this->makeStore($user);
+
+        // Drop audit table temporarily or listen to event
+        Schema::dropIfExists('hepsiburada_readiness_audits');
+
+        $res = app(HepsiburadaReadinessService::class)->inspect($store, [
+            'actor_id' => $user->id,
+            'reason'   => 'Audit fail test',
+        ]);
+
+        $this->assertEquals('audit_persistence_failed', $res['decision']);
+        $this->assertFalse($res['is_ready']);
+
+        // Re-create table for subsequent tests
+        \Illuminate\Support\Facades\Artisan::call('migrate');
     }
 }
