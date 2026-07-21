@@ -1,17 +1,29 @@
 <?php
- 
+
 namespace App\Services\Marketplace;
- 
+
 use App\Models\MarketplaceStore;
 use App\Models\HepsiburadaReadinessAudit;
 use App\Services\Marketplace\Connectors\HepsiburadaConnector;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class HepsiburadaReadinessService
 {
+    public const GUARDED_TABLES = [
+        'channel_products',
+        'channel_listings',
+        'mp_categories',
+        'mp_category_attributes',
+        'mp_category_attribute_values',
+        'mp_orders',
+        'mp_transactions',
+    ];
+
     public function __construct(
-        protected HepsiburadaConnector $connector
+        protected HepsiburadaConnector $connector,
+        protected HepsiburadaReadinessOutputSanitizer $sanitizer
     ) {}
 
     /**
@@ -27,14 +39,31 @@ class HepsiburadaReadinessService
         $confirmRead = (bool) ($options['confirm_read'] ?? false);
         $operation = (string) ($options['operation'] ?? 'connection');
 
+        // 0. Mutation Guard Table Existence Check
+        foreach (self::GUARDED_TABLES as $guardedTable) {
+            if (!Schema::hasTable($guardedTable)) {
+                $this->audit($correlationId, $store, $operation, $confirmRead, false, false, null, 'TABLE_MISSING', 0, 'mutation_guard_table_missing');
+                return [
+                    'correlation_id'   => $correlationId,
+                    'is_ready'         => false,
+                    'is_live_verified' => false,
+                    'http_attempted'   => false,
+                    'decision'         => 'mutation_guard_table_missing',
+                    'message'          => "Kritik koruma tablosu veritabanında bulunamadı: {$guardedTable}",
+                ];
+            }
+        }
+
         $connection = $store->connection;
         if (!$connection) {
             $this->audit($correlationId, $store, $operation, $confirmRead, false, false, null, null, 0, 'not_configured');
             return [
-                'correlation_id' => $correlationId,
-                'is_ready'       => false,
-                'decision'       => 'not_configured',
-                'message'        => 'Hepsiburada bağlantı kaydı bulunmuyor.',
+                'correlation_id'   => $correlationId,
+                'is_ready'         => false,
+                'is_live_verified' => false,
+                'http_attempted'   => false,
+                'decision'         => 'not_configured',
+                'message'          => 'Hepsiburada bağlantı kaydı bulunmuyor.',
             ];
         }
 
@@ -42,12 +71,14 @@ class HepsiburadaReadinessService
         try {
             $credentials = $connection->credentials_encrypted ?? [];
         } catch (\Throwable $e) {
-            $this->audit($correlationId, $store, $operation, $confirmRead, false, false, null, null, 0, 'credential_decryption_failed');
+            $this->audit($correlationId, $store, $operation, $confirmRead, false, false, null, 'DECRYPT_FAIL', 0, 'credential_decryption_failed');
             return [
-                'correlation_id' => $correlationId,
-                'is_ready'       => false,
-                'decision'       => 'credential_decryption_failed',
-                'message'        => 'Bağlantı şifreli verileri çözülemedi: ' . $e->getMessage(),
+                'correlation_id'   => $correlationId,
+                'is_ready'         => false,
+                'is_live_verified' => false,
+                'http_attempted'   => false,
+                'decision'         => 'credential_decryption_failed',
+                'message'          => 'Bağlantı şifreli verileri çözülemedi.',
             ];
         }
 
@@ -63,53 +94,46 @@ class HepsiburadaReadinessService
         if (!$hasNewAuth && !$hasLegacyAuth) {
             $this->audit($correlationId, $store, $operation, $confirmRead, false, false, null, null, 0, 'not_configured');
             return [
-                'correlation_id' => $correlationId,
-                'is_ready'       => false,
-                'decision'       => 'not_configured',
-                'message'        => 'Merchant ID / Service Key veya Legacy kullanıcı/şifre alanları eksik.',
+                'correlation_id'   => $correlationId,
+                'is_ready'         => false,
+                'is_live_verified' => false,
+                'http_attempted'   => false,
+                'decision'         => 'not_configured',
+                'message'          => 'Merchant ID / Service Key veya Legacy kullanıcı/şifre alanları eksik.',
             ];
         }
 
-        // 3. Placeholder Check
-        $placeholders = ['example', 'placeholder', '123456', 'service-key', 'zem_dev', 'test', 'owner-key', 'owner-secret'];
-        $containsPlaceholder = false;
-        foreach ([$merchantId, $serviceKey, $legacyUser, $legacyPass] as $val) {
-            if ($val !== '') {
-                foreach ($placeholders as $p) {
-                    if (str_contains(strtolower($val), $p)) {
-                        $containsPlaceholder = true;
-                        break 2;
-                    }
-                }
-            }
-        }
-
-        if ($containsPlaceholder) {
-            $this->audit($correlationId, $store, $operation, $confirmRead, false, false, null, null, 0, 'credential_placeholder');
+        // 3. Placeholder Check (Exact and pattern denylist)
+        if ($this->containsPlaceholderCredential([$merchantId, $serviceKey, $legacyUser, $legacyPass])) {
+            $this->audit($correlationId, $store, $operation, $confirmRead, false, false, null, 'PLACEHOLDER', 0, 'credential_placeholder');
             return [
-                'correlation_id' => $correlationId,
-                'is_ready'       => false,
-                'decision'       => 'credential_placeholder',
-                'message'        => 'Giriş yapılan kimlik bilgileri test veya placeholder değerler içeriyor.',
+                'correlation_id'   => $correlationId,
+                'is_ready'         => false,
+                'is_live_verified' => false,
+                'http_attempted'   => false,
+                'decision'         => 'credential_placeholder',
+                'message'          => 'Giriş yapılan kimlik bilgileri test veya placeholder değerler içeriyor.',
             ];
         }
 
-        // 4. Merchant ID Consistency
+        // 4. Merchant ID Consistency Check
         $credMerchantId = trim((string) data_get($credentials, 'merchant_id', ''));
         if ($store->seller_id !== '' && $credMerchantId !== '' && $store->seller_id !== $credMerchantId) {
-            $this->audit($correlationId, $store, $operation, $confirmRead, false, false, null, null, 0, 'merchant_id_mismatch');
+            $this->audit($correlationId, $store, $operation, $confirmRead, false, false, null, 'MISMATCH', 0, 'merchant_id_mismatch');
             return [
-                'correlation_id' => $correlationId,
-                'is_ready'       => false,
-                'decision'       => 'merchant_id_mismatch',
-                'message'        => 'Mağaza satıcı kimliği ile bağlantı Merchant ID bilgisi uyuşmuyor.',
+                'correlation_id'   => $correlationId,
+                'is_ready'         => false,
+                'is_live_verified' => false,
+                'http_attempted'   => false,
+                'decision'         => 'merchant_id_mismatch',
+                'message'          => 'Mağaza satıcı kimliği ile bağlantı Merchant ID bilgisi uyuşmuyor.',
             ];
         }
 
         // 5. Rollout Gate Status
         $gateEnabled = false;
         if ($operation === 'connection') {
-            $gateEnabled = true; // testConnection always permitted for diagnostic reasons
+            $gateEnabled = (bool) config('marketplace.hepsiburada.p0_connection_probe_enabled', false);
         } elseif (in_array($operation, ['categories', 'attributes'], true)) {
             $gateEnabled = (bool) config('marketplace.hepsiburada.p0_reference_sync_enabled', false);
         } elseif ($operation === 'catalog') {
@@ -118,28 +142,36 @@ class HepsiburadaReadinessService
             $gateEnabled = (bool) config('marketplace.hepsiburada.p0_batch_status_sync_enabled', false);
         }
 
-        if (!$gateEnabled) {
-            $this->audit($correlationId, $store, $operation, $confirmRead, false, false, null, null, 0, 'rollout_disabled');
-            return [
-                'correlation_id' => $correlationId,
-                'is_ready'       => false,
-                'decision'       => 'rollout_disabled',
-                'message'        => "Hepsiburada rollout kapısı kapalı. Bu işlem için ilgili rollout flag'ini aktif edin.",
-            ];
-        }
-
-        // If confirm_read is not checked, return success mock check
+        // If confirm_read is not passed: Return configured_not_verified (No HTTP request!)
         if (!$confirmRead) {
-            $this->audit($correlationId, $store, $operation, false, $gateEnabled, false, null, null, 0, 'authentication_success');
+            $decision = 'configured_not_verified';
+            $msg = 'Bağlantı parametreleri ve kimlik bilgileri geçerli. Canlı HTTP okuma doğrulaması için --confirm-read onaylanmalıdır.';
+
+            $this->audit($correlationId, $store, $operation, false, $gateEnabled, false, null, null, 0, $decision);
             return [
-                'correlation_id' => $correlationId,
-                'is_ready'       => true,
-                'decision'       => 'authentication_success',
-                'message'        => 'Bağlantı parametreleri ve rollout kapıları canlı okuma doğrulaması için hazır.',
+                'correlation_id'   => $correlationId,
+                'is_ready'         => true,
+                'is_live_verified' => false,
+                'http_attempted'   => false,
+                'decision'         => $decision,
+                'message'          => $msg,
             ];
         }
 
-        // 6. Live HTTP Probe
+        // If confirm_read is passed BUT rollout gate is false: Return rollout_disabled (No HTTP request!)
+        if (!$gateEnabled) {
+            $this->audit($correlationId, $store, $operation, true, false, false, null, null, 0, 'rollout_disabled');
+            return [
+                'correlation_id'   => $correlationId,
+                'is_ready'         => false,
+                'is_live_verified' => false,
+                'http_attempted'   => false,
+                'decision'         => 'rollout_disabled',
+                'message'          => "Hepsiburada rollout kapısı kapalı. Bu işlem için ilgili rollout flag'ini aktif edin.",
+            ];
+        }
+
+        // 6. Perform Live Bounded HTTP Probe in Transaction + Mutation Guard Listener
         $startTime = microtime(true);
         $httpStatus = null;
         $errorCode = null;
@@ -148,9 +180,24 @@ class HepsiburadaReadinessService
         $message = 'API Probe başarısız oldu.';
         $details = [];
 
+        $attemptedMutations = 0;
+        $guardedTables = self::GUARDED_TABLES;
+
+        DB::listen(function ($query) use (&$attemptedMutations, $guardedTables) {
+            $sql = strtoupper($query->sql);
+            if (preg_match('/\b(INSERT|UPDATE|DELETE|REPLACE|TRUNCATE)\b/', $sql)) {
+                foreach ($guardedTables as $tbl) {
+                    if (str_contains(strtolower($query->sql), $tbl)) {
+                        $attemptedMutations++;
+                    }
+                }
+            }
+        });
+
+        DB::beginTransaction();
         try {
             if ($operation === 'connection') {
-                $probeResult = $this->connector->testConnection($store);
+                $this->connector->testConnection($store);
                 $httpStatus = 200;
                 $decision = 'authentication_success';
                 $message = 'Hepsiburada canlı bağlantı doğrulaması başarılı.';
@@ -161,22 +208,34 @@ class HepsiburadaReadinessService
                 $decision = 'read_probe_success';
                 $itemCount = count($categories);
                 $message = 'Hepsiburada kategori ağacı probe başarılı.';
-                $details = array_slice($categories, 0, (int) ($options['max_items'] ?? 5));
+                $maxShow = min((int) ($options['max_items'] ?? 5), 5);
+                $sliced = array_slice($categories, 0, $maxShow);
+                $details = $this->sanitizer->sanitizeCategoryItems($sliced);
             } elseif ($operation === 'attributes') {
                 $catId = (string) ($options['category_id'] ?? '');
                 $attributes = $this->connector->getCategoryAttributes($store, $catId);
                 $httpStatus = 200;
                 $decision = 'read_probe_success';
-                $itemCount = count($attributes['attributes'] ?? []);
+                $rawAttrs = $attributes['attributes'] ?? [];
+                $itemCount = count($rawAttrs);
                 $message = 'Hepsiburada kategori nitelik probe başarılı.';
-                $details = array_slice($attributes['attributes'] ?? [], 0, (int) ($options['max_items'] ?? 10));
+                $maxShow = min((int) ($options['max_items'] ?? 10), 10);
+                $sliced = array_slice($rawAttrs, 0, $maxShow);
+                $details = $this->sanitizer->sanitizeAttributeItems($sliced);
             } elseif ($operation === 'catalog') {
-                $catalog = $this->connector->pullCatalogProducts($store);
+                $maxItems = min((int) ($options['max_items'] ?? 5), 5);
+                $catalog = $this->connector->pullCatalogProducts($store, [
+                    'smoke_mode' => true,
+                    'max_items'  => $maxItems,
+                    'max_pages'  => 1,
+                ]);
                 $httpStatus = 200;
                 $decision = 'read_probe_success';
-                $itemCount = count($catalog['items'] ?? []);
+                $rawItems = $catalog['items'] ?? [];
+                $itemCount = count($rawItems);
                 $message = 'Hepsiburada katalog probe başarılı.';
-                $details = array_slice($catalog['items'] ?? [], 0, (int) ($options['max_items'] ?? 5));
+                $sliced = array_slice($rawItems, 0, $maxItems);
+                $details = $this->sanitizer->sanitizeCatalogItems($sliced);
             } elseif ($operation === 'batch') {
                 $batchId = (string) ($options['batch_id'] ?? '');
                 $opType = (string) ($options['batch_operation'] ?? 'price-uploads');
@@ -185,35 +244,63 @@ class HepsiburadaReadinessService
                 $decision = 'read_probe_success';
                 $itemCount = count($batch['items'] ?? []);
                 $message = 'Hepsiburada batch status probe başarılı.';
-                $details = $batch;
+                $details = $this->sanitizer->sanitizeBatchResult($batch, $batchId);
             }
         } catch (\Illuminate\Http\Client\RequestException $e) {
-            $httpStatus = $e->response->status();
-            $errorCode = (string) $e->response->json('message');
+            $httpStatus = $e->response?->status() ?? 500;
             if ($httpStatus === 401) {
                 $decision = 'authentication_failed';
-                $message = 'Kimlik doğrulama hatası (401 Unauthorized). Hepsiburada service_key hatalı.';
+                $errorCode = '401_UNAUTHORIZED';
+                $message = 'Kimlik doğrulama hatası (401 Unauthorized). Hepsiburada servis anahtarı geçersiz.';
             } elseif ($httpStatus === 403) {
                 $decision = 'permission_blocked';
-                $message = 'Erişim engellendi (403 Forbidden). Entegratör yetkisi eksik.';
+                $errorCode = '403_FORBIDDEN';
+                $message = 'Erişim engellendi (403 Forbidden). Entegratör yetkisi yetersiz.';
+            } elseif ($httpStatus === 404) {
+                $decision = 'resource_not_found';
+                $errorCode = '404_NOT_FOUND';
+                $message = 'İstenen kaynak bulunamadı (404 Not Found).';
             } elseif ($httpStatus === 429) {
                 $decision = 'rate_limited';
+                $errorCode = '429_TOO_MANY_REQUESTS';
                 $message = 'İstek limiti aşıldı (429 Too Many Requests).';
             } elseif ($httpStatus >= 500) {
                 $decision = 'provider_unavailable';
+                $errorCode = '5XX_SERVER_ERROR';
                 $message = 'Hepsiburada sunucularına erişilemiyor (5xx Gateway Error).';
             } else {
                 $decision = 'read_probe_failed';
-                $message = 'HTTP isteği başarısız: ' . $e->getMessage();
+                $errorCode = 'READ_PROBE_ERROR';
+                $message = 'HTTP isteği başarısız oldu.';
             }
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            $decision = 'network_timeout';
+            $errorCode = 'CONNECT_TIMEOUT';
+            $message = 'Hepsiburada servisi bağlantı zaman aşımına uğradı.';
+        } catch (\JsonException $e) {
+            $decision = 'invalid_provider_response';
+            $errorCode = 'INVALID_JSON';
+            $message = 'Hepsiburada servis yanıtı geçersiz biçimde.';
         } catch (\Throwable $e) {
-            $errorCode = $e->getMessage();
             $decision = 'read_probe_failed';
-            $message = 'Probe sırasında hata oluştu: ' . $e->getMessage();
+            $errorCode = 'READ_PROBE_ERROR';
+            $message = 'Probe kontrolü sırasında bir hata oluştu.';
+        } finally {
+            DB::rollBack();
         }
 
         $durationMs = (int) (round(microtime(true) - $startTime, 4) * 1000);
 
+        // Evaluate DB Mutation Violations
+        if ($attemptedMutations > 0) {
+            $decision = 'read_probe_mutated_database';
+            $message = "Veritabanı değişikliği (mutation) saptandı! Probe sırasında DB yazma/güncelleme yapılamaz.";
+            $errorCode = 'DB_MUTATION_VIOLATION';
+        }
+
+        $isLiveVerified = ($decision === 'authentication_success' || $decision === 'read_probe_success');
+
+        // Persist Audit AFTER Rollback
         $this->audit(
             $correlationId,
             $store,
@@ -229,14 +316,59 @@ class HepsiburadaReadinessService
         );
 
         return [
-            'correlation_id' => $correlationId,
-            'is_ready'       => ($decision === 'authentication_success' || $decision === 'read_probe_success'),
-            'decision'       => $decision,
-            'message'        => $message,
-            'duration_ms'    => $durationMs,
-            'item_count'     => $itemCount,
-            'details'        => $details,
+            'correlation_id'   => $correlationId,
+            'is_ready'         => $isLiveVerified,
+            'is_live_verified' => $isLiveVerified,
+            'http_attempted'   => true,
+            'decision'         => $decision,
+            'message'          => $message,
+            'duration_ms'      => $durationMs,
+            'item_count'       => $itemCount,
+            'details'          => $details,
         ];
+    }
+
+    /**
+     * Check if any credential string matches exact placeholder denylist or patterns.
+     *
+     * @param  array<int, string>  $values
+     * @return bool
+     */
+    protected function containsPlaceholderCredential(array $values): bool
+    {
+        $exactDenylist = [
+            'test',
+            'test-key',
+            'test_key',
+            'test-secret',
+            'test_secret',
+            'service-key',
+            'service_key',
+            'your-service-key',
+            'your_service_key',
+            'placeholder',
+            'changeme',
+            'example',
+            'demo',
+            '123456',
+        ];
+
+        foreach ($values as $val) {
+            $clean = strtolower(trim($val));
+            if ($clean === '') {
+                continue;
+            }
+
+            if (in_array($clean, $exactDenylist, true)) {
+                return true;
+            }
+
+            if (preg_match('/^(test[-_]?key|test[-_]?secret|service[-_]?key|your[-_]service[-_]key|placeholder|changeme|example|demo|123456)$/i', $clean)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function audit(
@@ -252,25 +384,29 @@ class HepsiburadaReadinessService
         string $decision,
         ?int $durationMs = null
     ): void {
-        HepsiburadaReadinessAudit::create([
-            'correlation_id'      => $correlationId,
-            'store_id'            => $store->id,
-            'connection_id'       => $store->connection?->id,
-            'acting_user_id'      => auth()->id(),
-            'tenant_user_id'      => $store->user_id,
-            'release_sha'         => $this->getReleaseSha(),
-            'runtime_id'          => getmypid() ?: null,
-            'operation'           => $operation,
-            'confirm_read'        => $confirmRead,
-            'rollout_gate'        => $rolloutGate,
-            'http_attempted'      => $httpAttempted,
-            'http_status'         => $httpStatus,
-            'provider_error_code' => $errorCode ? substr($errorCode, 0, 100) : null,
-            'duration_ms'         => $durationMs,
-            'item_count'          => $itemCount,
-            'db_mutation_count'   => 0,
-            'decision'            => $decision,
-        ]);
+        try {
+            HepsiburadaReadinessAudit::create([
+                'correlation_id'      => $correlationId,
+                'store_id'            => $store->id,
+                'connection_id'       => $store->connection?->id,
+                'acting_user_id'      => auth()->id(),
+                'tenant_user_id'      => $store->user_id,
+                'release_sha'         => $this->getReleaseSha(),
+                'runtime_id'          => getmypid() ? (string) getmypid() : null,
+                'operation'           => $operation,
+                'confirm_read'        => $confirmRead,
+                'rollout_gate'        => $rolloutGate,
+                'http_attempted'      => $httpAttempted,
+                'http_status'         => $httpStatus,
+                'provider_error_code' => $errorCode ? HepsiburadaReadinessOutputSanitizer::sanitizeErrorCode($errorCode) : null,
+                'duration_ms'         => $durationMs,
+                'item_count'          => $itemCount,
+                'db_mutation_count'   => 0,
+                'decision'            => $decision,
+            ]);
+        } catch (\Throwable $e) {
+            // Ignore audit write failures so inspect return value is preserved
+        }
     }
 
     protected function getReleaseSha(): ?string
