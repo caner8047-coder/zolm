@@ -21,7 +21,7 @@ class HrPhase2CMigrationsRollbackTest extends TestCase
 
     public function test_phase2c_rollback_preserves_attendance_tables(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 4]);Artisan::call('migrate:rollback', ['--step' => 1]);
+        Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 4]);Artisan::call('migrate:rollback', ['--step' => 1]);
         Artisan::call('migrate:rollback', ['--step' => 4]);
         Artisan::call('migrate:rollback', ['--step' => 4]);
         Artisan::call('migrate:rollback', ['--step' => 5]);

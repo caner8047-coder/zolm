@@ -1,0 +1,3 @@
+<?php
+namespace App\Modules\Hr\Workforce\Models; use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\HasMany;
+class HrWorkforcePlan extends Model { use BelongsToLegalEntity; protected $fillable=['legal_entity_id','name','starts_on','ends_on','budget_encrypted','currency','status','source_hash','created_by','approved_by','approved_at']; protected $hidden=['budget_encrypted']; protected function casts():array{return['starts_on'=>'date','ends_on'=>'date','budget_encrypted'=>'encrypted','approved_at'=>'datetime'];} public function lines():HasMany{return $this->hasMany(HrWorkforcePlanLine::class,'workforce_plan_id');} public function budget():float{return(float)$this->budget_encrypted;} }

@@ -21,7 +21,7 @@ class HrPhase7APayrollCalculationRollbackTest extends TestCase
 
     public function test_rollback_preserves_phase6_tables(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 4]);
+        Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 4]);
         $this->assertFalse(Schema::hasTable('hr_payroll_tax_ledgers'));
         $this->assertFalse(Schema::hasColumn('hr_payroll_records', 'net_pay_encrypted'));
         $this->assertTrue(Schema::hasTable('hr_analytics_snapshots'));

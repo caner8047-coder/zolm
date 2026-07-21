@@ -97,6 +97,10 @@ return [
     'hr.analytics.view',
     'hr.analytics.export',
 
+    'hr.workforce.view',
+    'hr.workforce.manage',
+    'hr.workforce.approve',
+
     'hr.support.view',
     'hr.support.manage',
 
