@@ -23,6 +23,7 @@ use App\Modules\Hr\Leave\Livewire\LeaveList;
 use App\Modules\Hr\Leave\Livewire\LeaveRequestForm;
 use App\Modules\Hr\Leave\Livewire\LeaveApprovalInbox;
 use App\Modules\Hr\Leave\Livewire\LeaveBalanceManager;
+use App\Modules\Hr\Leave\Livewire\MyLeaveList;
 use App\Modules\Hr\Leave\Actions\ExportLeavesAction;
 use App\Modules\Hr\Personnel\Livewire\EmployeeCreate;
 use App\Modules\Hr\Personnel\Livewire\EmployeeDetail;
@@ -89,6 +90,11 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
         Route::get('/leaves', LeaveList::class)->name('leaves')
             ->middleware('hr.authorize:hr.leaves.view');
         Route::get('/leaves/create', LeaveRequestForm::class)->name('leaves.create')
+            ->middleware('hr.authorize:hr.leaves.create');
+        Route::get('/my/leaves', MyLeaveList::class)->name('my-leaves')
+            ->middleware('hr.authorize:hr.leaves.create');
+        Route::get('/my/leaves/create', LeaveRequestForm::class)->name('my-leaves.create')
+            ->defaults('selfService', true)
             ->middleware('hr.authorize:hr.leaves.create');
         Route::get('/leaves/approvals', LeaveApprovalInbox::class)->name('leaves.approvals')
             ->middleware('hr.authorize:hr.leaves.approve');
