@@ -53,6 +53,7 @@ use App\Modules\Hr\Asset\Livewire\AssetWorkspace;
 use App\Modules\Hr\Performance\Livewire\PerformanceWorkspace;
 use App\Modules\Hr\Training\Livewire\TrainingWorkspace;
 use App\Modules\Hr\Engagement\Livewire\EngagementWorkspace;
+use App\Modules\Hr\Recruitment\Livewire\RecruitmentWorkspace;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -233,6 +234,10 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
     Route::middleware('hr.module:baglilik')->group(function () {
         Route::get('/engagement', EngagementWorkspace::class)->name('engagement')->middleware('hr.authorize:hr.engagement.view');
         Route::get('/my/engagement', EngagementWorkspace::class)->name('my-engagement')->defaults('selfService', true)->middleware('hr.authorize:hr.engagement.view');
+    });
+
+    Route::middleware('hr.module:aday_takip')->group(function () {
+        Route::get('/recruitment', RecruitmentWorkspace::class)->name('recruitment')->middleware('hr.authorize:hr.recruitment.view');
     });
 
     // Personel
