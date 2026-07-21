@@ -10,6 +10,7 @@ use App\Modules\Hr\Leave\Models\HrLeaveBalance;
 use App\Modules\Hr\Leave\Models\HrLeaveRequest;
 use App\Modules\Hr\Leave\Services\LeaveDashboardMetricsService;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
+use App\Modules\Hr\Shift\Models\HrShiftAssignment;
 use Livewire\Component;
 
 class HrDashboard extends Component
@@ -45,6 +46,7 @@ class HrDashboard extends Component
                     'employee' => $employee,
                     'balances' => HrLeaveBalance::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant->id)->where('employee_id', $employee->id)->with('leaveType')->orderByDesc('remaining_amount')->limit(3)->get(),
                     'upcomingLeaves' => HrLeaveRequest::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant->id)->where('employee_id', $employee->id)->where('status', LeaveRequestStatus::Approved->value)->whereDate('end_date', '>=', today())->with('leaveType')->orderBy('start_date')->limit(3)->get(),
+                    'upcomingShifts' => HrShiftAssignment::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant->id)->where('employee_id', $employee->id)->whereDate('shift_date', '>=', today())->where('status', '!=', 'cancelled')->with('template')->orderBy('shift_date')->limit(5)->get(),
                     'holidays' => HrHoliday::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant->id)->whereDate('date', '>=', today())->orderBy('date')->limit(3)->get(),
                     'birthdays' => HrEmployee::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant->id)->active()->whereNotNull('date_of_birth')->get()->sortBy(function (HrEmployee $person) {
                         $birthday = $person->date_of_birth->copy()->year(now()->year);
