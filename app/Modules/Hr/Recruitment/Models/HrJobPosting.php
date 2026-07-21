@@ -1,0 +1,3 @@
+<?php
+namespace App\Modules\Hr\Recruitment\Models; use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\HasMany;
+class HrJobPosting extends Model{use BelongsToLegalEntity;protected $fillable=['legal_entity_id','code','title','department_id','position_id','headcount','description','requirements','status','published_on','closes_on','created_by'];protected function casts():array{return ['requirements'=>'array','published_on'=>'date','closes_on'=>'date','headcount'=>'integer'];}public function applications():HasMany{return $this->hasMany(HrApplication::class,'job_posting_id');}}

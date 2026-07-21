@@ -1,0 +1,3 @@
+<?php
+namespace App\Modules\Hr\Recruitment\Models; use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\BelongsTo;
+class HrApplicationStage extends Model{use BelongsToLegalEntity;protected $fillable=['legal_entity_id','application_id','stage','sequence','status','score','notes','scheduled_at','completed_at','acted_by'];protected function casts():array{return ['score'=>'decimal:2','scheduled_at'=>'datetime','completed_at'=>'datetime'];}public function application():BelongsTo{return $this->belongsTo(HrApplication::class,'application_id');}}

@@ -1,0 +1,3 @@
+<?php
+namespace App\Modules\Hr\Recruitment\Models; use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\BelongsTo;
+class HrJobOffer extends Model{use BelongsToLegalEntity;protected $fillable=['legal_entity_id','application_id','gross_salary','currency','proposed_start_date','expires_on','status','approval_note','created_by','approved_by','approved_at'];protected function casts():array{return ['gross_salary'=>'decimal:2','proposed_start_date'=>'date','expires_on'=>'date','approved_at'=>'datetime'];}public function application():BelongsTo{return $this->belongsTo(HrApplication::class,'application_id');}}

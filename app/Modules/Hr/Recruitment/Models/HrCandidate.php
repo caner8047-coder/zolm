@@ -1,0 +1,3 @@
+<?php
+namespace App\Modules\Hr\Recruitment\Models; use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\HasMany;
+class HrCandidate extends Model{use BelongsToLegalEntity;protected $fillable=['legal_entity_id','first_name','last_name','email','phone','source','cv_file_id','consent_note','consented_at','status','created_by'];protected function casts():array{return ['consented_at'=>'datetime'];}public function applications():HasMany{return $this->hasMany(HrApplication::class,'candidate_id');}public function getFullNameAttribute():string{return trim($this->first_name.' '.$this->last_name);}}

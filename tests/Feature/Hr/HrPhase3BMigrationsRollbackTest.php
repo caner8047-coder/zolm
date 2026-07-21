@@ -19,6 +19,7 @@ class HrPhase3BMigrationsRollbackTest extends TestCase
 
     public function test_phase3b_rollback_preserves_payroll_tables(): void
     {
+        Artisan::call('migrate:rollback', ['--step' => 5]);
         Artisan::call('migrate:rollback', ['--step' => 3]);
         Artisan::call('migrate:rollback', ['--step' => 5]);
         Artisan::call('migrate:rollback', ['--step' => 6]);
