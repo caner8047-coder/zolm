@@ -47,6 +47,8 @@ class ExpenseWorkflowTest extends TestCase
         $this->assertSame(ExpenseStatus::PendingHr, $expense->status);
         $expense = app(DecideExpenseAction::class)->approve($expense, 'İK onayı');
         $this->assertSame(ExpenseStatus::Approved, $expense->status);
+        $this->assertSame('hr-expense-approved-'.$expense->id, $expense->finance_reference);
+        $this->assertDatabaseHas('hr_integration_outbox', ['target' => 'finance', 'event_type' => 'expense_approved', 'source_id' => $expense->id]);
         $expense = app(MarkExpensePaidAction::class)->execute($expense, 'BANKA-2026-42');
         $this->assertSame(ExpenseStatus::Paid, $expense->status);
         $this->assertSame('BANKA-2026-42', $expense->payment_reference);

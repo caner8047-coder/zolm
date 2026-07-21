@@ -14,7 +14,7 @@ class HrExpense extends Model
 {
     use BelongsToLegalEntity;
 
-    protected $fillable = ['legal_entity_id', 'employee_id', 'expense_category_id', 'receipt_file_id', 'expense_date', 'currency', 'net_amount', 'vat_rate', 'vat_amount', 'gross_amount', 'status', 'merchant_name', 'document_number', 'description', 'project_reference', 'order_reference', 'customer_reference', 'source_key', 'payload_hash', 'requested_by', 'decided_by', 'decided_at', 'decision_note', 'paid_by', 'paid_at', 'payment_reference'];
+    protected $fillable = ['legal_entity_id', 'employee_id', 'expense_category_id', 'receipt_file_id', 'expense_date', 'currency', 'net_amount', 'vat_rate', 'vat_amount', 'gross_amount', 'status', 'merchant_name', 'document_number', 'description', 'project_reference', 'order_reference', 'customer_reference', 'source_key', 'payload_hash', 'requested_by', 'decided_by', 'decided_at', 'decision_note', 'paid_by', 'paid_at', 'payment_reference', 'finance_reference'];
 
     protected function casts(): array
     {

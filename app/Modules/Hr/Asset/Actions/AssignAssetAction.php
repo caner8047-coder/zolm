@@ -1,4 +1,22 @@
 <?php
+
 namespace App\Modules\Hr\Asset\Actions;
-use App\Modules\Hr\Asset\Enums\AssetAssignmentStatus; use App\Modules\Hr\Asset\Enums\AssetStatus; use App\Modules\Hr\Asset\Models\HrAsset; use App\Modules\Hr\Asset\Models\HrAssetAssignment; use App\Modules\Hr\Asset\Models\HrAssetEvent; use App\Modules\Hr\Core\Services\HrAuditService; use App\Modules\Hr\Core\Services\TenantContext; use App\Modules\Hr\Personnel\Models\HrEmployee; use Illuminate\Support\Facades\DB;
-class AssignAssetAction { public function __construct(private HrAuditService $audit){} public function execute(HrAsset $asset,HrEmployee $employee,array $data=[]):HrAssetAssignment{$tenant=app(TenantContext::class)->getId();abort_unless(auth()->user()?->hasHrPermission('hr.assets.assign'),403);abort_unless($asset->legal_entity_id===$tenant&&$employee->legal_entity_id===$tenant,404);return DB::transaction(function()use($asset,$employee,$data,$tenant){$locked=HrAsset::withoutGlobalScope('tenant')->whereKey($asset->id)->lockForUpdate()->firstOrFail();abort_unless($locked->status===AssetStatus::Available,422,'Yalnızca hazır zimmet atanabilir.');$assignment=HrAssetAssignment::create(['legal_entity_id'=>$tenant,'asset_id'=>$locked->id,'employee_id'=>$employee->id,'assigned_at'=>$data['assigned_at']??today(),'expected_return_at'=>$data['expected_return_at']??null,'status'=>AssetAssignmentStatus::Assigned,'assignment_note'=>$data['note']??null,'condition_on_assignment'=>$data['condition']??'good','assigned_by'=>auth()->id()]);$locked->update(['status'=>AssetStatus::Assigned,'updated_by'=>auth()->id()]);HrAssetEvent::create(['legal_entity_id'=>$tenant,'asset_id'=>$locked->id,'asset_assignment_id'=>$assignment->id,'event_type'=>'assigned','from_status'=>AssetStatus::Available->value,'to_status'=>AssetStatus::Assigned->value,'note'=>$data['note']??null,'metadata'=>['employee_id'=>$employee->id],'acted_by'=>auth()->id(),'created_at'=>now()]);$this->audit->log('asset_assigned',$locked,null,['employee_id'=>$employee->id]);return $assignment->fresh(['asset','employee']);});} }
+
+use App\Modules\Hr\Asset\Enums\AssetAssignmentStatus; use App\Modules\Hr\Asset\Enums\AssetStatus; use App\Modules\Hr\Asset\Models\HrAsset; use App\Modules\Hr\Asset\Models\HrAssetAssignment; use App\Modules\Hr\Asset\Models\HrAssetEvent; use App\Modules\Hr\Core\Services\HrAuditService; use App\Modules\Hr\Core\Services\HrIntegrationOutboxService; use App\Modules\Hr\Core\Services\TenantContext; use App\Modules\Hr\Personnel\Models\HrEmployee; use Illuminate\Support\Facades\DB;
+
+class AssignAssetAction
+{
+    public function __construct(private HrAuditService $audit, private HrIntegrationOutboxService $outbox) {}
+    public function execute(HrAsset $asset, HrEmployee $employee, array $data = []): HrAssetAssignment
+    {
+        $tenant = app(TenantContext::class)->getId(); abort_unless(auth()->user()?->hasHrPermission('hr.assets.assign'), 403); abort_unless($asset->legal_entity_id === $tenant && $employee->legal_entity_id === $tenant, 404);
+        return DB::transaction(function () use ($asset, $employee, $data, $tenant) {
+            $locked = HrAsset::withoutGlobalScope('tenant')->whereKey($asset->id)->lockForUpdate()->firstOrFail(); abort_unless($locked->status === AssetStatus::Available, 422, 'Yalnızca hazır zimmet atanabilir.');
+            $assignment = HrAssetAssignment::create(['legal_entity_id' => $tenant, 'asset_id' => $locked->id, 'employee_id' => $employee->id, 'assigned_at' => $data['assigned_at'] ?? today(), 'expected_return_at' => $data['expected_return_at'] ?? null, 'status' => AssetAssignmentStatus::Assigned, 'assignment_note' => $data['note'] ?? null, 'condition_on_assignment' => $data['condition'] ?? 'good', 'assigned_by' => auth()->id()]);
+            $locked->update(['status' => AssetStatus::Assigned, 'updated_by' => auth()->id()]);
+            HrAssetEvent::create(['legal_entity_id' => $tenant, 'asset_id' => $locked->id, 'asset_assignment_id' => $assignment->id, 'event_type' => 'assigned', 'from_status' => AssetStatus::Available->value, 'to_status' => AssetStatus::Assigned->value, 'note' => $data['note'] ?? null, 'metadata' => ['employee_id' => $employee->id], 'acted_by' => auth()->id(), 'created_at' => now()]);
+            if ($locked->stock_item_reference) $this->outbox->enqueue('stock', 'asset_assigned', $assignment, 'hr-asset-assigned-'.$assignment->id, ['asset_id' => $locked->id, 'assignment_id' => $assignment->id, 'employee_id' => $employee->id, 'stock_item_reference' => $locked->stock_item_reference]);
+            $this->audit->log('asset_assigned', $locked, null, ['employee_id' => $employee->id]); return $assignment->fresh(['asset', 'employee']);
+        });
+    }
+}

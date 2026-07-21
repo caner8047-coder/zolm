@@ -3,6 +3,7 @@
 namespace App\Modules\Hr\Expense\Actions;
 
 use App\Modules\Hr\Core\Services\HrAuditService;
+use App\Modules\Hr\Core\Services\HrIntegrationOutboxService;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Expense\Enums\ExpenseStatus;
 use App\Modules\Hr\Expense\Models\HrExpense;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 
 class DecideExpenseAction
 {
-    public function __construct(private HrAuditService $audit) {}
+    public function __construct(private HrAuditService $audit, private HrIntegrationOutboxService $outbox) {}
 
     public function approve(HrExpense $expense, ?string $note = null): HrExpense
     {
@@ -34,6 +35,21 @@ class DecideExpenseAction
             $to = $approve ? ($from === ExpenseStatus::PendingManager ? ExpenseStatus::PendingHr : ExpenseStatus::Approved) : ExpenseStatus::Rejected;
             $locked->update(['status' => $to, 'decided_by' => auth()->id(), 'decided_at' => now(), 'decision_note' => $note]);
             HrExpenseStatusHistory::create(['legal_entity_id' => $locked->legal_entity_id, 'expense_id' => $locked->id, 'from_status' => $from, 'to_status' => $to, 'note' => $note, 'acted_by' => auth()->id(), 'created_at' => now()]);
+            if ($to === ExpenseStatus::Approved) {
+                $sourceKey = 'hr-expense-approved-'.$locked->id;
+                $this->outbox->enqueue('finance', 'expense_approved', $locked, $sourceKey, [
+                    'expense_id' => $locked->id,
+                    'employee_id' => $locked->employee_id,
+                    'gross_amount' => (string) $locked->gross_amount,
+                    'vat_amount' => (string) $locked->vat_amount,
+                    'currency' => $locked->currency,
+                    'expense_date' => $locked->expense_date->toDateString(),
+                    'project_reference' => $locked->project_reference,
+                    'order_reference' => $locked->order_reference,
+                    'customer_reference' => $locked->customer_reference,
+                ]);
+                $locked->update(['finance_reference' => $sourceKey]);
+            }
             $this->audit->log($approve ? 'expense_approved_step' : 'expense_rejected', $locked, ['status' => $from->value], ['status' => $to->value]);
             return $locked->fresh();
         });
