@@ -1,0 +1,4 @@
+<?php
+namespace App\Modules\Hr\Asset\Models;
+use App\Modules\Hr\Asset\Enums\AssetAssignmentStatus; use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use App\Modules\Hr\Personnel\Models\HrEmployee; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\BelongsTo;
+class HrAssetAssignment extends Model { use BelongsToLegalEntity; protected $fillable=['legal_entity_id','asset_id','employee_id','assigned_at','expected_return_at','returned_at','status','assignment_note','return_note','condition_on_assignment','condition_on_return','assigned_by','returned_by']; protected function casts():array{return ['assigned_at'=>'date','expected_return_at'=>'date','returned_at'=>'datetime','status'=>AssetAssignmentStatus::class];} public function asset():BelongsTo{return $this->belongsTo(HrAsset::class,'asset_id');} public function employee():BelongsTo{return $this->belongsTo(HrEmployee::class);} }

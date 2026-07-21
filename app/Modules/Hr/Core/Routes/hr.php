@@ -49,6 +49,7 @@ use App\Modules\Hr\Payroll\Livewire\PayrollWorkspace;
 use App\Modules\Hr\Expense\Livewire\ExpenseCategoryManager;
 use App\Modules\Hr\Expense\Livewire\ExpenseWorkspace;
 use App\Modules\Hr\Advance\Livewire\AdvanceWorkspace;
+use App\Modules\Hr\Asset\Livewire\AssetWorkspace;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -209,6 +210,11 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
     Route::middleware('hr.module:avans')->group(function () {
         Route::get('/advances', AdvanceWorkspace::class)->name('advances')->middleware('hr.authorize:hr.advances.view');
         Route::get('/my/advances', AdvanceWorkspace::class)->name('my-advances')->defaults('selfService', true)->middleware('hr.authorize:hr.advances.create');
+    });
+
+    Route::middleware('hr.module:zimmet')->group(function () {
+        Route::get('/assets', AssetWorkspace::class)->name('assets')->middleware('hr.authorize:hr.assets.view');
+        Route::get('/my/assets', AssetWorkspace::class)->name('my-assets')->defaults('selfService', true)->middleware('hr.authorize:hr.assets.view');
     });
 
     // Personel

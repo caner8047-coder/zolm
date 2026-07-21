@@ -19,6 +19,7 @@ class HrPhase2BMigrationsRollbackTest extends TestCase
 
     public function test_phase2b_rollback_preserves_shift_tables(): void
     {
+        Artisan::call('migrate:rollback', ['--step' => 4]);
         Artisan::call('migrate:rollback', ['--step' => 2]);
         Artisan::call('migrate:rollback', ['--step' => 3]);
         Artisan::call('migrate:rollback', ['--step' => 3]);

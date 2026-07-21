@@ -109,6 +109,11 @@ class HrEmployee extends Model
         return $this->hasMany(\App\Modules\Hr\Advance\Models\HrAdvance::class, 'employee_id');
     }
 
+    public function assetAssignments(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Asset\Models\HrAssetAssignment::class, 'employee_id');
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', EmployeeStatus::Active);
