@@ -275,6 +275,7 @@ return [
         'p0_reference_sync_enabled' => (bool) env('HEPSIBURADA_P0_REFERENCE_SYNC_ENABLED', false),
         'p0_catalog_sync_enabled' => (bool) env('HEPSIBURADA_P0_CATALOG_SYNC_ENABLED', false),
         'p0_batch_status_sync_enabled' => (bool) env('HEPSIBURADA_P0_BATCH_STATUS_SYNC_ENABLED', false),
+        'p0_connection_probe_enabled' => (bool) env('HEPSIBURADA_P0_CONNECTION_PROBE_ENABLED', false),
     ],
 
     'n11' => [

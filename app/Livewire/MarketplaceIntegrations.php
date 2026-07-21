@@ -2029,6 +2029,68 @@ class MarketplaceIntegrations extends Component
         ];
     }
 
+    public function getSelectedStoreHepsiburadaReadinessMetadataProperty(): array
+    {
+        $store = $this->selectedStore;
+        if (!$store || $store->marketplace !== 'hepsiburada') {
+            return [];
+        }
+
+        $connection = $store->connection;
+        $credentials = $connection?->credentials_encrypted ?? [];
+
+        $hasCreds = $connection && !empty($credentials);
+        $hasMerchantId = filled($store->seller_id) || filled($credentials['merchant_id'] ?? null);
+
+        // Fetch latest audit log
+        $latestAudit = \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)
+            ->latest('id')
+            ->first();
+
+        // Calculate validation status label/tag
+        // Tags: not_configured, configured_not_verified, live_read_verified, authentication_failed, permission_blocked, rate_limited, provider_unavailable
+        $status = 'not_configured';
+        if (!$hasCreds) {
+            $status = 'not_configured';
+        } else {
+            if (!$latestAudit || !$latestAudit->http_attempted) {
+                $status = 'configured_not_verified';
+            } else {
+                $status = match ($latestAudit->decision) {
+                    'authentication_success', 'read_probe_success' => $latestAudit->confirm_read ? 'live_read_verified' : 'configured_not_verified',
+                    'authentication_failed' => 'authentication_failed',
+                    'permission_blocked' => 'permission_blocked',
+                    'rate_limited' => 'rate_limited',
+                    'provider_unavailable' => 'provider_unavailable',
+                    default => 'configured_not_verified',
+                };
+            }
+        }
+
+        $lastVerified = $connection?->last_verified_at ? $connection->last_verified_at->toIso8601String() : null;
+
+        return [
+            'has_credentials' => $hasCreds,
+            'has_merchant_id' => $hasMerchantId,
+            'last_verified_at' => $lastVerified,
+            'last_http_status' => $latestAudit?->http_status,
+            'last_provider_error' => $latestAudit?->provider_error_code,
+            'connection_gate' => (bool) config('marketplace.hepsiburada.p0_connection_probe_enabled', false),
+            'reference_gate' => (bool) config('marketplace.hepsiburada.p0_reference_sync_enabled', false),
+            'catalog_gate' => (bool) config('marketplace.hepsiburada.p0_catalog_sync_enabled', false),
+            'batch_gate' => (bool) config('marketplace.hepsiburada.p0_batch_status_sync_enabled', false),
+            'last_categories_smoke' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('operation', 'categories')->latest('id')->value('decision'),
+            'last_catalog_smoke' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('operation', 'catalog')->latest('id')->value('decision'),
+            'last_correlation_id' => $latestAudit?->correlation_id,
+            'last_acting_user_id' => $latestAudit?->acting_user_id,
+            'last_reason' => $latestAudit?->reason,
+            'last_mutation_count' => $latestAudit?->db_mutation_count ?? 0,
+            'live_verified' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('confirm_read', true)->where('http_attempted', true)->exists(),
+            'configuration_ready' => $hasCreds && $hasMerchantId,
+            'status' => $status,
+        ];
+    }
+
     /**
      * @param  array<string, mixed>  $credentials
      * @return array<string, mixed>

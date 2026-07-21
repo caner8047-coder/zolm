@@ -544,11 +544,12 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
         string $path,
         array $query,
         int $pageSize,
+        ?int $maxPagesOverride = null,
     ): array {
         $items = [];
         $offset = 0;
         $page = 0;
-        $maxPages = (int) config('marketplace.hepsiburada.max_pages_per_request', 50);
+        $maxPages = $maxPagesOverride !== null ? $maxPagesOverride : (int) config('marketplace.hepsiburada.max_pages_per_request', 50);
 
         do {
             $response = $this->request($store, $service)
@@ -1349,6 +1350,11 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
             throw new \RuntimeException('Hepsiburada catalog sync is disabled (HEPSIBURADA_P0_CATALOG_SYNC_ENABLED=false).');
         }
 
+        $isSmoke = (bool) ($options['smoke_mode'] ?? false);
+        $maxItems = (int) ($options['max_items'] ?? 50);
+        $pageSize = $isSmoke ? min($maxItems, 5) : (int) config('marketplace.hepsiburada.catalog_product_page_size', 50);
+        $maxPages = $isSmoke ? 1 : (int) ($options['max_pages'] ?? config('marketplace.hepsiburada.max_pages_per_request', 50));
+
         $items = $this->fetchPaginated(
             store: $store,
             service: 'product',
@@ -1356,7 +1362,8 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
             query: array_filter([
                 'status' => $options['status'] ?? null,
             ], fn ($v) => $v !== null && $v !== ''),
-            pageSize: (int) config('marketplace.hepsiburada.catalog_product_page_size', 50),
+            pageSize: $pageSize,
+            maxPagesOverride: $maxPages,
         );
 
         return [
@@ -1365,9 +1372,10 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
                 ->values()
                 ->all(),
             'meta'  => [
-                'items_received'    => count($items),
-                'cursor_after'      => now()->toIso8601String(),
-                'endpoint_verified' => true,
+                'items_received'       => count($items),
+                'more_items_available' => count($items) >= $pageSize,
+                'cursor_after'         => now()->toIso8601String(),
+                'endpoint_verified'    => true,
             ],
         ];
     }
