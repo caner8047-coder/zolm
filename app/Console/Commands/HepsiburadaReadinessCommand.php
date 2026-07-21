@@ -52,7 +52,7 @@ class HepsiburadaReadinessCommand extends Command
         $storeIdOrKey = $this->argument('store');
         $store = MarketplaceStore::query()
             ->where('id', $storeIdOrKey)
-            ->orWhere('store_key', $storeIdOrKey)
+            ->orWhere('seller_id', $storeIdOrKey)
             ->first();
 
         if (!$store) {
