@@ -128,6 +128,7 @@ class PayrollCalculationWorkflowTest extends TestCase
         $this->actingAs($payrollApprover);
         $approved = app(ApprovePayrollPeriodAction::class)->execute($calculated->fresh());
         $this->assertSame('approved', $approved->status);
+        $this->assertDatabaseHas('hr_integration_outbox', ['target' => 'finance', 'event_type' => 'payroll_period_approved', 'source_id' => $approved->id]);
 
         $relativePath = app(ExportPayrollControlOutputAction::class)->execute($approved);
         $fullPath = storage_path('app/private/'.$relativePath);

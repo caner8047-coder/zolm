@@ -3,6 +3,7 @@
 namespace App\Modules\Hr\Personnel\Actions;
 
 use App\Modules\Hr\Core\Services\HrAuditService;
+use App\Modules\Hr\Core\Services\HrIntegrationOutboxService;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
 use App\Modules\Hr\Personnel\Models\HrEmploymentRecord;
@@ -11,7 +12,8 @@ use Illuminate\Support\Facades\DB;
 class CreateEmployeeAction
 {
     public function __construct(
-        private HrAuditService $auditService
+        private HrAuditService $auditService,
+        private HrIntegrationOutboxService $outbox,
     ) {}
 
     public function execute(array $employeeData, array $employmentData): HrEmployee
@@ -48,6 +50,13 @@ class CreateEmployeeAction
 
             // Audit log
             $this->auditService->log('employee_created', $employee);
+            $this->outbox->enqueue('crm', 'employee_created', $employee, 'hr-employee-created-'.$employee->id, [
+                'employee_id' => $employee->id,
+                'employee_number' => $employee->employee_number,
+                'department_id' => $employmentData['department_id'] ?? null,
+                'position_id' => $employmentData['position_id'] ?? null,
+                'status' => 'active',
+            ]);
 
             return $employee;
         });

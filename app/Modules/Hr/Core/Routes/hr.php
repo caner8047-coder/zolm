@@ -64,6 +64,7 @@ use App\Modules\Hr\Workforce\Livewire\WorkforcePlanningWorkspace;
 use App\Modules\Hr\Support\Livewire\SupportWorkspace;
 use App\Modules\Hr\Safety\Livewire\SafetyWorkspace;
 use App\Modules\Hr\Assistant\Livewire\HrAssistantWorkspace;
+use App\Modules\Hr\Integration\Livewire\HrIntegrationWorkspace;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -139,6 +140,9 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
 
     Route::get('/assistant', HrAssistantWorkspace::class)->name('assistant')
         ->middleware('hr.authorize:hr.assistant.query');
+
+    Route::get('/integrations', HrIntegrationWorkspace::class)->name('integrations')
+        ->middleware('hr.authorize:hr.integrations.view');
 
     // İzin ayarları — izin modül lisansı + tür yönetimi
     Route::middleware('hr.module:izin')->group(function () {

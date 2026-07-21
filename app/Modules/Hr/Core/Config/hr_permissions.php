@@ -124,4 +124,7 @@ return [
     'hr.isg.report_incident',
 
     'hr.assistant.query',
+
+    'hr.integrations.view',
+    'hr.integrations.manage',
 ];

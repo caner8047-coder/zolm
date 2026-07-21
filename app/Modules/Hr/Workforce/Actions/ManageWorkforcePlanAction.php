@@ -4,6 +4,7 @@ namespace App\Modules\Hr\Workforce\Actions;
 
 use App\Modules\Hr\Compensation\Models\HrSalaryRecord;
 use App\Modules\Hr\Core\Services\HrAuditService;
+use App\Modules\Hr\Core\Services\HrIntegrationOutboxService;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Organization\Models\HrDepartment;
 use App\Modules\Hr\Organization\Models\HrPosition;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 
 class ManageWorkforcePlanAction
 {
-    public function __construct(private HrAuditService $audit) {}
+    public function __construct(private HrAuditService $audit, private HrIntegrationOutboxService $outbox) {}
 
     public function create(array $data): HrWorkforcePlan
     {
@@ -154,6 +155,19 @@ class ManageWorkforcePlanAction
                 'approved_at' => now(),
             ]);
             $this->audit->log('workforce_plan_approved', $plan, null, ['source_hash' => $sourceHash]);
+            $this->outbox->enqueue('production', 'workforce_plan_approved', $plan, 'hr-workforce-plan-approved-'.$plan->id, [
+                'workforce_plan_id' => $plan->id,
+                'name' => $plan->name,
+                'starts_on' => $plan->starts_on->toDateString(),
+                'ends_on' => $plan->ends_on->toDateString(),
+                'source_hash' => $sourceHash,
+                'lines' => $plan->lines()->get()->map(fn (HrWorkforcePlanLine $line) => [
+                    'department_id' => $line->department_id,
+                    'position_id' => $line->position_id,
+                    'planned_fte' => (string) $line->planned_fte,
+                    'actual_fte' => (string) $line->actual_fte_snapshot,
+                ])->all(),
+            ]);
 
             return $plan->fresh('lines');
         });

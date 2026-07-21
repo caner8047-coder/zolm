@@ -12,7 +12,7 @@ class HrIntegrationOutboxService
     {
         $tenantId = app(TenantContext::class)->getId();
         abort_unless((int) $source->getAttribute('legal_entity_id') === $tenantId, 422, 'Entegrasyon kaynağı başka tüzel kişiliğe ait.');
-        abort_unless(in_array($target, ['finance', 'payroll', 'stock'], true), 422, 'Entegrasyon hedefi geçersiz.');
+        abort_unless(in_array($target, ['finance', 'payroll', 'stock', 'crm', 'production'], true), 422, 'Entegrasyon hedefi geçersiz.');
         $payload = $this->sortRecursively($payload);
         $hash = hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION));
 
