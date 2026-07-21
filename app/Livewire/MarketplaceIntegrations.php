@@ -30,6 +30,7 @@ class MarketplaceIntegrations extends Component
 {
     public ?int $selectedStoreId = null;
     public ?string $saveResult = null;
+    public ?string $saveCorrelationId = null;
 
     public array $entityForm = [];
 
@@ -270,29 +271,94 @@ class MarketplaceIntegrations extends Component
             return;
         }
 
+        $correlationId = strtoupper(Str::random(8));
+        $this->saveCorrelationId = $correlationId;
+        $this->notify("Kayıt takip kodu: {$correlationId}", 'info');
+
+        $appEnv = app()->environment();
+        $dbDriver = 'unknown';
+        try {
+            $dbDriver = DB::connection()->getDriverName();
+        } catch (\Throwable $e) {}
+
+        $dbName = config('database.connections.'.config('database.default').'.database');
+        $dbHost = config('database.connections.'.config('database.default').'.host');
+        $hostname = gethostname();
+        $dbDatabaseHash = substr(hash('sha256', (string) $dbName), 0, 12);
+        $dbHostHash = substr(hash('sha256', (string) $dbHost), 0, 12);
+        $hostnameHash = substr(hash('sha256', (string) $hostname), 0, 12);
+        $runtimeId = "{$appEnv}_{$dbDriver}_{$dbDatabaseHash}_{$dbHostHash}_{$hostnameHash}";
+
+        $actingUser = Auth::user();
+        $storeId = (int) $this->selectedStoreId;
+
+        $auditMeta = [
+            'correlation_id' => $correlationId,
+            'release_sha' => 'a7d8bd7',
+            'runtime_id' => $runtimeId,
+            'acting_user_id' => $actingUser?->id,
+            'store_id' => $storeId,
+            'tenant_context_active' => \App\Services\Marketplace\MarketplaceTenantContext::hasActiveContext(),
+            'save_started' => true,
+            'timestamp' => now()->toIso8601String(),
+        ];
+
+        // 1. Authorization check
+        $store = null;
         try {
             $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForCredentialManagement(
-                Auth::user(),
-                (int) $this->selectedStoreId
+                $actingUser,
+                $storeId
             );
         } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
             $this->saveResult = 'authorization_denied';
+            $auditMeta['authorization_passed'] = false;
+            $auditMeta['save_result'] = 'authorization_denied';
+            $auditMeta['exception_class'] = get_class($e);
+            \App\Models\ActivityLog::log(
+                'save_connection_audit',
+                "Credential save trace failed (Auth Denied). Correlation ID: {$correlationId}",
+                'MarketplaceStore',
+                $storeId,
+                $auditMeta
+            );
             $this->notify($e->getMessage(), 'error');
             return;
         }
 
-        $validated = $this->validate([
-            'connectionForm.authType' => ['required', 'string', 'max:50'],
-            'connectionForm.apiBaseUrl' => ['nullable', 'url', 'max:255'],
-            'connectionForm.webhookSecret' => ['nullable', 'string', 'max:120'],
-            'connectionForm.apiKey' => ['nullable', 'string', 'max:255'],
-            'connectionForm.apiSecret' => ['nullable', 'string', 'max:255'],
-            'connectionForm.zolmBoosterApiKey' => ['nullable', 'string', 'max:255'],
-            'connectionForm.storeFrontCode' => ['nullable', 'string', 'max:64'],
-            'connectionForm.extraUser' => ['nullable', 'string', 'max:255'],
-            'connectionForm.extraPassword' => ['nullable', 'string', 'max:255'],
-            'connectionForm.storeUrl' => ['nullable', 'url', 'max:255'],
-        ]);
+        $auditMeta['authorization_passed'] = true;
+        $auditMeta['target_tenant_id'] = $store->user_id;
+
+        // 2. Validation check
+        try {
+            $validated = $this->validate([
+                'connectionForm.authType' => ['required', 'string', 'max:50'],
+                'connectionForm.apiBaseUrl' => ['nullable', 'url', 'max:255'],
+                'connectionForm.webhookSecret' => ['nullable', 'string', 'max:120'],
+                'connectionForm.apiKey' => ['nullable', 'string', 'max:255'],
+                'connectionForm.apiSecret' => ['nullable', 'string', 'max:255'],
+                'connectionForm.zolmBoosterApiKey' => ['nullable', 'string', 'max:255'],
+                'connectionForm.storeFrontCode' => ['nullable', 'string', 'max:64'],
+                'connectionForm.extraUser' => ['nullable', 'string', 'max:255'],
+                'connectionForm.extraPassword' => ['nullable', 'string', 'max:255'],
+                'connectionForm.storeUrl' => ['nullable', 'url', 'max:255'],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->saveResult = 'validation_failed';
+            $auditMeta['validation_passed'] = false;
+            $auditMeta['save_result'] = 'validation_failed';
+            $auditMeta['exception_class'] = get_class($e);
+            \App\Models\ActivityLog::log(
+                'save_connection_audit',
+                "Credential save trace failed (Validation Error). Correlation ID: {$correlationId}",
+                'MarketplaceStore',
+                $store->id,
+                $auditMeta
+            );
+            throw $e;
+        }
+
+        $auditMeta['validation_passed'] = true;
 
         $placeholders = ['test-key', 'test-secret', 'your-api-key', 'your-api-secret', 'changeme', 'demo'];
         $apiKeyToCheck = trim(Str::lower($validated['connectionForm']['apiKey'] ?? ''));
@@ -302,6 +368,14 @@ class MarketplaceIntegrations extends Component
             if (app()->environment('production')) {
                 $this->addError('connectionForm.apiKey', 'Geçerli production API bilgileri girilmelidir.');
                 $this->saveResult = 'validation_failed';
+                $auditMeta['save_result'] = 'validation_failed';
+                \App\Models\ActivityLog::log(
+                    'save_connection_audit',
+                    "Credential save trace failed (Placeholder in Production). Correlation ID: {$correlationId}",
+                    'MarketplaceStore',
+                    $store->id,
+                    $auditMeta
+                );
                 return;
             }
         }
@@ -368,8 +442,10 @@ class MarketplaceIntegrations extends Component
         $preUpdateUpdatedAt = $existingConnection ? $existingConnection->updated_at : null;
         $preUpdateFingerprint = $existingConnection ? hash('sha256', json_encode($existingCredentials)) : null;
 
+        $auditMeta['connection_id'] = $existingConnection?->id;
+        $auditMeta['before_updated_at'] = $preUpdateUpdatedAt?->toIso8601String();
+
         $targetTenantUserId = $store->user_id;
-        $actingUser = Auth::user();
         $isCrossTenant = (int) $targetTenantUserId !== (int) $actingUser->id;
 
         DB::transaction(function () use ($store, $validated, $credentials, $resolvedApiBaseUrl, $connectionStatus, $connectionError, $existingConnection, $isDemo): void {
@@ -398,6 +474,16 @@ class MarketplaceIntegrations extends Component
 
         if (!$newConnection || (int) $newConnection->store_id !== (int) $store->id) {
             $this->saveResult = 'credential_save_failed';
+            $auditMeta['save_result'] = 'credential_save_failed';
+            $auditMeta['after_updated_at'] = null;
+            $auditMeta['fingerprint_changed'] = false;
+            \App\Models\ActivityLog::log(
+                'save_connection_audit',
+                "Credential save trace failed (Mismatch store relation). Correlation ID: {$correlationId}",
+                'MarketplaceStore',
+                $store->id,
+                $auditMeta
+            );
             $this->notify('Bağlantı bilgileri doğrulanırken hata oluştu.', 'error');
             return;
         }
@@ -408,12 +494,23 @@ class MarketplaceIntegrations extends Component
         $updatedAtChanged = !$preUpdateUpdatedAt || $newConnection->updated_at->gt($preUpdateUpdatedAt);
         $fingerprintChanged = $preUpdateFingerprint !== $newFingerprint;
 
+        $auditMeta['after_updated_at'] = $newConnection->updated_at->toIso8601String();
+        $auditMeta['fingerprint_changed'] = $fingerprintChanged;
+
         $newApiKeyToCheck = trim(Str::lower($newCredentials['api_key'] ?? ''));
         $newApiSecretToCheck = trim(Str::lower($newCredentials['api_secret'] ?? ''));
         $hasPlaceholder = in_array($newApiKeyToCheck, $placeholders, true) || in_array($newApiSecretToCheck, $placeholders, true);
 
         if ($hasPlaceholder) {
             $this->saveResult = 'credential_save_failed';
+            $auditMeta['save_result'] = 'credential_save_failed';
+            \App\Models\ActivityLog::log(
+                'save_connection_audit',
+                "Credential save trace failed (Placeholder check after save). Correlation ID: {$correlationId}",
+                'MarketplaceStore',
+                $store->id,
+                $auditMeta
+            );
             $this->notify('Geçerli production API bilgileri girilmelidir.', 'error');
             return;
         }
@@ -421,6 +518,7 @@ class MarketplaceIntegrations extends Component
         if ($credentialsProvided) {
             if ($fingerprintChanged && $updatedAtChanged) {
                 $this->saveResult = 'credential_saved';
+                $auditMeta['save_result'] = 'credential_saved';
 
                 if ($isCrossTenant) {
                     \App\Models\ActivityLog::log(
@@ -439,10 +537,20 @@ class MarketplaceIntegrations extends Component
                 }
             } else {
                 $this->saveResult = 'credential_save_failed';
+                $auditMeta['save_result'] = 'credential_save_failed';
             }
         } else {
             $this->saveResult = 'credential_unchanged';
+            $auditMeta['save_result'] = 'credential_unchanged';
         }
+
+        \App\Models\ActivityLog::log(
+            'save_connection_audit',
+            "Credential save trace execution finished. Correlation ID: {$correlationId}, Save Result: {$this->saveResult}",
+            'MarketplaceStore',
+            $store->id,
+            $auditMeta
+        );
 
         $this->loadSelectedStore();
 
@@ -1813,7 +1921,7 @@ class MarketplaceIntegrations extends Component
             'authType' => $store->connection?->auth_type ?? 'api_key_secret',
             'apiBaseUrl' => $store->connection?->api_base_url ?: MarketplaceProviderRegistry::defaultApiBaseUrl($store->marketplace),
             'webhookSecret' => $store->connection?->webhook_secret ?: Str::random(40),
-            'apiKey' => $credentials['api_key'] ?? '',
+            'apiKey' => filled($credentials['api_key'] ?? null) ? '********' : '',
             'apiSecret' => filled($credentials['api_secret'] ?? null) ? '********' : '',
             'zolmBoosterApiKey' => filled($credentials['zolm_booster_api_key'] ?? null) ? '********' : '',
             'storeFrontCode' => $credentials['store_front_code'] ?? '',
