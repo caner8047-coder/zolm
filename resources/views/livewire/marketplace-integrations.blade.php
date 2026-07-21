@@ -261,6 +261,10 @@
                                 @else
                                     Bir hata oluştu: {{ $saveResult }}
                                 @endif
+
+                                @if($saveCorrelationId)
+                                    <div class="mt-2 font-mono text-xs opacity-80 border-t border-current/10 pt-2">Kayıt takip kodu: {{ $saveCorrelationId }}</div>
+                                @endif
                             </div>
                         @endif
 
@@ -504,6 +508,91 @@
                             </div>
                         @else
                             <p class="text-sm text-slate-500">Durum kontrolü için ayarların kaydedilmesi bekleniyor...</p>
+                        @endif
+
+                        @if($selectedStore && $selectedStore->marketplace === 'hepsiburada')
+                            @php
+                                $hbMeta = $this->selectedStoreHepsiburadaReadinessMetadata;
+                                $statusTones = [
+                                    'not_configured' => 'danger',
+                                    'configured_not_verified' => 'warning',
+                                    'mock_verified' => 'success',
+                                    'live_read_verified' => 'success',
+                                    'authentication_failed' => 'danger',
+                                    'permission_blocked' => 'danger',
+                                    'rate_limited' => 'warning',
+                                    'provider_unavailable' => 'warning',
+                                ];
+                                $statusLabels = [
+                                    'not_configured' => 'Yapılandırılmadı',
+                                    'configured_not_verified' => 'Kaydedildi (Doğrulanmadı)',
+                                    'mock_verified' => 'Mock Doğrulandı',
+                                    'live_read_verified' => 'Canlı Okuma Başarılı',
+                                    'authentication_failed' => 'Yetkilendirme Hatası',
+                                    'permission_blocked' => 'Erişim Engellendi',
+                                    'rate_limited' => 'İstek Limiti Aşıldı',
+                                    'provider_unavailable' => 'Pazaryeri Ulaşılamaz',
+                                ];
+                                $currentTone = $statusTones[$hbMeta['status'] ?? 'not_configured'] ?? 'warning';
+                                $currentLabel = $statusLabels[$hbMeta['status'] ?? 'not_configured'] ?? 'Bilinmiyor';
+                            @endphp
+                            <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm mt-4">
+                                <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+                                    <h4 class="font-semibold text-slate-900">Hepsiburada Salt-Okuma Durum Detayları</h4>
+                                    <x-zolm.status-badge :tone="$currentTone">{{ $currentLabel }}</x-zolm.status-badge>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Kimlik Bilgisi Durumu:</span>
+                                        <span class="font-medium text-slate-900">{{ ($hbMeta['has_credentials'] ?? false) ? 'Yapılandırıldı' : 'Eksik' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Merchant ID Durumu:</span>
+                                        <span class="font-medium text-slate-900">{{ ($hbMeta['has_merchant_id'] ?? false) ? 'Mevcut' : 'Eksik' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Son Doğrulama Zamanı:</span>
+                                        <span class="font-medium text-slate-900">{{ $hbMeta['last_verified_at'] ?: 'Hiç yapılmadı' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Son HTTP Durumu:</span>
+                                        <span class="font-medium text-slate-900">{{ $hbMeta['last_http_status'] ?: 'N/A' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Son Hata Kodu / Mesaj:</span>
+                                        <span class="font-medium text-rose-600">{{ $hbMeta['last_provider_error'] ?: 'Yok' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Son Correlation ID:</span>
+                                        <span class="font-mono text-slate-900">{{ $hbMeta['last_correlation_id'] ?: 'N/A' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Kategori Rollout Gate:</span>
+                                        <span class="font-medium {{ $hbMeta['reference_gate'] ? 'text-emerald-600' : 'text-slate-500' }}">{{ $hbMeta['reference_gate'] ? 'AÇIK' : 'KAPALI' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Katalog Rollout Gate:</span>
+                                        <span class="font-medium {{ $hbMeta['catalog_gate'] ? 'text-emerald-600' : 'text-slate-500' }}">{{ $hbMeta['catalog_gate'] ? 'AÇIK' : 'KAPALI' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Batch Status Rollout Gate:</span>
+                                        <span class="font-medium {{ $hbMeta['batch_gate'] ? 'text-emerald-600' : 'text-slate-500' }}">{{ $hbMeta['batch_gate'] ? 'AÇIK' : 'KAPALI' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Canlı Doğrulama Yapıldı mı?:</span>
+                                        <span class="font-medium text-slate-900">{{ $hbMeta['live_verified'] ? 'Evet' : 'Hayır' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Son Kategori Smoke Test:</span>
+                                        <span class="font-medium text-slate-900">{{ $hbMeta['last_categories_smoke'] ?: 'N/A' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-50 pb-2">
+                                        <span class="text-slate-500">Son Katalog Smoke Test:</span>
+                                        <span class="font-medium text-slate-900">{{ $hbMeta['last_catalog_smoke'] ?: 'N/A' }}</span>
+                                    </div>
+                                </div>
+                            </div>
                         @endif
 
                         @if($selectedLegacyProjection && ((int) ($selectedLegacyProjection['pending_rows'] ?? 0) > 0 || (int) ($selectedLegacyProjection['confirmed_orders'] ?? 0) > 0 || (int) ($selectedLegacyProjection['legacy_event_orders'] ?? 0) > 0))

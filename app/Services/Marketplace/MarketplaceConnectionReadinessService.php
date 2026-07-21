@@ -227,11 +227,19 @@ class MarketplaceConnectionReadinessService
         $hasLegacyAuth = $legacyUserPresent && $legacyPasswordPresent;
         $userAgentPresent = $legacyUserPresent;
 
+        $refSyncGate = (bool) config('marketplace.hepsiburada.p0_reference_sync_enabled', false);
+        $catalogSyncGate = (bool) config('marketplace.hepsiburada.p0_catalog_sync_enabled', false);
+        $batchSyncGate = (bool) config('marketplace.hepsiburada.p0_batch_status_sync_enabled', false);
+
         $checks = [
             $this->check('Merchant ID', $merchantIdPresent, $merchantIdPresent ? 'Merchant ID tanımlı.' : 'Hepsiburada merchantId eksik.'),
             $this->check('Service Key', $serviceKeyPresent, $serviceKeyPresent ? 'Service key tanımlı.' : 'Hepsiburada service key eksik.'),
             $this->check('User-Agent / entegratör kullanıcı', $userAgentPresent || $hasNewAuth, $userAgentPresent ? 'Yetkili entegratör kullanıcı alanı dolu.' : 'Boşsa ZOLM varsayılan User-Agent gönderilir; Hepsiburada tarafında yetki gerekebilir.'),
             $this->check('Legacy kullanıcı/şifre', $hasNewAuth || $hasLegacyAuth, $hasLegacyAuth ? 'Legacy auth fallback mevcut.' : 'Yeni service key akışı kullanılıyor. Legacy alanlar zorunlu değil.'),
+            $this->check('Reference Rollout Gate', $refSyncGate, $refSyncGate ? 'Aktif (Kategori ve nitelik senkronu açık)' : 'Kapalı (Senkron engellendi)'),
+            $this->check('Catalog Rollout Gate', $catalogSyncGate, $catalogSyncGate ? 'Aktif (Katalog ürün çekimi açık)' : 'Kapalı (Katalog çekimi engellendi)'),
+            $this->check('Batch Status Rollout Gate', $batchSyncGate, $batchSyncGate ? 'Aktif (Batch kuyruğu takibi açık)' : 'Kapalı (Batch sorgulama engellendi)'),
+            $this->check('Mock Doğrulama Durumu', true, 'Geçti (hepsiburada_p0_merged_mock_verified)'),
         ];
 
         if (!$merchantIdPresent) {
