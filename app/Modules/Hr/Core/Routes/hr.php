@@ -29,6 +29,9 @@ use App\Modules\Hr\Personnel\Livewire\EmployeeCreate;
 use App\Modules\Hr\Personnel\Livewire\EmployeeDetail;
 use App\Modules\Hr\Personnel\Livewire\EmployeeEdit;
 use App\Modules\Hr\Personnel\Livewire\EmployeeList;
+use App\Modules\Hr\Shift\Livewire\ShiftPlanner;
+use App\Modules\Hr\Shift\Livewire\ShiftTemplateForm;
+use App\Modules\Hr\Shift\Livewire\ShiftTemplateList;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -118,6 +121,17 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
             ->middleware('hr.authorize:hr.leaves.manage_policy');
         Route::get('/settings/leave-policies/{id}/edit', LeavePolicyForm::class)->name('settings.leave-policies.edit')
             ->middleware('hr.authorize:hr.leaves.manage_policy');
+    });
+
+    Route::middleware('hr.module:vardiya')->group(function () {
+        Route::get('/shifts', ShiftPlanner::class)->name('shifts')
+            ->middleware('hr.authorize:hr.shifts.view');
+        Route::get('/settings/shift-templates', ShiftTemplateList::class)->name('settings.shift-templates')
+            ->middleware('hr.authorize:hr.shifts.manage');
+        Route::get('/settings/shift-templates/create', ShiftTemplateForm::class)->name('settings.shift-templates.create')
+            ->middleware('hr.authorize:hr.shifts.manage');
+        Route::get('/settings/shift-templates/{id}/edit', ShiftTemplateForm::class)->name('settings.shift-templates.edit')
+            ->middleware('hr.authorize:hr.shifts.manage');
     });
 
     // Personel

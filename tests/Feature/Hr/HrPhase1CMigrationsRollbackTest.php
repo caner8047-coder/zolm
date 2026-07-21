@@ -21,6 +21,9 @@ class HrPhase1CMigrationsRollbackTest extends TestCase
 
     public function test_faz1c_rollback_preserves_previous_hr_tables(): void
     {
+        Artisan::call('migrate:rollback', ['--step' => 2]);
+        $this->assertTrue(Schema::hasTable('hr_leave_types'));
+
         Artisan::call('migrate:rollback', ['--step' => 6]);
 
         $this->assertFalse(Schema::hasTable('hr_leave_types'));
