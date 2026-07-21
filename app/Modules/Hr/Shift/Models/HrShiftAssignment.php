@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class HrShiftAssignment extends Model
 {
     use BelongsToLegalEntity;
-    protected $fillable = ['legal_entity_id', 'employee_id', 'shift_template_id', 'shift_date', 'status', 'note', 'published_at', 'published_by', 'created_by', 'updated_by'];
-    protected function casts(): array { return ['shift_date' => 'date', 'status' => ShiftAssignmentStatus::class, 'published_at' => 'datetime']; }
+    protected $fillable = ['legal_entity_id', 'employee_id', 'shift_template_id', 'shift_date', 'status', 'note', 'published_at', 'published_by', 'cancelled_at', 'cancelled_by', 'cancellation_reason', 'created_by', 'updated_by'];
+    protected function casts(): array { return ['shift_date' => 'date', 'status' => ShiftAssignmentStatus::class, 'published_at' => 'datetime', 'cancelled_at' => 'datetime']; }
     public function employee(): BelongsTo { return $this->belongsTo(HrEmployee::class); }
     public function template(): BelongsTo { return $this->belongsTo(HrShiftTemplate::class, 'shift_template_id'); }
 }

@@ -5,6 +5,8 @@ namespace App\Modules\Hr\Shift\Livewire;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
 use App\Modules\Hr\Shift\Actions\AssignShiftAction;
+use App\Modules\Hr\Shift\Actions\CancelShiftAssignmentAction;
+use App\Modules\Hr\Shift\Actions\PublishShiftWeekAction;
 use App\Modules\Hr\Shift\Models\HrShiftAssignment;
 use App\Modules\Hr\Shift\Models\HrShiftTemplate;
 use Carbon\Carbon;
@@ -17,6 +19,8 @@ class ShiftPlanner extends Component
     public ?int $templateId = null;
     public string $shiftDate = '';
     public string $note = '';
+    public ?int $cancellingId = null;
+    public string $cancellationReason = '';
 
     public function mount(): void { $this->weekStart = now()->startOfWeek()->toDateString(); $this->shiftDate = now()->toDateString(); }
     public function previousWeek(): void { $this->weekStart = Carbon::parse($this->weekStart)->subWeek()->toDateString(); }
@@ -31,6 +35,28 @@ class ShiftPlanner extends Component
         $template = HrShiftTemplate::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($this->templateId);
         $action->execute($employee, $template, $this->shiftDate, $this->note ?: null);
         session()->flash('success', 'Vardiya ataması kaydedildi.'); $this->reset(['employeeId', 'templateId', 'note']);
+    }
+
+    public function publishWeek(PublishShiftWeekAction $action): void
+    {
+        $start = Carbon::parse($this->weekStart)->startOfWeek();
+        $count = $action->execute($start, $start->copy()->endOfWeek());
+        session()->flash('success', $count > 0 ? "{$count} vardiya yayımlandı." : 'Yayımlanacak taslak vardiya bulunmuyor.');
+    }
+
+    public function startCancel(int $id): void
+    {
+        $this->cancellingId = $id;
+        $this->cancellationReason = '';
+    }
+
+    public function cancel(CancelShiftAssignmentAction $action): void
+    {
+        $this->validate(['cancellationReason' => 'required|string|max:1000']);
+        $assignment = HrShiftAssignment::withoutGlobalScope('tenant')->where('legal_entity_id', app(TenantContext::class)->getId())->findOrFail($this->cancellingId);
+        $action->execute($assignment, $this->cancellationReason);
+        $this->reset(['cancellingId', 'cancellationReason']);
+        session()->flash('success', 'Vardiya ataması iptal edildi.');
     }
 
     public function render()

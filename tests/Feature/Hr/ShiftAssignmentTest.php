@@ -10,6 +10,9 @@ use App\Modules\Hr\Leave\Models\HrLeaveRequest;
 use App\Modules\Hr\Leave\Models\HrLeaveType;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
 use App\Modules\Hr\Shift\Actions\AssignShiftAction;
+use App\Modules\Hr\Shift\Actions\CancelShiftAssignmentAction;
+use App\Modules\Hr\Shift\Actions\PublishShiftWeekAction;
+use App\Modules\Hr\Shift\Enums\ShiftAssignmentStatus;
 use App\Modules\Hr\Shift\Models\HrShiftTemplate;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -45,5 +48,25 @@ class ShiftAssignmentTest extends TestCase
         HrLeaveRequest::create(['legal_entity_id' => $this->tenant->id, 'employee_id' => $this->employee->id, 'leave_type_id' => $type->id, 'status' => LeaveRequestStatus::Approved, 'start_date' => $date, 'end_date' => $date, 'requested_amount' => 1, 'unit' => 'day']);
         $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
         app(AssignShiftAction::class)->execute($this->employee, $this->template, $date);
+    }
+
+    public function test_week_publish_only_changes_planned_assignments(): void
+    {
+        $date = now()->startOfWeek()->addDay();
+        $assignment = app(AssignShiftAction::class)->execute($this->employee, $this->template, $date->toDateString());
+        $count = app(PublishShiftWeekAction::class)->execute($date->copy()->startOfWeek(), $date->copy()->endOfWeek());
+        $this->assertSame(1, $count);
+        $this->assertSame(ShiftAssignmentStatus::Published, $assignment->fresh()->status);
+        $this->assertNotNull($assignment->fresh()->published_at);
+        $this->assertSame(0, app(PublishShiftWeekAction::class)->execute($date->copy()->startOfWeek(), $date->copy()->endOfWeek()));
+    }
+
+    public function test_assignment_can_be_cancelled_with_reason(): void
+    {
+        $assignment = app(AssignShiftAction::class)->execute($this->employee, $this->template, now()->addDay()->toDateString());
+        $cancelled = app(CancelShiftAssignmentAction::class)->execute($assignment, 'Operasyon planı değişti');
+        $this->assertSame(ShiftAssignmentStatus::Cancelled, $cancelled->status);
+        $this->assertSame('Operasyon planı değişti', $cancelled->cancellation_reason);
+        $this->assertNotNull($cancelled->cancelled_at);
     }
 }

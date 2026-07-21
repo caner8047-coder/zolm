@@ -59,7 +59,7 @@ class HrPhase1BMigrationsRollbackTest extends TestCase
     public function test_faz1b_rollback_drops_document_tables_and_preserves_faz0_1a(): void
     {
         // Faz 2A vardiya migration'larını önce geri alırız.
-        Artisan::call('migrate:rollback', ['--step' => 2]);
+        Artisan::call('migrate:rollback', ['--step' => 3]);
 
         // Faz 1C migration'ları eklendiğinde önce onları geri alırız. Böylece
         // Faz 1B checkpoint testi, sonraki fazların migration sırasına bağlı kalmaz.

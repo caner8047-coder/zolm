@@ -13,12 +13,12 @@ class HrPhase2AMigrationsRollbackTest extends TestCase
     public function test_shift_tables_have_expected_columns(): void
     {
         $this->assertTrue(Schema::hasColumns('hr_shift_templates', ['legal_entity_id', 'code', 'starts_at', 'ends_at', 'break_minutes', 'is_active']));
-        $this->assertTrue(Schema::hasColumns('hr_shift_assignments', ['legal_entity_id', 'employee_id', 'shift_template_id', 'shift_date', 'status']));
+        $this->assertTrue(Schema::hasColumns('hr_shift_assignments', ['legal_entity_id', 'employee_id', 'shift_template_id', 'shift_date', 'status', 'cancelled_at', 'cancelled_by', 'cancellation_reason']));
     }
 
     public function test_phase2a_rollback_preserves_leave_tables(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 2]);
+        Artisan::call('migrate:rollback', ['--step' => 3]);
         $this->assertFalse(Schema::hasTable('hr_shift_assignments'));
         $this->assertFalse(Schema::hasTable('hr_shift_templates'));
         $this->assertTrue(Schema::hasTable('hr_leave_requests'));
