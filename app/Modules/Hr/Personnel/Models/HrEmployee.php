@@ -79,6 +79,16 @@ class HrEmployee extends Model
         return $this->hasMany(\App\Modules\Hr\Shift\Models\HrShiftAvailability::class, 'employee_id');
     }
 
+    public function attendanceEvents(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Attendance\Models\HrAttendanceEvent::class, 'employee_id');
+    }
+
+    public function attendanceAnomalies(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Attendance\Models\HrAttendanceAnomaly::class, 'employee_id');
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', EmployeeStatus::Active);

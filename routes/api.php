@@ -6,6 +6,10 @@ use App\Http\Controllers\WhatsApp\WebhookController;
 use App\Http\Controllers\WhatsApp\BoosterWebhookController;
 use Illuminate\Support\Facades\Route;
 
+Route::post('/hr/v1/attendance/events', [\App\Modules\Hr\Attendance\Http\Controllers\AttendanceDeviceEventController::class, 'store'])
+    ->middleware('throttle:60,1')
+    ->name('hr.api.attendance.events.store');
+
 Route::prefix('/customer-care/widget/{publicKey}')->group(function () {
     Route::options('/{path?}', [\App\Http\Controllers\CustomerCare\WebChatWidgetController::class, 'preflight'])
         ->where('path', '.*');

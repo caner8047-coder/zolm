@@ -35,6 +35,10 @@ use App\Modules\Hr\Shift\Livewire\ShiftTemplateList;
 use App\Modules\Hr\Shift\Livewire\MyShiftAvailability;
 use App\Modules\Hr\Shift\Livewire\MyShiftChangeRequests;
 use App\Modules\Hr\Shift\Livewire\ShiftChangeApprovalInbox;
+use App\Modules\Hr\Attendance\Livewire\AttendanceAnomalyInbox;
+use App\Modules\Hr\Attendance\Livewire\AttendanceDeviceManager;
+use App\Modules\Hr\Attendance\Livewire\AttendanceEventList;
+use App\Modules\Hr\Attendance\Livewire\MyAttendanceTerminal;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -141,6 +145,17 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
             ->middleware('hr.authorize:hr.shifts.manage');
         Route::get('/settings/shift-templates/{id}/edit', ShiftTemplateForm::class)->name('settings.shift-templates.edit')
             ->middleware('hr.authorize:hr.shifts.manage');
+    });
+
+    Route::middleware('hr.module:pdks')->group(function () {
+        Route::get('/attendance', AttendanceEventList::class)->name('attendance')
+            ->middleware('hr.authorize:hr.attendance.view');
+        Route::get('/attendance/anomalies', AttendanceAnomalyInbox::class)->name('attendance.anomalies')
+            ->middleware('hr.authorize:hr.attendance.view_anomaly');
+        Route::get('/my/attendance', MyAttendanceTerminal::class)->name('my-attendance')
+            ->middleware('hr.authorize:hr.attendance.view');
+        Route::get('/settings/attendance-devices', AttendanceDeviceManager::class)->name('settings.attendance-devices')
+            ->middleware('hr.authorize:hr.attendance.manage');
     });
 
     // Personel
