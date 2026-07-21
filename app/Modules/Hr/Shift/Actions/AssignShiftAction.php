@@ -11,11 +11,12 @@ use App\Modules\Hr\Shift\Models\HrShiftAssignment;
 use App\Modules\Hr\Shift\Models\HrShiftAvailability;
 use App\Modules\Hr\Shift\Enums\ShiftAvailabilityStatus;
 use App\Modules\Hr\Shift\Models\HrShiftTemplate;
+use App\Modules\Hr\Training\Services\TrainingEligibilityService;
 use Illuminate\Support\Facades\DB;
 
 class AssignShiftAction
 {
-    public function __construct(private HrAuditService $audit) {}
+    public function __construct(private HrAuditService $audit, private TrainingEligibilityService $trainingEligibility) {}
 
     public function execute(HrEmployee $employee, HrShiftTemplate $template, string $date, ?string $note = null): HrShiftAssignment
     {
@@ -24,6 +25,7 @@ class AssignShiftAction
         $template->refresh();
         abort_unless($employee->legal_entity_id === $tenantId && $template->legal_entity_id === $tenantId && $template->is_active, 422, 'Çalışan veya vardiya şablonu geçersiz.');
         abort_unless($employee->status->value === 'active', 422, 'Pasif çalışana vardiya atanamaz.');
+        abort_unless($this->trainingEligibility->hasValidCertificate($tenantId, $employee->id, $template->required_training_course_id, $date), 422, 'Bu vardiya için gerekli geçerli eğitim sertifikası bulunmuyor.');
 
         return DB::transaction(function () use ($employee, $template, $date, $note, $tenantId) {
             $onLeave = HrLeaveRequest::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $employee->id)->where('status', LeaveRequestStatus::Approved->value)->whereDate('start_date', '<=', $date)->whereDate('end_date', '>=', $date)->exists();

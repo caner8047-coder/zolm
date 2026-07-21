@@ -1,0 +1,4 @@
+<?php
+namespace App\Modules\Hr\Training\Models;
+use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use App\Modules\Hr\Personnel\Models\HrEmployee; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\BelongsTo; use Illuminate\Database\Eloquent\Relations\HasOne;
+class HrTrainingEnrollment extends Model { use BelongsToLegalEntity; protected $fillable=['legal_entity_id','session_id','employee_id','status','progress_percent','exam_score','passed','completed_at','enrolled_by']; protected function casts():array{return ['progress_percent'=>'integer','exam_score'=>'decimal:2','passed'=>'boolean','completed_at'=>'datetime'];} public function session():BelongsTo{return $this->belongsTo(HrTrainingSession::class,'session_id');} public function employee():BelongsTo{return $this->belongsTo(HrEmployee::class);} public function certificate():HasOne{return $this->hasOne(HrCertificate::class,'enrollment_id');} }

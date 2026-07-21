@@ -129,6 +129,16 @@ class HrEmployee extends Model
         return $this->hasMany(\App\Modules\Hr\Performance\Models\HrEmployeeCompetency::class, 'employee_id');
     }
 
+    public function trainingEnrollments(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Training\Models\HrTrainingEnrollment::class, 'employee_id');
+    }
+
+    public function certificates(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Training\Models\HrCertificate::class, 'employee_id');
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', EmployeeStatus::Active);

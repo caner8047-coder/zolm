@@ -19,6 +19,10 @@ use App\Modules\Hr\Shift\Actions\DecideShiftChangeRequestAction;
 use App\Modules\Hr\Shift\Enums\ShiftAssignmentStatus;
 use App\Modules\Hr\Shift\Enums\ShiftAvailabilityStatus;
 use App\Modules\Hr\Shift\Models\HrShiftTemplate;
+use App\Modules\Hr\Training\Actions\CreateTrainingCourseAction;
+use App\Modules\Hr\Training\Actions\EnrollTrainingEmployeeAction;
+use App\Modules\Hr\Training\Actions\RecordTrainingResultAction;
+use App\Modules\Hr\Training\Actions\ScheduleTrainingSessionAction;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -107,5 +111,26 @@ class ShiftAssignmentTest extends TestCase
         $this->assertSame($desiredDate, $assignment->fresh()->shift_date->toDateString());
         $this->assertSame(ShiftAssignmentStatus::Planned, $assignment->fresh()->status);
         $this->assertNull($assignment->fresh()->published_at);
+    }
+
+    public function test_required_training_certificate_blocks_and_then_allows_shift_assignment(): void
+    {
+        $course = app(CreateTrainingCourseAction::class)->execute(['code' => 'KRITIK', 'title' => 'Kritik Operasyon', 'duration_minutes' => 60, 'certificate_validity_months' => 12]);
+        $this->template->update(['required_training_course_id' => $course->id]);
+        $date = now()->addMonth()->toDateString();
+
+        try {
+            app(AssignShiftAction::class)->execute($this->employee, $this->template, $date);
+            $this->fail('Sertifikasız vardiya ataması engellenmeliydi.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(422, $exception->getStatusCode());
+        }
+
+        $session = app(ScheduleTrainingSessionAction::class)->execute($course, ['starts_at' => now()->addDay(), 'ends_at' => now()->addDay()->addHour()]);
+        $enrollment = app(EnrollTrainingEmployeeAction::class)->execute($session, $this->employee);
+        app(RecordTrainingResultAction::class)->execute($enrollment, 100);
+
+        $assignment = app(AssignShiftAction::class)->execute($this->employee, $this->template->fresh(), $date);
+        $this->assertSame($this->template->id, $assignment->shift_template_id);
     }
 }

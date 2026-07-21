@@ -51,6 +51,7 @@ use App\Modules\Hr\Expense\Livewire\ExpenseWorkspace;
 use App\Modules\Hr\Advance\Livewire\AdvanceWorkspace;
 use App\Modules\Hr\Asset\Livewire\AssetWorkspace;
 use App\Modules\Hr\Performance\Livewire\PerformanceWorkspace;
+use App\Modules\Hr\Training\Livewire\TrainingWorkspace;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -221,6 +222,11 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
     Route::middleware('hr.module:performans')->group(function () {
         Route::get('/performance', PerformanceWorkspace::class)->name('performance')->middleware('hr.authorize:hr.performance.view');
         Route::get('/my/performance', PerformanceWorkspace::class)->name('my-performance')->defaults('selfService', true)->middleware('hr.authorize:hr.performance.view');
+    });
+
+    Route::middleware('hr.module:egitim')->group(function () {
+        Route::get('/training', TrainingWorkspace::class)->name('training')->middleware('hr.authorize:hr.training.view');
+        Route::get('/my/training', TrainingWorkspace::class)->name('my-training')->defaults('selfService', true)->middleware('hr.authorize:hr.training.view');
     });
 
     // Personel

@@ -12,11 +12,12 @@ use App\Modules\Hr\Shift\Enums\ShiftChangeRequestStatus;
 use App\Modules\Hr\Shift\Models\HrShiftAssignment;
 use App\Modules\Hr\Shift\Models\HrShiftAvailability;
 use App\Modules\Hr\Shift\Models\HrShiftChangeRequest;
+use App\Modules\Hr\Training\Services\TrainingEligibilityService;
 use Illuminate\Support\Facades\DB;
 
 class DecideShiftChangeRequestAction
 {
-    public function __construct(private HrAuditService $audit) {}
+    public function __construct(private HrAuditService $audit, private TrainingEligibilityService $trainingEligibility) {}
 
     public function approve(HrShiftChangeRequest $request, ?string $note = null): HrShiftChangeRequest
     {
@@ -29,6 +30,7 @@ class DecideShiftChangeRequestAction
             abort_unless($request->desiredTemplate && $request->desiredTemplate->legal_entity_id === $tenantId && $request->desiredTemplate->is_active, 422, 'İstenen vardiya şablonu artık aktif değil.');
             $assignment = HrShiftAssignment::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->lockForUpdate()->findOrFail($request->shift_assignment_id);
             $date = $request->desired_shift_date->toDateString();
+            abort_unless($this->trainingEligibility->hasValidCertificate($tenantId, $request->employee_id, $request->desiredTemplate->required_training_course_id, $date), 422, 'İstenen vardiya için gerekli geçerli eğitim sertifikası bulunmuyor.');
             $conflict = HrShiftAssignment::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $request->employee_id)->whereDate('shift_date', $date)->whereKeyNot($assignment->id)->where('status', '!=', ShiftAssignmentStatus::Cancelled->value)->exists();
             abort_if($conflict, 422, 'İstenen tarihte başka vardiya bulunuyor.');
             $onLeave = HrLeaveRequest::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $request->employee_id)->where('status', LeaveRequestStatus::Approved->value)->whereDate('start_date', '<=', $date)->whereDate('end_date', '>=', $date)->exists();
