@@ -56,6 +56,7 @@ use App\Modules\Hr\Engagement\Livewire\EngagementWorkspace;
 use App\Modules\Hr\Recruitment\Livewire\RecruitmentWorkspace;
 use App\Modules\Hr\Lifecycle\Livewire\LifecycleWorkspace;
 use App\Modules\Hr\Compensation\Livewire\CompensationWorkspace;
+use App\Modules\Hr\Analytics\Livewire\HrAnalyticsDashboard;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -114,6 +115,10 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
 
     Route::middleware('hr.module:ucret')->group(function () {
         Route::get('/compensation', CompensationWorkspace::class)->name('compensation')->middleware('hr.authorize:hr.salary.view');
+    });
+
+    Route::middleware('hr.module:analitik')->group(function () {
+        Route::get('/analytics', HrAnalyticsDashboard::class)->name('analytics')->middleware('hr.authorize:hr.analytics.view');
     });
 
     // İzin ayarları — izin modül lisansı + tür yönetimi

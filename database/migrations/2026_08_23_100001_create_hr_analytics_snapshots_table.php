@@ -1,0 +1,3 @@
+<?php
+use Illuminate\Database\Migrations\Migration;use Illuminate\Database\Schema\Blueprint;use Illuminate\Support\Facades\Schema;
+return new class extends Migration{public function up():void{Schema::create('hr_analytics_snapshots',function(Blueprint $t){$t->id();$t->foreignId('legal_entity_id')->constrained('legal_entities')->cascadeOnDelete();$t->date('period_start');$t->date('period_end');$t->json('metrics');$t->json('sources');$t->string('source_hash',64);$t->foreignId('generated_by')->nullable()->constrained('users')->nullOnDelete();$t->timestamp('generated_at');$t->timestamps();$t->index(['legal_entity_id','period_end']);});}public function down():void{Schema::dropIfExists('hr_analytics_snapshots');}};
