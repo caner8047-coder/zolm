@@ -8,6 +8,10 @@ use App\Modules\Hr\Core\Services\HrAuditService;
 use App\Modules\Hr\Core\Services\HrCalendarService;
 use App\Modules\Hr\Core\Services\HrFileService;
 use App\Modules\Hr\Core\Services\TenantContext;
+use App\Modules\Hr\Document\Models\HrDocumentType;
+use App\Modules\Hr\Document\Models\HrEmployeeDocument;
+use App\Modules\Hr\Document\Policies\HrDocumentTypePolicy;
+use App\Modules\Hr\Document\Policies\HrEmployeeDocumentPolicy;
 use App\Modules\Hr\Organization\Models\HrDepartment;
 use App\Modules\Hr\Organization\Models\HrDepartmentPolicy;
 use App\Modules\Hr\Organization\Models\HrSgkWorkplace;
@@ -41,5 +45,7 @@ class HrServiceProvider extends ServiceProvider
         Gate::policy(HrEmployee::class, HrEmployeePolicy::class);
         Gate::policy(HrDepartment::class, HrDepartmentPolicy::class);
         Gate::policy(HrSgkWorkplace::class, HrSgkWorkplacePolicy::class);
+        Gate::policy(HrDocumentType::class, HrDocumentTypePolicy::class);
+        Gate::policy(HrEmployeeDocument::class, HrEmployeeDocumentPolicy::class);
     }
 }

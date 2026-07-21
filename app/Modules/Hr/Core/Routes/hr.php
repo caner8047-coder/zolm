@@ -6,6 +6,9 @@ use App\Modules\Hr\Core\Http\Middleware\HrAuthorize;
 use App\Modules\Hr\Core\Http\Middleware\ResolveHrTenant;
 use App\Modules\Hr\Core\Livewire\HrDashboard;
 use App\Modules\Hr\Core\Livewire\HrSettings;
+use App\Modules\Hr\Document\Livewire\DocumentList;
+use App\Modules\Hr\Document\Livewire\DocumentTypeForm;
+use App\Modules\Hr\Document\Livewire\DocumentTypeList;
 use App\Modules\Hr\Organization\Livewire\OrganizationSettings;
 use App\Modules\Hr\Organization\Livewire\TeamForm;
 use App\Modules\Hr\Organization\Livewire\TeamList;
@@ -46,6 +49,18 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
         ->middleware('hr.authorize:hr.org_structure.manage');
     Route::get('/settings/teams/{team}/edit', TeamForm::class)->name('settings.teams.edit')
         ->middleware('hr.authorize:hr.org_structure.manage');
+
+    // Belge türleri
+    Route::get('/settings/document-types', DocumentTypeList::class)->name('settings.document-types')
+        ->middleware('hr.authorize:hr.documents.view');
+    Route::get('/settings/document-types/create', DocumentTypeForm::class)->name('settings.document-types.create')
+        ->middleware('hr.authorize:hr.documents.manage_types');
+    Route::get('/settings/document-types/{documentType}/edit', DocumentTypeForm::class)->name('settings.document-types.edit')
+        ->middleware('hr.authorize:hr.documents.manage_types');
+
+    // Personel belgeleri
+    Route::get('/documents', DocumentList::class)->name('documents')
+        ->middleware('hr.authorize:hr.documents.view');
 
     // Personel
     Route::get('/personnel', EmployeeList::class)->name('personnel')
