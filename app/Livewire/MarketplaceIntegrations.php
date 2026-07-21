@@ -310,6 +310,11 @@ class MarketplaceIntegrations extends Component
         $isDemo = $existingConnection?->isDemo() ?? false;
         $existingCredentials = $existingConnection?->credentials_encrypted ?? [];
 
+        $providedApiKey = $validated['connectionForm']['apiKey'] ?? null;
+        $apiKey = ($providedApiKey && $providedApiKey !== '********')
+            ? $providedApiKey
+            : ($existingCredentials['api_key'] ?? null);
+
         $providedSecret = $validated['connectionForm']['apiSecret'] ?? null;
         $apiSecret = ($providedSecret && $providedSecret !== '********')
             ? $providedSecret
@@ -326,7 +331,7 @@ class MarketplaceIntegrations extends Component
             : ($existingCredentials['extra_password'] ?? null);
 
         $credentials = [
-            'api_key' => $validated['connectionForm']['apiKey'] ?: null,
+            'api_key' => $apiKey,
             'api_secret' => $apiSecret,
             'zolm_booster_api_key' => $store->marketplace === 'woocommerce' ? $zolmBoosterApiKey : null,
             'store_front_code' => $validated['connectionForm']['storeFrontCode'] ?: ($existingCredentials['store_front_code'] ?? null),
@@ -334,6 +339,14 @@ class MarketplaceIntegrations extends Component
             'extra_password' => $extraPassword,
             'store_url' => $validated['connectionForm']['storeUrl'] ?: null,
         ];
+
+        $credentialsProvided = false;
+        if (($providedApiKey && $providedApiKey !== '********' && $providedApiKey !== ($existingCredentials['api_key'] ?? null)) ||
+            ($providedSecret && $providedSecret !== '********' && $providedSecret !== ($existingCredentials['api_secret'] ?? null)) ||
+            ($providedZolmBoosterApiKey && $providedZolmBoosterApiKey !== '********' && $providedZolmBoosterApiKey !== ($existingCredentials['zolm_booster_api_key'] ?? null)) ||
+            ($providedExtraPassword && $providedExtraPassword !== '********' && $providedExtraPassword !== ($existingCredentials['extra_password'] ?? null))) {
+            $credentialsProvided = true;
+        }
 
         $resolvedApiBaseUrl = $this->resolveConnectionApiBaseUrl(
             marketplace: $store->marketplace,
@@ -382,40 +395,51 @@ class MarketplaceIntegrations extends Component
 
         $store->refresh();
         $newConnection = $store->connection;
-        $newCredentials = $newConnection?->credentials_encrypted ?? [];
+
+        if (!$newConnection || (int) $newConnection->store_id !== (int) $store->id) {
+            $this->saveResult = 'credential_save_failed';
+            $this->notify('Bağlantı bilgileri doğrulanırken hata oluştu.', 'error');
+            return;
+        }
+
+        $newCredentials = $newConnection->credentials_encrypted ?? [];
         $newFingerprint = hash('sha256', json_encode($newCredentials));
 
-        $updatedAtChanged = $newConnection && (!$preUpdateUpdatedAt || $newConnection->updated_at->gt($preUpdateUpdatedAt));
+        $updatedAtChanged = !$preUpdateUpdatedAt || $newConnection->updated_at->gt($preUpdateUpdatedAt);
         $fingerprintChanged = $preUpdateFingerprint !== $newFingerprint;
 
         $newApiKeyToCheck = trim(Str::lower($newCredentials['api_key'] ?? ''));
         $newApiSecretToCheck = trim(Str::lower($newCredentials['api_secret'] ?? ''));
         $hasPlaceholder = in_array($newApiKeyToCheck, $placeholders, true) || in_array($newApiSecretToCheck, $placeholders, true);
 
-        if (!$newConnection || $hasPlaceholder || (int) $newConnection->store_id !== (int) $store->id) {
+        if ($hasPlaceholder) {
             $this->saveResult = 'credential_save_failed';
-            $this->notify('Bağlantı bilgileri doğrulanırken hata oluştu.', 'error');
+            $this->notify('Geçerli production API bilgileri girilmelidir.', 'error');
             return;
         }
 
-        if ($fingerprintChanged) {
-            if ($isCrossTenant) {
-                \App\Models\ActivityLog::log(
-                    'update_connection_credentials',
-                    "Updated store connection credentials via tenant context. Acting user: {$actingUser->id}, Target tenant: {$targetTenantUserId}, Target store: {$store->id}, Reason: credential maintenance",
-                    'MarketplaceStore',
-                    $store->id,
-                    [
-                        'api_key_present' => filled($credentials['api_key'] ?? null),
-                        'api_secret_present' => filled($credentials['api_secret'] ?? null),
-                        'api_key_length' => strlen($credentials['api_key'] ?? ''),
-                        'api_secret_length' => strlen($credentials['api_secret'] ?? ''),
-                        'fingerprint_changed' => true,
-                    ]
-                );
-            }
+        if ($credentialsProvided) {
+            if ($fingerprintChanged && $updatedAtChanged) {
+                $this->saveResult = 'credential_saved';
 
-            $this->saveResult = 'credential_saved';
+                if ($isCrossTenant) {
+                    \App\Models\ActivityLog::log(
+                        'update_connection_credentials',
+                        "Updated store connection credentials via tenant context. Acting user: {$actingUser->id}, Target tenant: {$targetTenantUserId}, Target store: {$store->id}, Reason: credential maintenance",
+                        'MarketplaceStore',
+                        $store->id,
+                        [
+                            'api_key_present' => filled($credentials['api_key'] ?? null),
+                            'api_secret_present' => filled($credentials['api_secret'] ?? null),
+                            'api_key_length' => strlen($credentials['api_key'] ?? ''),
+                            'api_secret_length' => strlen($credentials['api_secret'] ?? ''),
+                            'fingerprint_changed' => true,
+                        ]
+                    );
+                }
+            } else {
+                $this->saveResult = 'credential_save_failed';
+            }
         } else {
             $this->saveResult = 'credential_unchanged';
         }
