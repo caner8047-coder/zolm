@@ -15,7 +15,8 @@ class HrFilePolicy extends HrBasePolicy
         }
 
         return $this->checkPermission($user, 'hr.employees.view')
-            || $this->checkPermission($user, 'hr.documents.view');
+            || $this->checkPermission($user, 'hr.documents.view')
+            || ($file->category === 'expenses' && $this->checkPermission($user, 'hr.expenses.view'));
     }
 
     public function download(User $user, HrFile $file): bool
@@ -25,7 +26,8 @@ class HrFilePolicy extends HrBasePolicy
         }
 
         return $this->checkPermission($user, 'hr.employees.view')
-            || $this->checkPermission($user, 'hr.documents.view');
+            || $this->checkPermission($user, 'hr.documents.view')
+            || ($file->category === 'expenses' && $this->checkPermission($user, 'hr.expenses.view'));
     }
 
     public function delete(User $user, HrFile $file): bool

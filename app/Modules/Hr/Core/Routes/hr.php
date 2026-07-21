@@ -46,6 +46,8 @@ use App\Modules\Hr\Overtime\Livewire\OvertimeTypeManager;
 use App\Modules\Hr\Overtime\Livewire\OvertimeWorkspace;
 use App\Modules\Hr\Payroll\Livewire\PayrollRuleManager;
 use App\Modules\Hr\Payroll\Livewire\PayrollWorkspace;
+use App\Modules\Hr\Expense\Livewire\ExpenseCategoryManager;
+use App\Modules\Hr\Expense\Livewire\ExpenseWorkspace;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -190,6 +192,17 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
             ->middleware('hr.authorize:hr.payroll.view');
         Route::get('/settings/payroll-rules', PayrollRuleManager::class)->name('settings.payroll-rules')
             ->middleware('hr.authorize:hr.payroll.manage_rules');
+    });
+
+    Route::middleware('hr.module:masraf')->group(function () {
+        Route::get('/expenses', ExpenseWorkspace::class)->name('expenses')
+            ->middleware('hr.authorize:hr.expenses.view');
+        Route::get('/my/expenses', ExpenseWorkspace::class)->name('my-expenses')
+            ->defaults('selfService', true)
+            ->middleware('hr.authorize:hr.expenses.create');
+        Route::get('/settings/expense-categories', ExpenseCategoryManager::class)->name('settings.expense-categories')
+            ->middleware('hr.authorize:hr.expenses.approve');
+        Route::get('/expenses/receipts/{file}', [HrFileController::class, 'downloadExpenseReceipt'])->name('expenses.receipt');
     });
 
     // Personel

@@ -58,6 +58,9 @@ class HrPhase1BMigrationsRollbackTest extends TestCase
 
     public function test_faz1b_rollback_drops_document_tables_and_preserves_faz0_1a(): void
     {
+        // Faz 3B masraf yönetimi migration'larını önce geri alırız.
+        Artisan::call('migrate:rollback', ['--step' => 3]);
+
         // Faz 3A bordro hazırlık migration'larını önce geri alırız.
         Artisan::call('migrate:rollback', ['--step' => 3]);
 
