@@ -17,7 +17,7 @@ class HrPhase7CPayrollAdjustmentsRollbackTest extends TestCase
 
     public function test_rollback_preserves_phase7b_exports(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);
+        Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);
         $this->assertFalse(Schema::hasTable('hr_payroll_adjustments'));
         $this->assertTrue(Schema::hasTable('hr_payroll_exports'));
         $this->assertTrue(Schema::hasColumn('hr_payroll_periods', 'output_preflight_hash'));

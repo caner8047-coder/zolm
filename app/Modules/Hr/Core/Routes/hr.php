@@ -61,6 +61,8 @@ use App\Modules\Hr\Lifecycle\Livewire\LifecycleWorkspace;
 use App\Modules\Hr\Compensation\Livewire\CompensationWorkspace;
 use App\Modules\Hr\Analytics\Livewire\HrAnalyticsDashboard;
 use App\Modules\Hr\Workforce\Livewire\WorkforcePlanningWorkspace;
+use App\Modules\Hr\Support\Livewire\SupportWorkspace;
+use App\Modules\Hr\Safety\Livewire\SafetyWorkspace;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -124,6 +126,14 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
     Route::middleware('hr.module:analitik')->group(function () {
         Route::get('/analytics', HrAnalyticsDashboard::class)->name('analytics')->middleware('hr.authorize:hr.analytics.view');
         Route::get('/workforce-planning', WorkforcePlanningWorkspace::class)->name('workforce-planning')->middleware('hr.authorize:hr.workforce.view');
+    });
+
+    Route::get('/support', SupportWorkspace::class)->name('support')
+        ->middleware('hr.authorize:hr.support.view');
+
+    Route::middleware('hr.module:isg')->group(function () {
+        Route::get('/isg', SafetyWorkspace::class)->name('isg')
+            ->middleware('hr.authorize:hr.isg.view');
     });
 
     // İzin ayarları — izin modül lisansı + tür yönetimi

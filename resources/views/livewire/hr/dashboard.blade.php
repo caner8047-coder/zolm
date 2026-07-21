@@ -6,6 +6,13 @@
         </div>
     </section>
 
+    @if(auth()->user()?->hasHrPermission('hr.support.view') || auth()->user()?->hasHrPermission('hr.isg.view'))
+        <nav class="flex flex-col gap-2 sm:flex-row">
+            @if(auth()->user()?->hasHrPermission('hr.support.view'))<a href="{{ route('hr.support') }}" class="w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-center text-sm text-slate-700 shadow-sm sm:w-auto sm:py-2">Destek merkezi</a>@endif
+            @if(auth()->user()?->hasHrPermission('hr.isg.view'))<a href="{{ route('hr.isg') }}" class="w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-center text-sm text-slate-700 shadow-sm sm:w-auto sm:py-2">İSG ve uyum</a>@endif
+        </nav>
+    @endif
+
     @if($employeeWorkspace)
         <section class="grid grid-cols-1 xl:grid-cols-12 gap-3 lg:gap-4">
             <div class="xl:col-span-7 rounded-[10px] border border-slate-200 bg-white shadow-sm overflow-hidden"><div class="flex items-center justify-between p-4 border-b border-slate-200"><div><h2 class="text-sm font-semibold text-slate-900">İzin bilgilerim</h2><p class="mt-1 text-xs text-slate-500">Güncel ledger bakiyeleriniz</p></div><a href="{{ route('hr.my-leaves') }}" class="text-sm font-medium text-slate-700">Tümünü gör →</a></div><div class="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">@forelse($employeeWorkspace['balances'] as $balance)<div class="p-4 min-w-0"><p class="truncate text-sm text-slate-500">{{ $balance->leaveType?->name }}</p><p class="mt-2 text-2xl font-semibold {{ $balance->remaining_amount < 0 ? 'text-red-700' : 'text-slate-900' }}">{{ $balance->remaining_amount }} <span class="text-sm font-normal text-slate-500">{{ $balance->leaveType?->unit?->label() }}</span></p><p class="mt-1 text-xs text-slate-400">{{ $balance->period_year }} dönemi</p></div>@empty<div class="sm:col-span-3 p-6 text-sm text-slate-500">Henüz görüntülenecek izin bakiyesi yok.</div>@endforelse</div></div>

@@ -102,6 +102,7 @@ return [
     'hr.workforce.approve',
 
     'hr.support.view',
+    'hr.support.create',
     'hr.support.manage',
 
     'hr.documents.view',
@@ -118,6 +119,7 @@ return [
     'hr.documents.export',
 
     'hr.isg.view',
+    'hr.isg.view_health',
     'hr.isg.manage',
     'hr.isg.report_incident',
 

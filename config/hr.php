@@ -23,6 +23,7 @@ return [
         'egitim' => ['enabled' => true, 'label' => 'Eğitim'],
         'baglilik' => ['enabled' => true, 'label' => 'Çalışan Bağlılığı'],
         'analitik' => ['enabled' => true, 'label' => 'İK Analitiği'],
+        'destek' => ['enabled' => true, 'label' => 'Çalışan Destek Merkezi'],
         'isg' => ['enabled' => true, 'label' => 'İSG ve Uyum'],
     ],
 
