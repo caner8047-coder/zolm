@@ -8,6 +8,7 @@ use App\Modules\Hr\Core\Traits\BelongsToLegalEntity;
 use App\Modules\Hr\Document\Enums\DocumentStatus;
 use App\Modules\Hr\Document\Enums\VerificationStatus;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,7 +16,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class HrEmployeeDocument extends Model
 {
-    use BelongsToLegalEntity, SoftDeletes;
+    use BelongsToLegalEntity, HasFactory, SoftDeletes;
+
+    protected static function newFactory()
+    {
+        return \Database\Factories\Hr\EmployeeDocumentFactory::new();
+    }
 
     protected $fillable = [
         'legal_entity_id', 'employee_id', 'document_type_id', 'current_file_id',

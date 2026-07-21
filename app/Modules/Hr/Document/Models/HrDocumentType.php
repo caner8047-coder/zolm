@@ -6,13 +6,19 @@ use App\Models\LegalEntity;
 use App\Modules\Hr\Core\Traits\BelongsToLegalEntity;
 use App\Modules\Hr\Document\Enums\DocumentCategory;
 use App\Modules\Hr\Document\Enums\DocumentSensitivity;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class HrDocumentType extends Model
 {
-    use BelongsToLegalEntity;
+    use BelongsToLegalEntity, HasFactory;
+
+    protected static function newFactory()
+    {
+        return \Database\Factories\Hr\DocumentTypeFactory::new();
+    }
 
     protected $fillable = [
         'legal_entity_id', 'code', 'name', 'category', 'description', 'sensitivity',

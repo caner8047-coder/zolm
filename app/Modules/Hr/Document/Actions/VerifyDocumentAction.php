@@ -5,6 +5,8 @@ namespace App\Modules\Hr\Document\Actions;
 use App\Modules\Hr\Core\Services\HrAuditService;
 use App\Modules\Hr\Document\Enums\DocumentStatus;
 use App\Modules\Hr\Document\Enums\VerificationStatus;
+use App\Modules\Hr\Document\Events\EmployeeDocumentRejected;
+use App\Modules\Hr\Document\Events\EmployeeDocumentVerified;
 use App\Modules\Hr\Document\Models\HrEmployeeDocument;
 use Illuminate\Support\Facades\DB;
 
@@ -16,7 +18,7 @@ class VerifyDocumentAction
 
     public function verify(HrEmployeeDocument $document, ?string $comment = null): HrEmployeeDocument
     {
-        return DB::transaction(function () use ($document, $comment) {
+        $document = DB::transaction(function () use ($document, $comment) {
             $document->update([
                 'verification_status' => VerificationStatus::Verified,
                 'status' => DocumentStatus::Active,
@@ -29,6 +31,17 @@ class VerifyDocumentAction
 
             return $document->fresh();
         });
+
+        DB::afterCommit(function () use ($document) {
+            event(new EmployeeDocumentVerified(
+                legalEntityId: $document->legal_entity_id,
+                employeeDocumentId: $document->id,
+                employeeId: $document->employee_id,
+                actorUserId: auth()->id(),
+            ));
+        });
+
+        return $document;
     }
 
     public function reject(HrEmployeeDocument $document, string $reason): HrEmployeeDocument
@@ -37,7 +50,7 @@ class VerifyDocumentAction
             abort(422, 'Ret gerekçesi zorunludur.');
         }
 
-        return DB::transaction(function () use ($document, $reason) {
+        $document = DB::transaction(function () use ($document, $reason) {
             $document->update([
                 'verification_status' => VerificationStatus::Rejected,
                 'status' => DocumentStatus::Rejected,
@@ -48,5 +61,17 @@ class VerifyDocumentAction
 
             return $document->fresh();
         });
+
+        DB::afterCommit(function () use ($document, $reason) {
+            event(new EmployeeDocumentRejected(
+                legalEntityId: $document->legal_entity_id,
+                employeeDocumentId: $document->id,
+                employeeId: $document->employee_id,
+                actorUserId: auth()->id(),
+                reason: $reason,
+            ));
+        });
+
+        return $document;
     }
 }

@@ -6,6 +6,31 @@
         </div>
     </div>
 
+    @if(!empty($documentMetrics))
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <a href="{{ route('hr.documents', ['status' => 'requested']) }}" class="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300">
+                <p class="text-sm text-gray-500">Eksik Zorunlu Belge</p>
+                <p class="text-2xl font-bold {{ $documentMetrics['missing_mandatory'] > 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $documentMetrics['missing_mandatory'] }}</p>
+            </a>
+            <a href="{{ route('hr.documents') }}" class="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300">
+                <p class="text-sm text-gray-500">30 Gün İçinde Dolacak</p>
+                <p class="text-2xl font-bold {{ $documentMetrics['expiring_soon'] > 0 ? 'text-orange-600' : 'text-gray-900' }}">{{ $documentMetrics['expiring_soon'] }}</p>
+            </a>
+            <a href="{{ route('hr.documents', ['status' => 'expired']) }}" class="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300">
+                <p class="text-sm text-gray-500">Süresi Dolmuş</p>
+                <p class="text-2xl font-bold {{ $documentMetrics['expired'] > 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $documentMetrics['expired'] }}</p>
+            </a>
+            <a href="{{ route('hr.documents') }}" class="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300">
+                <p class="text-sm text-gray-500">Doğrulama Bekleyen</p>
+                <p class="text-2xl font-bold {{ $documentMetrics['pending_verification'] > 0 ? 'text-yellow-600' : 'text-gray-900' }}">{{ $documentMetrics['pending_verification'] }}</p>
+            </a>
+            <a href="{{ route('hr.documents') }}" class="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300">
+                <p class="text-sm text-gray-500">Geciken Belge Talebi</p>
+                <p class="text-2xl font-bold {{ $documentMetrics['overdue_requests'] > 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $documentMetrics['overdue_requests'] }}</p>
+            </a>
+        </div>
+    @endif
+
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         @foreach($modules as $key => $module)
             <div class="bg-white rounded-lg border border-gray-200 p-6 hover:border-gray-300 transition-colors">

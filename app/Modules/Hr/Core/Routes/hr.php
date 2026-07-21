@@ -6,6 +6,7 @@ use App\Modules\Hr\Core\Http\Middleware\HrAuthorize;
 use App\Modules\Hr\Core\Http\Middleware\ResolveHrTenant;
 use App\Modules\Hr\Core\Livewire\HrDashboard;
 use App\Modules\Hr\Core\Livewire\HrSettings;
+use App\Modules\Hr\Document\Actions\ExportDocumentsAction;
 use App\Modules\Hr\Document\Livewire\DocumentList;
 use App\Modules\Hr\Document\Livewire\DocumentTypeForm;
 use App\Modules\Hr\Document\Livewire\DocumentTypeList;
@@ -50,17 +51,29 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
     Route::get('/settings/teams/{team}/edit', TeamForm::class)->name('settings.teams.edit')
         ->middleware('hr.authorize:hr.org_structure.manage');
 
-    // Belge türleri
-    Route::get('/settings/document-types', DocumentTypeList::class)->name('settings.document-types')
-        ->middleware('hr.authorize:hr.documents.view');
-    Route::get('/settings/document-types/create', DocumentTypeForm::class)->name('settings.document-types.create')
-        ->middleware('hr.authorize:hr.documents.manage_types');
-    Route::get('/settings/document-types/{documentType}/edit', DocumentTypeForm::class)->name('settings.document-types.edit')
-        ->middleware('hr.authorize:hr.documents.manage_types');
+    // Belge yönetimi — personel modül lisansı + yetki kontrolü
+    Route::middleware('hr.module:personel')->group(function () {
+        // Belge türleri
+        Route::get('/settings/document-types', DocumentTypeList::class)->name('settings.document-types')
+            ->middleware('hr.authorize:hr.documents.view');
+        Route::get('/settings/document-types/create', DocumentTypeForm::class)->name('settings.document-types.create')
+            ->middleware('hr.authorize:hr.documents.manage_types');
+        Route::get('/settings/document-types/{documentType}/edit', DocumentTypeForm::class)->name('settings.document-types.edit')
+            ->middleware('hr.authorize:hr.documents.manage_types');
 
-    // Personel belgeleri
-    Route::get('/documents', DocumentList::class)->name('documents')
-        ->middleware('hr.authorize:hr.documents.view');
+        // Personel belgeleri
+        Route::get('/documents', DocumentList::class)->name('documents')
+            ->middleware('hr.authorize:hr.documents.view');
+
+        // Belge export
+        Route::get('/documents/export', function () {
+            $action = app(ExportDocumentsAction::class);
+            $path = $action->execute();
+            $fullPath = storage_path("app/private/{$path}");
+            return response()->download($fullPath, basename($path))->deleteFileAfterSend(true);
+        })->name('documents.export')
+            ->middleware('hr.authorize:hr.documents.export');
+    });
 
     // Personel
     Route::get('/personnel', EmployeeList::class)->name('personnel')

@@ -15,6 +15,13 @@ class DocumentList extends Component
     public ?string $statusFilter = null;
     public ?string $categoryFilter = null;
 
+    public function mount(): void
+    {
+        // Dashboard kartlarından filtreli linklerle (?status=...&category=...) gelindiğinde uygulanır.
+        $this->statusFilter = request()->query('status');
+        $this->categoryFilter = request()->query('category');
+    }
+
     public function render()
     {
         $tenantId = app(TenantContext::class)->getId();

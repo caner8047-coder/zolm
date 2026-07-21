@@ -9,7 +9,7 @@
                 @if($employee->photo)
                     <img src="{{ $employee->photo->disk_path }}" alt="{{ $employee->full_name }}" class="w-full h-full object-cover">
                 @else
-                    <span class="text-xl font-bold text-gray-500">{{ substr($employee->first_name, 0, 1 }}{{ substr($employee->last_name, 0, 1) }}</span>
+                    <span class="text-xl font-bold text-gray-500">{{ substr($employee->first_name, 0, 1) }}{{ substr($employee->last_name, 0, 1) }}</span>
                 @endif
             </div>
             <div>
@@ -42,6 +42,13 @@
             <button wire:click="$set('activeTab', 'employment')"
                 class="py-2 px-1 border-b-2 text-sm font-medium {{ $activeTab === 'employment' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
                 Çalışma Bilgileri
+            </button>
+            <button wire:click="$set('activeTab', 'documents')"
+                class="py-2 px-1 border-b-2 text-sm font-medium {{ $activeTab === 'documents' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
+                Belgeler
+                @if($mandatoryCount > 0)
+                    <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">{{ $mandatoryCount }}</span>
+                @endif
             </button>
             <button wire:click="$set('activeTab', 'history')"
                 class="py-2 px-1 border-b-2 text-sm font-medium {{ $activeTab === 'history' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
@@ -183,6 +190,146 @@
                     @endforeach
                 </tbody>
             </table>
+        </div>
+    @endif
+
+    @if($activeTab === 'documents')
+        <div class="space-y-4">
+            @if(session('document_success'))
+                <div class="bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 text-sm">{{ session('document_success') }}</div>
+            @endif
+
+            <!-- Belge Özeti -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div class="bg-white rounded-lg border border-gray-200 p-4">
+                    <p class="text-sm text-gray-500">Eksik Zorunlu</p>
+                    <p class="text-2xl font-bold {{ $mandatoryCount > 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $mandatoryCount }}</p>
+                </div>
+                <div class="bg-white rounded-lg border border-gray-200 p-4">
+                    <p class="text-sm text-gray-500">Doğrulama Bekleyen</p>
+                    <p class="text-2xl font-bold {{ $pendingVerification > 0 ? 'text-yellow-600' : 'text-gray-900' }}">{{ $pendingVerification }}</p>
+                </div>
+                <div class="bg-white rounded-lg border border-gray-200 p-4">
+                    <p class="text-sm text-gray-500">Aktif Belge</p>
+                    <p class="text-2xl font-bold text-green-600">{{ $activeCount }}</p>
+                </div>
+                <div class="bg-white rounded-lg border border-gray-200 p-4">
+                    <p class="text-sm text-gray-500">Süresi Yaklaşan</p>
+                    <p class="text-2xl font-bold {{ $expiringSoon > 0 ? 'text-orange-600' : 'text-gray-900' }}">{{ $expiringSoon }}</p>
+                </div>
+                <div class="bg-white rounded-lg border border-gray-200 p-4">
+                    <p class="text-sm text-gray-500">Süresi Dolmuş</p>
+                    <p class="text-2xl font-bold {{ $expiredCount > 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $expiredCount }}</p>
+                </div>
+                <div class="bg-white rounded-lg border border-gray-200 p-4">
+                    <p class="text-sm text-gray-500">Bekleyen Talep</p>
+                    <p class="text-2xl font-bold {{ $pendingRequests->count() > 0 ? 'text-blue-600' : 'text-gray-900' }}">{{ $pendingRequests->count() }}</p>
+                </div>
+            </div>
+
+            <!-- Eksik Zorunlu Belgeler -->
+            @if($missingMandatoryTypes->isNotEmpty())
+                <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-200"><h3 class="font-medium text-gray-900">Eksik Zorunlu Belgeler</h3></div>
+                    <ul class="divide-y divide-gray-100">
+                        @foreach($missingMandatoryTypes as $type)
+                            <li class="px-4 py-3 text-sm text-gray-700 flex items-center justify-between">
+                                <span>{{ $type->name }} <span class="text-gray-400">({{ $type->category->label() }})</span></span>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            <!-- Bekleyen Belge Talepleri -->
+            @if($pendingRequests->isNotEmpty())
+                <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-200"><h3 class="font-medium text-gray-900">Bekleyen Belge Talepleri</h3></div>
+                    <ul class="divide-y divide-gray-100">
+                        @foreach($pendingRequests as $request)
+                            <li class="px-4 py-3 text-sm text-gray-700 flex items-center justify-between">
+                                <span>{{ $request->documentType?->name ?? '-' }} — Son tarih: {{ $request->due_date?->format('d.m.Y') ?? '-' }}</span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ $request->status === 'overdue' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800' }}">{{ $request->status === 'overdue' ? 'Gecikti' : 'Bekliyor' }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            @if($newVersionDocId && auth()->user()?->hasHrPermission('hr.documents.create'))
+                <div class="bg-white rounded-lg border border-gray-200 p-4">
+                    <h3 class="font-medium text-gray-900 mb-3">Yeni Sürüm Yükle</h3>
+                    <div class="flex items-center gap-3">
+                        <input type="file" wire:model="newVersionFile" class="text-sm">
+                        <button wire:click="uploadNewVersion" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">Yükle</button>
+                        <button wire:click="$set('newVersionDocId', null)" class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">İptal</button>
+                    </div>
+                    @error('newVersionFile') <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+            @endif
+
+            @if($rejectDocId)
+                <div class="bg-white rounded-lg border border-gray-200 p-4">
+                    <h3 class="font-medium text-gray-900 mb-3">Ret Gerekçesi</h3>
+                    <textarea wire:model="rejectReason" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Ret nedeni (zorunlu)"></textarea>
+                    @error('rejectReason') <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                    <div class="flex items-center gap-3 mt-3">
+                        <button wire:click="rejectDocument" class="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">Reddet</button>
+                        <button wire:click="$set('rejectDocId', null)" class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">İptal</button>
+                    </div>
+                </div>
+            @endif
+
+            <!-- Belge Listesi -->
+            <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div class="px-4 py-3 border-b border-gray-200">
+                    <h3 class="font-medium text-gray-900">Çalışan Belgeleri</h3>
+                </div>
+                <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Belge Türü</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kategori</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Durum</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Doğrulama</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Son Kullanma</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Versiyon</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        @forelse($documents as $doc)
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-3 text-sm text-gray-900">{{ $doc->documentType?->name ?? '-' }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-500">{{ $doc->documentType?->category?->label() ?? '-' }}</td>
+                                <td class="px-4 py-3"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-{{ $doc->status->color() }}-100 text-{{ $doc->status->color() }}-800">{{ $doc->status->label() }}</span></td>
+                                <td class="px-4 py-3"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-{{ $doc->verification_status->color() }}-100 text-{{ $doc->verification_status->color() }}-800">{{ $doc->verification_status->label() }}</span></td>
+                                <td class="px-4 py-3 text-sm text-gray-500">{{ $doc->expiry_date?->format('d.m.Y') ?? '-' }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-500">v{{ $doc->version_number }}</td>
+                                <td class="px-4 py-3 text-right text-sm space-x-2 whitespace-nowrap">
+                                    @if(auth()->user()?->hasHrPermission('hr.documents.download') && $doc->current_file_id)
+                                        <a href="{{ route('hr.files.download', $doc->current_file_id) }}" class="text-gray-600 hover:text-gray-900">İndir</a>
+                                    @endif
+                                    @if(auth()->user()?->hasHrPermission('hr.documents.create'))
+                                        <button wire:click="startNewVersion({{ $doc->id }})" class="text-blue-600 hover:text-blue-800">Yeni Sürüm</button>
+                                    @endif
+                                    @if(auth()->user()?->hasHrPermission('hr.documents.verify') && $doc->verification_status->value === 'pending')
+                                        <button wire:click="verifyDocument({{ $doc->id }})" class="text-green-600 hover:text-green-800">Doğrula</button>
+                                        <button wire:click="startReject({{ $doc->id }})" class="text-red-600 hover:text-red-800">Reddet</button>
+                                    @endif
+                                    @if(auth()->user()?->hasHrPermission('hr.documents.archive') && $doc->status->value !== 'archived')
+                                        <button wire:click="archiveDocument({{ $doc->id }})" class="text-gray-600 hover:text-gray-900">Arşivle</button>
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="7" class="px-4 py-8 text-center text-sm text-gray-500">Henüz belge bulunmuyor.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+                </div>
+            </div>
         </div>
     @endif
 

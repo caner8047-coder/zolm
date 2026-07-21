@@ -207,3 +207,51 @@ Schedule::call(fn () => $runInlineCommand('customer-care:reconcile-projections',
     ->dailyAt('04:30')
     ->when(fn () => config('customer-care.enabled', false) && config('customer-care.reconciliation_enabled', false))
     ->withoutOverlapping();
+
+// ── HR Belge Yönetimi ───────────────────────────────────────────────
+// Tüm job'lar tenant bazlı çalışır: aktif her tüzel kişilik için ayrı dispatch.
+// Job'lar kendi TenantContext'lerini kurar ve finally ile temizler (HrJob).
+$runHrDocumentJobs = function (string $jobClass): void {
+    $tenants = \App\Models\LegalEntity::where('is_active', true)->get();
+    $context = app(\App\Modules\Hr\Core\Services\TenantContext::class);
+
+    foreach ($tenants as $tenant) {
+        $context->set($tenant);
+        try {
+            // Sync çalıştırma: scheduler süreci içinde güvenli ve kararlı.
+            $jobClass::dispatchSync();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('HR belge job dispatch başarısız', [
+                'tenant_id' => $tenant->id,
+                'job' => $jobClass,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    $context->clear();
+};
+
+// Süresi dolmuş belgeleri expired işaretle (günlük 01:00)
+Schedule::call(fn () => $runHrDocumentJobs(\App\Modules\Hr\Document\Jobs\MarkExpiredEmployeeDocumentsJob::class))
+    ->name('hr-mark-expired-documents')
+    ->dailyAt('01:00')
+    ->withoutOverlapping();
+
+// Süresi yaklaşan belgeler için hatırlatma (günlük 01:15)
+Schedule::call(fn () => $runHrDocumentJobs(\App\Modules\Hr\Document\Jobs\NotifyExpiringEmployeeDocumentsJob::class))
+    ->name('hr-notify-expiring-documents')
+    ->dailyAt('01:15')
+    ->withoutOverlapping();
+
+// Geciken belge taleplerini overdue işaretle (günlük 01:30)
+Schedule::call(fn () => $runHrDocumentJobs(\App\Modules\Hr\Document\Jobs\MarkOverdueDocumentRequestsJob::class))
+    ->name('hr-mark-overdue-document-requests')
+    ->dailyAt('01:30')
+    ->withoutOverlapping();
+
+// Bekleyen belge talepleri için hatırlatma (günlük 01:45)
+Schedule::call(fn () => $runHrDocumentJobs(\App\Modules\Hr\Document\Jobs\SendPendingDocumentRequestRemindersJob::class))
+    ->name('hr-send-pending-document-request-reminders')
+    ->dailyAt('01:45')
+    ->withoutOverlapping();

@@ -4,12 +4,20 @@ namespace App\Modules\Hr\Document\Models;
 
 use App\Models\HrFile;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class HrEmployeeDocumentVersion extends Model
 {
+    use HasFactory;
+
     public $timestamps = false;
+
+    protected static function newFactory()
+    {
+        return \Database\Factories\Hr\HrEmployeeDocumentVersionFactory::new();
+    }
 
     protected $fillable = [
         'employee_document_id', 'file_id', 'version_number', 'uploaded_by', 'change_reason',

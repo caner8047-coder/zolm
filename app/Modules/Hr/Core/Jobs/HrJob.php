@@ -34,7 +34,13 @@ abstract class HrJob implements ShouldQueue
 
         app(TenantContext::class)->set($tenant);
 
-        $this->execute();
+        try {
+            $this->execute();
+        } finally {
+            // İşlem sonunda tenant context temizlenir; queue worker bir sonraki işe
+            // veya başka bir tenant'a ait veriyi sızdırmaz.
+            app(TenantContext::class)->clear();
+        }
     }
 
     abstract protected function execute(): void;

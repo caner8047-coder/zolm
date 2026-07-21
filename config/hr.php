@@ -43,4 +43,14 @@ return [
     ],
 
     'encryption_key' => null, // null ise app.key kullanılır
+
+    'malware_scanner' => [
+        // fail_closed: gerçek tarayıcı yok; production'da unavailable/error => upload engellenir.
+        // fake_clean: yalnızca testing/local'da clean döner (gerçek tarama yapmaz).
+        // off: tarayıcı devre dışı; unavailable döner.
+        'mode' => env('HR_MALWARE_SCANNER_MODE', 'fail_closed'),
+        // null => otomatik: production ortamında true, diğerlerinde false.
+        // Açık true: her ortamda fail-closed. Açık false: hiçbir ortamda engelleme (önerilmez).
+        'fail_closed' => env('HR_MALWARE_SCANNER_FAIL_CLOSED', null),
+    ],
 ];

@@ -4,10 +4,22 @@ namespace App\Modules\Hr\Core;
 
 use App\Models\HrFile;
 use App\Modules\Hr\Core\Policies\HrFilePolicy;
+use App\Modules\Hr\Core\Services\ConfigBasedMalwareScanner;
 use App\Modules\Hr\Core\Services\HrAuditService;
 use App\Modules\Hr\Core\Services\HrCalendarService;
 use App\Modules\Hr\Core\Services\HrFileService;
+use App\Modules\Hr\Core\Services\MalwareScanner;
 use App\Modules\Hr\Core\Services\TenantContext;
+use App\Modules\Hr\Document\Events\EmployeeDocumentExpired;
+use App\Modules\Hr\Document\Events\EmployeeDocumentRejected;
+use App\Modules\Hr\Document\Events\EmployeeDocumentRequestFulfilled;
+use App\Modules\Hr\Document\Events\EmployeeDocumentRequested;
+use App\Modules\Hr\Document\Events\EmployeeDocumentUploaded;
+use App\Modules\Hr\Document\Events\EmployeeDocumentVerified;
+use App\Modules\Hr\Document\Listeners\FulfillDocumentRequest;
+use App\Modules\Hr\Document\Listeners\InvalidateDocumentMetricsCache;
+use App\Modules\Hr\Document\Listeners\LogDocumentEvent;
+use App\Modules\Hr\Document\Listeners\SendDocumentNotification;
 use App\Modules\Hr\Document\Models\HrDocumentType;
 use App\Modules\Hr\Document\Models\HrEmployeeDocument;
 use App\Modules\Hr\Document\Policies\HrDocumentTypePolicy;
@@ -18,6 +30,7 @@ use App\Modules\Hr\Organization\Models\HrSgkWorkplace;
 use App\Modules\Hr\Organization\Models\HrSgkWorkplacePolicy;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
 use App\Modules\Hr\Personnel\Policies\HrEmployeePolicy;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -29,6 +42,7 @@ class HrServiceProvider extends ServiceProvider
         $this->app->singleton(HrAuditService::class);
         $this->app->singleton(HrFileService::class);
         $this->app->singleton(HrCalendarService::class);
+        $this->app->singleton(MalwareScanner::class, ConfigBasedMalwareScanner::class);
     }
 
     public function boot(): void
@@ -41,11 +55,35 @@ class HrServiceProvider extends ServiceProvider
             base_path('config/hr.php') => config_path('hr.php'),
         ], 'hr-config');
 
+        // Policies
         Gate::policy(HrFile::class, HrFilePolicy::class);
         Gate::policy(HrEmployee::class, HrEmployeePolicy::class);
         Gate::policy(HrDepartment::class, HrDepartmentPolicy::class);
         Gate::policy(HrSgkWorkplace::class, HrSgkWorkplacePolicy::class);
         Gate::policy(HrDocumentType::class, HrDocumentTypePolicy::class);
         Gate::policy(HrEmployeeDocument::class, HrEmployeeDocumentPolicy::class);
+
+        // Events & Listeners
+        Event::listen(EmployeeDocumentUploaded::class, [LogDocumentEvent::class, 'handle']);
+        Event::listen(EmployeeDocumentUploaded::class, [FulfillDocumentRequest::class, 'handle']);
+        Event::listen(EmployeeDocumentUploaded::class, [InvalidateDocumentMetricsCache::class, 'handle']);
+        Event::listen(EmployeeDocumentUploaded::class, [SendDocumentNotification::class, 'handle']);
+
+        Event::listen(EmployeeDocumentVerified::class, [LogDocumentEvent::class, 'handle']);
+        Event::listen(EmployeeDocumentVerified::class, [InvalidateDocumentMetricsCache::class, 'handle']);
+        Event::listen(EmployeeDocumentVerified::class, [SendDocumentNotification::class, 'handle']);
+
+        Event::listen(EmployeeDocumentRejected::class, [LogDocumentEvent::class, 'handle']);
+        Event::listen(EmployeeDocumentRejected::class, [SendDocumentNotification::class, 'handle']);
+
+        Event::listen(EmployeeDocumentExpired::class, [LogDocumentEvent::class, 'handle']);
+        Event::listen(EmployeeDocumentExpired::class, [InvalidateDocumentMetricsCache::class, 'handle']);
+
+        Event::listen(EmployeeDocumentRequested::class, [LogDocumentEvent::class, 'handle']);
+        Event::listen(EmployeeDocumentRequested::class, [SendDocumentNotification::class, 'handle']);
+
+        Event::listen(EmployeeDocumentRequestFulfilled::class, [LogDocumentEvent::class, 'handle']);
+        Event::listen(EmployeeDocumentRequestFulfilled::class, [InvalidateDocumentMetricsCache::class, 'handle']);
+        Event::listen(EmployeeDocumentRequestFulfilled::class, [SendDocumentNotification::class, 'handle']);
     }
 }
