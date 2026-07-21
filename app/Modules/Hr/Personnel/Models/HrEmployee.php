@@ -10,8 +10,8 @@ use App\Modules\Hr\Personnel\Enums\EmployeeStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class HrEmployee extends Model
@@ -67,6 +67,11 @@ class HrEmployee extends Model
     public function activeEmployment(): HasOne
     {
         return $this->hasOne(HrEmploymentRecord::class, 'employee_id')->where('status', 'active');
+    }
+
+    public function shiftAssignments(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Shift\Models\HrShiftAssignment::class, 'employee_id');
     }
 
     public function scopeActive($query)
