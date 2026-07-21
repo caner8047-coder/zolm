@@ -14,6 +14,8 @@ use App\Modules\Hr\Shift\Actions\CancelShiftAssignmentAction;
 use App\Modules\Hr\Shift\Actions\PublishShiftWeekAction;
 use App\Modules\Hr\Shift\Actions\SetShiftAvailabilityAction;
 use App\Modules\Hr\Shift\Actions\BulkAssignShiftAction;
+use App\Modules\Hr\Shift\Actions\CreateShiftChangeRequestAction;
+use App\Modules\Hr\Shift\Actions\DecideShiftChangeRequestAction;
 use App\Modules\Hr\Shift\Enums\ShiftAssignmentStatus;
 use App\Modules\Hr\Shift\Enums\ShiftAvailabilityStatus;
 use App\Modules\Hr\Shift\Models\HrShiftTemplate;
@@ -90,5 +92,20 @@ class ShiftAssignmentTest extends TestCase
         $this->assertSame(1, $result['assigned']);
         $this->assertArrayHasKey($this->employee->id, $result['errors']);
         $this->assertSame(1, $other->shiftAssignments()->count());
+    }
+
+    public function test_approved_change_request_revises_assignment_as_draft(): void
+    {
+        $assignment = app(AssignShiftAction::class)->execute($this->employee, $this->template, now()->addDays(2)->toDateString());
+        app(PublishShiftWeekAction::class)->execute(now()->startOfWeek(), now()->addWeek()->endOfWeek());
+        $late = HrShiftTemplate::create(['legal_entity_id' => $this->tenant->id, 'code' => 'AKSAM', 'name' => 'Akşam', 'starts_at' => '16:00', 'ends_at' => '00:00', 'break_minutes' => 30, 'crosses_midnight' => true]);
+        $desiredDate = now()->addDays(3)->toDateString();
+        $request = app(CreateShiftChangeRequestAction::class)->execute($assignment->fresh(), $late, $desiredDate, 'Randevu');
+        $decided = app(DecideShiftChangeRequestAction::class)->approve($request, 'Uygun');
+        $this->assertSame('approved', $decided->status->value);
+        $this->assertSame($late->id, $assignment->fresh()->shift_template_id);
+        $this->assertSame($desiredDate, $assignment->fresh()->shift_date->toDateString());
+        $this->assertSame(ShiftAssignmentStatus::Planned, $assignment->fresh()->status);
+        $this->assertNull($assignment->fresh()->published_at);
     }
 }

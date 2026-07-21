@@ -1,7 +1,7 @@
 <div class="space-y-4 lg:space-y-6">
     <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div><h1 class="text-xl lg:text-2xl font-semibold text-slate-900">Vardiya Planlama</h1><p class="mt-1 text-sm text-slate-500">Haftalık ekip planı, yayın durumu ve izin çakışma kontrolleri.</p></div>
-        @if(auth()->user()?->hasHrPermission('hr.shifts.manage'))<a href="{{ route('hr.settings.shift-templates') }}" class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-[6px] border border-slate-200 text-center text-sm text-slate-700">Vardiya Şablonları</a>@endif
+        <div class="flex flex-col sm:flex-row gap-2">@if(auth()->user()?->hasHrPermission('hr.shifts.plan'))<a href="{{ route('hr.shifts.change-requests') }}" class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-[6px] border border-slate-200 text-center text-sm text-slate-700">Değişiklik Onayları</a>@endif @if(auth()->user()?->hasHrPermission('hr.shifts.manage'))<a href="{{ route('hr.settings.shift-templates') }}" class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-[6px] border border-slate-200 text-center text-sm text-slate-700">Vardiya Şablonları</a>@endif</div>
     </div>
     @if(session('success'))<div class="rounded-[8px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('success') }}</div>@endif
 

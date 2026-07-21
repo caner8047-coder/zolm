@@ -33,6 +33,8 @@ use App\Modules\Hr\Shift\Livewire\ShiftPlanner;
 use App\Modules\Hr\Shift\Livewire\ShiftTemplateForm;
 use App\Modules\Hr\Shift\Livewire\ShiftTemplateList;
 use App\Modules\Hr\Shift\Livewire\MyShiftAvailability;
+use App\Modules\Hr\Shift\Livewire\MyShiftChangeRequests;
+use App\Modules\Hr\Shift\Livewire\ShiftChangeApprovalInbox;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -129,6 +131,10 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
             ->middleware('hr.authorize:hr.shifts.view');
         Route::get('/my/shift-availability', MyShiftAvailability::class)->name('my-shift-availability')
             ->middleware('hr.authorize:hr.shifts.view');
+        Route::get('/my/shift-change-requests', MyShiftChangeRequests::class)->name('my-shift-change-requests')
+            ->middleware('hr.authorize:hr.shifts.view');
+        Route::get('/shifts/change-requests', ShiftChangeApprovalInbox::class)->name('shifts.change-requests')
+            ->middleware('hr.authorize:hr.shifts.plan');
         Route::get('/settings/shift-templates', ShiftTemplateList::class)->name('settings.shift-templates')
             ->middleware('hr.authorize:hr.shifts.manage');
         Route::get('/settings/shift-templates/create', ShiftTemplateForm::class)->name('settings.shift-templates.create')
