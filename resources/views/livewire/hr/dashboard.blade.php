@@ -1,56 +1,25 @@
-<div class="space-y-6">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">İnsan Kaynakları</h1>
-            <p class="text-gray-500 mt-1">{{ $tenant->name }} — Modül yönetimi</p>
+<div class="space-y-4 lg:space-y-6">
+    <section class="rounded-[10px] border border-slate-200 bg-white shadow-sm p-4 lg:p-6">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div class="min-w-0"><p class="text-sm text-slate-500">{{ now()->translatedFormat('l, j F Y') }}</p><h1 class="mt-1 text-xl lg:text-2xl font-semibold text-slate-900">{{ $employeeWorkspace ? 'Merhaba, ' . $employeeWorkspace['employee']->first_name : 'İnsan Kaynakları' }}</h1><p class="mt-1 text-sm text-slate-500">{{ $employeeWorkspace ? ($employeeWorkspace['employee']->activeEmployment?->position?->name ?? $tenant->name) : $tenant->name . ' — İK çalışma alanı' }}</p></div>
+            <div class="flex flex-col sm:flex-row gap-2">@if(auth()->user()?->hasHrPermission('hr.leaves.create'))<a href="{{ route('hr.my-leaves') }}" class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-[6px] border border-slate-200 bg-white text-center text-sm font-medium text-slate-700">İzinlerim</a><a href="{{ route('hr.leaves.create') }}" class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-[6px] bg-slate-900 text-center text-sm font-medium text-white">+ İzin talebi</a>@endif</div>
         </div>
-    </div>
+    </section>
 
-    @if(!empty($documentMetrics))
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            <a href="{{ route('hr.documents', ['status' => 'requested']) }}" class="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300">
-                <p class="text-sm text-gray-500">Eksik Zorunlu Belge</p>
-                <p class="text-2xl font-bold {{ $documentMetrics['missing_mandatory'] > 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $documentMetrics['missing_mandatory'] }}</p>
-            </a>
-            <a href="{{ route('hr.documents') }}" class="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300">
-                <p class="text-sm text-gray-500">30 Gün İçinde Dolacak</p>
-                <p class="text-2xl font-bold {{ $documentMetrics['expiring_soon'] > 0 ? 'text-orange-600' : 'text-gray-900' }}">{{ $documentMetrics['expiring_soon'] }}</p>
-            </a>
-            <a href="{{ route('hr.documents', ['status' => 'expired']) }}" class="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300">
-                <p class="text-sm text-gray-500">Süresi Dolmuş</p>
-                <p class="text-2xl font-bold {{ $documentMetrics['expired'] > 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $documentMetrics['expired'] }}</p>
-            </a>
-            <a href="{{ route('hr.documents') }}" class="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300">
-                <p class="text-sm text-gray-500">Doğrulama Bekleyen</p>
-                <p class="text-2xl font-bold {{ $documentMetrics['pending_verification'] > 0 ? 'text-yellow-600' : 'text-gray-900' }}">{{ $documentMetrics['pending_verification'] }}</p>
-            </a>
-            <a href="{{ route('hr.documents') }}" class="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300">
-                <p class="text-sm text-gray-500">Geciken Belge Talebi</p>
-                <p class="text-2xl font-bold {{ $documentMetrics['overdue_requests'] > 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $documentMetrics['overdue_requests'] }}</p>
-            </a>
-        </div>
+    @if($employeeWorkspace)
+        <section class="grid grid-cols-1 xl:grid-cols-12 gap-3 lg:gap-4">
+            <div class="xl:col-span-7 rounded-[10px] border border-slate-200 bg-white shadow-sm overflow-hidden"><div class="flex items-center justify-between p-4 border-b border-slate-200"><div><h2 class="text-sm font-semibold text-slate-900">İzin bilgilerim</h2><p class="mt-1 text-xs text-slate-500">Güncel ledger bakiyeleriniz</p></div><a href="{{ route('hr.my-leaves') }}" class="text-sm font-medium text-slate-700">Tümünü gör →</a></div><div class="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">@forelse($employeeWorkspace['balances'] as $balance)<div class="p-4 min-w-0"><p class="truncate text-sm text-slate-500">{{ $balance->leaveType?->name }}</p><p class="mt-2 text-2xl font-semibold {{ $balance->remaining_amount < 0 ? 'text-red-700' : 'text-slate-900' }}">{{ $balance->remaining_amount }} <span class="text-sm font-normal text-slate-500">{{ $balance->leaveType?->unit?->label() }}</span></p><p class="mt-1 text-xs text-slate-400">{{ $balance->period_year }} dönemi</p></div>@empty<div class="sm:col-span-3 p-6 text-sm text-slate-500">Henüz görüntülenecek izin bakiyesi yok.</div>@endforelse</div></div>
+            <div class="xl:col-span-5 rounded-[10px] border border-slate-200 bg-white shadow-sm overflow-hidden"><div class="flex items-center justify-between p-4 border-b border-slate-200"><div><h2 class="text-sm font-semibold text-slate-900">Yaklaşan izinler</h2><p class="mt-1 text-xs text-slate-500">Onaylanmış talepleriniz</p></div><a href="{{ route('hr.my-leaves') }}" class="text-sm font-medium text-slate-700">Taleplerim →</a></div><div class="divide-y divide-slate-100">@forelse($employeeWorkspace['upcomingLeaves'] as $leave)<div class="flex items-center justify-between gap-3 px-4 py-3"><div class="min-w-0"><p class="truncate text-sm font-medium text-slate-900">{{ $leave->leaveType?->name }}</p><p class="mt-1 text-xs text-slate-500">{{ $leave->start_date->format('d.m.Y') }} — {{ $leave->end_date->format('d.m.Y') }}</p></div><span class="shrink-0 px-2 py-0.5 text-xs font-mono rounded bg-emerald-50 text-emerald-700">{{ $leave->requested_amount }} {{ $leave->unit->label() }}</span></div>@empty<div class="p-6 text-sm text-slate-500">Yaklaşan onaylı izniniz yok.</div>@endforelse</div></div>
+        </section>
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
+            <div class="rounded-[10px] border border-slate-200 bg-white shadow-sm overflow-hidden"><div class="p-4 border-b border-slate-200"><h2 class="text-sm font-semibold text-slate-900">Resmî tatiller</h2></div><div class="divide-y divide-slate-100">@forelse($employeeWorkspace['holidays'] as $holiday)<div class="flex items-center justify-between gap-3 px-4 py-3"><p class="text-sm text-slate-700">{{ $holiday->name }}</p><p class="shrink-0 text-xs text-slate-500">{{ $holiday->date->format('d.m.Y') }}</p></div>@empty<div class="p-6 text-sm text-slate-500">Yaklaşan resmî tatil kaydı yok.</div>@endforelse</div></div>
+            <div class="rounded-[10px] border border-slate-200 bg-white shadow-sm overflow-hidden"><div class="p-4 border-b border-slate-200"><h2 class="text-sm font-semibold text-slate-900">Yaklaşan doğum günleri</h2></div><div class="divide-y divide-slate-100">@forelse($employeeWorkspace['birthdays'] as $person)<div class="flex items-center justify-between gap-3 px-4 py-3"><div class="min-w-0"><p class="truncate text-sm text-slate-700">{{ $person->full_name }}</p><p class="mt-1 text-xs text-slate-500">{{ $person->activeEmployment?->position?->name ?? 'Çalışan' }}</p></div><p class="shrink-0 text-xs text-slate-500">{{ $person->date_of_birth->format('d M') }}</p></div>@empty<div class="p-6 text-sm text-slate-500">Doğum günü bilgisi bulunmuyor.</div>@endforelse</div></div>
+        </section>
     @endif
 
-    @if(!empty($leaveMetrics))
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <a href="{{ route('hr.leaves.approvals') }}" class="bg-white rounded-lg border border-slate-200 p-4 hover:border-slate-300"><p class="text-sm text-slate-500">Onay Bekleyen İzin</p><p class="text-2xl font-bold {{ $leaveMetrics['pending_approval'] > 0 ? 'text-amber-600' : 'text-slate-900' }}">{{ $leaveMetrics['pending_approval'] }}</p></a>
-            <a href="{{ route('hr.leaves') }}" class="bg-white rounded-lg border border-slate-200 p-4 hover:border-slate-300"><p class="text-sm text-slate-500">Bugün İzinli</p><p class="text-2xl font-bold text-slate-900">{{ $leaveMetrics['today_approved'] }}</p></a>
-            <a href="{{ route('hr.leaves') }}" class="bg-white rounded-lg border border-slate-200 p-4 hover:border-slate-300"><p class="text-sm text-slate-500">Yaklaşan Onaylı İzin</p><p class="text-2xl font-bold text-slate-900">{{ $leaveMetrics['upcoming_approved'] }}</p></a>
-            <a href="{{ route('hr.leaves.balances') }}" class="bg-white rounded-lg border border-slate-200 p-4 hover:border-slate-300"><p class="text-sm text-slate-500">Eksi Bakiye</p><p class="text-2xl font-bold {{ $leaveMetrics['negative_balances'] > 0 ? 'text-red-600' : 'text-slate-900' }}">{{ $leaveMetrics['negative_balances'] }}</p></a>
-        </div>
+    @if(!empty($leaveMetrics) || !empty($documentMetrics))
+        <section class="rounded-[10px] border border-slate-200 bg-white shadow-sm overflow-hidden"><div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-4 border-b border-slate-200"><div><h2 class="text-sm font-semibold text-slate-900">İK kontrol merkezi</h2><p class="mt-1 text-xs text-slate-500">Operasyonel risk ve bekleyen iş akışları</p></div>@if(auth()->user()?->hasHrPermission('hr.leaves.approve'))<a href="{{ route('hr.leaves.approvals') }}" class="text-sm font-medium text-slate-700">Onay kutusuna git →</a>@endif</div><div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">@if(!empty($leaveMetrics))<a href="{{ auth()->user()?->hasHrPermission('hr.leaves.approve') ? route('hr.leaves.approvals') : route('hr.leaves') }}" class="p-4 hover:bg-slate-50/60"><p class="text-sm text-slate-500">Onay bekleyen izin</p><p class="mt-2 text-2xl font-semibold {{ $leaveMetrics['pending_approval'] ? 'text-amber-600' : 'text-slate-900' }}">{{ $leaveMetrics['pending_approval'] }}</p></a><a href="{{ route('hr.leaves') }}" class="p-4 hover:bg-slate-50/60"><p class="text-sm text-slate-500">Bugün izinli</p><p class="mt-2 text-2xl font-semibold text-slate-900">{{ $leaveMetrics['today_approved'] }}</p></a><a href="{{ auth()->user()?->hasHrPermission('hr.leaves.manage_balance') ? route('hr.leaves.balances') : route('hr.leaves') }}" class="p-4 hover:bg-slate-50/60"><p class="text-sm text-slate-500">Eksi bakiye</p><p class="mt-2 text-2xl font-semibold {{ $leaveMetrics['negative_balances'] ? 'text-red-700' : 'text-slate-900' }}">{{ $leaveMetrics['negative_balances'] }}</p></a>@endif@if(!empty($documentMetrics))<a href="{{ route('hr.documents') }}" class="p-4 hover:bg-slate-50/60"><p class="text-sm text-slate-500">Eksik zorunlu belge</p><p class="mt-2 text-2xl font-semibold {{ $documentMetrics['missing_mandatory'] ? 'text-red-700' : 'text-slate-900' }}">{{ $documentMetrics['missing_mandatory'] }}</p></a>@endif</div></section>
     @endif
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        @foreach($modules as $key => $module)
-            <div class="bg-white rounded-lg border border-gray-200 p-6 hover:border-gray-300 transition-colors">
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="font-medium text-gray-900">{{ $module['label'] }}</h3>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        Aktif
-                    </span>
-                </div>
-                <p class="text-sm text-gray-500">{{ $module['label'] }} modülü aktif durumda.</p>
-            </div>
-        @endforeach
-    </div>
+    <section class="rounded-[10px] border border-slate-200 bg-white shadow-sm overflow-hidden"><div class="p-4 border-b border-slate-200"><h2 class="text-sm font-semibold text-slate-900">Kullanılabilir uygulamalar</h2></div><div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">@foreach($modules as $key => $module)<div class="p-4"><div class="flex items-center justify-between gap-2"><h3 class="text-sm font-medium text-slate-900">{{ $module['label'] }}</h3><span class="px-2 py-0.5 text-xs font-mono rounded bg-emerald-50 text-emerald-700">Aktif</span></div><p class="mt-2 text-sm text-slate-500">{{ $module['label'] }} çalışma yüzeyi hazır.</p></div>@endforeach</div></section>
 </div>
