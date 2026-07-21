@@ -144,6 +144,16 @@ class HrEmployee extends Model
         return $this->hasMany(\App\Modules\Hr\Engagement\Models\HrRecognition::class, 'recipient_employee_id');
     }
 
+    public function onboardingChecklists(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Lifecycle\Models\HrOnboardingChecklist::class, 'employee_id');
+    }
+
+    public function offboardingChecklists(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Lifecycle\Models\HrOffboardingChecklist::class, 'employee_id');
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', EmployeeStatus::Active);

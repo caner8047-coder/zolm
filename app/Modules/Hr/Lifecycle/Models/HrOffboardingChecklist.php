@@ -1,0 +1,3 @@
+<?php
+namespace App\Modules\Hr\Lifecycle\Models;use App\Modules\Hr\Core\Traits\BelongsToLegalEntity;use App\Modules\Hr\Personnel\Models\HrEmployee;use Illuminate\Database\Eloquent\Model;use Illuminate\Database\Eloquent\Relations\BelongsTo;use Illuminate\Database\Eloquent\Relations\HasMany;
+class HrOffboardingChecklist extends Model{use BelongsToLegalEntity;protected $fillable=['legal_entity_id','employee_id','last_working_on','termination_reason','status','completed_at','created_by'];protected function casts():array{return ['last_working_on'=>'date','completed_at'=>'datetime'];}public function employee():BelongsTo{return $this->belongsTo(HrEmployee::class);}public function tasks():HasMany{return $this->hasMany(HrOffboardingTask::class,'checklist_id');}}

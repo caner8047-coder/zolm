@@ -1,0 +1,3 @@
+<?php
+namespace App\Modules\Hr\Lifecycle\Models;use App\Modules\Hr\Core\Traits\BelongsToLegalEntity;use Illuminate\Database\Eloquent\Model;use Illuminate\Database\Eloquent\Relations\BelongsTo;
+class HrOffboardingTask extends Model{use BelongsToLegalEntity;protected $fillable=['legal_entity_id','checklist_id','template_key','title','owner_user_id','due_on','is_required','status','evidence','completed_at','completed_by'];protected function casts():array{return ['due_on'=>'date','is_required'=>'boolean','completed_at'=>'datetime'];}public function checklist():BelongsTo{return $this->belongsTo(HrOffboardingChecklist::class,'checklist_id');}}

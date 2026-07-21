@@ -1,0 +1,3 @@
+<?php
+namespace App\Modules\Hr\Lifecycle\Actions;use App\Modules\Hr\Core\Services\HrAuditService;use App\Modules\Hr\Core\Services\TenantContext;use Illuminate\Database\Eloquent\Model;
+class CompleteLifecycleTaskAction{public function __construct(private HrAuditService $audit){}public function execute(Model $task,string $evidence):Model{abort_unless(auth()->user()?->hasHrPermission('hr.lifecycle.manage'),403);abort_unless($task->legal_entity_id===app(TenantContext::class)->getId()&&$task->status==='pending',422);abort_if(blank($evidence),422,'Tamamlama kanıtı zorunludur.');$task->update(['status'=>'completed','evidence'=>trim($evidence),'completed_at'=>now(),'completed_by'=>auth()->id()]);$this->audit->log('lifecycle_task_completed',$task);return $task->fresh();}}

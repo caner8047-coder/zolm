@@ -71,6 +71,9 @@ return [
     'hr.recruitment.make_offer',
     'hr.recruitment.approve',
 
+    'hr.lifecycle.view',
+    'hr.lifecycle.manage',
+
     'hr.training.view',
     'hr.training.manage',
     'hr.training.enroll',
