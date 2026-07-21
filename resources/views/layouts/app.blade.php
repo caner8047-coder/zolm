@@ -978,5 +978,18 @@
         };
     </script>
     @livewireScripts
+    <script>
+        document.addEventListener('livewire:init', () => {
+            Livewire.hook('request', ({ fail }) => {
+                fail(({ status, preventDefault }) => {
+                    if (status === 419 || status === 302) {
+                        preventDefault();
+                        alert('Oturumunuz sona erdi, lütfen tekrar giriş yapın.');
+                        window.location.reload();
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>
