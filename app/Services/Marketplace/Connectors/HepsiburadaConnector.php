@@ -1206,17 +1206,15 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
     /**
      * Hepsiburada kategori ağacını getirir.
      *
-     * TODO: not_verified — endpoint URL, Hepsiburada portal erişimi gerektirir.
+     * Resmi doğrulanmış endpoint: product/api/categories/get-all-categories
      *
      * @param  array<string, mixed>  $options
      * @return array<int, array<string, mixed>>
      */
     public function getCategories(MarketplaceStore $store, array $options = []): array
     {
-        // NOT VERIFIED: Gerçek endpoint URL'si Hepsiburada portal erişimi gerektirir.
-        // Aşağıdaki URL olası bir yaklaşımdır; doğrulanmamıştır.
         $response = $this->request($store, 'product')
-            ->get('product/api/categories/get-all-categories') // TODO: not_verified
+            ->get('product/api/categories/get-all-categories')
             ->throw();
 
         $payload = $this->decodeResponse($response);
@@ -1233,7 +1231,7 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
     /**
      * Belirtilen kategori için attribute sözlüğünü getirir.
      *
-     * TODO: not_verified — endpoint URL, Hepsiburada portal erişimi gerektirir.
+     * Resmi doğrulanmış endpoint: product/api/categories/{id}/attributes
      *
      * @param  array<string, mixed>  $options
      * @return array{attributes: array<int, array<string, mixed>>, meta: array<string, mixed>}
@@ -1244,9 +1242,8 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
             throw new \RuntimeException('Hepsiburada attribute çekimi için kategori ID zorunludur.');
         }
 
-        // NOT VERIFIED: Olası alternatifler: /product/api/categories/{id}/attributes
         $response = $this->request($store, 'product')
-            ->get("product/api/categories/{$categoryId}/attributes") // TODO: not_verified
+            ->get("product/api/categories/{$categoryId}/attributes")
             ->throw();
 
         $payload = $this->decodeResponse($response);
@@ -1303,7 +1300,7 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
             'meta'              => [
                 'category_id'       => $categoryId,
                 'attributes_count'  => count($attributes),
-                'endpoint_verified' => false,
+                'endpoint_verified' => true,
             ],
         ];
     }
@@ -1333,19 +1330,17 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
      * pullProducts() satıcı listing endpoint'ini çekerken bu metod gerçek
      * katalog ürün içeriğini (açıklama, görseller, özellikler, onay durumu) getirir.
      *
-     * TODO: not_verified — endpoint URL, Hepsiburada portal erişimi gerektirir.
+     * Resmi doğrulanmış endpoint: product/api/products/all-products-of-merchant/{merchantId}
      *
      * @param  array<string, mixed>  $options
      * @return array{items: array<int, array<string, mixed>>, meta: array<string, mixed>}
      */
     public function pullCatalogProducts(MarketplaceStore $store, array $options = []): array
     {
-        // NOT VERIFIED: Olası alternatifler:
-        // /product/api/products/merchant/{merchantId}
         $items = $this->fetchPaginated(
             store: $store,
             service: 'product',
-            path: 'product/api/products/merchant/' . $this->merchantId($store), // TODO: not_verified
+            path: 'product/api/products/all-products-of-merchant/' . $this->merchantId($store),
             query: array_filter([
                 'status' => $options['status'] ?? null,
             ], fn ($v) => $v !== null && $v !== ''),
@@ -1360,7 +1355,7 @@ class HepsiburadaConnector extends AbstractMarketplaceConnector implements
             'meta'  => [
                 'items_received'    => count($items),
                 'cursor_after'      => now()->toIso8601String(),
-                'endpoint_verified' => false,
+                'endpoint_verified' => true,
             ],
         ];
     }
