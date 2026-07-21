@@ -1,0 +1,3 @@
+<?php
+use Illuminate\Database\Migrations\Migration; use Illuminate\Database\Schema\Blueprint; use Illuminate\Support\Facades\Schema;
+return new class extends Migration { public function up():void{Schema::create('hr_performance_templates',function(Blueprint $t){$t->id();$t->foreignId('legal_entity_id')->constrained('legal_entities')->cascadeOnDelete();$t->string('name',160);$t->unsignedInteger('version')->default(1);$t->json('sections');$t->boolean('is_active')->default(true);$t->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();$t->timestamps();$t->unique(['legal_entity_id','name','version']);});}public function down():void{Schema::dropIfExists('hr_performance_templates');}};

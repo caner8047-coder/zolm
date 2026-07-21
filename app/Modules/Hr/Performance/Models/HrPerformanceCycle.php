@@ -1,0 +1,4 @@
+<?php
+namespace App\Modules\Hr\Performance\Models;
+use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use App\Modules\Hr\Performance\Enums\PerformanceCycleStatus; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\HasMany;
+class HrPerformanceCycle extends Model { use BelongsToLegalEntity; protected $fillable=['legal_entity_id','name','starts_on','ends_on','evaluation_starts_on','evaluation_ends_on','status','created_by']; protected function casts():array{return ['starts_on'=>'date','ends_on'=>'date','evaluation_starts_on'=>'date','evaluation_ends_on'=>'date','status'=>PerformanceCycleStatus::class];} public function goals():HasMany{return $this->hasMany(HrPerformanceGoal::class,'cycle_id');} public function evaluations():HasMany{return $this->hasMany(HrPerformanceEvaluation::class,'cycle_id');} }

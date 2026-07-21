@@ -1,0 +1,4 @@
+<?php
+namespace App\Modules\Hr\Performance\Models;
+use App\Modules\Hr\Core\Traits\BelongsToLegalEntity; use App\Modules\Hr\Personnel\Models\HrEmployee; use Illuminate\Database\Eloquent\Model; use Illuminate\Database\Eloquent\Relations\BelongsTo;
+class HrEmployeeCompetency extends Model { use BelongsToLegalEntity; protected $fillable=['legal_entity_id','employee_id','competency_id','cycle_id','current_level','target_level','evidence','assessed_by']; protected function casts():array{return ['current_level'=>'integer','target_level'=>'integer'];} public function employee():BelongsTo{return $this->belongsTo(HrEmployee::class);} public function competency():BelongsTo{return $this->belongsTo(HrCompetency::class,'competency_id');} public function cycle():BelongsTo{return $this->belongsTo(HrPerformanceCycle::class,'cycle_id');} }

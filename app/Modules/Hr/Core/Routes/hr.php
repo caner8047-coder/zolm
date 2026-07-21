@@ -50,6 +50,7 @@ use App\Modules\Hr\Expense\Livewire\ExpenseCategoryManager;
 use App\Modules\Hr\Expense\Livewire\ExpenseWorkspace;
 use App\Modules\Hr\Advance\Livewire\AdvanceWorkspace;
 use App\Modules\Hr\Asset\Livewire\AssetWorkspace;
+use App\Modules\Hr\Performance\Livewire\PerformanceWorkspace;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -215,6 +216,11 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
     Route::middleware('hr.module:zimmet')->group(function () {
         Route::get('/assets', AssetWorkspace::class)->name('assets')->middleware('hr.authorize:hr.assets.view');
         Route::get('/my/assets', AssetWorkspace::class)->name('my-assets')->defaults('selfService', true)->middleware('hr.authorize:hr.assets.view');
+    });
+
+    Route::middleware('hr.module:performans')->group(function () {
+        Route::get('/performance', PerformanceWorkspace::class)->name('performance')->middleware('hr.authorize:hr.performance.view');
+        Route::get('/my/performance', PerformanceWorkspace::class)->name('my-performance')->defaults('selfService', true)->middleware('hr.authorize:hr.performance.view');
     });
 
     // Personel

@@ -114,6 +114,21 @@ class HrEmployee extends Model
         return $this->hasMany(\App\Modules\Hr\Asset\Models\HrAssetAssignment::class, 'employee_id');
     }
 
+    public function performanceGoals(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Performance\Models\HrPerformanceGoal::class, 'employee_id');
+    }
+
+    public function performanceEvaluations(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Performance\Models\HrPerformanceEvaluation::class, 'employee_id');
+    }
+
+    public function competencyAssessments(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Performance\Models\HrEmployeeCompetency::class, 'employee_id');
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', EmployeeStatus::Active);
