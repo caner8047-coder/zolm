@@ -27,6 +27,12 @@ return [
     'hr.leaves.approve',
     'hr.leaves.manage_balance',
     'hr.leaves.manage_type',
+    'hr.leaves.manage_policy',
+    'hr.leaves.cancel_own',
+    'hr.leaves.cancel_any',
+    'hr.leaves.adjust_balance',
+    'hr.leaves.export',
+    'hr.leaves.view_team_calendar',
 
     'hr.attendance.view',
     'hr.attendance.manage',

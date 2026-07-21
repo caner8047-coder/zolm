@@ -24,6 +24,15 @@ use App\Modules\Hr\Document\Models\HrDocumentType;
 use App\Modules\Hr\Document\Models\HrEmployeeDocument;
 use App\Modules\Hr\Document\Policies\HrDocumentTypePolicy;
 use App\Modules\Hr\Document\Policies\HrEmployeeDocumentPolicy;
+use App\Modules\Hr\Leave\Models\HrLeaveRequest;
+use App\Modules\Hr\Leave\Models\HrLeaveType;
+use App\Modules\Hr\Leave\Policies\HrLeaveRequestPolicy;
+use App\Modules\Hr\Leave\Policies\HrLeaveTypePolicy;
+use App\Modules\Hr\Leave\Events\LeaveRequested;
+use App\Modules\Hr\Leave\Events\LeaveApproved;
+use App\Modules\Hr\Leave\Events\LeaveRejected;
+use App\Modules\Hr\Leave\Events\LeaveCancelled;
+use App\Modules\Hr\Leave\Listeners\LogLeaveEvent;
 use App\Modules\Hr\Organization\Models\HrDepartment;
 use App\Modules\Hr\Organization\Models\HrDepartmentPolicy;
 use App\Modules\Hr\Organization\Models\HrSgkWorkplace;
@@ -62,6 +71,8 @@ class HrServiceProvider extends ServiceProvider
         Gate::policy(HrSgkWorkplace::class, HrSgkWorkplacePolicy::class);
         Gate::policy(HrDocumentType::class, HrDocumentTypePolicy::class);
         Gate::policy(HrEmployeeDocument::class, HrEmployeeDocumentPolicy::class);
+        Gate::policy(HrLeaveType::class, HrLeaveTypePolicy::class);
+        Gate::policy(HrLeaveRequest::class, HrLeaveRequestPolicy::class);
 
         // Events & Listeners
         Event::listen(EmployeeDocumentUploaded::class, [LogDocumentEvent::class, 'handle']);
@@ -85,5 +96,10 @@ class HrServiceProvider extends ServiceProvider
         Event::listen(EmployeeDocumentRequestFulfilled::class, [LogDocumentEvent::class, 'handle']);
         Event::listen(EmployeeDocumentRequestFulfilled::class, [InvalidateDocumentMetricsCache::class, 'handle']);
         Event::listen(EmployeeDocumentRequestFulfilled::class, [SendDocumentNotification::class, 'handle']);
+
+        Event::listen(LeaveRequested::class, [LogLeaveEvent::class, 'handle']);
+        Event::listen(LeaveApproved::class, [LogLeaveEvent::class, 'handle']);
+        Event::listen(LeaveRejected::class, [LogLeaveEvent::class, 'handle']);
+        Event::listen(LeaveCancelled::class, [LogLeaveEvent::class, 'handle']);
     }
 }

@@ -50,6 +50,10 @@
                     <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">{{ $mandatoryCount }}</span>
                 @endif
             </button>
+            <button wire:click="$set('activeTab', 'leaves')"
+                class="py-2 px-1 border-b-2 text-sm font-medium {{ $activeTab === 'leaves' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
+                İzinler
+            </button>
             <button wire:click="$set('activeTab', 'history')"
                 class="py-2 px-1 border-b-2 text-sm font-medium {{ $activeTab === 'history' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
                 İşlem Geçmişi
@@ -330,6 +334,19 @@
                 </table>
                 </div>
             </div>
+        </div>
+    @endif
+
+    @if($activeTab === 'leaves')
+        <div class="space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <h3 class="text-lg font-medium text-gray-900">{{ now()->year }} İzin Bakiyeleri</h3>
+                @if(auth()->user()?->hasHrPermission('hr.leaves.create'))<a href="{{ route('hr.leaves.create', ['employee' => $employee->id]) }}" class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-lg bg-gray-900 text-white text-sm text-center">+ İzin Talebi</a>@endif
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                @forelse($leaveBalances as $balance)<div class="rounded-lg border border-gray-200 bg-gray-50/60 p-4"><p class="text-sm text-gray-500">{{ $balance->leaveType?->name }}</p><p class="mt-1 text-2xl font-bold {{ $balance->remaining_amount < 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $balance->remaining_amount }}</p><p class="mt-1 text-xs text-gray-500">Hak ediş {{ $balance->entitled_amount }} · Kullanım {{ $balance->used_amount }}</p></div>@empty<div class="sm:col-span-2 xl:col-span-3 rounded-lg border border-gray-200 p-4 text-sm text-gray-500">Bu dönem için bakiye hareketi bulunmuyor.</div>@endforelse
+            </div>
+            <div class="bg-white rounded-lg border border-gray-200 overflow-hidden"><div class="px-4 py-3 border-b border-gray-200"><h3 class="font-medium text-gray-900">İzin Talepleri</h3></div><div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tür</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tarih</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Süre</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Durum</th></tr></thead><tbody class="divide-y divide-gray-100">@forelse($leaveRequests as $request)<tr><td class="px-4 py-3 text-sm text-gray-900">{{ $request->leaveType?->name }}</td><td class="px-4 py-3 text-sm text-gray-500">{{ $request->start_date->format('d.m.Y') }} — {{ $request->end_date->format('d.m.Y') }}</td><td class="px-4 py-3 text-sm text-gray-500">{{ $request->requested_amount }} {{ $request->unit->label() }}</td><td class="px-4 py-3"><span class="px-2 py-0.5 text-xs font-mono rounded bg-gray-100 text-gray-700">{{ $request->status->label() }}</span></td></tr>@empty<tr><td colspan="4" class="px-4 py-8 text-center text-sm text-gray-500">Henüz izin talebi bulunmuyor.</td></tr>@endforelse</tbody></table></div></div>
         </div>
     @endif
 

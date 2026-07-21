@@ -12,6 +12,8 @@ use App\Modules\Hr\Document\Enums\VerificationStatus;
 use App\Modules\Hr\Document\Models\HrDocumentRequest;
 use App\Modules\Hr\Document\Models\HrDocumentType;
 use App\Modules\Hr\Document\Models\HrEmployeeDocument;
+use App\Modules\Hr\Leave\Models\HrLeaveBalance;
+use App\Modules\Hr\Leave\Models\HrLeaveRequest;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Component;
@@ -88,6 +90,8 @@ class EmployeeDetail extends Component
             ->get();
 
         $missingMandatoryTypes = $this->missingMandatoryTypes($tenantId, $documents);
+        $leaveRequests = HrLeaveRequest::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $this->employee->id)->with('leaveType')->latest()->get();
+        $leaveBalances = HrLeaveBalance::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $this->employee->id)->where('period_year', now()->year)->with('leaveType')->get();
 
         return view('livewire.hr.personnel.employee-detail', [
             'employee' => $this->employee,
@@ -101,6 +105,8 @@ class EmployeeDetail extends Component
             'missingMandatoryTypes' => $missingMandatoryTypes,
             'canViewSensitive' => $canViewSensitive,
             'canViewHealth' => $canViewHealth,
+            'leaveRequests' => $leaveRequests,
+            'leaveBalances' => $leaveBalances,
         ])->layout('layouts.app');
     }
 

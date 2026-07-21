@@ -15,6 +15,15 @@ use App\Modules\Hr\Organization\Livewire\TeamForm;
 use App\Modules\Hr\Organization\Livewire\TeamList;
 use App\Modules\Hr\Organization\Livewire\UnitForm;
 use App\Modules\Hr\Organization\Livewire\UnitList;
+use App\Modules\Hr\Leave\Livewire\LeaveTypeForm;
+use App\Modules\Hr\Leave\Livewire\LeaveTypeList;
+use App\Modules\Hr\Leave\Livewire\LeavePolicyForm;
+use App\Modules\Hr\Leave\Livewire\LeavePolicyList;
+use App\Modules\Hr\Leave\Livewire\LeaveList;
+use App\Modules\Hr\Leave\Livewire\LeaveRequestForm;
+use App\Modules\Hr\Leave\Livewire\LeaveApprovalInbox;
+use App\Modules\Hr\Leave\Livewire\LeaveBalanceManager;
+use App\Modules\Hr\Leave\Actions\ExportLeavesAction;
 use App\Modules\Hr\Personnel\Livewire\EmployeeCreate;
 use App\Modules\Hr\Personnel\Livewire\EmployeeDetail;
 use App\Modules\Hr\Personnel\Livewire\EmployeeEdit;
@@ -73,6 +82,36 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
             return response()->download($fullPath, basename($path))->deleteFileAfterSend(true);
         })->name('documents.export')
             ->middleware('hr.authorize:hr.documents.export');
+    });
+
+    // İzin ayarları — izin modül lisansı + tür yönetimi
+    Route::middleware('hr.module:izin')->group(function () {
+        Route::get('/leaves', LeaveList::class)->name('leaves')
+            ->middleware('hr.authorize:hr.leaves.view');
+        Route::get('/leaves/create', LeaveRequestForm::class)->name('leaves.create')
+            ->middleware('hr.authorize:hr.leaves.create');
+        Route::get('/leaves/approvals', LeaveApprovalInbox::class)->name('leaves.approvals')
+            ->middleware('hr.authorize:hr.leaves.approve');
+        Route::get('/leaves/balances', LeaveBalanceManager::class)->name('leaves.balances')
+            ->middleware('hr.authorize:hr.leaves.manage_balance');
+        Route::get('/leaves/export', function () {
+            $path = app(ExportLeavesAction::class)->execute(request()->only(['status', 'leave_type_id']));
+            $fullPath = storage_path("app/private/{$path}");
+            return response()->download($fullPath, basename($path))->deleteFileAfterSend(true);
+        })->name('leaves.export')
+            ->middleware('hr.authorize:hr.leaves.export');
+        Route::get('/settings/leave-types', LeaveTypeList::class)->name('settings.leave-types')
+            ->middleware('hr.authorize:hr.leaves.view');
+        Route::get('/settings/leave-types/create', LeaveTypeForm::class)->name('settings.leave-types.create')
+            ->middleware('hr.authorize:hr.leaves.manage_type');
+        Route::get('/settings/leave-types/{id}/edit', LeaveTypeForm::class)->name('settings.leave-types.edit')
+            ->middleware('hr.authorize:hr.leaves.manage_type');
+        Route::get('/settings/leave-policies', LeavePolicyList::class)->name('settings.leave-policies')
+            ->middleware('hr.authorize:hr.leaves.view');
+        Route::get('/settings/leave-policies/create', LeavePolicyForm::class)->name('settings.leave-policies.create')
+            ->middleware('hr.authorize:hr.leaves.manage_policy');
+        Route::get('/settings/leave-policies/{id}/edit', LeavePolicyForm::class)->name('settings.leave-policies.edit')
+            ->middleware('hr.authorize:hr.leaves.manage_policy');
     });
 
     // Personel

@@ -58,7 +58,13 @@ class HrPhase1BMigrationsRollbackTest extends TestCase
 
     public function test_faz1b_rollback_drops_document_tables_and_preserves_faz0_1a(): void
     {
-        // Faz 1B belge migration'ları en son 5 migration olduğu için --step=5 onları geri alır.
+        // Faz 1C migration'ları eklendiğinde önce onları geri alırız. Böylece
+        // Faz 1B checkpoint testi, sonraki fazların migration sırasına bağlı kalmaz.
+        Artisan::call('migrate:rollback', ['--step' => 6]);
+
+        $this->assertTrue(Schema::hasTable('hr_employee_document_versions'));
+
+        // Faz 1B belge migration'larının tamamı 5 migration'dır.
         Artisan::call('migrate:rollback', ['--step' => 5]);
 
         $this->assertFalse(Schema::hasTable('hr_employee_document_versions'));
