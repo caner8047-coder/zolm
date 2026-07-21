@@ -74,6 +74,11 @@ class HrEmployee extends Model
         return $this->hasMany(\App\Modules\Hr\Shift\Models\HrShiftAssignment::class, 'employee_id');
     }
 
+    public function shiftAvailabilities(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Shift\Models\HrShiftAvailability::class, 'employee_id');
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', EmployeeStatus::Active);

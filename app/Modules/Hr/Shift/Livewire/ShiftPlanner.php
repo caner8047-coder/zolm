@@ -7,6 +7,7 @@ use App\Modules\Hr\Personnel\Models\HrEmployee;
 use App\Modules\Hr\Shift\Actions\AssignShiftAction;
 use App\Modules\Hr\Shift\Actions\CancelShiftAssignmentAction;
 use App\Modules\Hr\Shift\Actions\PublishShiftWeekAction;
+use App\Modules\Hr\Shift\Actions\BulkAssignShiftAction;
 use App\Modules\Hr\Shift\Models\HrShiftAssignment;
 use App\Modules\Hr\Shift\Models\HrShiftTemplate;
 use Carbon\Carbon;
@@ -21,6 +22,7 @@ class ShiftPlanner extends Component
     public string $note = '';
     public ?int $cancellingId = null;
     public string $cancellationReason = '';
+    public array $selectedEmployeeIds = [];
 
     public function mount(): void { $this->weekStart = now()->startOfWeek()->toDateString(); $this->shiftDate = now()->toDateString(); }
     public function previousWeek(): void { $this->weekStart = Carbon::parse($this->weekStart)->subWeek()->toDateString(); }
@@ -35,6 +37,15 @@ class ShiftPlanner extends Component
         $template = HrShiftTemplate::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($this->templateId);
         $action->execute($employee, $template, $this->shiftDate, $this->note ?: null);
         session()->flash('success', 'Vardiya ataması kaydedildi.'); $this->reset(['employeeId', 'templateId', 'note']);
+    }
+
+    public function bulkAssign(BulkAssignShiftAction $action): void
+    {
+        $this->validate(['selectedEmployeeIds' => 'required|array|min:1', 'selectedEmployeeIds.*' => 'integer', 'templateId' => 'required|integer', 'shiftDate' => 'required|date', 'note' => 'nullable|string|max:1000']);
+        $template = HrShiftTemplate::withoutGlobalScope('tenant')->where('legal_entity_id', app(TenantContext::class)->getId())->findOrFail($this->templateId);
+        $result = $action->execute($this->selectedEmployeeIds, $template, $this->shiftDate, $this->note ?: null);
+        session()->flash('success', "{$result['assigned']} çalışan için vardiya kaydedildi; " . count($result['errors']) . ' atama engellendi.');
+        $this->reset(['selectedEmployeeIds', 'templateId', 'note']);
     }
 
     public function publishWeek(PublishShiftWeekAction $action): void

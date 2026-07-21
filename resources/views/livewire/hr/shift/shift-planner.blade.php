@@ -9,12 +9,13 @@
         <section class="rounded-[10px] border border-slate-200 bg-white shadow-sm p-4 lg:p-6">
             <h2 class="text-sm font-semibold text-slate-900">Vardiya ata</h2>
             <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
-                <select wire:model.defer="employeeId" class="text-base sm:text-sm rounded-[6px] border border-slate-200 px-3 py-3 sm:py-2"><option value="">Çalışan seçin</option>@foreach($employees as $employee)<option value="{{ $employee->id }}">{{ $employee->full_name }}</option>@endforeach</select>
+                <select wire:model.defer="employeeId" class="text-base sm:text-sm rounded-[6px] border border-slate-200 px-3 py-3 sm:py-2"><option value="">Tek çalışan seçin</option>@foreach($employees as $employee)<option value="{{ $employee->id }}">{{ $employee->full_name }}</option>@endforeach</select>
                 <select wire:model.defer="templateId" class="text-base sm:text-sm rounded-[6px] border border-slate-200 px-3 py-3 sm:py-2"><option value="">Şablon seçin</option>@foreach($templates as $template)<option value="{{ $template->id }}">{{ $template->name }} · {{ substr($template->starts_at,0,5) }}</option>@endforeach</select>
                 <input type="date" wire:model.defer="shiftDate" class="text-base sm:text-sm rounded-[6px] border border-slate-200 px-3 py-3 sm:py-2">
                 <input wire:model.defer="note" class="text-base sm:text-sm rounded-[6px] border border-slate-200 px-3 py-3 sm:py-2" placeholder="Not (isteğe bağlı)">
             </div>
-            <button wire:click="assign" class="mt-3 w-full sm:w-auto px-4 py-3 sm:py-2 rounded-[6px] bg-slate-900 text-white text-sm">Atamayı Kaydet</button>
+            <div class="mt-3 flex flex-col sm:flex-row gap-2"><button wire:click="assign" class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-[6px] bg-slate-900 text-white text-sm">Tekli Atamayı Kaydet</button><button type="button" wire:click="$set('employeeId', null)" class="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-[6px] border border-slate-200 text-sm">Tekli seçimi temizle</button></div>
+            <div class="mt-4 border-t border-slate-200 pt-4"><label><span class="text-sm font-medium text-slate-700">Toplu çalışan seçimi</span><select multiple size="5" wire:model.defer="selectedEmployeeIds" class="mt-1 w-full text-base sm:text-sm rounded-[6px] border border-slate-200 px-3 py-2">@foreach($employees as $employee)<option value="{{ $employee->id }}">{{ $employee->full_name }}</option>@endforeach</select><span class="mt-1 block text-xs text-slate-500">Masaüstünde birden fazla seçim için Ctrl/Cmd tuşunu kullanın.</span></label><button wire:click="bulkAssign" class="mt-3 w-full sm:w-auto px-4 py-3 sm:py-2 rounded-[6px] border border-slate-900 bg-white text-slate-900 text-sm">Seçili Çalışanlara Ata</button></div>
         </section>
     @endif
 

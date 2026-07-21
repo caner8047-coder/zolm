@@ -32,6 +32,7 @@ use App\Modules\Hr\Personnel\Livewire\EmployeeList;
 use App\Modules\Hr\Shift\Livewire\ShiftPlanner;
 use App\Modules\Hr\Shift\Livewire\ShiftTemplateForm;
 use App\Modules\Hr\Shift\Livewire\ShiftTemplateList;
+use App\Modules\Hr\Shift\Livewire\MyShiftAvailability;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->group(function () {
@@ -125,6 +126,8 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
 
     Route::middleware('hr.module:vardiya')->group(function () {
         Route::get('/shifts', ShiftPlanner::class)->name('shifts')
+            ->middleware('hr.authorize:hr.shifts.view');
+        Route::get('/my/shift-availability', MyShiftAvailability::class)->name('my-shift-availability')
             ->middleware('hr.authorize:hr.shifts.view');
         Route::get('/settings/shift-templates', ShiftTemplateList::class)->name('settings.shift-templates')
             ->middleware('hr.authorize:hr.shifts.manage');

@@ -12,7 +12,10 @@ use App\Modules\Hr\Personnel\Models\HrEmployee;
 use App\Modules\Hr\Shift\Actions\AssignShiftAction;
 use App\Modules\Hr\Shift\Actions\CancelShiftAssignmentAction;
 use App\Modules\Hr\Shift\Actions\PublishShiftWeekAction;
+use App\Modules\Hr\Shift\Actions\SetShiftAvailabilityAction;
+use App\Modules\Hr\Shift\Actions\BulkAssignShiftAction;
 use App\Modules\Hr\Shift\Enums\ShiftAssignmentStatus;
+use App\Modules\Hr\Shift\Enums\ShiftAvailabilityStatus;
 use App\Modules\Hr\Shift\Models\HrShiftTemplate;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -68,5 +71,24 @@ class ShiftAssignmentTest extends TestCase
         $this->assertSame(ShiftAssignmentStatus::Cancelled, $cancelled->status);
         $this->assertSame('Operasyon planı değişti', $cancelled->cancellation_reason);
         $this->assertNotNull($cancelled->cancelled_at);
+    }
+
+    public function test_unavailable_day_blocks_shift_assignment(): void
+    {
+        $date = now()->addDays(2)->toDateString();
+        app(SetShiftAvailabilityAction::class)->execute($this->employee, $date, ShiftAvailabilityStatus::Unavailable, note: 'Okul');
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        app(AssignShiftAction::class)->execute($this->employee, $this->template, $date);
+    }
+
+    public function test_bulk_assignment_continues_when_one_employee_is_unavailable(): void
+    {
+        $date = now()->addDays(2)->toDateString();
+        $other = HrEmployee::withoutGlobalScope('tenant')->create(['legal_entity_id' => $this->tenant->id, 'employee_number' => 'E002', 'national_id_encrypted' => 'enc', 'national_id_hash' => 'h2', 'national_id_last_four' => '0002', 'first_name' => 'Other', 'last_name' => 'User', 'status' => 'active']);
+        app(SetShiftAvailabilityAction::class)->execute($this->employee, $date, ShiftAvailabilityStatus::Unavailable);
+        $result = app(BulkAssignShiftAction::class)->execute([$this->employee->id, $other->id], $this->template, $date);
+        $this->assertSame(1, $result['assigned']);
+        $this->assertArrayHasKey($this->employee->id, $result['errors']);
+        $this->assertSame(1, $other->shiftAssignments()->count());
     }
 }
