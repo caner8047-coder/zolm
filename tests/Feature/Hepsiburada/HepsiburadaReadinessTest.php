@@ -369,21 +369,41 @@ class HepsiburadaReadinessTest extends TestCase
     }
 
     /** @test */
-    public function it_returns_audit_persistence_failed_when_audit_creation_fails()
+    public function universal_audit_failure_matrix_returns_audit_persistence_failed_across_all_decisions()
     {
         $user = User::factory()->create();
         $store = $this->makeStore($user);
 
-        // Drop audit table temporarily or listen to event
+        config(['marketplace.hepsiburada.p0_catalog_sync_enabled' => true]);
+        config(['marketplace.hepsiburada.p0_connection_probe_enabled' => true]);
+
+        // Drop audit table to simulate audit persistence failure
         Schema::dropIfExists('hepsiburada_readiness_audits');
 
-        $res = app(HepsiburadaReadinessService::class)->inspect($store, [
-            'actor_id' => $user->id,
-            'reason'   => 'Audit fail test',
+        $scenarios = [
+            'configured_not_verified' => ['confirm_read' => false],
+            'rollout_disabled'        => ['confirm_read' => true, 'operation' => 'categories'], // gate disabled
+            'http_401'                => ['confirm_read' => true, 'operation' => 'catalog'],
+            'http_200_success'        => ['confirm_read' => true, 'operation' => 'connection'],
+        ];
+
+        Http::fake([
+            'https://mpop.hepsiburada.com/*' => Http::response(['message' => 'Unauthorized'], 401),
+            'https://listing-external.hepsiburada.com/*' => Http::response(['listings' => []], 200),
+            'https://oms-external.hepsiburada.com/*' => Http::response(['listings' => []], 200),
         ]);
 
-        $this->assertEquals('audit_persistence_failed', $res['decision']);
-        $this->assertFalse($res['is_ready']);
+        foreach ($scenarios as $name => $opts) {
+            $res = app(HepsiburadaReadinessService::class)->inspect($store, array_merge($opts, [
+                'actor_id' => $user->id,
+                'reason'   => 'Matrix audit fail check ' . $name,
+            ]));
+
+            $this->assertEquals('audit_persistence_failed', $res['decision'], "Scenario {$name} failed to yield audit_persistence_failed");
+            $this->assertFalse($res['is_ready']);
+            $this->assertFalse($res['is_live_verified']);
+            $this->assertEmpty($res['details']);
+        }
 
         // Re-create table for subsequent tests
         \Illuminate\Support\Facades\Artisan::call('migrate');
