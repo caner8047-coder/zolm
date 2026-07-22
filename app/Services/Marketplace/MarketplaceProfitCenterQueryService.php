@@ -407,14 +407,38 @@ class MarketplaceProfitCenterQueryService
         $totalLines = (int) ($row->total_lines ?? 0);
         $readyLines = max(0, $totalLines - (int) ($row->unmatched_lines ?? 0) - (int) ($row->missing_cost_lines ?? 0));
 
+        // Maliyetli Ciro: filteredOrderIdsQuery üzerinden revenue kırılımı hesapla
+        // costGapImpact ile aynı revenue formülü kullanılır (billable_amount / gross_amount / unit_price*qty)
+        $orderIds = $this->filteredOrderIdsQuery($userId, $filters);
+        $revSql   = '(COALESCE(NULLIF(channel_order_items.billable_amount, 0), NULLIF(channel_order_items.gross_amount, 0), (COALESCE(channel_order_items.unit_price, 0) * COALESCE(channel_order_items.quantity, 0))) * COALESCE(filtered_orders.exchange_rate, 1.0))';
+        $hasCogsSql = '(channel_order_items.mp_product_id IS NOT NULL AND COALESCE(mp_products.cogs, 0) > 0 AND COALESCE(mp_products.packaging_cost, 0) > 0)';
+
+        $revRow = \App\Models\ChannelOrderItem::query()
+            ->joinSub($orderIds, 'filtered_orders', fn ($join) => $join->on('filtered_orders.id', '=', 'channel_order_items.channel_order_id'))
+            ->leftJoin('mp_products', 'mp_products.id', '=', 'channel_order_items.mp_product_id')
+            ->selectRaw("
+                COALESCE(SUM({$revSql}), 0) as total_revenue,
+                COALESCE(SUM(CASE WHEN {$hasCogsSql} THEN {$revSql} ELSE 0 END), 0) as cogs_covered_revenue,
+                COALESCE(SUM(CASE WHEN NOT ({$hasCogsSql}) THEN {$revSql} ELSE 0 END), 0) as missing_cost_revenue
+            ")
+            ->first();
+
+        $totalRevenue       = (float) ($revRow->total_revenue ?? 0);
+        $cogsCoveredRevenue = (float) ($revRow->cogs_covered_revenue ?? 0);
+
         return [
-            'total_lines' => $totalLines,
-            'matched_lines' => (int) ($row->matched_lines ?? 0),
-            'unmatched_lines' => (int) ($row->unmatched_lines ?? 0),
-            'missing_cost_lines' => (int) ($row->missing_cost_lines ?? 0),
-            'distinct_products' => (int) ($row->distinct_products ?? 0),
-            'missing_cost_products' => (int) ($row->missing_cost_products ?? 0),
-            'ready_percent' => $totalLines > 0 ? round(($readyLines / $totalLines) * 100, 1) : 0.0,
+            'total_lines'                   => $totalLines,
+            'matched_lines'                 => (int) ($row->matched_lines ?? 0),
+            'unmatched_lines'               => (int) ($row->unmatched_lines ?? 0),
+            'missing_cost_lines'            => (int) ($row->missing_cost_lines ?? 0),
+            'distinct_products'             => (int) ($row->distinct_products ?? 0),
+            'missing_cost_products'         => (int) ($row->missing_cost_products ?? 0),
+            'ready_percent'                 => $totalLines > 0 ? round(($readyLines / $totalLines) * 100, 1) : 0.0,
+            // Yeni: Maliyetli Ciro metrikleri
+            'total_revenue'                 => round($totalRevenue, 2),
+            'cogs_covered_revenue'          => round($cogsCoveredRevenue, 2),
+            'missing_cost_revenue'          => round((float) ($revRow->missing_cost_revenue ?? 0), 2),
+            'cogs_coverage_revenue_percent' => $totalRevenue > 0 ? round(($cogsCoveredRevenue / $totalRevenue) * 100, 1) : 0.0,
         ];
     }
 

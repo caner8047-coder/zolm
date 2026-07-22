@@ -547,7 +547,7 @@ class MarketplaceQuestions extends Component
     {
         try {
             $capabilities = app(MarketplaceConnectorManager::class)
-                ->resolve($store->marketplace)
+                ->resolveForStore($store)
                 ->capabilities();
 
             return (bool) ($capabilities['questions'] ?? false);

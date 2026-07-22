@@ -19,7 +19,7 @@ class MarketplaceClaimActionService
     public function approveClaim(ChannelClaim $claim, array $context = []): array
     {
         $claim->loadMissing(['store.connection', 'items']);
-        $connector = $this->connectorManager->resolve($claim->store->marketplace);
+        $connector = $this->connectorManager->resolveForStore($claim->store);
 
         if (!$connector instanceof ManagesClaims || !(bool) ($connector->capabilities()['claim_approve'] ?? false)) {
             throw new \RuntimeException('Bu kanal iade onayını desteklemiyor.');
@@ -44,7 +44,7 @@ class MarketplaceClaimActionService
     public function rejectClaim(ChannelClaim $claim, string $reason, array $context = []): array
     {
         $claim->loadMissing(['store.connection', 'items']);
-        $connector = $this->connectorManager->resolve($claim->store->marketplace);
+        $connector = $this->connectorManager->resolveForStore($claim->store);
 
         if (!$connector instanceof ManagesClaims || !(bool) ($connector->capabilities()['claim_reject'] ?? false)) {
             throw new \RuntimeException('Bu kanal iade reddetme servisini desteklemiyor.');

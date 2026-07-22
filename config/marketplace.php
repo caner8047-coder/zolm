@@ -191,6 +191,30 @@ return [
         'claims_page_size' => (int) env('TRENDYOL_CLAIMS_PAGE_SIZE', 50),
         'max_claim_pages_per_sync' => (int) env('TRENDYOL_MAX_CLAIM_PAGES_PER_SYNC', 20),
         'claim_issue_reason_id' => (int) env('TRENDYOL_CLAIM_ISSUE_REASON_ID', 451),
+        'order_stream_enabled' => (bool) env('TRENDYOL_ORDER_STREAM_ENABLED', true),
+        'buybox_sync_enabled' => (bool) env('TRENDYOL_BUYBOX_SYNC_ENABLED', false), // Safe default
+        'cargo_invoice_sync_enabled' => (bool) env('TRENDYOL_CARGO_INVOICE_SYNC_ENABLED', false), // Safe default
+        'reference_sync_enabled' => (bool) env('TRENDYOL_REFERENCE_SYNC_ENABLED', false), // Safe default
+        'batch_tracking_enabled' => (bool) env('TRENDYOL_BATCH_TRACKING_ENABLED', false), // Safe default
+        'price_recommendations_enabled' => (bool) env('TRENDYOL_PRICE_RECOMMENDATIONS_ENABLED', false),
+        'manual_price_actions_enabled' => (bool) env('TRENDYOL_MANUAL_PRICE_ACTIONS_ENABLED', false),
+        'bulk_price_actions_enabled' => (bool) env('TRENDYOL_BULK_PRICE_ACTIONS_ENABLED', false),
+        'automatic_price_actions_enabled' => (bool) env('TRENDYOL_AUTOMATIC_PRICE_ACTIONS_ENABLED', false),
+        'price_rollback_enabled' => (bool) env('TRENDYOL_PRICE_ROLLBACK_ENABLED', false),
+        'shadow_mode_enabled' => (bool) env('TRENDYOL_PRICE_SHADOW_MODE_ENABLED', false),
+        'pilot_enabled' => (bool) env('TRENDYOL_PRICE_PILOT_ENABLED', false),
+        'canary_enabled' => (bool) env('TRENDYOL_PRICE_CANARY_ENABLED', false),
+        'price_verification_enabled' => (bool) env('TRENDYOL_PRICE_VERIFICATION_ENABLED', false),
+        'emergency_stop_enabled' => (bool) env('TRENDYOL_PRICE_EMERGENCY_STOP', false),
+        // Sağlık Merkezi scheduler gecikme eşikleri (dakika)
+        'health' => [
+            'warning_multiplier' => (int) env('TRENDYOL_HEALTH_WARNING_MULTIPLIER', 2),
+            'critical_multiplier' => (int) env('TRENDYOL_HEALTH_CRITICAL_MULTIPLIER', 4),
+            'order_stream_interval_minutes' => (int) env('TRENDYOL_HEALTH_ORDER_STREAM_INTERVAL_MINUTES', 15),
+            'buybox_interval_minutes' => (int) env('TRENDYOL_HEALTH_BUYBOX_INTERVAL_MINUTES', 30),
+            'cargo_invoice_interval_minutes' => (int) env('TRENDYOL_HEALTH_CARGO_INVOICE_INTERVAL_MINUTES', 1440),
+            'reference_interval_minutes' => (int) env('TRENDYOL_HEALTH_REFERENCE_INTERVAL_MINUTES', 10080),
+        ],
         'sync_defaults' => [
             'orders_poll_minutes' => 15,
             'finance_poll_minutes' => 60,
@@ -263,6 +287,10 @@ return [
             'request_jitter_seconds' => 10,
         ],
         'user_agent_suffix' => env('HEPSIBURADA_USER_AGENT_SUFFIX', 'ZOLM Marketplace Integration'),
+        'p0_reference_sync_enabled' => (bool) env('HEPSIBURADA_P0_REFERENCE_SYNC_ENABLED', false),
+        'p0_catalog_sync_enabled' => (bool) env('HEPSIBURADA_P0_CATALOG_SYNC_ENABLED', false),
+        'p0_batch_status_sync_enabled' => (bool) env('HEPSIBURADA_P0_BATCH_STATUS_SYNC_ENABLED', false),
+        'p0_connection_probe_enabled' => (bool) env('HEPSIBURADA_P0_CONNECTION_PROBE_ENABLED', false),
     ],
 
     'n11' => [

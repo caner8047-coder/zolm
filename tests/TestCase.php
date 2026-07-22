@@ -20,5 +20,12 @@ abstract class TestCase extends BaseTestCase
                 );
             }
         });
+
+        $reflection = new \ReflectionClass(\Illuminate\Database\Eloquent\Model::class);
+        if ($reflection->hasProperty('guardableColumns')) {
+            $property = $reflection->getProperty('guardableColumns');
+            $property->setAccessible(true);
+            $property->setValue(null, []);
+        }
     }
 }

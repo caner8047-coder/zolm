@@ -231,6 +231,59 @@
                 @endforeach
             </div>
         </div>
+
+        {{-- Maliyetli Ciro Bandı — COGS kapsama uyarısı (Melontik benchmarki) --}}
+        @php
+            $cogsCoverageRevPct = (float) ($costReadiness['cogs_coverage_revenue_percent'] ?? 0);
+            $cogsCoveredRev     = (float) ($costReadiness['cogs_covered_revenue'] ?? 0);
+            $missingCostRev     = (float) ($costReadiness['missing_cost_revenue'] ?? 0);
+            $isCoverageOk       = $cogsCoverageRevPct >= 95;
+            $coverageBandClass  = $isCoverageOk
+                ? 'border-emerald-100 bg-emerald-50/60'
+                : ($cogsCoverageRevPct >= 80 ? 'border-amber-100 bg-amber-50/60' : 'border-rose-100 bg-rose-50/60');
+            $coverageTextClass  = $isCoverageOk ? 'text-emerald-700' : ($cogsCoverageRevPct >= 80 ? 'text-amber-700' : 'text-rose-700');
+            $coverageDotClass   = $isCoverageOk ? 'bg-emerald-500' : ($cogsCoverageRevPct >= 80 ? 'bg-amber-500' : 'bg-rose-500');
+        @endphp
+        <div class="border-t border-slate-100 px-4 py-2.5 lg:px-6">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                {{-- Sol: başlık + açıklama --}}
+                <div class="flex items-center gap-2 min-w-0">
+                    <div class="flex items-center gap-1.5">
+                        <span class="h-2 w-2 rounded-full {{ $coverageDotClass }} shrink-0"></span>
+                        <span class="text-xs font-semibold text-slate-700">Maliyetli Ciro</span>
+                        <x-zolm.help-tip summary="Maliyetli Ciro: Kâr hesabı için COGS (ürün alış maliyeti) tanımlanmış siparişlerin toplam cirosu. Tanımsız kalan ciro için net kâr hesabı güvenilmez." position="top" />
+                    </div>
+                    <span class="rounded-[4px] border px-1.5 py-0.5 text-xs font-mono font-bold {{ $coverageBandClass }} {{ $coverageTextClass }}">
+                        {{ $formatPercent($cogsCoverageRevPct) }} kapsanıyor
+                    </span>
+                    @if(! $isCoverageOk)
+                        <span class="hidden truncate text-xs text-slate-500 sm:block">
+                            {{ $formatCompactMoney($missingCostRev) }} ciroda kâr hesabı güvenilmez
+                        </span>
+                    @endif
+                </div>
+                {{-- Sağ: kompakt rakamlar + aksiyon linki --}}
+                <div class="flex items-center gap-4 text-xs text-slate-500 shrink-0">
+                    <span>
+                        Maliyetli: <strong class="text-slate-900">{{ $formatCompactMoney($cogsCoveredRev) }}</strong>
+                    </span>
+                    @if($missingCostRev > 0)
+                        <span>
+                            Maliyetsiz: <strong class="{{ $coverageTextClass }}">{{ $formatCompactMoney($missingCostRev) }}</strong>
+                        </span>
+                        <a href="{{ route('mp.products') }}"
+                           class="rounded-[6px] border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 transition hover:bg-amber-100">
+                            Maliyetleri Tamamla →
+                        </a>
+                    @endif
+                </div>
+            </div>
+            {{-- İlerleme çubuğu --}}
+            <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                <div class="h-full rounded-full transition-all duration-700 {{ $isCoverageOk ? 'bg-emerald-500' : ($cogsCoverageRevPct >= 80 ? 'bg-amber-500' : 'bg-rose-500') }}"
+                     style="width: {{ min(100, $cogsCoverageRevPct) }}%"></div>
+            </div>
+        </div>
     </section>
 
     {{-- ═══════════════════════════════════════════

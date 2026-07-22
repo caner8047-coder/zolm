@@ -10,6 +10,8 @@ use Tests\TestCase;
 
 class SeveranceCalculatorTest extends TestCase
 {
+    use RefreshHrDatabase;
+
     public function test_severance_calculator_page_renders_for_authorized_user(): void
     {
         $admin = User::where('email', 'admin@zolm.test')->first()

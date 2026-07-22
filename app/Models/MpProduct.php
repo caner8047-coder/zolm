@@ -9,8 +9,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Models\User;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
 class MpProduct extends Model
 {
+    use HasFactory;
+    
     protected static bool $refreshingSetParents = false;
 
     protected const SET_PARENT_REFRESH_FIELDS = [
@@ -84,6 +88,11 @@ class MpProduct extends Model
         // Meta
         'import_source',
         'last_synced_at',
+        'source_user_id',
+        'source_product_id',
+        'clone_reason',
+        'clone_correlation_id',
+        'cloned_at',
     ];
 
     protected $casts = [

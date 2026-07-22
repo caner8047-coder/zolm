@@ -396,14 +396,14 @@ class AuditEngine
 
     // ═══════════════════════════════════════════════════════════════
     // KURAL 1: STOPAJ DOĞRULAMASI
-    // Brüt Satış × %1 ≈ Kesilen Stopaj (±0.05 TL tolerans)
+    // Brüt Satış × %1 ≈ Kesilen Stopaj (±0.50 TL tolerans)
     // ═══════════════════════════════════════════════════════════════
 
     protected function checkStopaj(MpPeriod $period): int
     {
         $count = 0;
         $stopajRate = $this->settings->getStopajRate();
-        $tolerance = $this->settings->getFloat('audit_tolerances.stopaj_tolerance', 0.05);
+        $tolerance = $this->settings->getFloat('audit_tolerances.stopaj_tolerance', 0.50);
         $defaultVatRate = $this->settings->getDefaultProductVatRate() * 100;
 
         $orders = MpOrder::where('period_id', $period->id)
@@ -1314,14 +1314,11 @@ class AuditEngine
     protected function checkTransactionDiscrepancy(MpPeriod $period): int
     {
         $count = 0;
-        $vatDivisor = $this->settings->getInvoiceVatDivisor();
         $commissionTolerance = $this->settings->getCommissionMatchTolerance();
         $cargoTolerance = $this->settings->getCargoMatchTolerance();
 
-        if ($vatDivisor <= 0) {
-            $vatDivisor = 1.20;
-        }
-
+        // Ham değerleri karşılaştır — KDV bölücü uygulamıyoruz çünkü
+        // hem MpTransaction (ekstre) hem MpOrder tutarları KDV dahil formattadır.
         $transactionCommission = MpTransaction::where('period_id', $period->id)
             ->where(function ($query) {
                 $query->where('transaction_type', 'like', '%Komisyon%')
@@ -1338,11 +1335,11 @@ class AuditEngine
 
         $orderCommission = (float) (MpOrder::where('period_id', $period->id)
             ->selectRaw('SUM(ABS(commission_amount)) as total')
-            ->value('total') ?? 0) / $vatDivisor;
+            ->value('total') ?? 0);
 
         $orderCargo = (float) (MpOrder::where('period_id', $period->id)
             ->selectRaw('SUM(ABS(cargo_amount)) as total')
-            ->value('total') ?? 0) / $vatDivisor;
+            ->value('total') ?? 0);
 
         $checks = [];
 

@@ -506,6 +506,31 @@
                                     </svg>
                                     Maliyet Güncelle
                                 </button>
+                                {{-- COGS Sihirbazı — maliyet eksik ürünleri kategori bazlı hızlı atama --}}
+                                @php $cogsMissingCount = $stats['missing_cost_products'] ?? 0; @endphp
+                                <button wire:click="openCogsWizard"
+                                        wire:loading.attr="disabled"
+                                        wire:target="openCogsWizard"
+                                        class="relative inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[6px] border {{ $cogsMissingCount > 0 ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' }} px-4 py-3 text-sm font-medium transition">
+                                    <svg class="h-4 w-4 {{ $cogsMissingCount > 0 ? 'text-amber-500' : 'text-slate-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                    </svg>
+                                    COGS Sihirbazı
+                                    @if($cogsMissingCount > 0)
+                                        <span class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">{{ $cogsMissingCount > 99 ? '99+' : $cogsMissingCount }}</span>
+                                    @endif
+                                </button>
+                                {{-- Akıllı Eşleştirme — eşleşmeyen sipariş stok kodları için fuzzy match --}}
+                                <button wire:click="openMatchWizard"
+                                        wire:loading.attr="disabled"
+                                        wire:target="openMatchWizard"
+                                        class="relative inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[6px] border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100">
+                                    <svg class="h-4 w-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                    </svg>
+                                    <span wire:loading.remove wire:target="openMatchWizard">Akıllı Eşleştir</span>
+                                    <span wire:loading wire:target="openMatchWizard">Yükleniyor...</span>
+                                </button>
                                 <button wire:click="exportExcel"
                                         wire:loading.attr="disabled"
                                         wire:target="exportExcel"
@@ -2912,4 +2937,6 @@
     @include('livewire.partials.mp-products-quick-match-modal')
     @include('livewire.partials.mp-products-import-modal')
     @include('livewire.partials.mp-products-cost-update-modal')
+    @include('livewire.partials.mp-products-cogs-wizard-modal')
+    @include('livewire.partials.mp-products-match-wizard-modal')
 </div>

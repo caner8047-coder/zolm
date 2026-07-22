@@ -64,7 +64,7 @@ class MarketplaceHealthCheckCommand extends Command
         }
 
         $activeStores = $stores->where('is_active', true)->count();
-        $configuredStores = $stores->filter(fn (MarketplaceStore $store) => in_array((string) $store->connection?->status, ['configured', 'connected'], true))->count();
+        $configuredStores = $stores->filter(fn (MarketplaceStore $store) => in_array((string) $store->connection?->status, ['configured', 'connected', 'demo'], true))->count();
         $webhookEnabled = $stores->filter(fn (MarketplaceStore $store) => (bool) $store->syncProfile?->webhook_enabled)->count();
         $readinessChecks = $stores->mapWithKeys(fn (MarketplaceStore $store) => [$store->id => $this->connectionReadiness->inspect($store)]);
         $readyStores = $readinessChecks->filter(fn (array $result) => $result['is_ready'])->count();

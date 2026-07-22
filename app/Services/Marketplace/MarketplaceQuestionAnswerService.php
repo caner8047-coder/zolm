@@ -62,7 +62,8 @@ class MarketplaceQuestionAnswerService
         ]);
 
         try {
-            $connector = $this->connectorManager->resolve($question->store->marketplace);
+            $question->loadMissing('store.connection');
+            $connector = $this->connectorManager->resolveForStore($question->store);
 
             if (!$connector instanceof AnswersCustomerQuestions) {
                 throw new \RuntimeException('Bu pazaryeri için canlı soru cevap gönderimi henüz bağlanmadı. Cevap taslak olarak saklandı.');

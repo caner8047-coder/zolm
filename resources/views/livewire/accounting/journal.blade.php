@@ -208,6 +208,8 @@
                 <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Max Tutar (TRY)</label>
                 <input type="number" step="0.01" wire:model.live="filterMaxAmount" placeholder="Giriş yapın" class="mt-1 block w-full rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-base sm:text-sm focus:border-slate-500 focus:outline-none min-h-[44px]" />
             </div>
+        </div>
+
 
         {{-- Fiş Listesi Tablosu --}}
         <div class="overflow-x-auto">

@@ -49,18 +49,69 @@
                    class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 sm:w-auto sm:py-2">
                     Finans defteri
                 </a>
+                {{-- İtiraz Paketi Excel --}}
+                <button type="button"
+                        wire:click="exportDisputeExcel"
+                        wire:loading.attr="disabled"
+                        wire:target="exportDisputeExcel"
+                        class="relative inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-wait disabled:opacity-60 sm:w-auto sm:py-2">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    <span wire:loading.remove wire:target="exportDisputeExcel">İtiraz Paketi İndir</span>
+                    <span wire:loading wire:target="exportDisputeExcel">Hazırlanıyor...</span>
+                    @if(($disputeSummary['open'] ?? 0) > 0)
+                        <span class="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{{ number_format($disputeSummary['open']) }}</span>
+                    @endif
+                </button>
                 <button type="button"
                         wire:click="exportAppealPackage"
                         wire:loading.attr="disabled"
                         wire:target="exportAppealPackage"
                         class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60 sm:w-auto sm:py-2">
-                    <span wire:loading.remove wire:target="exportAppealPackage">İtiraz Excel'ini İndir</span>
+                    <span wire:loading.remove wire:target="exportAppealPackage">Denetim Raporu</span>
                     <span wire:loading wire:target="exportAppealPackage">Hazırlanıyor...</span>
                 </button>
             </div>
         </div>
 
-        <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {{-- Vade Takvimi — Kayıp Ödeme Gecikme Segmentleri --}}
+        <div class="mt-4 rounded-[8px] border border-amber-100 bg-amber-50/60 px-4 py-3">
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <span class="shrink-0 text-xs font-semibold uppercase tracking-[0.15em] text-amber-700">Kayıp Ödeme Vade Takvimi</span>
+                @foreach($paymentVadeSegments as $key => $seg)
+                    @php
+                        $dotColor = match($seg['color']) {
+                            'amber'  => 'bg-amber-400',
+                            'orange' => 'bg-orange-500',
+                            'red'    => 'bg-red-500',
+                            default  => 'bg-slate-400',
+                        };
+                        $textColor = match($seg['color']) {
+                            'amber'  => 'text-amber-700',
+                            'orange' => 'text-orange-700',
+                            'red'    => 'text-red-700',
+                            default  => 'text-slate-600',
+                        };
+                    @endphp
+                    @if($seg['count'] > 0)
+                        <div class="flex items-center gap-1.5">
+                            <span class="h-2 w-2 shrink-0 rounded-full {{ $dotColor }}"></span>
+                            <span class="text-xs {{ $textColor }}">
+                                <strong>{{ $seg['count'] }}</strong> sipariş
+                                &middot; ₺{{ number_format($seg['total'], 0, ',', '.') }}
+                                <span class="font-normal opacity-70">({{ Str::before($seg['label'], ' (') }})</span>
+                            </span>
+                        </div>
+                    @endif
+                @endforeach
+                @if(($disputeSummary['pending'] ?? 0) > 0)
+                    <span class="ml-auto shrink-0 rounded-[4px] bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                        {{ $disputeSummary['pending'] }} itiraz beklemede
+                    </span>
+                @endif
+            </div>
+        </div>
+
+        <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
                 <p class="text-xs font-mono text-slate-500">İncelenecek sipariş</p>
                 <p class="mt-2 text-2xl font-bold text-slate-900">{{ $formatNumber($summary['review_order_count']) }}</p>
@@ -445,4 +496,53 @@
             </div>
         </div>
     </section>
+
+    {{-- İtiraz Onay Modalı --}}
+    <div x-data="{ open: @entangle('showDisputeModal') }"
+         x-show="open"
+         x-cloak
+         @keydown.escape.window="open = false; $wire.closeDisputeModal()"
+         class="relative z-50"
+         style="display: none;">
+        <div x-show="open" x-transition.opacity class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" wire:click="closeDisputeModal"></div>
+        <div class="fixed inset-0 z-10 overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div x-show="open"
+                     x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" x-transition:leave-end="opacity-0 translate-y-4 sm:scale-95"
+                     class="relative w-full transform overflow-hidden rounded-[10px] bg-white text-left shadow-xl transition-all sm:my-8 sm:max-w-lg">
+
+                    <div class="border-b border-slate-100 px-5 py-4">
+                        <div class="flex items-center gap-2">
+                            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] bg-red-100">
+                                <svg class="h-4 w-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                            </div>
+                            <h3 class="text-base font-semibold text-slate-900">İtiraz Kaydet</h3>
+                        </div>
+                        <p class="mt-1 text-xs text-slate-500">Bu kaydı itiraz edildi olarak işaretliyorsunuz. Durum "Beklemede" olarak kaydedilir.</p>
+                    </div>
+
+                    <div class="px-5 py-4">
+                        <label class="block text-xs font-medium text-slate-700 mb-1">İtiraz notu (isteğe bağlı)</label>
+                        <textarea wire:model="disputeNote"
+                                  rows="3"
+                                  placeholder="Trendyol'a iletmek istediğiniz açıklama..."
+                                  class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200 resize-none"></textarea>
+                    </div>
+
+                    <div class="flex items-center justify-between border-t border-slate-100 px-5 py-4">
+                        <button type="button" wire:click="closeDisputeModal"
+                                class="rounded-[6px] border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50">İptal</button>
+                        <button type="button" wire:click="submitDispute"
+                                wire:loading.attr="disabled" wire:target="submitDispute"
+                                class="rounded-[6px] bg-red-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-60">
+                            <span wire:loading.remove wire:target="submitDispute">İtiraz Olarak İşaretle</span>
+                            <span wire:loading wire:target="submitDispute">Kaydediliyor...</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>

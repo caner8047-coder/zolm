@@ -257,3 +257,48 @@ Schedule::call(fn () => $runHrDocumentJobs(\App\Modules\Hr\Document\Jobs\SendPen
     ->name('hr-send-pending-document-request-reminders')
     ->dailyAt('01:45')
     ->withoutOverlapping();
+
+// Trendyol Sprint 1: Buybox, References, Batch Tracking
+Schedule::call(function () {
+    $stores = \App\Models\MarketplaceStore::where('marketplace', 'trendyol')
+        ->whereHas('connection', fn ($query) => $query->where('status', 'active'))
+        ->get();
+
+    foreach ($stores as $store) {
+        dispatch(new \App\Jobs\SyncMarketplaceBuyboxJob($store));
+    }
+})
+    ->name('marketplace-sync-buybox')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
+
+Schedule::call(function () {
+    $stores = \App\Models\MarketplaceStore::where('marketplace', 'trendyol')
+        ->whereHas('connection', fn ($query) => $query->where('status', 'active'))
+        ->get();
+
+    foreach ($stores as $store) {
+        dispatch(new \App\Jobs\SyncMarketplaceReferenceJob($store));
+    }
+})
+    ->name('marketplace-sync-references')
+    ->dailyAt('02:00')
+    ->withoutOverlapping();
+
+Schedule::call(function () {
+    $stores = \App\Models\MarketplaceStore::where('marketplace', 'trendyol')
+        ->whereHas('connection', fn ($query) => $query->where('status', 'active'))
+        ->get();
+
+    foreach ($stores as $store) {
+        dispatch(new \App\Jobs\SyncMarketplaceCargoInvoiceJob($store));
+    }
+})
+    ->name('marketplace-sync-cargo-invoices')
+    ->dailyAt('05:00')
+    ->withoutOverlapping();
+
+Schedule::job(new \App\Jobs\TrackMarketplaceBatchRequestsJob)
+    ->name('marketplace-track-batch-requests')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();

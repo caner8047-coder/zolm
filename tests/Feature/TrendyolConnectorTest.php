@@ -230,7 +230,7 @@ class TrendyolConnectorTest extends TestCase
                     'content' => [[
                         'id' => 'TY-PROD-1',
                         'approved' => true,
-                        'onsale' => true,
+                        'onSale' => true,
                         'barcode' => '869000000003',
                         'stockCode' => 'TY-STK-3',
                         'productMainId' => 'MAIN-3',

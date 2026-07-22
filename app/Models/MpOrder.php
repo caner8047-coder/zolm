@@ -26,6 +26,8 @@ class MpOrder extends Model
         'product_vat_rate', 'cogs_at_time', 'packaging_cost_at_time', 'own_cargo_cost_at_time',
         'calculated_net_profit', 'is_flagged', 'is_reconciled', 'raw_data',
         'erp_pushed_at', 'erp_status', 'erp_response', 'projected_at',
+        // Fuzzy match
+        'matched_product_id', 'match_confidence', 'match_method',
     ];
 
     protected $casts = [
@@ -57,6 +59,7 @@ class MpOrder extends Model
         'is_reconciled'           => 'boolean',
         'raw_data'                => 'array',
         'erp_pushed_at'           => 'datetime',
+        'match_confidence'        => 'decimal:3',
     ];
 
     // ─── Relationships ──────────────────────────────────────────
@@ -74,6 +77,14 @@ class MpOrder extends Model
     public function legalEntity(): BelongsTo
     {
         return $this->belongsTo(LegalEntity::class, 'legal_entity_id');
+    }
+
+    /**
+     * Fuzzy match ile eşleştirilen ürün (ProductMatcherService tarafından set edilir)
+     */
+    public function matchedProduct(): BelongsTo
+    {
+        return $this->belongsTo(MpProduct::class, 'matched_product_id');
     }
 
     public function operationalOrder(): BelongsTo

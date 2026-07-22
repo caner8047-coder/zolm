@@ -59,6 +59,13 @@ class EmployeeDetail extends Component
 
         $canViewSensitive = $user && $user->hasHrPermission('hr.documents.view_sensitive');
         $canViewHealth = $user && $user->hasHrPermission('hr.documents.view_health');
+        $canViewDocumentType = static function (?HrDocumentType $type) use ($canViewSensitive, $canViewHealth): bool {
+            if ($type && $type->sensitivity === DocumentSensitivity::HighlySensitive && ! $canViewSensitive) {
+                return false;
+            }
+
+            return ! ($type && $type->category === DocumentCategory::Health && ! $canViewHealth);
+        };
 
         // Hassas/sağlık erişim filtresi: yetkisiz kullanıcı bu belgeleri göremez.
         $documents = HrEmployeeDocument::withoutGlobalScope('tenant')
@@ -67,16 +74,7 @@ class EmployeeDetail extends Component
             ->with('documentType')
             ->latest()
             ->get()
-            ->reject(function ($doc) use ($canViewSensitive, $canViewHealth) {
-                $type = $doc->documentType;
-                if ($type && $type->sensitivity === DocumentSensitivity::HighlySensitive && !$canViewSensitive) {
-                    return true;
-                }
-                if ($type && $type->category === DocumentCategory::Health && !$canViewHealth) {
-                    return true;
-                }
-                return false;
-            })
+            ->filter(fn (HrEmployeeDocument $document): bool => $canViewDocumentType($document->documentType))
             ->values();
 
         $mandatoryCount = $documents->where('status', DocumentStatus::Requested)->count();
@@ -91,13 +89,34 @@ class EmployeeDetail extends Component
             ->whereIn('status', ['pending', 'overdue'])
             ->with('documentType')
             ->latest()
-            ->get();
+            ->get()
+            ->filter(fn (HrDocumentRequest $request): bool => $canViewDocumentType($request->documentType))
+            ->values();
 
-        $missingMandatoryTypes = $this->missingMandatoryTypes($tenantId, $documents);
+        $missingMandatoryTypes = $this->missingMandatoryTypes($tenantId, $documents)
+            ->filter($canViewDocumentType)
+            ->values();
         $leaveRequests = HrLeaveRequest::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $this->employee->id)->with('leaveType')->latest()->get();
         $leaveBalances = HrLeaveBalance::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $this->employee->id)->where('period_year', now()->year)->with('leaveType')->get();
 
         $fileChecklist = app(\App\Modules\Hr\Document\Services\HrPersonnelFileChecklistService::class)->analyzeEmployeeFile($tenantId, $this->employee->id);
+        if (! $canViewHealth) {
+            $visibleChecklist = collect($fileChecklist['checklist'])
+                ->reject(fn (array $item): bool => ($item['type_key'] ?? null) === 'health_report')
+                ->values();
+            $presentCount = $visibleChecklist->where('is_present', true)->count();
+            $totalRequired = $visibleChecklist->count();
+            $completionRate = $totalRequired > 0 ? (int) round(($presentCount / $totalRequired) * 100) : 0;
+
+            $fileChecklist = array_merge($fileChecklist, [
+                'total_required' => $totalRequired,
+                'present_count' => $presentCount,
+                'missing_count' => $totalRequired - $presentCount,
+                'completion_rate' => $completionRate,
+                'is_complete' => $completionRate === 100,
+                'checklist' => $visibleChecklist->all(),
+            ]);
+        }
 
         return view('livewire.hr.personnel.employee-detail', [
             'employee' => $this->employee,

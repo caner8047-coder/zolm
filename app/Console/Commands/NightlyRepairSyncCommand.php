@@ -105,7 +105,7 @@ class NightlyRepairSyncCommand extends Command
             }
 
             // Aksiyon 1: Finans eksik siparişler için repair finance sync dispatch et
-            if ($ordersWithoutFinance > 0 && $store->connection && in_array($store->connection->status, ['configured', 'connected'], true)) {
+            if ($ordersWithoutFinance > 0 && $store->connection && in_array($store->connection->status, ['configured', 'connected', 'demo'], true)) {
                 if (!$this->hasFreshPendingRun($store->id, 'finance')) {
                     $run = IntegrationSyncRun::create([
                         'store_id' => $store->id,

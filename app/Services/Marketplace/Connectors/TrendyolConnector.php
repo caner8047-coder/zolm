@@ -123,56 +123,58 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
     public function pullOrders(MarketplaceStore $store, array $options = []): array
     {
         $items = [];
-        $page = 0;
-        $size = min((int) ($options['page_size'] ?? config('marketplace.trendyol.page_size', 200)), 200);
+        $size = min((int) ($options['page_size'] ?? config('marketplace.trendyol.page_size', 500)), 500); // Stream API supports up to 500
         $requestedStartDate = CarbonImmutable::parse($options['start_date'])->setTimezone('UTC');
         $endDate = CarbonImmutable::parse($options['end_date'])->setTimezone('UTC');
-        [$startDate, $orderWindowMeta] = $this->resolveOrderWindow($requestedStartDate, $endDate);
+        [$effectiveStartDate, $orderWindowMeta] = $this->resolveOrderWindow($requestedStartDate, $endDate);
+        
         $requestedPackageIds = collect(Arr::wrap($options['shipment_package_ids'] ?? []))
             ->map(fn ($packageId) => trim((string) $packageId))
             ->filter()
             ->values()
             ->all();
 
-        do {
-            $response = $this->request($store)
-                ->get("integration/order/sellers/{$this->sellerId($store)}/orders", array_filter([
-                    'startDate' => $startDate->valueOf(),
-                    'endDate' => $endDate->valueOf(),
-                    'page' => $page,
-                    'size' => $size,
-                    'orderByField' => 'PackageLastModifiedDate',
-                    'orderByDirection' => 'DESC',
-                    'status' => $options['status'] ?? null,
-                    'orderNumber' => $options['order_number'] ?? null,
-                ]))
-                ->throw()
-                ->json();
+        $cursor = $options['cursor'] ?? null;
+        $pagesProcessed = 0;
+        
+        $response = $this->request($store)
+            ->get("integration/order/sellers/{$this->sellerId($store)}/orders/stream", array_filter([
+                'startDate' => $effectiveStartDate->valueOf(),
+                'endDate' => $endDate->valueOf(),
+                'cursor' => $cursor,
+                'size' => $size,
+                'status' => $options['status'] ?? null,
+                'orderNumber' => $options['order_number'] ?? null,
+            ], fn ($value) => $value !== null && $value !== ''))
+            ->throw()
+            ->json();
 
-            $content = Arr::get($response, 'content', []);
+        $content = Arr::get($response, 'content', []);
 
-            foreach ($content as $packagePayload) {
-                $normalizedPackage = $this->normalizeOrderPackage($packagePayload);
+        foreach ($content as $packagePayload) {
+            $normalizedPackage = $this->normalizeOrderPackage($packagePayload);
 
-                if (
-                    $requestedPackageIds !== []
-                    && !in_array((string) data_get($normalizedPackage, 'package.external_package_id'), $requestedPackageIds, true)
-                ) {
-                    continue;
-                }
-
-                $items[] = $normalizedPackage;
+            if (
+                $requestedPackageIds !== []
+                && !in_array((string) data_get($normalizedPackage, 'package.external_package_id'), $requestedPackageIds, true)
+            ) {
+                continue;
             }
 
-            $totalPages = (int) Arr::get($response, 'totalPages', 1);
-            $page++;
-        } while ($page < $totalPages);
+            $items[] = $normalizedPackage;
+        }
+
+        $hasMore = (bool) Arr::get($response, 'hasMore', false);
+        $nextCursor = (string) Arr::get($response, 'nextCursor');
+        $pagesProcessed++;
 
         return [
             'items' => $items,
             'meta' => array_merge([
                 'items_received' => count($items),
-                'cursor_after' => $endDate->toIso8601String(),
+                'cursor_after' => $hasMore && filled($nextCursor) ? $nextCursor : null,
+                'has_more' => $hasMore,
+                'pages_processed' => $pagesProcessed,
             ], $orderWindowMeta),
         ];
     }
@@ -189,7 +191,6 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
         $status = $options['status'] ?? null;
         $maxPageCount = max(1, (int) ceil(10000 / max(1, $size)));
         $usingNextPageToken = false;
-        $productEndpointMode = 'approved_v2';
 
         if ($status === null && ($options['on_sale'] ?? null) === true) {
             $status = 'onSale';
@@ -210,19 +211,30 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                 'nextPageToken' => $nextPageToken,
             ], fn ($value) => $value !== null && $value !== '');
 
-            $pageResult = $this->fetchApprovedProductsPage($store, $query, $productEndpointMode);
-            $response = $pageResult['payload'];
-            $productEndpointMode = $pageResult['endpoint'];
+            try {
+                $response = $this->request($store)
+                    ->get($this->approvedProductsV2Path($store), $query)
+                    ->throw()
+                    ->json();
+            } catch (\Illuminate\Http\Client\RequestException $e) {
+                if ($e->response->status() === 404) {
+                    $v1Query = array_merge($query, [
+                        'approved' => true,
+                        'dateQueryType' => $query['dateQueryType'] === 'CONTENT_MODIFIED_DATE' ? 'LAST_MODIFIED_DATE' : $query['dateQueryType'],
+                    ]);
+                    
+                    $response = $this->request($store)
+                        ->get("integration/product/sellers/{$this->sellerId($store)}/products", $v1Query)
+                        ->throw()
+                        ->json();
+                } else {
+                    throw $e;
+                }
+            }
 
             $content = Arr::get($response, 'content', []);
 
             foreach ($content as $productPayload) {
-                if ($productEndpointMode === 'products_v1') {
-                    $items[] = $this->normalizeProduct($productPayload);
-
-                    continue;
-                }
-
                 $items = array_merge($items, $this->normalizeApprovedProductContent($productPayload));
             }
 
@@ -538,6 +550,160 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             throw new \RuntimeException('Fiyat guncellemesi icin listing barkodu zorunludur.');
         }
 
+        // Connector Write Guard Check
+        $dryRun = config('marketplace.trendyol.dry_run_enabled') || env('TRENDYOL_PRICE_CANARY_DRY_RUN_ENABLED', false);
+        if ($dryRun) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Dry-run modu aktif.");
+        }
+
+        $stopService = app(\App\Services\Marketplace\MarketplacePriceEmergencyStopService::class);
+        if ($stopService->isEmergencyStopActive($listing->store_id)) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Emergency stop aktif.");
+        }
+
+        // Manual Price Lock Check
+        $lockService = app(\App\Services\Marketplace\MarketplacePriceLockService::class);
+        if ($lockService->isLocked($listing->store_id, $barcode)) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Ürün üzerinde manuel fiyat kilidi mevcut.");
+        }
+
+        // Strict context checking
+        $priceActionId = data_get($context, 'price_action_id');
+        $writeContextType = data_get($context, 'write_context_type');
+
+        if ($priceActionId) {
+            $dbAction = \App\Models\MpPriceAction::find($priceActionId);
+            if (!$dbAction) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Kayıtlı fiyat aksiyonu bulunamadı.");
+            }
+
+            if (in_array($dbAction->status, ['failed', 'cancelled'], true)) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Aksiyon uygun durumda değil.");
+            }
+
+            // Verify store matches
+            if ((int)$dbAction->store_id !== (int)$listing->store_id) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Mağaza uyuşmazlığı.");
+            }
+
+            // Verify barcode matches
+            if ($dbAction->barcode !== $barcode) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Barkod uyuşmazlığı.");
+            }
+
+            // Verify requested price matches the pushed price
+            if (abs((float)$dbAction->requested_price - $price) > 0.01) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Talep edilen fiyat ile gönderilen fiyat uyuşmuyor.");
+            }
+
+            // Idempotency ve correlation her iki alanda da zorunlu ve DB kaydıyla eşleşmeli
+            $ctxIdempotency = data_get($context, 'idempotency_key');
+            $ctxCorrelation = data_get($context, 'correlation_id');
+            if (!$ctxIdempotency || !$ctxCorrelation) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Idempotency key veya correlation ID eksik.");
+            }
+            if ($ctxIdempotency !== $dbAction->idempotency_key) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Idempotency key uyuşmazlığı.");
+            }
+            if ($ctxCorrelation !== $dbAction->correlation_id) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Correlation ID uyuşmazlığı.");
+            }
+
+            $triggerType = $dbAction->trigger_type;
+            $isCanaryAction = in_array($triggerType, ['automatic', 'canary'], true)
+                || $dbAction->action_type === 'canary';
+
+            if ($isCanaryAction) {
+                if (!config('marketplace.trendyol.automatic_price_actions_enabled', false)
+                    || !config('marketplace.trendyol.canary_enabled', false)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Feature flagler kapalı.");
+                }
+
+                $approval = \App\Models\MpPriceCanaryApproval::where('store_id', $listing->store_id)
+                    ->where('status', 'approved')
+                    ->where('expires_at', '>=', now())
+                    ->first();
+
+                if (!$approval || !in_array($barcode, $approval->approved_product_ids ?? [], true)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Geçerli Canary onayı yok veya barkod kapsam dışı.");
+                }
+
+                // Verify readiness fingerprint hash matches
+                $readinessService = app(\App\Services\Marketplace\MarketplaceCanaryReadinessService::class);
+                $readiness = $readinessService->checkReadiness($listing->store);
+                if (!$approval->isValidForCurrentReadiness($readiness)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Canary onayının parmak izi (fingerprint) mevcut durumla uyuşmuyor.");
+                }
+            } else {
+                if (!config('marketplace.trendyol.manual_price_actions_enabled', false)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Manuel fiyat değiştirme devre dışı.");
+                }
+            }
+        } elseif ($writeContextType === 'legacy_manual') {
+            // Verify legacy/manual context parameters
+            $actorType = data_get($context, 'actor_type');
+            $actorId = data_get($context, 'actor_id');
+            $permission = data_get($context, 'permission');
+            $storeId = data_get($context, 'store_id');
+            $correlationId = data_get($context, 'correlation_id');
+            $idempotencyKey = data_get($context, 'idempotency_key');
+            $reason = data_get($context, 'reason');
+
+            if (!$actorType || !$actorId || !$permission || !$storeId || !$correlationId || !$idempotencyKey || !$reason) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Geçersiz manuel yazma bağlamı.");
+            }
+
+            if ((int)$storeId !== (int)$listing->store_id) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Manuel bağlamda mağaza uyuşmazlığı.");
+            }
+
+            if (!config('marketplace.trendyol.manual_price_actions_enabled', false)) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Manuel fiyat değiştirme devre dışı.");
+            }
+
+            if ($price <= 0) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Geçersiz fiyat.");
+            }
+
+            // Validate actor/system actor
+            if ($actorType === 'user') {
+                $user = \App\Models\User::where('id', $actorId)->where('is_active', true)->first();
+                if (!$user) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Aktif kullanıcı bulunamadı.");
+                }
+                $roleSlug = $user->roleSlug();
+                if (!in_array($roleSlug, ['admin', 'operator'], true)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Kullanıcının fiyat güncelleme yetkisi yok.");
+                }
+                $isOwner = (int)$listing->store->user_id === (int)$actorId;
+                $isAdmin = ($roleSlug === 'admin');
+                if (!$isOwner && !$isAdmin) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Kullanıcının bu mağazaya erişim yetkisi yok.");
+                }
+            } elseif ($actorType === 'system') {
+                // Manuel fiyat yolunda sistem aktörü kabul edilmez.
+                // Otomatik/sistem fiyat değişiklikleri kalıcı MpPriceAction kaydı ile price_action_id yolunu kullanmalıdır.
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException(
+                    'Fiyat push işlemi engellendi: Manuel fiyat yolunda sistem aktörü kabul edilemez. '
+                    . 'Otomatik işlemler price_action_id yolunu kullanmalıdır.'
+                );
+            } else {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz aktör tipi.");
+            }
+
+            // Audit manual update
+            \Illuminate\Support\Facades\Log::notice("Marketplace manual price push executed", [
+                'store_id' => $listing->store_id,
+                'barcode' => $barcode,
+                'price' => $price,
+                'actor_id' => $actorId,
+                'actor_type' => $actorType,
+                'correlation_id' => $correlationId,
+            ]);
+        } else {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Fiyat push işlemi engellendi: Doğrulanmış yazma bağlamı bulunamadı.");
+        }
+
         $payload = [
             'items' => [[
                 'barcode' => $barcode,
@@ -572,6 +738,94 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
             throw new \RuntimeException('Stok guncellemesi icin listing barkodu zorunludur.');
         }
 
+        // Connector Write Guard Check for Stock
+        $dryRun = config('marketplace.trendyol.dry_run_enabled') || env('TRENDYOL_PRICE_CANARY_DRY_RUN_ENABLED', false);
+        if ($dryRun) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Dry-run modu aktif.");
+        }
+
+        $stopService = app(\App\Services\Marketplace\MarketplacePriceEmergencyStopService::class);
+        if ($stopService->isEmergencyStopActive($listing->store_id)) {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Emergency stop aktif.");
+        }
+
+        // Strict context checking for Stock
+        $writeContextType = data_get($context, 'write_context_type');
+
+        if ($writeContextType === 'stock_update') {
+            $storeId = data_get($context, 'store_id');
+            $correlationId = data_get($context, 'correlation_id');
+            $idempotencyKey = data_get($context, 'idempotency_key');
+            $actorType = data_get($context, 'actor_type');
+            $actorId = data_get($context, 'actor_id');
+            $reason = data_get($context, 'reason');
+            $ctxSalePrice = data_get($context, 'sale_price');
+            $ctxListPrice = data_get($context, 'list_price');
+
+            if (!$storeId || !$correlationId || !$idempotencyKey || !$actorType || !$actorId || !$reason || $ctxSalePrice === null || $ctxListPrice === null) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Eksik parametreler.");
+            }
+
+            if ((int)$storeId !== (int)$listing->store_id) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Mağaza uyuşmazlığı.");
+            }
+
+            // Validate actor/system actor
+            if ($actorType === 'user') {
+                $user = \App\Models\User::where('id', $actorId)->where('is_active', true)->first();
+                if (!$user) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Aktif kullanıcı bulunamadı.");
+                }
+                $roleSlug = $user->roleSlug();
+                if (!in_array($roleSlug, ['admin', 'operator'], true)) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Kullanıcının stok güncelleme yetkisi yok.");
+                }
+                $isOwner = (int)$listing->store->user_id === (int)$actorId;
+                $isAdmin = ($roleSlug === 'admin');
+                if (!$isOwner && !$isAdmin) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Kullanıcının bu mağazaya erişim yetkisi yok.");
+                }
+            } elseif ($actorType === 'system') {
+                if ($actorId !== 'system') {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz sistem aktörü.");
+                }
+                // Sistem stok job'ları doğrulanmış bir IntegrationPushRun kaydıyla bağlı olmalıdır
+                $pushRunId = data_get($context, 'integration_push_run_id');
+                if (!$pushRunId) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException(
+                        'Stok push işlemi engellendi: Sistem aktörü için integration_push_run_id zorunludur.'
+                    );
+                }
+                $verifiedPushRun = \App\Models\IntegrationPushRun::find($pushRunId);
+                if (!$verifiedPushRun) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException(
+                        'Stok push işlemi engellendi: Belirtilen push run kaydı bulunamadı.'
+                    );
+                }
+                if ((int)$verifiedPushRun->store_id !== (int)$listing->store_id) {
+                    throw new \App\Exceptions\MarketplacePriceWriteBlockedException(
+                        'Stok push işlemi engellendi: Push run başka bir mağazaya ait.'
+                    );
+                }
+            } else {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Geçersiz aktör tipi.");
+            }
+
+            // Assert price immutability: price sent must match current listing price exactly
+            $currentSalePrice = round((float) ($listing->sale_price ?? 0), 2);
+            $currentListPrice = round((float) ($listing->list_price ?? $listing->sale_price ?? 0), 2);
+
+            if (abs((float)$ctxSalePrice - $currentSalePrice) > 0.01) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Stok güncellenirken fiyat değiştirilemez.");
+            }
+
+            if (abs((float)$ctxListPrice - $currentListPrice) > 0.01) {
+                throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Stok güncellenirken liste fiyatı değiştirilemez.");
+            }
+        } else {
+            throw new \App\Exceptions\MarketplacePriceWriteBlockedException("Stok push işlemi engellendi: Doğrulanmış stok yazma bağlamı (stock_update) eksik.");
+        }
+
         $payload = [
             'items' => [[
                 'barcode' => $barcode,
@@ -598,14 +852,34 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
 
     public function testConnection(MarketplaceStore $store): array
     {
-        $response = $this->fetchApprovedProductsPage($store, [
+        $query = [
             'page' => 0,
             'size' => 1,
             'dateQueryType' => 'CONTENT_MODIFIED_DATE',
             'supplierId' => $this->sellerId($store),
             'startDate' => now()->subDays(30)->valueOf(),
             'endDate' => now()->valueOf(),
-        ])['payload'];
+        ];
+
+        try {
+            $response = $this->request($store)
+                ->get($this->approvedProductsV2Path($store), $query)
+                ->throw()
+                ->json();
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            if ($e->response->status() === 404) {
+                $v1Query = array_merge($query, [
+                    'approved' => true,
+                    'dateQueryType' => 'LAST_MODIFIED_DATE',
+                ]);
+                $response = $this->request($store)
+                    ->get("integration/product/sellers/{$this->sellerId($store)}/products", $v1Query)
+                    ->throw()
+                    ->json();
+            } else {
+                throw $e;
+            }
+        }
 
         return [
             'ok' => true,
@@ -761,88 +1035,9 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
         return $sellerId;
     }
 
-    /**
-     * @param  array<string, mixed>  $query
-     * @return array{endpoint: string, payload: array<string, mixed>}
-     */
-    protected function fetchApprovedProductsPage(MarketplaceStore $store, array $query, string $endpointMode = 'approved_v2'): array
-    {
-        if ($endpointMode === 'products_v1') {
-            return [
-                'endpoint' => 'products_v1',
-                'payload' => $this->request($store)
-                    ->get($this->productsV1Path($store), $this->productsV1Query($query))
-                    ->throw()
-                    ->json(),
-            ];
-        }
-
-        $response = $this->request($store)
-            ->get($this->approvedProductsV2Path($store), $query);
-
-        if ($this->shouldFallbackToProductsV1($response)) {
-            return [
-                'endpoint' => 'products_v1',
-                'payload' => $this->request($store)
-                    ->get($this->productsV1Path($store), $this->productsV1Query($query))
-                    ->throw()
-                    ->json(),
-            ];
-        }
-
-        return [
-            'endpoint' => 'approved_v2',
-            'payload' => $response->throw()->json(),
-        ];
-    }
-
     protected function approvedProductsV2Path(MarketplaceStore $store): string
     {
         return "integration/product/sellers/{$this->sellerId($store)}/products/approved";
-    }
-
-    protected function productsV1Path(MarketplaceStore $store): string
-    {
-        return "integration/product/sellers/{$this->sellerId($store)}/products";
-    }
-
-    /**
-     * @param  array<string, mixed>  $query
-     * @return array<string, mixed>
-     */
-    protected function productsV1Query(array $query): array
-    {
-        $legacyQuery = $query;
-        $status = (string) ($legacyQuery['status'] ?? '');
-        unset($legacyQuery['status'], $legacyQuery['nextPageToken']);
-
-        $legacyQuery['approved'] = true;
-
-        if (($legacyQuery['dateQueryType'] ?? null) === 'CONTENT_MODIFIED_DATE' || ($legacyQuery['dateQueryType'] ?? null) === 'VARIANT_MODIFIED_DATE') {
-            $legacyQuery['dateQueryType'] = 'LAST_MODIFIED_DATE';
-        } elseif (($legacyQuery['dateQueryType'] ?? null) === 'VARIANT_CREATED_DATE') {
-            $legacyQuery['dateQueryType'] = 'CREATED_DATE';
-        }
-
-        if ($status === 'onSale') {
-            $legacyQuery['onSale'] = true;
-        } elseif (in_array($status, ['archived', 'blacklisted'], true)) {
-            $legacyQuery[$status] = true;
-        }
-
-        return array_filter($legacyQuery, fn ($value) => $value !== null && $value !== '');
-    }
-
-    protected function shouldFallbackToProductsV1(Response $response): bool
-    {
-        if ($response->status() !== 404) {
-            return false;
-        }
-
-        $body = mb_strtolower($response->body());
-
-        return str_contains($body, 'trendyolnotfoundexception')
-            || str_contains($body, 'products/approved');
     }
 
     /**
@@ -1206,6 +1401,8 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                 'barcode' => data_get($payload, 'barcode'),
                 'stockCode' => $this->stockCodeFromPayload($payload),
                 'status' => data_get($payload, 'status'),
+                'onSale' => data_get($payload, 'onSale') ?? data_get($payload, 'onsale'),
+                'approved' => data_get($payload, 'approved'),
                 'salePrice' => data_get($payload, 'price.salePrice') ?: data_get($payload, 'salePrice'),
                 'listPrice' => data_get($payload, 'price.listPrice') ?: data_get($payload, 'listPrice'),
                 'commissionRate' => $this->trendyolCatalogCommissionRate($payload),
@@ -1759,7 +1956,7 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
 
         if ($endDate->lessThan($minAllowedStartDate)) {
             throw new \RuntimeException(sprintf(
-                'Trendyol Siparis Paketlerini Cekme servisi 5 Mart 2026 itibariyla yalnizca son %d gunu destekliyor. %s bitis tarihli sorgu bu limitin disinda kaliyor.',
+                'Trendyol Siparis Paketlerini Cekme servisi 5 Mart 2026 itibariyla klasik API\'de 30 gün limiti getirmişti. Stream API 90 güne kadar desteklese de bu mağaza yapılandırması son %d günü baz alıyor. %s bitiş tarihli sorgu bu limitin dışında kalıyor.',
                 $historyLimitDays,
                 $endDate->toIso8601String()
             ));
@@ -1865,5 +2062,159 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
         }
 
         return trim((string) ($event['order_number'] ?? '')) === $requestedOrderNumber;
+    }
+
+    /**
+     * @param  array<int, string>  $barcodes
+     * @return array<string, mixed>
+     */
+    public function checkBuyboxRank(MarketplaceStore $store, array $barcodes): array
+    {
+        if (count($barcodes) > 10) {
+            throw new \InvalidArgumentException('Trendyol Buybox servisi tek seferde en fazla 10 barkod sorgulanmasına izin verir.');
+        }
+
+        if ($barcodes === []) {
+            return [];
+        }
+
+        $response = $this->request($store)
+            ->post("integration/product/sellers/{$this->sellerId($store)}/products/buybox-information", [
+                'barcodes' => array_values($barcodes),
+            ])
+            ->throw()
+            ->json();
+
+        $buyboxInfoList = Arr::get($response, 'buyboxInfo', []);
+        $items = [];
+        $now = now();
+
+        foreach ($buyboxInfoList as $info) {
+            $items[] = [
+                'barcode' => data_get($info, 'barcode'),
+                'sellerRank' => data_get($info, 'buyboxOrder'), // Trendyol docs say buyboxOrder
+                'buyboxPrice' => data_get($info, 'buyboxPrice'),
+                'hasMultipleSeller' => data_get($info, 'hasMultipleSeller', false),
+                'secondPrice' => data_get($info, 'secondPrice'),
+                'thirdPrice' => data_get($info, 'thirdPrice'),
+                'listingId' => data_get($info, 'listingId'),
+                'raw_payload' => $info,
+                'retrieved_at' => $now,
+            ];
+        }
+
+        return $items;
+    }
+
+    public function pullCargoInvoices(MarketplaceStore $store, array $options = []): array
+    {
+        $items = [];
+        $startDate = CarbonImmutable::parse($options['start_date'])->setTimezone('UTC');
+        $endDate = CarbonImmutable::parse($options['end_date'])->setTimezone('UTC');
+
+        $invoiceSerials = [];
+
+        foreach ($this->dateWindows($startDate, $endDate, 14) as [$windowStart, $windowEnd]) {
+            $page = 0;
+            $totalPages = 1;
+
+            do {
+                $response = $this->request($store)
+                    ->get("integration/finance/che/sellers/{$this->sellerId($store)}/other-financials", array_filter([
+                        'transactionDateFrom' => $windowStart->valueOf(),
+                        'transactionDateTo' => $windowEnd->valueOf(),
+                        'page' => $page,
+                        'size' => 500,
+                    ]))
+                    ->throw()
+                    ->json();
+
+                foreach (Arr::get($response, 'content', []) as $tx) {
+                    if (data_get($tx, 'transactionType') === 'DeductionInvoices' && data_get($tx, 'receiptId')) {
+                        $invoiceSerials[] = data_get($tx, 'receiptId');
+                    }
+                }
+
+                $totalPages = (int) Arr::get($response, 'totalPages', 1);
+                $page++;
+            } while ($page < $totalPages);
+        }
+
+        $invoiceSerials = array_unique($invoiceSerials);
+
+        foreach ($invoiceSerials as $serial) {
+            try {
+                $cargoResponse = $this->request($store)
+                    ->get("integration/finance/che/sellers/{$this->sellerId($store)}/cargo-invoice/{$serial}/items")
+                    ->throw()
+                    ->json();
+
+                foreach (Arr::get($cargoResponse, 'content', []) as $cargoItem) {
+                    $cargoItem['_invoice_serial'] = $serial;
+                    $items[] = $cargoItem;
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return [
+            'items' => $items,
+            'meta' => [
+                'items_received' => count($items),
+                'cursor_after' => $endDate->toIso8601String(),
+            ]
+        ];
+    }
+
+    public function getClaimIssueReasons(MarketplaceStore $store): array
+    {
+        $response = $this->request($store)
+            ->get("integration/order/claim-issue-reasons")
+            ->throw()
+            ->json();
+
+        $items = [];
+        foreach ((array) $response as $reason) {
+            $items[] = [
+                'id' => data_get($reason, 'id'),
+                'name' => data_get($reason, 'name'),
+            ];
+        }
+
+        return $items;
+    }
+
+    public function checkBatchRequestResult(MarketplaceStore $store, string $batchRequestId): array
+    {
+        $response = $this->request($store)
+            ->get("integration/product/sellers/{$this->sellerId($store)}/products/batch-requests/{$batchRequestId}")
+            ->throw()
+            ->json();
+
+        return is_array($response) ? $response : [];
+    }
+
+    public function getBrands(MarketplaceStore $store, int $page = 0, int $size = 500): array
+    {
+        $response = $this->request($store)
+            ->get("integration/product/brands", [
+                'page' => $page,
+                'size' => $size,
+            ])
+            ->throw()
+            ->json();
+
+        return Arr::get($response, 'brands', Arr::get($response, 'content', []));
+    }
+
+    public function getCategories(MarketplaceStore $store): array
+    {
+        $response = $this->request($store)
+            ->get("integration/product/product-categories")
+            ->throw()
+            ->json();
+
+        return Arr::get($response, 'categories', Arr::get($response, 'content', []));
     }
 }

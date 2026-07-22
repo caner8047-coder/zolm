@@ -23,14 +23,27 @@ class ChannelProduct extends Model
         'vat_rate',
         'raw_payload',
         'last_synced_at',
+        // P0 katalog alanları — Hepsiburada tam ürün içeriği için eklendi
+        'description',
+        'images',
+        'attributes',
+        'approval_status',
+        'rejection_reasons',
+        'import_tracking_id',
+        'is_catalog_product',
     ];
 
     protected function casts(): array
     {
         return [
-            'vat_rate' => 'decimal:2',
-            'raw_payload' => 'array',
-            'last_synced_at' => 'datetime',
+            'vat_rate'          => 'decimal:2',
+            'raw_payload'       => 'array',
+            'last_synced_at'    => 'datetime',
+            // P0 katalog alanları
+            'images'            => 'array',
+            'attributes'        => 'array',
+            'rejection_reasons' => 'array',
+            'is_catalog_product' => 'boolean',
         ];
     }
 

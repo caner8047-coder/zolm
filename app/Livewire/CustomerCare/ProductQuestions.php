@@ -104,7 +104,7 @@ class ProductQuestions extends Component
 
         try {
             $capabilities = app(MarketplaceConnectorManager::class)
-                ->resolve($store->marketplace)
+                ->resolveForStore($store)
                 ->capabilities();
             if (!(bool) ($capabilities['questions'] ?? false)) {
                 throw new \RuntimeException('Bu mağaza bağlayıcısı ürün sorusu çekmeyi desteklemiyor.');

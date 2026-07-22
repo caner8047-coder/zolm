@@ -29,6 +29,8 @@ use Livewire\Component;
 class MarketplaceIntegrations extends Component
 {
     public ?int $selectedStoreId = null;
+    public ?string $saveResult = null;
+    public ?string $saveCorrelationId = null;
 
     public array $entityForm = [];
 
@@ -55,15 +57,16 @@ class MarketplaceIntegrations extends Component
         $this->resetSyncForm();
 
         $requestedStoreId = (int) request()->integer('store');
+        $resolver = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class);
+        $accessible = $resolver->accessibleStores(Auth::user());
 
-        if ($requestedStoreId > 0 && Auth::user()->marketplaceStores()->whereKey($requestedStoreId)->exists()) {
+        if ($requestedStoreId > 0 && (clone $accessible)->whereKey($requestedStoreId)->exists()) {
             $this->selectStore($requestedStoreId);
 
             return;
         }
 
-        $firstStoreId = Auth::user()
-            ->marketplaceStores()
+        $firstStoreId = (clone $accessible)
             ->latest('id')
             ->value('id');
 
@@ -209,15 +212,31 @@ class MarketplaceIntegrations extends Component
 
     public function selectStore(int $storeId): void
     {
-        $this->selectedStoreId = $storeId;
-        $this->loadSelectedStore();
+        try {
+            app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), $storeId);
+            $this->selectedStoreId = $storeId;
+            $this->loadSelectedStore();
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+        }
     }
 
     public function deleteSelectedStore(): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
 
-        $store = $this->selectedStore;
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
+
         $storeName = $store->store_name;
 
         try {
@@ -247,24 +266,128 @@ class MarketplaceIntegrations extends Component
 
     public function saveConnection(): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
 
-        $validated = $this->validate([
-            'connectionForm.authType' => ['required', 'string', 'max:50'],
-            'connectionForm.apiBaseUrl' => ['nullable', 'url', 'max:255'],
-            'connectionForm.webhookSecret' => ['nullable', 'string', 'max:120'],
-            'connectionForm.apiKey' => ['nullable', 'string', 'max:255'],
-            'connectionForm.apiSecret' => ['nullable', 'string', 'max:255'],
-            'connectionForm.zolmBoosterApiKey' => ['nullable', 'string', 'max:255'],
-            'connectionForm.storeFrontCode' => ['nullable', 'string', 'max:64'],
-            'connectionForm.extraUser' => ['nullable', 'string', 'max:255'],
-            'connectionForm.extraPassword' => ['nullable', 'string', 'max:255'],
-            'connectionForm.storeUrl' => ['nullable', 'url', 'max:255'],
-        ]);
+        $correlationId = strtoupper(Str::random(8));
+        $this->saveCorrelationId = $correlationId;
+        $this->notify("Kayıt takip kodu: {$correlationId}", 'info');
 
-        $store = $this->selectedStore;
+        $appEnv = app()->environment();
+        $dbDriver = 'unknown';
+        try {
+            $dbDriver = DB::connection()->getDriverName();
+        } catch (\Throwable $e) {}
+
+        $dbName = config('database.connections.'.config('database.default').'.database');
+        $dbHost = config('database.connections.'.config('database.default').'.host');
+        $hostname = gethostname();
+        $dbDatabaseHash = substr(hash('sha256', (string) $dbName), 0, 12);
+        $dbHostHash = substr(hash('sha256', (string) $dbHost), 0, 12);
+        $hostnameHash = substr(hash('sha256', (string) $hostname), 0, 12);
+        $runtimeId = "{$appEnv}_{$dbDriver}_{$dbDatabaseHash}_{$dbHostHash}_{$hostnameHash}";
+
+        $actingUser = Auth::user();
+        $storeId = (int) $this->selectedStoreId;
+
+        $auditMeta = [
+            'correlation_id' => $correlationId,
+            'release_sha' => 'a7d8bd7',
+            'runtime_id' => $runtimeId,
+            'acting_user_id' => $actingUser?->id,
+            'store_id' => $storeId,
+            'tenant_context_active' => \App\Services\Marketplace\MarketplaceTenantContext::hasActiveContext(),
+            'save_started' => true,
+            'timestamp' => now()->toIso8601String(),
+        ];
+
+        // 1. Authorization check
+        $store = null;
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForCredentialManagement(
+                $actingUser,
+                $storeId
+            );
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $auditMeta['authorization_passed'] = false;
+            $auditMeta['save_result'] = 'authorization_denied';
+            $auditMeta['exception_class'] = get_class($e);
+            \App\Models\ActivityLog::log(
+                'save_connection_audit',
+                "Credential save trace failed (Auth Denied). Correlation ID: {$correlationId}",
+                'MarketplaceStore',
+                $storeId,
+                $auditMeta
+            );
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
+
+        $auditMeta['authorization_passed'] = true;
+        $auditMeta['target_tenant_id'] = $store->user_id;
+
+        // 2. Validation check
+        try {
+            $validated = $this->validate([
+                'connectionForm.authType' => ['required', 'string', 'max:50'],
+                'connectionForm.apiBaseUrl' => ['nullable', 'url', 'max:255'],
+                'connectionForm.webhookSecret' => ['nullable', 'string', 'max:120'],
+                'connectionForm.apiKey' => ['nullable', 'string', 'max:255'],
+                'connectionForm.apiSecret' => ['nullable', 'string', 'max:255'],
+                'connectionForm.zolmBoosterApiKey' => ['nullable', 'string', 'max:255'],
+                'connectionForm.storeFrontCode' => ['nullable', 'string', 'max:64'],
+                'connectionForm.extraUser' => ['nullable', 'string', 'max:255'],
+                'connectionForm.extraPassword' => ['nullable', 'string', 'max:255'],
+                'connectionForm.storeUrl' => ['nullable', 'url', 'max:255'],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->saveResult = 'validation_failed';
+            $auditMeta['validation_passed'] = false;
+            $auditMeta['save_result'] = 'validation_failed';
+            $auditMeta['exception_class'] = get_class($e);
+            \App\Models\ActivityLog::log(
+                'save_connection_audit',
+                "Credential save trace failed (Validation Error). Correlation ID: {$correlationId}",
+                'MarketplaceStore',
+                $store->id,
+                $auditMeta
+            );
+            throw $e;
+        }
+
+        $auditMeta['validation_passed'] = true;
+
+        $placeholders = ['test-key', 'test-secret', 'your-api-key', 'your-api-secret', 'changeme', 'demo'];
+        $apiKeyToCheck = trim(Str::lower($validated['connectionForm']['apiKey'] ?? ''));
+        $apiSecretToCheck = trim(Str::lower($validated['connectionForm']['apiSecret'] ?? ''));
+
+        if (in_array($apiKeyToCheck, $placeholders, true) || in_array($apiSecretToCheck, $placeholders, true)) {
+            if (app()->environment('production')) {
+                $this->addError('connectionForm.apiKey', 'Geçerli production API bilgileri girilmelidir.');
+                $this->saveResult = 'validation_failed';
+                $auditMeta['save_result'] = 'validation_failed';
+                \App\Models\ActivityLog::log(
+                    'save_connection_audit',
+                    "Credential save trace failed (Placeholder in Production). Correlation ID: {$correlationId}",
+                    'MarketplaceStore',
+                    $store->id,
+                    $auditMeta
+                );
+                return;
+            }
+        }
+
         $existingConnection = $store->connection;
+        $isDemo = $existingConnection?->isDemo() ?? false;
         $existingCredentials = $existingConnection?->credentials_encrypted ?? [];
+
+        $providedApiKey = $validated['connectionForm']['apiKey'] ?? null;
+        $apiKey = ($providedApiKey && $providedApiKey !== '********')
+            ? $providedApiKey
+            : ($existingCredentials['api_key'] ?? null);
 
         $providedSecret = $validated['connectionForm']['apiSecret'] ?? null;
         $apiSecret = ($providedSecret && $providedSecret !== '********')
@@ -282,7 +405,7 @@ class MarketplaceIntegrations extends Component
             : ($existingCredentials['extra_password'] ?? null);
 
         $credentials = [
-            'api_key' => $validated['connectionForm']['apiKey'] ?: null,
+            'api_key' => $apiKey,
             'api_secret' => $apiSecret,
             'zolm_booster_api_key' => $store->marketplace === 'woocommerce' ? $zolmBoosterApiKey : null,
             'store_front_code' => $validated['connectionForm']['storeFrontCode'] ?: ($existingCredentials['store_front_code'] ?? null),
@@ -290,37 +413,144 @@ class MarketplaceIntegrations extends Component
             'extra_password' => $extraPassword,
             'store_url' => $validated['connectionForm']['storeUrl'] ?: null,
         ];
+
+        $credentialsProvided = false;
+        if (($providedApiKey && $providedApiKey !== '********' && $providedApiKey !== ($existingCredentials['api_key'] ?? null)) ||
+            ($providedSecret && $providedSecret !== '********' && $providedSecret !== ($existingCredentials['api_secret'] ?? null)) ||
+            ($providedZolmBoosterApiKey && $providedZolmBoosterApiKey !== '********' && $providedZolmBoosterApiKey !== ($existingCredentials['zolm_booster_api_key'] ?? null)) ||
+            ($providedExtraPassword && $providedExtraPassword !== '********' && $providedExtraPassword !== ($existingCredentials['extra_password'] ?? null))) {
+            $credentialsProvided = true;
+        }
+
         $resolvedApiBaseUrl = $this->resolveConnectionApiBaseUrl(
             marketplace: $store->marketplace,
             explicitApiBaseUrl: $validated['connectionForm']['apiBaseUrl'] ?: null,
             storeUrl: $validated['connectionForm']['storeUrl'] ?: null,
         );
+
         $readiness = $this->inspectConnectionDraft(
             $store,
             array_filter($credentials, fn ($value) => filled($value)),
             $resolvedApiBaseUrl,
         );
-        $connectionStatus = $readiness['is_ready'] ? 'configured' : 'draft';
+
+        $connectionStatus = $isDemo
+            ? IntegrationConnection::STATUS_DEMO
+            : ($readiness['is_ready'] ? 'configured' : 'draft');
         $connectionError = $readiness['is_ready'] ? null : ($readiness['failures'][0] ?? null);
 
-        $store->connection()->updateOrCreate(
-            ['store_id' => $store->id],
-            [
-                'provider' => $store->marketplace,
-                'auth_type' => $validated['connectionForm']['authType'],
-                'credentials_encrypted' => array_filter($credentials, fn ($value) => filled($value)),
-                'webhook_secret' => $validated['connectionForm']['webhookSecret'] ?: ($existingConnection?->webhook_secret ?: Str::random(40)),
-                'webhook_url' => $this->buildWebhookUrl($store),
-                'api_base_url' => $resolvedApiBaseUrl,
-                'status' => $connectionStatus,
-                'last_verified_at' => null,
-                'last_error' => $connectionError,
-            ],
-        );
+        $preUpdateUpdatedAt = $existingConnection ? $existingConnection->updated_at : null;
+        $preUpdateFingerprint = $existingConnection ? hash('sha256', json_encode($existingCredentials)) : null;
 
-        $store->forceFill([
-            'status' => $connectionStatus,
-        ])->save();
+        $auditMeta['connection_id'] = $existingConnection?->id;
+        $auditMeta['before_updated_at'] = $preUpdateUpdatedAt?->toIso8601String();
+
+        $targetTenantUserId = $store->user_id;
+        $isCrossTenant = (int) $targetTenantUserId !== (int) $actingUser->id;
+
+        DB::transaction(function () use ($store, $validated, $credentials, $resolvedApiBaseUrl, $connectionStatus, $connectionError, $existingConnection, $isDemo): void {
+            $store->connection()->updateOrCreate(
+                ['store_id' => $store->id],
+                [
+                    'provider' => $store->marketplace,
+                    'auth_type' => $validated['connectionForm']['authType'],
+                    'credentials_encrypted' => array_filter($credentials, fn ($value) => filled($value)),
+                    'webhook_secret' => $validated['connectionForm']['webhookSecret'] ?: ($existingConnection?->webhook_secret ?: Str::random(40)),
+                    'webhook_url' => $this->buildWebhookUrl($store),
+                    'api_base_url' => $resolvedApiBaseUrl,
+                    'status' => $connectionStatus,
+                    'last_verified_at' => null,
+                    'last_error' => $connectionError,
+                ],
+            );
+
+            $store->forceFill([
+                'status' => $isDemo ? $store->status : $connectionStatus,
+            ])->save();
+        });
+
+        $store->refresh();
+        $newConnection = $store->connection;
+
+        if (!$newConnection || (int) $newConnection->store_id !== (int) $store->id) {
+            $this->saveResult = 'credential_save_failed';
+            $auditMeta['save_result'] = 'credential_save_failed';
+            $auditMeta['after_updated_at'] = null;
+            $auditMeta['fingerprint_changed'] = false;
+            \App\Models\ActivityLog::log(
+                'save_connection_audit',
+                "Credential save trace failed (Mismatch store relation). Correlation ID: {$correlationId}",
+                'MarketplaceStore',
+                $store->id,
+                $auditMeta
+            );
+            $this->notify('Bağlantı bilgileri doğrulanırken hata oluştu.', 'error');
+            return;
+        }
+
+        $newCredentials = $newConnection->credentials_encrypted ?? [];
+        $newFingerprint = hash('sha256', json_encode($newCredentials));
+
+        $updatedAtChanged = !$preUpdateUpdatedAt || $newConnection->updated_at->gt($preUpdateUpdatedAt);
+        $fingerprintChanged = $preUpdateFingerprint !== $newFingerprint;
+
+        $auditMeta['after_updated_at'] = $newConnection->updated_at->toIso8601String();
+        $auditMeta['fingerprint_changed'] = $fingerprintChanged;
+
+        $newApiKeyToCheck = trim(Str::lower($newCredentials['api_key'] ?? ''));
+        $newApiSecretToCheck = trim(Str::lower($newCredentials['api_secret'] ?? ''));
+        $hasPlaceholder = in_array($newApiKeyToCheck, $placeholders, true) || in_array($newApiSecretToCheck, $placeholders, true);
+
+        if ($hasPlaceholder) {
+            $this->saveResult = 'credential_save_failed';
+            $auditMeta['save_result'] = 'credential_save_failed';
+            \App\Models\ActivityLog::log(
+                'save_connection_audit',
+                "Credential save trace failed (Placeholder check after save). Correlation ID: {$correlationId}",
+                'MarketplaceStore',
+                $store->id,
+                $auditMeta
+            );
+            $this->notify('Geçerli production API bilgileri girilmelidir.', 'error');
+            return;
+        }
+
+        if ($credentialsProvided) {
+            if ($fingerprintChanged && $updatedAtChanged) {
+                $this->saveResult = 'credential_saved';
+                $auditMeta['save_result'] = 'credential_saved';
+
+                if ($isCrossTenant) {
+                    \App\Models\ActivityLog::log(
+                        'update_connection_credentials',
+                        "Updated store connection credentials via tenant context. Acting user: {$actingUser->id}, Target tenant: {$targetTenantUserId}, Target store: {$store->id}, Reason: credential maintenance",
+                        'MarketplaceStore',
+                        $store->id,
+                        [
+                            'api_key_present' => filled($credentials['api_key'] ?? null),
+                            'api_secret_present' => filled($credentials['api_secret'] ?? null),
+                            'api_key_length' => strlen($credentials['api_key'] ?? ''),
+                            'api_secret_length' => strlen($credentials['api_secret'] ?? ''),
+                            'fingerprint_changed' => true,
+                        ]
+                    );
+                }
+            } else {
+                $this->saveResult = 'credential_save_failed';
+                $auditMeta['save_result'] = 'credential_save_failed';
+            }
+        } else {
+            $this->saveResult = 'credential_unchanged';
+            $auditMeta['save_result'] = 'credential_unchanged';
+        }
+
+        \App\Models\ActivityLog::log(
+            'save_connection_audit',
+            "Credential save trace execution finished. Correlation ID: {$correlationId}, Save Result: {$this->saveResult}",
+            'MarketplaceStore',
+            $store->id,
+            $auditMeta
+        );
 
         $this->loadSelectedStore();
 
@@ -336,7 +566,6 @@ class MarketplaceIntegrations extends Component
             }
 
             $this->notify('Bağlantı bilgileri kaydedildi. Gizli alanları boş bırakırsanız mevcut değer korunur.');
-
             return;
         }
 
@@ -373,7 +602,19 @@ class MarketplaceIntegrations extends Component
 
     public function saveSyncProfile(): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
+
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $this->selectedStore = $store;
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
 
         $marketplace = $this->selectedStore->marketplace;
         $allowedWebhookTopics = IntegrationSyncProfile::recommendedWebhookTopicsForMarketplace($marketplace);
@@ -438,7 +679,7 @@ class MarketplaceIntegrations extends Component
 
         [$featureToggles, $forcedOffSettings] = $this->normalizeSyncFeatureToggles(
             $validated['syncForm'],
-            app(MarketplaceConnectorManager::class)->resolve($marketplace)->capabilities(),
+            app(MarketplaceConnectorManager::class)->resolveForStore($this->selectedStore)->capabilities(),
         );
 
         $this->selectedStore->syncProfile()->updateOrCreate(
@@ -593,7 +834,19 @@ class MarketplaceIntegrations extends Component
 
     public function runSync(string $syncType): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
+
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $this->selectedStore = $store;
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
 
         $readiness = $this->selectedConnectionReadiness;
 
@@ -648,7 +901,19 @@ class MarketplaceIntegrations extends Component
 
     public function regenerateWebhookSecret(): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
+
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $this->selectedStore = $store;
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
 
         $this->connectionForm['webhookSecret'] = Str::random(40);
     }
@@ -658,10 +923,25 @@ class MarketplaceIntegrations extends Component
         MarketplaceConnectionReadinessService $connectionReadinessService,
     ): void
     {
-        abort_unless($this->selectedStore, 404);
+        if (!Auth::check()) {
+            $this->saveResult = 'session_expired';
+            return;
+        }
 
         try {
-            $connector = $connectorManager->resolve($this->selectedStore->marketplace);
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $this->selectedStore = $store;
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $this->saveResult = 'authorization_denied';
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
+
+        try {
+            $this->selectedStore->loadMissing('connection');
+            $connection = $this->selectedStore->connection;
+            $isDemo = $connection?->isDemo() ?? false;
+            $connector = $connectorManager->resolveForStore($this->selectedStore);
 
             if (!$connector instanceof TestsConnection) {
                 $this->notify('Bu kanal için bağlantı doğrulama henüz desteklenmiyor.', 'error');
@@ -672,8 +952,8 @@ class MarketplaceIntegrations extends Component
             $result = $connector->testConnection($this->selectedStore);
 
             if (!(bool) ($result['ok'] ?? false)) {
-                $this->selectedStore->connection?->forceFill([
-                    'status' => 'draft',
+                $connection?->forceFill([
+                    'status' => $isDemo ? IntegrationConnection::STATUS_DEMO : 'draft',
                     'last_error' => $result['message'] ?? 'Bağlantı doğrulanamadı.',
                 ])->save();
 
@@ -685,18 +965,18 @@ class MarketplaceIntegrations extends Component
 
             $verifiedAt = now();
 
-            $this->selectedStore->connection?->forceFill([
-                'status' => 'configured',
-                'last_verified_at' => $verifiedAt,
+            $connection?->forceFill([
+                'status' => $isDemo ? IntegrationConnection::STATUS_DEMO : 'configured',
+                'last_verified_at' => $isDemo ? $connection->last_verified_at : $verifiedAt,
                 'last_error' => null,
             ])->save();
 
             $readiness = $connectionReadinessService->inspect($this->selectedStore->fresh(['connection', 'syncProfile']));
 
             if (!(bool) ($readiness['is_ready'] ?? false)) {
-                $this->selectedStore->connection?->forceFill([
-                    'status' => 'draft',
-                    'last_verified_at' => $verifiedAt,
+                $connection?->forceFill([
+                    'status' => $isDemo ? IntegrationConnection::STATUS_DEMO : 'draft',
+                    'last_verified_at' => $isDemo ? $connection->last_verified_at : $verifiedAt,
                     'last_error' => $readiness['failures'][0] ?? 'Bağlantı doğrulandı ancak mağaza henüz sync için hazır değil.',
                 ])->save();
 
@@ -710,9 +990,9 @@ class MarketplaceIntegrations extends Component
                 return;
             }
 
-            $this->selectedStore->connection?->forceFill([
-                'status' => 'configured',
-                'last_verified_at' => $verifiedAt,
+            $connection?->forceFill([
+                'status' => $isDemo ? IntegrationConnection::STATUS_DEMO : 'configured',
+                'last_verified_at' => $isDemo ? $connection->last_verified_at : $verifiedAt,
                 'last_error' => null,
             ])->save();
 
@@ -733,8 +1013,12 @@ class MarketplaceIntegrations extends Component
         } catch (\Throwable $exception) {
             $message = $this->friendlyConnectionExceptionMessage($exception);
 
-            $this->selectedStore->connection?->forceFill([
-                'status' => 'error',
+            $failedConnection = $this->selectedStore->connection;
+            $failedStatus = $failedConnection?->isDemo() === true
+                ? IntegrationConnection::STATUS_DEMO
+                : 'error';
+            $failedConnection?->forceFill([
+                'status' => $failedStatus,
                 'last_error' => $message,
             ])->save();
 
@@ -759,8 +1043,8 @@ class MarketplaceIntegrations extends Component
 
     public function exportReadinessCsv()
     {
-        $stores = Auth::user()
-            ->marketplaceStores()
+        $stores = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+            ->accessibleStores(Auth::user())
             ->with(['legalEntity', 'connection', 'syncProfile'])
             ->orderBy('store_name')
             ->get();
@@ -956,10 +1240,12 @@ class MarketplaceIntegrations extends Component
             return null;
         }
 
-        return Auth::user()
-            ->marketplaceStores()
-            ->with(['legalEntity', 'connection', 'syncProfile'])
-            ->find($this->selectedStoreId);
+        try {
+            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            return $store->load(['legalEntity', 'connection', 'syncProfile']);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return null;
+        }
     }
 
     /**
@@ -1075,8 +1361,11 @@ class MarketplaceIntegrations extends Component
     {
         $provider = $this->selectedStore?->marketplace ?: ($this->storeForm['marketplace'] ?? 'trendyol');
 
-        return app(MarketplaceConnectorManager::class)
-            ->resolve($provider)
+        $manager = app(MarketplaceConnectorManager::class);
+
+        return ($this->selectedStore
+            ? $manager->resolveForStore($this->selectedStore)
+            : $manager->resolve($provider))
             ->capabilities();
     }
 
@@ -1142,8 +1431,8 @@ class MarketplaceIntegrations extends Component
      */
     public function getReadinessSummaryProperty(): ?array
     {
-        $stores = Auth::user()
-            ->marketplaceStores()
+        $stores = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+            ->accessibleStores(Auth::user())
             ->with(['connection'])
             ->orderBy('store_name')
             ->get();
@@ -1206,8 +1495,8 @@ class MarketplaceIntegrations extends Component
     {
         $service = app(LegacyFinancialProjectionInsightsService::class);
 
-        return Auth::user()
-            ->marketplaceStores()
+        return app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+            ->accessibleStores(Auth::user())
             ->with('legalEntity:id,name')
             ->orderBy('store_name')
             ->get(['id', 'legal_entity_id', 'marketplace', 'store_name'])
@@ -1556,7 +1845,8 @@ class MarketplaceIntegrations extends Component
             ->orderBy('name')
             ->get();
 
-        $stores = $user->marketplaceStores()
+        $stores = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+            ->accessibleStores($user)
             ->with(['legalEntity', 'connection', 'syncProfile'])
             ->latest('updated_at')
             ->get();
@@ -1578,7 +1868,7 @@ class MarketplaceIntegrations extends Component
         $stats = [
             'entities' => $legalEntities->where('is_active', true)->count(),
             'stores' => $stores->where('is_active', true)->count(),
-            'configured' => $stores->filter(fn (MarketplaceStore $store) => $store->connection?->status === 'configured')->count(),
+            'configured' => $stores->filter(fn (MarketplaceStore $store) => in_array($store->connection?->status, ['configured', 'demo'], true))->count(),
             'webhookEnabled' => $stores->filter(fn (MarketplaceStore $store) => $store->syncProfile?->webhook_enabled)->count(),
             'smokeReady' => (int) data_get($this->readinessSummary, 'totals.ready', 0),
             'needsAttention' => (int) data_get($this->readinessSummary, 'totals.warning', 0) + (int) data_get($this->readinessSummary, 'totals.missing', 0),
@@ -1631,7 +1921,7 @@ class MarketplaceIntegrations extends Component
             'authType' => $store->connection?->auth_type ?? 'api_key_secret',
             'apiBaseUrl' => $store->connection?->api_base_url ?: MarketplaceProviderRegistry::defaultApiBaseUrl($store->marketplace),
             'webhookSecret' => $store->connection?->webhook_secret ?: Str::random(40),
-            'apiKey' => $credentials['api_key'] ?? '',
+            'apiKey' => filled($credentials['api_key'] ?? null) ? '********' : '',
             'apiSecret' => filled($credentials['api_secret'] ?? null) ? '********' : '',
             'zolmBoosterApiKey' => filled($credentials['zolm_booster_api_key'] ?? null) ? '********' : '',
             'storeFrontCode' => $credentials['store_front_code'] ?? '',
@@ -1736,6 +2026,68 @@ class MarketplaceIntegrations extends Component
             'extraUser' => '',
             'extraPassword' => '',
             'storeUrl' => '',
+        ];
+    }
+
+    public function getSelectedStoreHepsiburadaReadinessMetadataProperty(): array
+    {
+        $store = $this->selectedStore;
+        if (!$store || $store->marketplace !== 'hepsiburada') {
+            return [];
+        }
+
+        $connection = $store->connection;
+        $credentials = $connection?->credentials_encrypted ?? [];
+
+        $hasCreds = $connection && !empty($credentials);
+        $hasMerchantId = filled($store->seller_id) || filled($credentials['merchant_id'] ?? null);
+
+        // Fetch latest audit log
+        $latestAudit = \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)
+            ->latest('id')
+            ->first();
+
+        // Calculate validation status label/tag
+        // Tags: not_configured, configured_not_verified, live_read_verified, authentication_failed, permission_blocked, rate_limited, provider_unavailable
+        $status = 'not_configured';
+        if (!$hasCreds) {
+            $status = 'not_configured';
+        } else {
+            if (!$latestAudit || !$latestAudit->http_attempted) {
+                $status = 'configured_not_verified';
+            } else {
+                $status = match ($latestAudit->decision) {
+                    'authentication_success', 'read_probe_success' => $latestAudit->confirm_read ? 'live_read_verified' : 'configured_not_verified',
+                    'authentication_failed' => 'authentication_failed',
+                    'permission_blocked' => 'permission_blocked',
+                    'rate_limited' => 'rate_limited',
+                    'provider_unavailable' => 'provider_unavailable',
+                    default => 'configured_not_verified',
+                };
+            }
+        }
+
+        $lastVerified = $connection?->last_verified_at ? $connection->last_verified_at->toIso8601String() : null;
+
+        return [
+            'has_credentials' => $hasCreds,
+            'has_merchant_id' => $hasMerchantId,
+            'last_verified_at' => $lastVerified,
+            'last_http_status' => $latestAudit?->http_status,
+            'last_provider_error' => $latestAudit?->provider_error_code,
+            'connection_gate' => (bool) config('marketplace.hepsiburada.p0_connection_probe_enabled', false),
+            'reference_gate' => (bool) config('marketplace.hepsiburada.p0_reference_sync_enabled', false),
+            'catalog_gate' => (bool) config('marketplace.hepsiburada.p0_catalog_sync_enabled', false),
+            'batch_gate' => (bool) config('marketplace.hepsiburada.p0_batch_status_sync_enabled', false),
+            'last_categories_smoke' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('operation', 'categories')->latest('id')->value('decision'),
+            'last_catalog_smoke' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('operation', 'catalog')->latest('id')->value('decision'),
+            'last_correlation_id' => $latestAudit?->correlation_id,
+            'last_acting_user_id' => $latestAudit?->acting_user_id,
+            'last_reason' => $latestAudit?->reason,
+            'last_mutation_count' => $latestAudit?->db_mutation_count ?? 0,
+            'live_verified' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('confirm_read', true)->where('http_attempted', true)->exists(),
+            'configuration_ready' => $hasCreds && $hasMerchantId,
+            'status' => $status,
         ];
     }
 

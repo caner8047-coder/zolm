@@ -10,6 +10,7 @@ use App\Modules\Hr\Core\Services\HrCalendarService;
 use App\Modules\Hr\Core\Services\HrFileService;
 use App\Modules\Hr\Core\Services\MalwareScanner;
 use App\Modules\Hr\Core\Services\TenantContext;
+use App\Modules\Hr\Core\Livewire\HrComplianceWidget;
 use App\Modules\Hr\Document\Events\EmployeeDocumentExpired;
 use App\Modules\Hr\Document\Events\EmployeeDocumentRejected;
 use App\Modules\Hr\Document\Events\EmployeeDocumentRequestFulfilled;
@@ -43,6 +44,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Livewire\Livewire;
 
 class HrServiceProvider extends ServiceProvider
 {
@@ -57,6 +59,8 @@ class HrServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        Livewire::component('hr.core.hr-compliance-widget', HrComplianceWidget::class);
+
         Route::middleware('web')->group(__DIR__ . '/Routes/hr.php');
         $this->loadViewsFrom(__DIR__ . '/Resources/views', 'hr');
         $this->mergeConfigFrom(base_path('config/hr.php'), 'hr');

@@ -191,6 +191,7 @@ class MpProductsManager extends Component
     public $bulkProfitTargetMargin = null;
     public string $bulkProfitTarget = 'all';
     public $bulkPackagingCost = null;
+    public $bulkCogs = null;
     public $bulkCargoCost = null;
     public $bulkDesi = null;
     public $bulkPieces = null;
@@ -203,6 +204,22 @@ class MpProductsManager extends Component
     public string $quickMatchSearch = '';
     public array $currentStatusRefreshRunIds = [];
     public ?string $currentStatusRefreshPollingStartedAt = null;
+
+    // ─── COGS Sihirbazı ──────────────────────────────────────────
+    public bool $showCogsWizard = false;
+    /** @var array<string, array{cogs: string|null, packaging_cost: string|null, count: int, product_ids: array<int>}> */
+    public array $cogsWizardCategories = [];
+    /** Kullanıcının her kategori için girdiği cogs ve packaging_cost değerleri */
+    public array $cogsWizardInputs = [];
+    public ?array $cogsWizardResult = null;
+    // ─────────────────────────────────────────────────────────────
+
+    // ─── Akıllı Eşleştirme (ProductMatcher) ──────────────────────
+    public bool $showMatchWizard = false;
+    /** @var array<int, array{order_stock_code: string, order_product_name: string, order_count: int, suggestions: array}> */
+    public array $matchSuggestions = [];
+    public bool $matchLoading = false;
+    // ─────────────────────────────────────────────────────────────
 
     protected ?array $productProfitSettingsCache = null;
 
@@ -517,6 +534,10 @@ class MpProductsManager extends Component
                 ->whereHas('store', fn (Builder $query) => $query->where('user_id', $this->userId()))
                 ->where('status', 'failed')
                 ->where('created_at', '>=', now()->subDay())
+                ->count(),
+            // COGS Sihirbazı için: maliyeti tanımsız (0 veya null) ürün sayısı
+            'missing_cost_products' => (clone $productBase)
+                ->where(fn ($q) => $q->whereNull('cogs')->orWhere('cogs', 0))
                 ->count(),
         ];
     }
@@ -890,7 +911,11 @@ class MpProductsManager extends Component
         }
 
         $recipeCountMetricExpression = $hasRecipeStockCode
-            ? 'GREATEST(COALESCE(product_recipe_agg.recipe_count_metric, 0), COALESCE(stock_recipe_agg.recipe_count_metric, 0))'
+            ? 'CASE
+                WHEN COALESCE(product_recipe_agg.recipe_count_metric, 0) >= COALESCE(stock_recipe_agg.recipe_count_metric, 0)
+                    THEN COALESCE(product_recipe_agg.recipe_count_metric, 0)
+                ELSE COALESCE(stock_recipe_agg.recipe_count_metric, 0)
+              END'
             : 'COALESCE(product_recipe_agg.recipe_count_metric, 0)';
         $recipeIdMetricExpression = $hasRecipeStockCode
             ? 'COALESCE(product_recipe_agg.recipe_id_metric, stock_recipe_agg.recipe_id_metric)'
@@ -2952,6 +2977,259 @@ class MpProductsManager extends Component
         session()->flash('success', "{$count} ürünün ambalaj fiyatı ₺" . number_format($packagingCost, 2, ',', '.') . ' olarak güncellendi.');
     }
 
+    public function bulkSetCogs(): void
+    {
+        if ($this->selectedProducts === []) {
+            return;
+        }
+
+        $this->validate([
+            'bulkCogs' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
+        ], [], [
+            'bulkCogs' => 'birim maliyet (COGS)',
+        ]);
+
+        $productIds = $this->selectedProductIdsForBulkAction();
+
+        if ($productIds === []) {
+            $this->clearSelection();
+            session()->flash('warning', 'Seçili ürünler bulunamadı.');
+
+            return;
+        }
+
+        $cogs = round((float) $this->bulkCogs, 2);
+        $logger = app(MpProductChangeLogger::class);
+        $beforeSnapshots = $logger->productSnapshotsForIds($this->userId(), $productIds);
+        $batchId = $logger->batchId('bulk_cogs_update');
+
+	        MpProduct::query()
+	            ->where('user_id', $this->userId())
+	            ->whereIn('id', $productIds)
+	            ->update(['cogs' => $cogs, 'cost_source' => 'manual']);
+
+	        app(ProductCompositionResolver::class)->refreshParentSetsForProductIds($productIds);
+
+        $logger->logProductChangesForIds(
+            $productIds,
+            $beforeSnapshots,
+            'bulk_cogs_update',
+            Auth::id(),
+            'Toplu COGS güncelleme',
+            $batchId
+        );
+
+        $count = count($productIds);
+        $this->resetBulkCogsForm();
+        $this->clearSelection();
+
+        session()->flash('success', "{$count} ürünün birim maliyeti (COGS) ₺" . number_format($cogs, 2, ',', '.') . ' olarak güncellendi.');
+    }
+
+    // ─── COGS Sihirbazı Metodları ────────────────────────────────
+
+    // ─── Akıllı Eşleştirme Metodları ─────────────────────────────
+
+    /**
+     * Eşleşmeyen sipariş stok kodları için fuzzy match önerilerini yükle.
+     */
+    public function openMatchWizard(): void
+    {
+        $this->matchLoading    = true;
+        $this->matchSuggestions = [];
+
+        try {
+            $suggestions = app(\App\Services\Accounting\ProductMatcherService::class)
+                ->suggestBatch($this->userId(), 100);
+
+            $this->matchSuggestions = $suggestions;
+            $this->showMatchWizard  = true;
+        } catch (\Throwable $e) {
+            session()->flash('error', 'Eşleştirme önerileri yüklenirken hata: ' . $e->getMessage());
+        } finally {
+            $this->matchLoading = false;
+        }
+    }
+
+    public function closeMatchWizard(): void
+    {
+        $this->showMatchWizard  = false;
+        $this->matchSuggestions = [];
+    }
+
+    /**
+     * Kullanıcı bir öneriyi onayladığında mp_orders'ı güncelle.
+     */
+    public function confirmProductMatch(string $orderStockCode, string $orderProductName, int $targetProductId, float $score, string $matchType): void
+    {
+        $updated = app(\App\Services\Accounting\ProductMatcherService::class)
+            ->confirmMatch($orderStockCode, $orderProductName, $targetProductId, $this->userId(), $matchType);
+
+        // Eşleştirilen satırı listeden kaldır
+        $this->matchSuggestions = array_values(array_filter(
+            $this->matchSuggestions,
+            fn ($row) => !($row['order_stock_code'] === $orderStockCode && $row['order_product_name'] === $orderProductName)
+        ));
+
+        session()->flash('success', "Eşleştirme onaylandı ({$updated} sipariş güncellendi). Güven skoru: " . round($score * 100) . '%');
+    }
+
+    /**
+     * Bir eşleştirme önerisini atla (listeden kaldır, kaydetme).
+     */
+    public function skipMatchSuggestion(string $orderStockCode, string $orderProductName): void
+    {
+        $this->matchSuggestions = array_values(array_filter(
+            $this->matchSuggestions,
+            fn ($row) => !($row['order_stock_code'] === $orderStockCode && $row['order_product_name'] === $orderProductName)
+        ));
+    }
+
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * COGS eksik ürünleri kategori bazında gruplayarak sihirbazı açar.
+     */
+    public function openCogsWizard(): void
+    {
+        $products = MpProduct::query()
+            ->where('user_id', $this->userId())
+            ->where(function ($q) {
+                $q->whereNull('cogs')->orWhere('cogs', 0);
+            })
+            ->select('id', 'category_name', 'cogs', 'sale_price')
+            ->orderBy('category_name')
+            ->get();
+
+        if ($products->isEmpty()) {
+            session()->flash('info', 'Tüm ürünlerin maliyeti tanımlı. COGS sihirbazına gerek yok.');
+            return;
+        }
+
+        // Kategori bazlı gruplama; null kategori "Kategorisiz" olarak işlenir
+        $grouped = [];
+        foreach ($products as $p) {
+            $cat = $p->category_name ?: 'Kategorisiz';
+
+            if (! isset($grouped[$cat])) {
+                $grouped[$cat] = [
+                    'count'        => 0,
+                    'product_ids'  => [],
+                    'avg_price'    => 0.0,
+                    'total_price'  => 0.0,
+                ];
+            }
+
+            $grouped[$cat]['count']++;
+            $grouped[$cat]['product_ids'][] = $p->id;
+            $grouped[$cat]['total_price'] += (float) ($p->sale_price ?? 0);
+        }
+
+        // Ortalama satış fiyatını hesapla — kullanıcıya COGS önerisi sunar
+        foreach ($grouped as $cat => &$data) {
+            $data['avg_price'] = $data['count'] > 0
+                ? round($data['total_price'] / $data['count'], 2)
+                : 0.0;
+            unset($data['total_price']);
+        }
+        unset($data);
+
+        $this->cogsWizardCategories = $grouped;
+
+        // Her kategori için boş input başlat
+        $this->cogsWizardInputs = [];
+        foreach (array_keys($grouped) as $cat) {
+            $this->cogsWizardInputs[$cat] = [
+                'cogs'           => '',
+                'packaging_cost' => '',
+            ];
+        }
+
+        $this->cogsWizardResult  = null;
+        $this->showCogsWizard    = true;
+    }
+
+    /**
+     * Sihirbazda girilen kategori bazlı COGS/ambalaj maliyetlerini uygular.
+     */
+    public function applyCogsWizard(): void
+    {
+        $logger   = app(MpProductChangeLogger::class);
+        $batchId  = $logger->batchId('cogs_wizard');
+        $updated  = 0;
+        $skipped  = 0;
+
+        foreach ($this->cogsWizardCategories as $cat => $data) {
+            $input           = $this->cogsWizardInputs[$cat] ?? [];
+            $cogsRaw         = $input['cogs'] ?? '';
+            $packagingRaw    = $input['packaging_cost'] ?? '';
+
+            // Her iki alan da boşsa bu kategoriyi atla
+            if (blank($cogsRaw) && blank($packagingRaw)) {
+                $skipped += $data['count'];
+                continue;
+            }
+
+            $productIds = $data['product_ids'] ?? [];
+            if (empty($productIds)) {
+                continue;
+            }
+
+            $updates = ['cost_source' => 'manual'];
+
+            if (filled($cogsRaw) && is_numeric($cogsRaw)) {
+                $updates['cogs'] = round((float) $cogsRaw, 2);
+            }
+
+            if (filled($packagingRaw) && is_numeric($packagingRaw)) {
+                $updates['packaging_cost'] = round((float) $packagingRaw, 2);
+            }
+
+            $beforeSnapshots = $logger->productSnapshotsForIds($this->userId(), $productIds);
+
+            MpProduct::query()
+                ->where('user_id', $this->userId())
+                ->whereIn('id', $productIds)
+                ->update($updates);
+
+            app(ProductCompositionResolver::class)->refreshParentSetsForProductIds($productIds);
+
+            $logger->logProductChangesForIds(
+                $productIds,
+                $beforeSnapshots,
+                'cogs_wizard',
+                Auth::id(),
+                "COGS Sihirbazı — {$cat} kategorisi",
+                $batchId
+            );
+
+            $updated += count($productIds);
+        }
+
+        // Sonucu kaydet
+        $this->cogsWizardResult = [
+            'updated' => $updated,
+            'skipped' => $skipped,
+        ];
+
+        // Güncel kategori listesini yenile (güncellenenler artık sihirbazda çıkmamalı)
+        $this->openCogsWizard();
+
+        if ($updated > 0) {
+            session()->flash('success', "{$updated} ürünün maliyeti COGS Sihirbazı ile güncellendi.");
+        }
+    }
+
+    public function closeCogsWizard(): void
+    {
+        $this->showCogsWizard    = false;
+        $this->cogsWizardResult  = null;
+        $this->cogsWizardCategories = [];
+        $this->cogsWizardInputs  = [];
+    }
+
+    // ─────────────────────────────────────────────────────────────
+
     public function bulkSetLogisticsInfo(): void
     {
         if ($this->selectedProducts === []) {
@@ -3199,7 +3477,7 @@ class MpProductsManager extends Component
             ->whereHas('store', function (Builder $query) use ($userId) {
                 $query->where('user_id', $userId)
                     ->where('is_active', true)
-                    ->whereHas('connection', fn (Builder $connectionQuery) => $connectionQuery->whereIn('status', ['configured', 'connected']));
+                    ->whereHas('connection', fn (Builder $connectionQuery) => $connectionQuery->whereIn('status', ['configured', 'connected', 'demo']));
             })
             ->get();
 
@@ -3238,7 +3516,7 @@ class MpProductsManager extends Component
             ->with(['connection', 'syncProfile'])
             ->where('user_id', $userId)
             ->where('is_active', true)
-            ->whereHas('connection', fn (Builder $query) => $query->whereIn('status', ['configured', 'connected']))
+            ->whereHas('connection', fn (Builder $query) => $query->whereIn('status', ['configured', 'connected', 'demo']))
             ->orderBy('marketplace')
             ->orderBy('store_name')
             ->get()
@@ -3467,6 +3745,11 @@ class MpProductsManager extends Component
         $this->bulkPackagingCost = null;
     }
 
+    protected function resetBulkCogsForm(): void
+    {
+        $this->bulkCogs = null;
+    }
+
     protected function resetBulkLogisticsForm(): void
     {
         $this->bulkCargoCost = null;
@@ -3538,7 +3821,7 @@ class MpProductsManager extends Component
             ->with(['connection', 'syncProfile'])
             ->where('user_id', $this->userId())
             ->where('is_active', true)
-            ->whereHas('connection', fn (Builder $query) => $query->whereIn('status', ['configured', 'connected']))
+            ->whereHas('connection', fn (Builder $query) => $query->whereIn('status', ['configured', 'connected', 'demo']))
             ->when(
                 $this->marketplaceFilter !== 'all',
                 fn (Builder $query) => $query->where('marketplace', $this->marketplaceFilter)

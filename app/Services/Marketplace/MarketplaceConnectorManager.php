@@ -2,9 +2,11 @@
 
 namespace App\Services\Marketplace;
 
+use App\Models\MarketplaceStore;
 use App\Services\Marketplace\Connectors\GenericMarketplaceConnector;
 use App\Services\Marketplace\Connectors\AmazonConnector;
 use App\Services\Marketplace\Connectors\CiceksepetiConnector;
+use App\Services\Marketplace\Connectors\DemoMarketplaceConnector;
 use App\Services\Marketplace\Connectors\HepsiburadaConnector;
 use App\Services\Marketplace\Connectors\KoctasConnector;
 use App\Services\Marketplace\Connectors\N11Connector;
@@ -16,6 +18,24 @@ use App\Services\Marketplace\Contracts\MarketplaceConnector;
 
 class MarketplaceConnectorManager
 {
+    public function resolveForStore(MarketplaceStore $store): MarketplaceConnector
+    {
+        if ($this->isDemoStore($store)) {
+            $provider = MarketplaceProviderRegistry::normalize((string) $store->marketplace);
+
+            return new DemoMarketplaceConnector($provider, MarketplaceProviderRegistry::get($provider));
+        }
+
+        return $this->resolve((string) $store->marketplace);
+    }
+
+    public function isDemoStore(MarketplaceStore $store): bool
+    {
+        $store->loadMissing('connection');
+
+        return $store->connection?->isDemo() ?? false;
+    }
+
     public function resolve(string $provider): MarketplaceConnector
     {
         $normalizedProvider = MarketplaceProviderRegistry::normalize($provider);

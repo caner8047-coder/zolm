@@ -17,13 +17,20 @@ use Illuminate\Support\Facades\DB;
 
 class AccountingSeedDemoCommand extends Command
 {
-    protected $signature = 'accounting:seed-demo {--user= : The ID of the user/tenant to seed demo data for}';
+    protected $signature = 'accounting:seed-foundation {--user= : The ID of the user/tenant to seed foundation data for}';
 
-    protected $description = 'Seed idempotent accounting demo data for a user';
+    protected $description = 'Seed the legacy accounting foundation data for a user';
 
     public function handle(): int
     {
         $userId = $this->option('user');
+
+        if (! $userId && app()->environment('production')) {
+            $this->error('Production ortamında --user zorunludur; otomatik demo kullanıcı oluşturulmaz.');
+
+            return self::FAILURE;
+        }
+
         if ($userId) {
             $user = User::findOrFail($userId);
         } else {
@@ -39,7 +46,7 @@ class AccountingSeedDemoCommand extends Command
         }
 
         $userId = (int) $user->id;
-        $this->info("Seeding demo accounting data for user ID: {$userId} ({$user->email})");
+        $this->info("Seeding legacy accounting foundation data for user ID: {$userId} ({$user->email})");
 
         DB::transaction(function () use ($userId) {
             // 1. Legal Entity
@@ -182,7 +189,7 @@ class AccountingSeedDemoCommand extends Command
             }
         });
 
-        $this->info('Accounting demo data seeded successfully.');
+        $this->info('Legacy accounting foundation data seeded successfully.');
         return 0;
     }
 }

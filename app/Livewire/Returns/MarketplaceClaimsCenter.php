@@ -366,7 +366,7 @@ class MarketplaceClaimsCenter extends Component
 
         try {
             $capabilities = app(MarketplaceConnectorManager::class)
-                ->resolve($claim->store->marketplace)
+                ->resolveForStore($claim->store)
                 ->capabilities();
 
             return [
@@ -432,11 +432,11 @@ class MarketplaceClaimsCenter extends Component
             ->where('is_active', true)
             ->when($this->storeFilter !== 'all', fn ($builder) => $builder->whereKey((int) $this->storeFilter))
             ->when($this->marketplaceFilter !== 'all', fn ($builder) => $builder->where('marketplace', $this->marketplaceFilter))
-            ->whereHas('connection', fn ($query) => $query->whereIn('status', ['configured', 'connected']))
+            ->whereHas('connection', fn ($query) => $query->whereIn('status', ['configured', 'connected', 'demo']))
             ->get()
             ->filter(function (MarketplaceStore $store) use ($manager): bool {
                 try {
-                    return (bool) ($manager->resolve($store->marketplace)->capabilities()['claims'] ?? false);
+                    return (bool) ($manager->resolveForStore($store)->capabilities()['claims'] ?? false);
                 } catch (\Throwable) {
                     return false;
                 }

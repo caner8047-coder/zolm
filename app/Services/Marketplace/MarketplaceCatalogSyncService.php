@@ -58,6 +58,14 @@ class MarketplaceCatalogSyncService
                 'category_name' => $this->preferIncoming($productPayload['category_name'] ?? null, $product->category_name),
                 'vat_rate' => $this->preferIncoming($productPayload['vat_rate'] ?? null, $product->vat_rate),
                 'raw_payload' => $productPayload['raw_payload'] ?? $row,
+                // P0 Catalog fields
+                'description' => $this->preferIncoming($productPayload['description'] ?? null, $product->description),
+                'images' => $this->preferIncoming($productPayload['images'] ?? null, $product->images),
+                'attributes' => $this->preferIncoming($productPayload['attributes'] ?? null, $product->attributes),
+                'approval_status' => $this->preferIncoming($productPayload['approval_status'] ?? null, $product->approval_status),
+                'rejection_reasons' => $this->preferIncoming($productPayload['rejection_reasons'] ?? null, $product->rejection_reasons),
+                'import_tracking_id' => $this->preferIncoming($productPayload['import_tracking_id'] ?? null, $product->import_tracking_id),
+                'is_catalog_product' => $this->preferIncoming($productPayload['is_catalog_product'] ?? null, $product->is_catalog_product ?? false),
                 'last_synced_at' => now(),
             ]);
 

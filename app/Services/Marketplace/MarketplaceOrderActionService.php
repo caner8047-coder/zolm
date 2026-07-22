@@ -9,6 +9,7 @@ use App\Models\IntegrationOrderActionRun;
 use App\Models\IntegrationSyncRun;
 use App\Models\Shipment;
 use App\Services\Cargo\CargoShipmentService;
+use App\Services\Marketplace\Connectors\DemoMarketplaceConnector;
 use App\Services\Marketplace\Contracts\ManagesCommonLabels;
 use App\Services\Marketplace\Contracts\SendsInvoiceLinks;
 use App\Services\Marketplace\Contracts\UpdatesPackageStatus;
@@ -335,7 +336,7 @@ class MarketplaceOrderActionService
     protected function notifyPackagePicking(IntegrationOrderActionRun $actionRun): array
     {
         $package = $this->ensurePackage($actionRun);
-        $connector = $this->connectorManager->resolve($actionRun->store->marketplace);
+        $connector = $this->connectorManager->resolveForStore($actionRun->store);
 
         if (!$connector instanceof UpdatesPackageStatus || !$this->connectorSupportsAction($connector->capabilities(), 'package_picking')) {
             throw new \RuntimeException('Bu kanal paket statü güncellemesini desteklemiyor.');
@@ -357,7 +358,7 @@ class MarketplaceOrderActionService
     protected function notifyPackageInvoiced(IntegrationOrderActionRun $actionRun): array
     {
         $package = $this->ensurePackage($actionRun);
-        $connector = $this->connectorManager->resolve($actionRun->store->marketplace);
+        $connector = $this->connectorManager->resolveForStore($actionRun->store);
         $context = $actionRun->request_context_json ?? [];
 
         if (blank($context['invoice_number'] ?? null)) {
@@ -384,7 +385,7 @@ class MarketplaceOrderActionService
     protected function createCommonLabel(IntegrationOrderActionRun $actionRun): array
     {
         $package = $this->ensurePackage($actionRun);
-        $connector = $this->connectorManager->resolve($actionRun->store->marketplace);
+        $connector = $this->connectorManager->resolveForStore($actionRun->store);
 
         if (!$connector instanceof ManagesCommonLabels || !$this->connectorSupportsAction($connector->capabilities(), 'package_common_label_create')) {
             throw new \RuntimeException('Bu kanal ortak barkod servisini desteklemiyor.');
@@ -399,7 +400,7 @@ class MarketplaceOrderActionService
     protected function getCommonLabel(IntegrationOrderActionRun $actionRun): array
     {
         $package = $this->ensurePackage($actionRun);
-        $connector = $this->connectorManager->resolve($actionRun->store->marketplace);
+        $connector = $this->connectorManager->resolveForStore($actionRun->store);
 
         if (!$connector instanceof ManagesCommonLabels || !$this->connectorSupportsAction($connector->capabilities(), 'package_common_label_get')) {
             throw new \RuntimeException('Bu kanal ortak barkod servisini desteklemiyor.');
@@ -414,7 +415,7 @@ class MarketplaceOrderActionService
     protected function sendInvoiceLink(IntegrationOrderActionRun $actionRun): array
     {
         $package = $this->ensurePackage($actionRun);
-        $connector = $this->connectorManager->resolve($actionRun->store->marketplace);
+        $connector = $this->connectorManager->resolveForStore($actionRun->store);
         $context = $actionRun->request_context_json ?? [];
         $invoiceLink = trim((string) ($context['invoice_link'] ?? ''));
 
@@ -435,6 +436,15 @@ class MarketplaceOrderActionService
     protected function createSuratShipment(IntegrationOrderActionRun $actionRun): array
     {
         $package = $this->ensurePackage($actionRun);
+        $connector = $this->connectorManager->resolveForStore($actionRun->store);
+
+        if ($connector instanceof DemoMarketplaceConnector) {
+            return $connector->simulateAction('create_shipment', [
+                $actionRun->store_id,
+                $package->external_package_id ?: $package->getKey(),
+            ]);
+        }
+
         $shipment = $this->cargoShipmentService->createOrUpdateFromPackage($package);
         $shipment = $this->cargoShipmentService->pushToCarrier($shipment);
 
@@ -450,6 +460,17 @@ class MarketplaceOrderActionService
     protected function refreshSuratTracking(IntegrationOrderActionRun $actionRun): array
     {
         $package = $this->ensurePackage($actionRun);
+        $connector = $this->connectorManager->resolveForStore($actionRun->store);
+
+        if ($connector instanceof DemoMarketplaceConnector) {
+            return array_merge($connector->simulateAction('refresh_tracking', [
+                $actionRun->store_id,
+                $package->external_package_id ?: $package->getKey(),
+            ]), [
+                'tracking_ready' => true,
+            ]);
+        }
+
         $shipment = Shipment::query()
             ->where('channel_order_package_id', $package->id)
             ->where('carrier_code', 'surat')

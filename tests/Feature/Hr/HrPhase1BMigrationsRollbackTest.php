@@ -58,40 +58,20 @@ class HrPhase1BMigrationsRollbackTest extends TestCase
 
     public function test_faz1b_rollback_drops_document_tables_and_preserves_faz0_1a(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 1]);Artisan::call('migrate:rollback', ['--step' => 4]);Artisan::call('migrate:rollback', ['--step' => 1]);
-        Artisan::call('migrate:rollback', ['--step' => 4]);
-        Artisan::call('migrate:rollback', ['--step' => 4]);
-        Artisan::call('migrate:rollback', ['--step' => 5]);
-        Artisan::call('migrate:rollback', ['--step' => 3]);
-        Artisan::call('migrate:rollback', ['--step' => 5]);
-        Artisan::call('migrate:rollback', ['--step' => 6]);
-        Artisan::call('migrate:rollback', ['--step' => 2]);
-        Artisan::call('migrate:rollback', ['--step' => 4]);
-        Artisan::call('migrate:rollback', ['--step' => 2]);
-        // Faz 3B masraf yönetimi migration'larını önce geri alırız.
-        Artisan::call('migrate:rollback', ['--step' => 3]);
+        $phase1BLastMigration = '2026_08_07_100005_create_hr_employee_document_versions_table.php';
+        $laterMigrationCount = collect(glob(database_path('migrations/*.php')))
+            ->map(fn (string $path): string => basename($path))
+            ->filter(fn (string $migration): bool => $migration > $phase1BLastMigration)
+            ->count();
 
-        // Faz 3A bordro hazırlık migration'larını önce geri alırız.
-        Artisan::call('migrate:rollback', ['--step' => 3]);
-
-        // Faz 2C puantaj/fazla mesai migration'larını önce geri alırız.
-        Artisan::call('migrate:rollback', ['--step' => 5]);
-
-        // Faz 2B PDKS migration'larını önce geri alırız.
-        Artisan::call('migrate:rollback', ['--step' => 3]);
-
-        // Faz 2A vardiya migration'larını önce geri alırız.
-        Artisan::call('migrate:rollback', ['--step' => 5]);
-
-        // Faz 1C migration'ları eklendiğinde önce onları geri alırız. Böylece
-        // Faz 1B checkpoint testi, sonraki fazların migration sırasına bağlı kalmaz.
-        Artisan::call('migrate:rollback', ['--step' => 6]);
+        // Yeni fazlar eklense bile checkpoint testi sabit adım sayılarına bağlı kalmasın.
+        if ($laterMigrationCount > 0) {
+            Artisan::call('migrate:rollback', ['--step' => $laterMigrationCount]);
+        }
 
         $this->assertTrue(Schema::hasTable('hr_employee_document_versions'));
 
-        // Faz 1B sınırında kalan altı uyumluluk migration'ı ile beş belge
-        // migration'ını birlikte geri alırız.
-        Artisan::call('migrate:rollback', ['--step' => 11]);
+        Artisan::call('migrate:rollback', ['--step' => 5]);
 
         $this->assertFalse(Schema::hasTable('hr_employee_document_versions'));
         $this->assertFalse(Schema::hasTable('hr_document_requests'));

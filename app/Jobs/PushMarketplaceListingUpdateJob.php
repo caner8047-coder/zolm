@@ -51,7 +51,7 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
             return;
         }
 
-        $connector = $connectorManager->resolve($pushRun->store->marketplace);
+        $connector = $connectorManager->resolveForStore($pushRun->store);
 
         if ($this->shouldUseWooBatch($pushRun, $connector)) {
             $this->handleWooBatch($pushRun, $connector);
@@ -109,10 +109,24 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                     throw new \RuntimeException('Bu kanal için stok push desteklenmiyor.');
                 }
 
+                $stockContext = array_merge([
+                    'write_context_type' => 'stock_update',
+                    'store_id' => $listing->store_id,
+                    'integration_push_run_id' => $pushRun->id,
+                    'correlation_id' => data_get($pushRun->request_context_json, 'correlation_id') ?: ('stock-sync-' . $pushRun->id),
+                    'idempotency_key' => data_get($pushRun->request_context_json, 'idempotency_key') ?: ('stock-idem-' . $pushRun->id),
+                    'actor_type' => data_get($pushRun->request_context_json, 'actor_type') ?: 'system',
+                    'actor_id' => data_get($pushRun->request_context_json, 'actor_id') ?: 'system',
+                    'reason' => data_get($pushRun->request_context_json, 'reason') ?: 'System inventory synchronization',
+                ], $pushRun->request_context_json ?? [], [
+                    'sale_price' => $listing->sale_price,
+                    'list_price' => $listing->list_price ?? $listing->sale_price,
+                ]);
+
                 $response = $connector->pushStock(
                     $listing,
                     (int) $pushRun->target_quantity,
-                    $pushRun->request_context_json ?? []
+                    $stockContext
                 );
 
                 $listing->update([
@@ -139,11 +153,12 @@ class PushMarketplaceListingUpdateJob implements ShouldQueue
                 throw new \RuntimeException('Desteklenmeyen push tipi: ' . $pushRun->push_type);
             }
 
+            $externalBatchId = data_get($response, 'batch_request_id');
             $pushRun->update([
-                'status' => 'completed',
+                'status' => $externalBatchId ? 'processing' : 'completed',
                 'response_json' => $response,
-                'external_batch_id' => data_get($response, 'batch_request_id'),
-                'finished_at' => now(),
+                'external_batch_id' => $externalBatchId,
+                'finished_at' => $externalBatchId ? null : now(),
             ]);
         } catch (Throwable $exception) {
             $pushRun->update([

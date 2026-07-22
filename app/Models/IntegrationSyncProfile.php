@@ -57,6 +57,7 @@ class IntegrationSyncProfile extends Model
         'max_parallel_jobs',
         'request_jitter_seconds',
         'extra_settings',
+        'catalog_source_user_id',
     ];
 
     protected function casts(): array

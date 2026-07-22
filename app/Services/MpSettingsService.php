@@ -558,7 +558,7 @@ class MpSettingsService
 
     public function recipeCostSyncEnabled(): bool
     {
-        return $this->getBool('marketplace_products.recipe_cost_sync_enabled', false);
+        return $this->getBool('marketplace_products.recipe_cost_sync_enabled', true);
     }
 
     public function getLowStockThreshold(): int
@@ -703,7 +703,7 @@ class MpSettingsService
                     'woocommerce_commission_rate' => 0.00,
                     'koctas_commission_rate' => (float) config('marketplace.koctas.commission_rate', 15),
                 ],
-                'recipe_cost_sync_enabled' => false,
+                'recipe_cost_sync_enabled' => true,
                 'low_stock_threshold' => 0,
             ],
             'print' => [
