@@ -23,7 +23,7 @@ class TeamForm extends Component
         if ($id) {
             $this->teamId = $id;
             $team = HrTeam::withoutGlobalScope('tenant')
-                ->where('legal_entity_id', app(TenantContext::class)->getId())
+                ->whereHas('unit.department', fn($query) => $query->where('legal_entity_id', app(TenantContext::class)->getId()))
                 ->findOrFail($id);
             $this->name = $team->name;
             $this->unit_id = $team->unit_id;
@@ -39,7 +39,7 @@ class TeamForm extends Component
 
         return view('livewire.hr.organization.team-form', [
             'units' => HrUnit::withoutGlobalScope('tenant')
-                ->where('legal_entity_id', $tenantId)
+                ->whereHas('department', fn($query) => $query->where('legal_entity_id', $tenantId))
                 ->active()
                 ->with('department')
                 ->ordered()
@@ -56,8 +56,11 @@ class TeamForm extends Component
         ]);
 
         // Birim aktif mi kontrol et
-        $unit = HrUnit::withoutGlobalScope('tenant')->find($this->unit_id);
-        if ($unit && !$unit->is_active) {
+        $tenantId = app(TenantContext::class)->getId();
+        $unit = HrUnit::withoutGlobalScope('tenant')
+            ->whereHas('department', fn($query) => $query->where('legal_entity_id', $tenantId))
+            ->find($this->unit_id);
+        if (!$unit || !$unit->is_active) {
             session()->flash('error', 'Pasif birime ekip eklenemez.');
             return;
         }
@@ -67,8 +70,6 @@ class TeamForm extends Component
             session()->flash('error', 'Pasif departmana ait birime ekip eklenemez.');
             return;
         }
-
-        $tenantId = app(TenantContext::class)->getId();
 
         // Aynı birimde aynı isim kontrolü
         $query = HrTeam::withoutGlobalScope('tenant')
@@ -95,7 +96,7 @@ class TeamForm extends Component
 
         if ($this->teamId) {
             $team = HrTeam::withoutGlobalScope('tenant')
-                ->where('legal_entity_id', $tenantId)
+                ->whereHas('unit.department', fn($query) => $query->where('legal_entity_id', $tenantId))
                 ->findOrFail($this->teamId);
             $team->update($data);
             app(HrAuditService::class)->log('team_updated', $team);

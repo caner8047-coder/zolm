@@ -23,7 +23,7 @@ class TeamList extends Component
         $tenantId = app(TenantContext::class)->getId();
 
         $query = HrTeam::withoutGlobalScope('tenant')
-            ->where('legal_entity_id', $tenantId)
+            ->whereHas('unit.department', fn($q) => $q->where('legal_entity_id', $tenantId))
             ->with('unit.department');
 
         if ($this->search) {
@@ -53,7 +53,7 @@ class TeamList extends Component
             ->get();
 
         $units = HrUnit::withoutGlobalScope('tenant')
-            ->where('legal_entity_id', $tenantId)
+            ->whereHas('department', fn($q) => $q->where('legal_entity_id', $tenantId))
             ->active()
             ->ordered()
             ->get();
@@ -68,7 +68,7 @@ class TeamList extends Component
     public function toggleActive(int $teamId): void
     {
         $team = HrTeam::withoutGlobalScope('tenant')
-            ->where('legal_entity_id', app(TenantContext::class)->getId())
+            ->whereHas('unit.department', fn($q) => $q->where('legal_entity_id', app(TenantContext::class)->getId()))
             ->findOrFail($teamId);
 
         $team->update(['is_active' => !$team->is_active, 'updated_by' => auth()->id()]);

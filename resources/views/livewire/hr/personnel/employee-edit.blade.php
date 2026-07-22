@@ -96,7 +96,7 @@
                     @if($employee->photo)
                         <img src="{{ $employee->photo->disk_path }}" alt="{{ $employee->full_name }}" class="w-full h-full object-cover">
                     @else
-                        <span class="text-2xl font-bold text-gray-500">{{ substr($employee->first_name, 0, 1 }}{{ substr($employee->last_name, 0, 1) }}</span>
+                        <span class="text-2xl font-bold text-gray-500">{{ substr($employee->first_name, 0, 1) }}{{ substr($employee->last_name, 0, 1) }}</span>
                     @endif
                 </div>
                 <div>

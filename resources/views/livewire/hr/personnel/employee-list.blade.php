@@ -72,7 +72,7 @@
                         <td class="px-4 py-3">
                             <div class="flex items-center">
                                 <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium text-gray-600">
-                                    {{ substr($employee->first_name, 0, 1 }}{{ substr($employee->last_name, 0, 1) }}
+                                    {{ substr($employee->first_name, 0, 1) }}{{ substr($employee->last_name, 0, 1) }}
                                 </div>
                                 <div class="ml-3">
                                     <p class="text-sm font-medium text-gray-900">{{ $employee->full_name }}</p>

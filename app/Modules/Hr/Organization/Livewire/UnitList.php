@@ -21,7 +21,7 @@ class UnitList extends Component
         $tenantId = app(TenantContext::class)->getId();
 
         $query = HrUnit::withoutGlobalScope('tenant')
-            ->where('legal_entity_id', $tenantId)
+            ->whereHas('department', fn($q) => $q->where('legal_entity_id', $tenantId))
             ->with('department');
 
         if ($this->search) {
@@ -56,7 +56,7 @@ class UnitList extends Component
     public function toggleActive(int $unitId): void
     {
         $unit = HrUnit::withoutGlobalScope('tenant')
-            ->where('legal_entity_id', app(TenantContext::class)->getId())
+            ->whereHas('department', fn($q) => $q->where('legal_entity_id', app(TenantContext::class)->getId()))
             ->findOrFail($unitId);
 
         $unit->update(['is_active' => !$unit->is_active, 'updated_by' => auth()->id()]);

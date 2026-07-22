@@ -23,7 +23,7 @@ class UnitForm extends Component
         if ($id) {
             $this->unitId = $id;
             $unit = HrUnit::withoutGlobalScope('tenant')
-                ->where('legal_entity_id', app(TenantContext::class)->getId())
+                ->whereHas('department', fn($query) => $query->where('legal_entity_id', app(TenantContext::class)->getId()))
                 ->findOrFail($id);
             $this->name = $unit->name;
             $this->code = $unit->code;
@@ -57,16 +57,18 @@ class UnitForm extends Component
         ]);
 
         // Departman aktif mi kontrol et
-        $dept = HrDepartment::withoutGlobalScope('tenant')->find($this->department_id);
-        if ($dept && !$dept->is_active) {
+        $tenantId = app(TenantContext::class)->getId();
+        $dept = HrDepartment::withoutGlobalScope('tenant')
+            ->where('legal_entity_id', $tenantId)
+            ->find($this->department_id);
+        if (!$dept || !$dept->is_active) {
             session()->flash('error', 'Pasif departmana birim eklenemez.');
             return;
         }
 
         // Code benzersizliği
-        $tenantId = app(TenantContext::class)->getId();
         $query = HrUnit::withoutGlobalScope('tenant')
-            ->where('legal_entity_id', $tenantId)
+            ->whereHas('department', fn($departmentQuery) => $departmentQuery->where('legal_entity_id', $tenantId))
             ->where('code', $this->code);
 
         if ($this->unitId) {
@@ -85,13 +87,12 @@ class UnitForm extends Component
             'manager_employee_id' => $this->manager_employee_id,
             'is_active' => $this->is_active,
             'sort_order' => $this->sort_order,
-            'legal_entity_id' => $tenantId,
             'updated_by' => auth()->id(),
         ];
 
         if ($this->unitId) {
             $unit = HrUnit::withoutGlobalScope('tenant')
-                ->where('legal_entity_id', $tenantId)
+                ->whereHas('department', fn($query) => $query->where('legal_entity_id', $tenantId))
                 ->findOrFail($this->unitId);
             $unit->update($data);
             app(HrAuditService::class)->log('unit_updated', $unit);
