@@ -29,7 +29,10 @@ return new class extends Migration
             $table->foreign('leave_request_id')->references('id')->on('hr_leave_requests')->nullOnDelete();
             $table->foreign('created_by')->references('id')->on('users')->nullOnDelete();
             $table->unique(['legal_entity_id', 'source_type', 'source_id', 'transaction_type'], 'hr_leave_transaction_source_unique');
-            $table->index(['legal_entity_id', 'employee_id', 'leave_type_id', 'period_year']);
+            $table->index(
+                ['legal_entity_id', 'employee_id', 'leave_type_id', 'period_year'],
+                'hr_leave_tx_tenant_employee_type_year_idx'
+            );
         });
     }
 

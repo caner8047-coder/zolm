@@ -20,9 +20,15 @@ return new class extends Migration {
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
-            $table->unique(['legal_entity_id', 'employee_id', 'shift_date']);
+            $table->unique(
+                ['legal_entity_id', 'employee_id', 'shift_date'],
+                'hr_shift_tenant_employee_date_unique'
+            );
             $table->index(['legal_entity_id', 'shift_date', 'status']);
-            $table->index(['legal_entity_id', 'shift_template_id', 'shift_date']);
+            $table->index(
+                ['legal_entity_id', 'shift_template_id', 'shift_date'],
+                'hr_shift_tenant_template_date_idx'
+            );
         });
     }
 

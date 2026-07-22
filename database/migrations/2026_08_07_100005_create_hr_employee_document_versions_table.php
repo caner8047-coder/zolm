@@ -21,7 +21,7 @@ return new class extends Migration
             $table->foreign('file_id')->references('id')->on('hr_files')->onDelete('restrict');
             $table->foreign('uploaded_by')->references('id')->on('users')->onDelete('restrict');
 
-            $table->index(['employee_document_id', 'version_number']);
+            $table->index(['employee_document_id', 'version_number'], 'hr_doc_versions_document_version_idx');
         });
     }
 

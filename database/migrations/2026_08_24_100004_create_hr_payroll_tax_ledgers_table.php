@@ -17,7 +17,10 @@ return new class extends Migration
             $table->string('source_reference', 160);
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
-            $table->unique(['legal_entity_id', 'employee_id', 'tax_year']);
+            $table->unique(
+                ['legal_entity_id', 'employee_id', 'tax_year'],
+                'hr_tax_opening_tenant_employee_year_unique'
+            );
         });
 
         Schema::create('hr_payroll_tax_ledgers', function (Blueprint $table) {

@@ -26,7 +26,10 @@ return new class extends Migration
             $table->foreign('approver_employee_id')->references('id')->on('hr_employees')->nullOnDelete();
             $table->foreign('approver_user_id')->references('id')->on('users')->nullOnDelete();
             $table->unique(['leave_request_id', 'step_order']);
-            $table->index(['legal_entity_id', 'approver_user_id', 'status']);
+            $table->index(
+                ['legal_entity_id', 'approver_user_id', 'status'],
+                'hr_leave_steps_tenant_approver_status_idx'
+            );
         });
     }
 

@@ -41,6 +41,7 @@ use App\Modules\Hr\Personnel\Models\HrEmployee;
 use App\Modules\Hr\Personnel\Policies\HrEmployeePolicy;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 class HrServiceProvider extends ServiceProvider
@@ -56,7 +57,7 @@ class HrServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadRoutesFrom(__DIR__ . '/Routes/hr.php');
+        Route::middleware('web')->group(__DIR__ . '/Routes/hr.php');
         $this->loadViewsFrom(__DIR__ . '/Resources/views', 'hr');
         $this->mergeConfigFrom(base_path('config/hr.php'), 'hr');
 
