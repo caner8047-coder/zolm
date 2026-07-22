@@ -2,17 +2,19 @@
 
 namespace Tests\Feature\Hepsiburada;
 
-use App\Models\MarketplaceStore;
-use App\Models\IntegrationConnection;
 use App\Models\HepsiburadaReadinessAudit;
-use App\Models\User;
+use App\Models\IntegrationConnection;
 use App\Models\LegalEntity;
-use App\Services\Marketplace\HepsiburadaReadinessService;
+use App\Models\MarketplaceStore;
+use App\Models\User;
 use App\Services\Marketplace\HepsiburadaReadinessOutputSanitizer;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use App\Services\Marketplace\HepsiburadaReadinessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 class HepsiburadaReadinessTest extends TestCase
@@ -32,41 +34,41 @@ class HepsiburadaReadinessTest extends TestCase
     protected function makeStore(User $user, array $credentials = [], array $storeData = []): MarketplaceStore
     {
         $le = LegalEntity::create([
-            'user_id'      => $user->id,
-            'name'         => 'Test Org ' . $user->id . '_' . rand(1000, 9999),
+            'user_id' => $user->id,
+            'name' => 'Test Org '.$user->id.'_'.rand(1000, 9999),
             'company_name' => 'Co',
-            'tax_office'   => 'Kadikoy',
-            'tax_number'   => (string) rand(1000000000, 9999999999),
-            'address'      => 'Istanbul',
+            'tax_office' => 'Kadikoy',
+            'tax_number' => (string) rand(1000000000, 9999999999),
+            'address' => 'Istanbul',
         ]);
 
         $store = MarketplaceStore::create(array_merge([
-            'user_id'         => $user->id,
+            'user_id' => $user->id,
             'legal_entity_id' => $le->id,
-            'marketplace'     => 'hepsiburada',
-            'store_name'      => 'HB Test',
-            'seller_id'       => (string) rand(100000000, 999999999),
-            'timezone'        => 'Europe/Istanbul',
-            'currency'        => 'TRY',
-            'is_active'       => true,
+            'marketplace' => 'hepsiburada',
+            'store_name' => 'HB Test',
+            'seller_id' => (string) rand(100000000, 999999999),
+            'timezone' => 'Europe/Istanbul',
+            'currency' => 'TRY',
+            'is_active' => true,
         ], $storeData));
 
         IntegrationConnection::create([
-            'store_id'              => $store->id,
-            'provider'              => 'hepsiburada',
-            'auth_type'             => 'merchant_id_service_key',
+            'store_id' => $store->id,
+            'provider' => 'hepsiburada',
+            'auth_type' => 'merchant_id_service_key',
             'credentials_encrypted' => array_merge([
-                'api_key'    => 'hb_actual_secure_token_key',
+                'api_key' => 'hb_actual_secure_token_key',
                 'extra_user' => 'ZOLM',
             ], $credentials),
-            'api_base_url'          => 'https://oms-external.hepsiburada.com/',
-            'status'                => 'configured',
+            'api_base_url' => 'https://oms-external.hepsiburada.com/',
+            'status' => 'configured',
         ]);
 
         return $store;
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_configured_not_verified_when_http_is_not_attempted()
     {
         $user = User::factory()->create();
@@ -75,8 +77,8 @@ class HepsiburadaReadinessTest extends TestCase
         $service = app(HepsiburadaReadinessService::class);
         $result = $service->inspect($store, [
             'confirm_read' => false,
-            'actor_id'     => $user->id,
-            'reason'       => 'Audit test run',
+            'actor_id' => $user->id,
+            'reason' => 'Audit test run',
         ]);
 
         $this->assertEquals('configured_not_verified', $result['decision']);
@@ -86,7 +88,7 @@ class HepsiburadaReadinessTest extends TestCase
         Http::assertNothingSent();
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_not_configured_when_no_credentials_exist()
     {
         $user = User::factory()->create();
@@ -96,23 +98,23 @@ class HepsiburadaReadinessTest extends TestCase
         $service = app(HepsiburadaReadinessService::class);
         $result = $service->inspect($store, [
             'actor_id' => $user->id,
-            'reason'   => 'Audit test run',
+            'reason' => 'Audit test run',
         ]);
 
         $this->assertEquals('not_configured', $result['decision']);
         $this->assertFalse($result['is_ready']);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_credential_placeholder_for_exact_denylist_matches_only()
     {
         $user = User::factory()->create();
-        
+
         // Exact placeholder match
         $storePlaceholder = $this->makeStore($user, ['api_key' => 'service-key']);
         $result1 = app(HepsiburadaReadinessService::class)->inspect($storePlaceholder, [
             'actor_id' => $user->id,
-            'reason'   => 'Audit test run',
+            'reason' => 'Audit test run',
         ]);
         $this->assertEquals('credential_placeholder', $result1['decision']);
 
@@ -120,12 +122,12 @@ class HepsiburadaReadinessTest extends TestCase
         $storeLegit = $this->makeStore($user, ['api_key' => 'mytestproductionkey987']);
         $result2 = app(HepsiburadaReadinessService::class)->inspect($storeLegit, [
             'actor_id' => $user->id,
-            'reason'   => 'Audit test run',
+            'reason' => 'Audit test run',
         ]);
         $this->assertNotEquals('credential_placeholder', $result2['decision']);
     }
 
-    /** @test */
+    #[Test]
     public function it_enforces_connection_probe_rollout_gate()
     {
         $user = User::factory()->create();
@@ -134,10 +136,10 @@ class HepsiburadaReadinessTest extends TestCase
         // confirm_read is true but p0_connection_probe_enabled is false
         config(['marketplace.hepsiburada.p0_connection_probe_enabled' => false]);
         $result = app(HepsiburadaReadinessService::class)->inspect($store, [
-            'operation'    => 'connection',
+            'operation' => 'connection',
             'confirm_read' => true,
-            'actor_id'     => $user->id,
-            'reason'       => 'Audit test run',
+            'actor_id' => $user->id,
+            'reason' => 'Audit test run',
         ]);
 
         $this->assertEquals('rollout_disabled', $result['decision']);
@@ -148,14 +150,14 @@ class HepsiburadaReadinessTest extends TestCase
         config(['marketplace.hepsiburada.p0_connection_probe_enabled' => true]);
         Http::fake([
             'https://listing-external.hepsiburada.com/*' => Http::response(['listings' => []], 200),
-            'https://oms-external.hepsiburada.com/*'     => Http::response(['listings' => []], 200),
+            'https://oms-external.hepsiburada.com/*' => Http::response(['listings' => []], 200),
         ]);
 
         $result2 = app(HepsiburadaReadinessService::class)->inspect($store, [
-            'operation'    => 'connection',
+            'operation' => 'connection',
             'confirm_read' => true,
-            'actor_id'     => $user->id,
-            'reason'       => 'Audit test run',
+            'actor_id' => $user->id,
+            'reason' => 'Audit test run',
         ]);
 
         $this->assertEquals('authentication_success', $result2['decision']);
@@ -163,7 +165,7 @@ class HepsiburadaReadinessTest extends TestCase
         Http::assertSentCount(1);
     }
 
-    /** @test */
+    #[Test]
     public function catalog_smoke_probe_fetches_single_page_only()
     {
         $user = User::factory()->create();
@@ -173,20 +175,20 @@ class HepsiburadaReadinessTest extends TestCase
 
         Http::fake([
             'https://mpop.hepsiburada.com/*' => Http::response([
-                'listings'   => [
+                'listings' => [
                     ['sku' => 'SKU-001', 'title' => 'Product 1', 'barcode' => '869000000001'],
                     ['sku' => 'SKU-002', 'title' => 'Product 2', 'barcode' => '869000000002'],
                 ],
                 'totalCount' => 100,
-            ], 200)
+            ], 200),
         ]);
 
         $result = app(HepsiburadaReadinessService::class)->inspect($store, [
-            'operation'    => 'catalog',
+            'operation' => 'catalog',
             'confirm_read' => true,
-            'max_items'    => 5,
-            'actor_id'     => $user->id,
-            'reason'       => 'Audit test run',
+            'max_items' => 5,
+            'actor_id' => $user->id,
+            'reason' => 'Audit test run',
         ]);
 
         $this->assertEquals('read_probe_success', $result['decision']);
@@ -194,12 +196,12 @@ class HepsiburadaReadinessTest extends TestCase
         Http::assertSentCount(1); // EXACTLY 1 HTTP call, no pagination
     }
 
-    /** @test */
+    #[Test]
     public function it_sanitizes_catalog_output_masking_skus_and_barcodes()
     {
-        $sanitizer = new HepsiburadaReadinessOutputSanitizer();
+        $sanitizer = new HepsiburadaReadinessOutputSanitizer;
         $rawItems = [
-            ['sku' => 'SECRET-SKU-999', 'barcode' => '8691234567890', 'title' => 'Very Long Product Title Exceeding Thirty Characters Length']
+            ['sku' => 'SECRET-SKU-999', 'barcode' => '8691234567890', 'title' => 'Very Long Product Title Exceeding Thirty Characters Length'],
         ];
 
         $sanitized = $sanitizer->sanitizeCatalogItems($rawItems);
@@ -214,7 +216,7 @@ class HepsiburadaReadinessTest extends TestCase
         $this->assertStringEndsWith('...', $sanitized[0]['product_name_short']);
     }
 
-    /** @test */
+    #[Test]
     public function command_requires_actor_id_and_reason_and_checks_store_authorization()
     {
         $user = User::factory()->create();
@@ -223,32 +225,32 @@ class HepsiburadaReadinessTest extends TestCase
 
         // Missing actor-id
         $this->artisan('marketplace:hepsiburada-readiness', [
-            'store'    => $store->id,
+            'store' => $store->id,
             '--reason' => 'Test reason',
         ])
-        ->assertExitCode(1)
-        ->expectsOutputToContain('İşlem aktörü zorunludur');
+            ->assertExitCode(1)
+            ->expectsOutputToContain('İşlem aktörü zorunludur');
 
         // Unauthorized user trying to inspect store
         $this->artisan('marketplace:hepsiburada-readiness', [
-            'store'      => $store->id,
+            'store' => $store->id,
             '--actor-id' => $unauthorizedUser->id,
-            '--reason'   => 'Test reason',
+            '--reason' => 'Test reason',
         ])
-        ->assertExitCode(1)
-        ->expectsOutputToContain('authorization_failed');
+            ->assertExitCode(1)
+            ->expectsOutputToContain('authorization_failed');
 
         // Authorized store owner
         $this->artisan('marketplace:hepsiburada-readiness', [
-            'store'      => $store->id,
+            'store' => $store->id,
             '--actor-id' => $user->id,
-            '--reason'   => 'Authorized test audit run',
+            '--reason' => 'Authorized test audit run',
         ])
-        ->assertExitCode(0)
-        ->expectsOutputToContain('configured_not_verified');
+            ->assertExitCode(0)
+            ->expectsOutputToContain('configured_not_verified');
     }
 
-    /** @test */
+    #[Test]
     public function mutation_guard_catches_insert_update_and_delete_operations_and_rolls_back()
     {
         $user = User::factory()->create();
@@ -258,32 +260,33 @@ class HepsiburadaReadinessTest extends TestCase
 
         // Insert Mutation
         Http::fake([
-            'https://mpop.hepsiburada.com/*' => function() use ($store) {
+            'https://mpop.hepsiburada.com/*' => function () use ($store) {
                 DB::table('channel_products')->insert([
-                    'store_id'            => $store->id,
+                    'store_id' => $store->id,
                     'external_product_id' => 'MUTATION-INSERT',
-                    'created_at'          => now(),
-                    'updated_at'          => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ]);
+
                 return Http::response(['listings' => []], 200);
-            }
+            },
         ]);
 
         $this->artisan('marketplace:hepsiburada-readiness', [
-            'store'          => $store->id,
-            '--actor-id'     => $user->id,
-            '--reason'       => 'Mutation check',
-            '--catalog'      => true,
+            'store' => $store->id,
+            '--actor-id' => $user->id,
+            '--reason' => 'Mutation check',
+            '--catalog' => true,
             '--confirm-read' => true,
         ])
-        ->assertExitCode(1)
-        ->expectsOutputToContain('read_probe_mutated_database');
+            ->assertExitCode(1)
+            ->expectsOutputToContain('read_probe_mutated_database');
 
         // Assert rollback was executed and zero rows persisted in channel_products
         $this->assertEquals(0, DB::table('channel_products')->where('external_product_id', 'MUTATION-INSERT')->count());
     }
 
-    /** @test */
+    #[Test]
     public function mutation_guard_catches_update_statement_with_zero_affected_rows()
     {
         $user = User::factory()->create();
@@ -293,24 +296,25 @@ class HepsiburadaReadinessTest extends TestCase
 
         // UPDATE Query that modifies 0 existing rows
         Http::fake([
-            'https://mpop.hepsiburada.com/*' => function() use ($store) {
+            'https://mpop.hepsiburada.com/*' => function () {
                 DB::table('channel_products')->where('store_id', 999999)->update(['title' => 'Zero Rows Updated']);
+
                 return Http::response(['listings' => []], 200);
-            }
+            },
         ]);
 
         $this->artisan('marketplace:hepsiburada-readiness', [
-            'store'          => $store->id,
-            '--actor-id'     => $user->id,
-            '--reason'       => 'Zero row update check',
-            '--catalog'      => true,
+            'store' => $store->id,
+            '--actor-id' => $user->id,
+            '--reason' => 'Zero row update check',
+            '--catalog' => true,
             '--confirm-read' => true,
         ])
-        ->assertExitCode(1)
-        ->expectsOutputToContain('read_probe_mutated_database');
+            ->assertExitCode(1)
+            ->expectsOutputToContain('read_probe_mutated_database');
     }
 
-    /** @test */
+    #[Test]
     public function it_handles_http_errors_with_sanitized_provider_error_codes()
     {
         $user = User::factory()->create();
@@ -321,10 +325,10 @@ class HepsiburadaReadinessTest extends TestCase
         // 401
         Http::fake(['https://mpop.hepsiburada.com/*' => Http::response(['message' => 'Sensitive Internal Token Error'], 401)]);
         $result = app(HepsiburadaReadinessService::class)->inspect($store, [
-            'operation'    => 'catalog',
+            'operation' => 'catalog',
             'confirm_read' => true,
-            'actor_id'     => $user->id,
-            'reason'       => 'Audit test run',
+            'actor_id' => $user->id,
+            'reason' => 'Audit test run',
         ]);
 
         $this->assertEquals('authentication_failed', $result['decision']);
@@ -335,7 +339,7 @@ class HepsiburadaReadinessTest extends TestCase
         $this->assertEquals('Audit test run', $audit->reason);
     }
 
-    /** @test */
+    #[Test]
     public function service_enforces_actor_and_reason_validation()
     {
         $user = User::factory()->create();
@@ -354,7 +358,7 @@ class HepsiburadaReadinessTest extends TestCase
         $this->assertEquals('audit_reason_invalid', $res3['decision']);
     }
 
-    /** @test */
+    #[Test]
     public function valid_numeric_merchant_id_is_not_falsely_flagged_as_placeholder()
     {
         $user = User::factory()->create();
@@ -362,13 +366,13 @@ class HepsiburadaReadinessTest extends TestCase
 
         $res = app(HepsiburadaReadinessService::class)->inspect($store, [
             'actor_id' => $user->id,
-            'reason'   => 'Valid merchant numeric check',
+            'reason' => 'Valid merchant numeric check',
         ]);
 
         $this->assertNotEquals('credential_placeholder', $res['decision']);
     }
 
-    /** @test */
+    #[Test]
     public function universal_audit_failure_matrix_returns_audit_persistence_failed_across_all_decisions()
     {
         $user = User::factory()->create();
@@ -382,9 +386,9 @@ class HepsiburadaReadinessTest extends TestCase
 
         $scenarios = [
             'configured_not_verified' => ['confirm_read' => false],
-            'rollout_disabled'        => ['confirm_read' => true, 'operation' => 'categories'], // gate disabled
-            'http_401'                => ['confirm_read' => true, 'operation' => 'catalog'],
-            'http_200_success'        => ['confirm_read' => true, 'operation' => 'connection'],
+            'rollout_disabled' => ['confirm_read' => true, 'operation' => 'categories'], // gate disabled
+            'http_401' => ['confirm_read' => true, 'operation' => 'catalog'],
+            'http_200_success' => ['confirm_read' => true, 'operation' => 'connection'],
         ];
 
         Http::fake([
@@ -396,7 +400,7 @@ class HepsiburadaReadinessTest extends TestCase
         foreach ($scenarios as $name => $opts) {
             $res = app(HepsiburadaReadinessService::class)->inspect($store, array_merge($opts, [
                 'actor_id' => $user->id,
-                'reason'   => 'Matrix audit fail check ' . $name,
+                'reason' => 'Matrix audit fail check '.$name,
             ]));
 
             $this->assertEquals('audit_persistence_failed', $res['decision'], "Scenario {$name} failed to yield audit_persistence_failed");
@@ -406,6 +410,6 @@ class HepsiburadaReadinessTest extends TestCase
         }
 
         // Re-create table for subsequent tests
-        \Illuminate\Support\Facades\Artisan::call('migrate');
+        Artisan::call('migrate');
     }
 }

@@ -30,7 +30,7 @@ class MarketplaceOnboardingGuideTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');

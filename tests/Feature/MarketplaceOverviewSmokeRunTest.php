@@ -22,7 +22,7 @@ class MarketplaceOverviewSmokeRunTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -38,7 +38,7 @@ class MarketplaceOverviewSmokeRunTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Smoke Overview Ltd.',
-            'tax_number' => '8' . $suffix,
+            'tax_number' => '8'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -49,8 +49,8 @@ class MarketplaceOverviewSmokeRunTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM SMOKE OVERVIEW',
-            'store_code' => 'SMK-OVR-' . $suffix,
-            'seller_id' => 'SMK-OVR-' . $suffix,
+            'store_code' => 'SMK-OVR-'.$suffix,
+            'seller_id' => 'SMK-OVR-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

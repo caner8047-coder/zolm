@@ -21,7 +21,7 @@ class ApplyWooCommerceSafeProfileCommandTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -123,7 +123,7 @@ class ApplyWooCommerceSafeProfileCommandTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Woo Command Ltd.',
-            'tax_number' => '9' . $suffix,
+            'tax_number' => '9'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -134,8 +134,8 @@ class ApplyWooCommerceSafeProfileCommandTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'woocommerce',
             'store_name' => $prefix,
-            'store_code' => $prefix . '-' . $suffix,
-            'seller_id' => $prefix . '-' . $suffix,
+            'store_code' => $prefix.'-'.$suffix,
+            'seller_id' => $prefix.'-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

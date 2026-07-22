@@ -26,7 +26,7 @@ class MarketplaceManualSyncDispatchServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -161,7 +161,7 @@ class MarketplaceManualSyncDispatchServiceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Sync Dispatch Ltd.',
-            'tax_number' => '2' . $suffix,
+            'tax_number' => '2'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -172,8 +172,8 @@ class MarketplaceManualSyncDispatchServiceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => $marketplace,
             'store_name' => 'SYNC DISPATCH',
-            'store_code' => 'SYNC-' . $suffix,
-            'seller_id' => 'SYNC-' . $suffix,
+            'store_code' => 'SYNC-'.$suffix,
+            'seller_id' => 'SYNC-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

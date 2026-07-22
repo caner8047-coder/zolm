@@ -27,7 +27,7 @@ class MarketplaceOrdersBulkPackageActionTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -74,7 +74,7 @@ class MarketplaceOrdersBulkPackageActionTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Test Ltd.',
-            'tax_number' => '2' . $suffix,
+            'tax_number' => '2'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -85,8 +85,8 @@ class MarketplaceOrdersBulkPackageActionTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM BULK',
-            'store_code' => 'ZEM-BULK-' . $suffix,
-            'seller_id' => 'B' . $suffix,
+            'store_code' => 'ZEM-BULK-'.$suffix,
+            'seller_id' => 'B'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -98,7 +98,7 @@ class MarketplaceOrdersBulkPackageActionTest extends TestCase
             'provider' => 'trendyol',
             'auth_type' => 'api_key_secret',
             'credentials_encrypted' => [
-                'seller_id' => 'B' . $suffix,
+                'seller_id' => 'B'.$suffix,
                 'api_key' => 'test-key',
                 'api_secret' => 'test-secret',
             ],
@@ -110,8 +110,8 @@ class MarketplaceOrdersBulkPackageActionTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $legalEntity->id,
-            'external_order_id' => 'TY-BULK-ORDER-' . $suffix,
-            'order_number' => 'TY-BULK-ORDER-' . $suffix,
+            'external_order_id' => 'TY-BULK-ORDER-'.$suffix,
+            'order_number' => 'TY-BULK-ORDER-'.$suffix,
             'order_status' => 'Created',
             'customer_name' => 'Toplu Test',
             'ordered_at' => now(),
@@ -120,10 +120,10 @@ class MarketplaceOrdersBulkPackageActionTest extends TestCase
         $package = ChannelOrderPackage::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_package_id' => 'PKG-BULK-' . $suffix,
-            'package_number' => 'PKG-BULK-' . $suffix,
+            'external_package_id' => 'PKG-BULK-'.$suffix,
+            'package_number' => 'PKG-BULK-'.$suffix,
             'package_status' => 'Created',
-            'cargo_tracking_number' => 'TRK-BULK-' . $suffix,
+            'cargo_tracking_number' => 'TRK-BULK-'.$suffix,
         ]);
 
         return [$user, $store, $order, $package];

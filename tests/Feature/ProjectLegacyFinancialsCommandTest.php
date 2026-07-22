@@ -26,7 +26,7 @@ class ProjectLegacyFinancialsCommandTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -89,7 +89,7 @@ class ProjectLegacyFinancialsCommandTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Legacy Finans Komut Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => '7'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -99,9 +99,9 @@ class ProjectLegacyFinancialsCommandTest extends TestCase
             'user_id' => $user->id,
             'legal_entity_id' => $entity->id,
             'marketplace' => $marketplace,
-            'store_name' => strtoupper($marketplace) . ' LEGACY FIN',
-            'store_code' => strtoupper($marketplace) . '-LEG-' . $suffix,
-            'seller_id' => strtoupper($marketplace) . '-LEG-' . $suffix,
+            'store_name' => strtoupper($marketplace).' LEGACY FIN',
+            'store_code' => strtoupper($marketplace).'-LEG-'.$suffix,
+            'seller_id' => strtoupper($marketplace).'-LEG-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -122,7 +122,7 @@ class ProjectLegacyFinancialsCommandTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'LEGACY-CMD-FIN-' . $suffix;
+        $orderNumber = 'LEGACY-CMD-FIN-'.$suffix;
 
         $channelOrder = ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -137,9 +137,9 @@ class ProjectLegacyFinancialsCommandTest extends TestCase
         ChannelOrderItem::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $channelOrder->id,
-            'external_line_id' => 'LINE-' . $suffix,
-            'stock_code' => 'CMD-FIN-STOCK-' . $suffix,
-            'barcode' => 'CMD-FIN-BARCODE-' . $suffix,
+            'external_line_id' => 'LINE-'.$suffix,
+            'stock_code' => 'CMD-FIN-STOCK-'.$suffix,
+            'barcode' => 'CMD-FIN-BARCODE-'.$suffix,
             'product_name' => 'Command Finans Urun',
             'quantity' => 1,
             'unit_price' => 1500,
@@ -151,8 +151,8 @@ class ProjectLegacyFinancialsCommandTest extends TestCase
         $legacyOrder = MpOrder::query()->create([
             'period_id' => $period->id,
             'order_number' => $orderNumber,
-            'barcode' => 'CMD-FIN-BARCODE-' . $suffix,
-            'stock_code' => 'CMD-FIN-STOCK-' . $suffix,
+            'barcode' => 'CMD-FIN-BARCODE-'.$suffix,
+            'stock_code' => 'CMD-FIN-STOCK-'.$suffix,
             'product_name' => 'Command Finans Urun',
             'quantity' => 1,
             'order_date' => now()->subDay(),
@@ -173,7 +173,7 @@ class ProjectLegacyFinancialsCommandTest extends TestCase
             'order_id' => $legacyOrder->id,
             'transaction_type' => 'Satis',
             'order_number' => $orderNumber,
-            'document_number' => 'CMD-DOC-' . $suffix,
+            'document_number' => 'CMD-DOC-'.$suffix,
             'transaction_date' => now()->subDay()->toDateString(),
             'settlement_date' => now()->subHours(4)->toDateString(),
             'due_date' => now()->subHours(2)->toDateString(),

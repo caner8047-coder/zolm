@@ -23,7 +23,7 @@ class BackfillMarketplaceProfitSnapshotsCommandTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -129,7 +129,7 @@ class BackfillMarketplaceProfitSnapshotsCommandTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Snapshot Backfill Ltd.',
-            'tax_number' => '6' . $suffix,
+            'tax_number' => '6'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -140,21 +140,21 @@ class BackfillMarketplaceProfitSnapshotsCommandTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'Snapshot Backfill',
-            'store_code' => 'SNAP-BACK-' . $suffix,
-            'seller_id' => 'SNAP-BACK-' . $suffix,
+            'store_code' => 'SNAP-BACK-'.$suffix,
+            'seller_id' => 'SNAP-BACK-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
             'is_active' => true,
         ]);
 
-        $firstOrder = $this->createOrder($store, $entity, 'SNAP-BACK-ONE-' . $suffix, 1000, now()->subDay());
+        $firstOrder = $this->createOrder($store, $entity, 'SNAP-BACK-ONE-'.$suffix, 1000, now()->subDay());
 
         if (! $withSecondOrder) {
             return [$store, $firstOrder];
         }
 
-        $secondOrder = $this->createOrder($store, $entity, 'SNAP-BACK-TWO-' . $suffix, 500, now()->subDays(2));
+        $secondOrder = $this->createOrder($store, $entity, 'SNAP-BACK-TWO-'.$suffix, 500, now()->subDays(2));
 
         return [$store, $firstOrder, $secondOrder];
     }
@@ -179,9 +179,9 @@ class BackfillMarketplaceProfitSnapshotsCommandTest extends TestCase
         ChannelOrderItem::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_line_id' => $orderNumber . '-LINE',
-            'stock_code' => 'SKU-' . $orderNumber,
-            'barcode' => 'BAR-' . $orderNumber,
+            'external_line_id' => $orderNumber.'-LINE',
+            'stock_code' => 'SKU-'.$orderNumber,
+            'barcode' => 'BAR-'.$orderNumber,
             'product_name' => 'Snapshot Backfill Ürünü',
             'quantity' => 1,
             'unit_price' => $grossAmount,

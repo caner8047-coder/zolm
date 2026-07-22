@@ -27,7 +27,7 @@ class DeactivatePlaceholderMarketplaceStoresCommandTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -60,7 +60,7 @@ class DeactivatePlaceholderMarketplaceStoresCommandTest extends TestCase
         $placeholder = $this->createStore(
             marketplace: 'woocommerce',
             storeName: 'Placeholder Woo',
-            sellerId: 'WOO-PLACEHOLDER-' . $suffix,
+            sellerId: 'WOO-PLACEHOLDER-'.$suffix,
             connection: [
                 'provider' => 'woocommerce',
                 'auth_type' => 'api_key_secret',
@@ -76,7 +76,7 @@ class DeactivatePlaceholderMarketplaceStoresCommandTest extends TestCase
         $real = $this->createStore(
             marketplace: 'n11',
             storeName: 'Gerçek N11',
-            sellerId: 'N11-REAL-' . $suffix,
+            sellerId: 'N11-REAL-'.$suffix,
             connection: [
                 'provider' => 'n11',
                 'auth_type' => 'api_key_secret',
@@ -104,7 +104,7 @@ class DeactivatePlaceholderMarketplaceStoresCommandTest extends TestCase
         $placeholder = $this->createStore(
             marketplace: 'trendyol',
             storeName: 'Placeholder Trendyol',
-            sellerId: 'SELLER-SECOND-' . $suffix,
+            sellerId: 'SELLER-SECOND-'.$suffix,
             connection: [
                 'provider' => 'trendyol',
                 'auth_type' => 'api_key_secret',
@@ -140,8 +140,8 @@ class DeactivatePlaceholderMarketplaceStoresCommandTest extends TestCase
 
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
-            'name' => $storeName . ' Ltd.',
-            'tax_number' => '9' . $suffix,
+            'name' => $storeName.' Ltd.',
+            'tax_number' => '9'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -153,7 +153,7 @@ class DeactivatePlaceholderMarketplaceStoresCommandTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => $marketplace,
             'store_name' => $storeName,
-            'store_code' => $storeName . '-' . $suffix,
+            'store_code' => $storeName.'-'.$suffix,
             'seller_id' => $sellerId,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',

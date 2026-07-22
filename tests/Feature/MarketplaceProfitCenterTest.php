@@ -7,9 +7,9 @@ use App\Models\ChannelOrder;
 use App\Models\ChannelOrderItem;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
+use App\Models\MpProduct;
 use App\Models\MpProfitActionEvent;
 use App\Models\MpProfitActionItem;
-use App\Models\MpProduct;
 use App\Models\OrderFinancialEvent;
 use App\Models\OrderProfitSnapshot;
 use App\Models\User;
@@ -33,7 +33,7 @@ class MarketplaceProfitCenterTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -107,11 +107,11 @@ class MarketplaceProfitCenterTest extends TestCase
         $this->assertGreaterThan(0, $orderInsights['queue_count']);
         $this->assertSame('Negatif kâr', $orderInsights['top_reason']);
         $this->assertNotEmpty($orderInsights['reason_distribution']);
-        $this->assertSame(1, $products['READY-' . substr($lossOrder->order_number, -6)]['order_count']);
+        $this->assertSame(1, $products['READY-'.substr($lossOrder->order_number, -6)]['order_count']);
         $this->assertSame(2, $productInsights['risk_product_count']);
         $this->assertSame(600.0, $productInsights['affected_revenue']);
         $this->assertStringContainsString('eşleşmeyen', mb_strtolower($productInsights['decision_hint']));
-        $this->assertSame('Hazır', $products['READY-' . substr($lossOrder->order_number, -6)]['decision_hint']);
+        $this->assertSame('Hazır', $products['READY-'.substr($lossOrder->order_number, -6)]['decision_hint']);
         $this->assertTrue($analyticsSheets->has('Siparis Risk Yogunlugu'));
         $this->assertTrue($analyticsSheets->has('Siparis Karar Kuyrugu'));
         $this->assertTrue($analyticsSheets->has('Urun Marj Maliyet'));
@@ -165,7 +165,7 @@ class MarketplaceProfitCenterTest extends TestCase
                 'channel_order_id' => $snapshotMissingOrder->id,
                 'event_source' => 'extended-cost-test',
                 'event_type' => $event['event_type'],
-                'external_event_id' => $snapshotMissingOrder->order_number . '-EXT-' . $index,
+                'external_event_id' => $snapshotMissingOrder->order_number.'-EXT-'.$index,
                 'event_date' => now(),
                 'settlement_date' => now(),
                 'amount' => $event['amount'],
@@ -201,8 +201,8 @@ class MarketplaceProfitCenterTest extends TestCase
 
         $packagingMissingProduct = MpProduct::query()->create([
             'user_id' => $user->id,
-            'barcode' => 'PACK-MISS-' . $suffix,
-            'stock_code' => 'PACK-MISS-' . $suffix,
+            'barcode' => 'PACK-MISS-'.$suffix,
+            'stock_code' => 'PACK-MISS-'.$suffix,
             'product_name' => 'Ambalaj Maliyeti Eksik Ürün',
             'cogs' => 120,
             'packaging_cost' => 0,
@@ -213,7 +213,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $this->createOrder(
             $store,
             $legalEntity,
-            'KAR-PACK-MISS-' . $suffix,
+            'KAR-PACK-MISS-'.$suffix,
             300,
             10,
             $packagingMissingProduct->id,
@@ -263,7 +263,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'ZOLM Refund Ltd.',
-            'tax_number' => '8' . $suffix,
+            'tax_number' => '8'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -274,8 +274,8 @@ class MarketplaceProfitCenterTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'Kar Merkezi Shopify',
-            'store_code' => 'KAR-SH-' . $suffix,
-            'seller_id' => 'KAR-SH-' . $suffix,
+            'store_code' => 'KAR-SH-'.$suffix,
+            'seller_id' => 'KAR-SH-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -284,8 +284,8 @@ class MarketplaceProfitCenterTest extends TestCase
 
         $product = MpProduct::query()->create([
             'user_id' => $user->id,
-            'barcode' => 'REFUND-' . $suffix,
-            'stock_code' => 'REFUND-' . $suffix,
+            'barcode' => 'REFUND-'.$suffix,
+            'stock_code' => 'REFUND-'.$suffix,
             'product_name' => 'İadeli Finans Ürünü',
             'cogs' => 250,
             'packaging_cost' => 20,
@@ -296,7 +296,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $order = $this->createOrder(
             $store,
             $legalEntity,
-            'KAR-REFUND-' . $suffix,
+            'KAR-REFUND-'.$suffix,
             1000,
             10,
             $product->id,
@@ -347,7 +347,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'ZOLM Pending Ltd.',
-            'tax_number' => '9' . $suffix,
+            'tax_number' => '9'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -358,8 +358,8 @@ class MarketplaceProfitCenterTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'Kar Merkezi Pending',
-            'store_code' => 'KAR-PEND-' . $suffix,
-            'seller_id' => 'KAR-PEND-' . $suffix,
+            'store_code' => 'KAR-PEND-'.$suffix,
+            'seller_id' => 'KAR-PEND-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -368,8 +368,8 @@ class MarketplaceProfitCenterTest extends TestCase
 
         $product = MpProduct::query()->create([
             'user_id' => $user->id,
-            'barcode' => 'PEND-' . $suffix,
-            'stock_code' => 'PEND-' . $suffix,
+            'barcode' => 'PEND-'.$suffix,
+            'stock_code' => 'PEND-'.$suffix,
             'product_name' => 'Bekleyen Finans Ürünü',
             'cogs' => 150,
             'packaging_cost' => 15,
@@ -380,7 +380,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $authorizationOrder = $this->createOrder(
             $store,
             $legalEntity,
-            'KAR-AUTH-' . $suffix,
+            'KAR-AUTH-'.$suffix,
             1000,
             10,
             $product->id,
@@ -393,7 +393,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $pendingSaleOrder = $this->createOrder(
             $store,
             $legalEntity,
-            'KAR-PENDING-SALE-' . $suffix,
+            'KAR-PENDING-SALE-'.$suffix,
             500,
             10,
             $product->id,
@@ -587,9 +587,9 @@ class MarketplaceProfitCenterTest extends TestCase
         $targetDate = now()->addDays(4)->toDateString();
 
         $component
-            ->set('actionPriorities.' . $action->id, MpProfitActionItem::PRIORITY_HIGH)
-            ->set('actionDueDates.' . $action->id, $targetDate)
-            ->set('actionOwners.' . $action->id, 'Finans ekibi')
+            ->set('actionPriorities.'.$action->id, MpProfitActionItem::PRIORITY_HIGH)
+            ->set('actionDueDates.'.$action->id, $targetDate)
+            ->set('actionOwners.'.$action->id, 'Finans ekibi')
             ->call('saveActionMeta', $action->id);
 
         $this->assertSame(MpProfitActionItem::PRIORITY_HIGH, $action->fresh()->priority);
@@ -635,7 +635,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $legacyAction = MpProfitActionItem::query()->create([
             'user_id' => $user->id,
             'scope_hash' => $actionService->scopeHash($activeFilters),
-            'fingerprint' => sha1('legacy-finance-waiting-' . $user->id . '-' . random_int(1000, 9999)),
+            'fingerprint' => sha1('legacy-finance-waiting-'.$user->id.'-'.random_int(1000, 9999)),
             'action_key' => 'finance_waiting',
             'title' => 'Eski finans bekleyen aksiyon',
             'description' => 'Playbook metadata olmadan oluşturulmuş eski kayıt.',
@@ -848,7 +848,7 @@ class MarketplaceProfitCenterTest extends TestCase
         ]);
 
         $component
-            ->set('actionNotes.' . $action->id, 'Mutabakat farkı finans ekranında kontrol edilecek.')
+            ->set('actionNotes.'.$action->id, 'Mutabakat farkı finans ekranında kontrol edilecek.')
             ->call('saveActionNote', $action->id);
 
         $this->assertSame('Mutabakat farkı finans ekranında kontrol edilecek.', $action->fresh()->note);
@@ -1076,7 +1076,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'ZOLM Kar Merkezi Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => '7'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -1087,8 +1087,8 @@ class MarketplaceProfitCenterTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'Kar Merkezi Trendyol',
-            'store_code' => 'KAR-TY-' . $suffix,
-            'seller_id' => 'KAR-TY-' . $suffix,
+            'store_code' => 'KAR-TY-'.$suffix,
+            'seller_id' => 'KAR-TY-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -1100,8 +1100,8 @@ class MarketplaceProfitCenterTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'hepsiburada',
             'store_name' => 'Kar Merkezi HB',
-            'store_code' => 'KAR-HB-' . $suffix,
-            'seller_id' => 'KAR-HB-' . $suffix,
+            'store_code' => 'KAR-HB-'.$suffix,
+            'seller_id' => 'KAR-HB-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -1110,8 +1110,8 @@ class MarketplaceProfitCenterTest extends TestCase
 
         $readyProduct = MpProduct::query()->create([
             'user_id' => $user->id,
-            'barcode' => 'READY-' . $suffix,
-            'stock_code' => 'READY-' . $suffix,
+            'barcode' => 'READY-'.$suffix,
+            'stock_code' => 'READY-'.$suffix,
             'product_name' => 'Hazır Maliyet Ürünü',
             'cogs' => 500,
             'packaging_cost' => 20,
@@ -1121,8 +1121,8 @@ class MarketplaceProfitCenterTest extends TestCase
 
         $missingCostProduct = MpProduct::query()->create([
             'user_id' => $user->id,
-            'barcode' => 'MISS-' . $suffix,
-            'stock_code' => 'MISS-' . $suffix,
+            'barcode' => 'MISS-'.$suffix,
+            'stock_code' => 'MISS-'.$suffix,
             'product_name' => 'Eksik Maliyet Ürünü',
             'cogs' => 0,
             'packaging_cost' => 0,
@@ -1133,7 +1133,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $lossOrder = $this->createOrder(
             $trendyolStore,
             $legalEntity,
-            'KAR-LOSS-' . $suffix,
+            'KAR-LOSS-'.$suffix,
             1000,
             10,
             $readyProduct->id,
@@ -1164,7 +1164,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $waitingOrder = $this->createOrder(
             $hepsiburadaStore,
             $legalEntity,
-            'KAR-WAIT-' . $suffix,
+            'KAR-WAIT-'.$suffix,
             400,
             12,
             $missingCostProduct->id,
@@ -1189,7 +1189,7 @@ class MarketplaceProfitCenterTest extends TestCase
         $snapshotMissingOrder = $this->createOrder(
             $trendyolStore,
             $legalEntity,
-            'KAR-SNAPSHOT-' . $suffix,
+            'KAR-SNAPSHOT-'.$suffix,
             200,
             10,
             null,
@@ -1229,9 +1229,9 @@ class MarketplaceProfitCenterTest extends TestCase
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
             'mp_product_id' => $productId,
-            'external_line_id' => $orderNumber . '-LINE',
-            'stock_code' => 'SKU-' . $orderNumber,
-            'barcode' => 'BAR-' . $orderNumber,
+            'external_line_id' => $orderNumber.'-LINE',
+            'stock_code' => 'SKU-'.$orderNumber,
+            'barcode' => 'BAR-'.$orderNumber,
             'product_name' => 'Kar Merkezi Ürünü',
             'quantity' => 1,
             'unit_price' => $grossAmount,
@@ -1263,8 +1263,8 @@ class MarketplaceProfitCenterTest extends TestCase
                 'channel_order_id' => $order->id,
                 'event_source' => 'sync',
                 'event_type' => $event['event_type'],
-                'external_event_id' => $orderNumber . '-EVT-' . $index,
-                'reference_number' => $orderNumber . '-REF-' . $index,
+                'external_event_id' => $orderNumber.'-EVT-'.$index,
+                'reference_number' => $orderNumber.'-REF-'.$index,
                 'event_date' => now(),
                 'settlement_date' => now(),
                 'amount' => $event['amount'],

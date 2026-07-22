@@ -32,7 +32,7 @@ class MarketplaceRepairFailuresCommandTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -100,7 +100,7 @@ class MarketplaceRepairFailuresCommandTest extends TestCase
             'store_id' => $store->id,
             'provider' => 'trendyol',
             'event_type' => 'order_created',
-            'external_event_id' => 'WH-CMD-' . random_int(1000, 9999),
+            'external_event_id' => 'WH-CMD-'.random_int(1000, 9999),
             'signature_valid' => true,
             'payload_json' => [
                 'orderNumber' => $order->order_number,
@@ -141,7 +141,7 @@ class MarketplaceRepairFailuresCommandTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Repair Ltd.',
-            'tax_number' => '4' . $suffix,
+            'tax_number' => '4'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -152,8 +152,8 @@ class MarketplaceRepairFailuresCommandTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM REPAIR',
-            'store_code' => 'RPR-' . $suffix,
-            'seller_id' => 'RPR-' . $suffix,
+            'store_code' => 'RPR-'.$suffix,
+            'seller_id' => 'RPR-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -182,8 +182,8 @@ class MarketplaceRepairFailuresCommandTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $legalEntity->id,
-            'external_order_id' => 'CMD-ORDER-' . $suffix,
-            'order_number' => 'CMD-ORDER-' . $suffix,
+            'external_order_id' => 'CMD-ORDER-'.$suffix,
+            'order_number' => 'CMD-ORDER-'.$suffix,
             'order_status' => 'Created',
             'customer_name' => 'Repair Test',
             'ordered_at' => now(),
@@ -192,8 +192,8 @@ class MarketplaceRepairFailuresCommandTest extends TestCase
         $package = ChannelOrderPackage::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_package_id' => 'PKG-' . $suffix,
-            'package_number' => 'PKG-' . $suffix,
+            'external_package_id' => 'PKG-'.$suffix,
+            'package_number' => 'PKG-'.$suffix,
             'package_status' => 'Created',
         ]);
 

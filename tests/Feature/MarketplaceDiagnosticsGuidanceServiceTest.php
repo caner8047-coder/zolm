@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\ChannelOrder;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationSyncProfile;
 use App\Models\IntegrationSyncRun;
-use App\Models\ChannelOrder;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
 use App\Models\MpOrder;
@@ -27,7 +27,7 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -43,7 +43,7 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Guidance Ltd.',
-            'tax_number' => '5' . $suffix,
+            'tax_number' => '5'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -54,8 +54,8 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM GUIDE',
-            'store_code' => 'GUIDE-' . $suffix,
-            'seller_id' => 'GUIDE-' . $suffix,
+            'store_code' => 'GUIDE-'.$suffix,
+            'seller_id' => 'GUIDE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -112,7 +112,7 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Woo Topic Guidance Ltd.',
-            'tax_number' => '4' . $suffix,
+            'tax_number' => '4'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -123,8 +123,8 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'woocommerce',
             'store_name' => 'WOO TOPIC GUIDE',
-            'store_code' => 'WOO-TOPIC-' . $suffix,
-            'seller_id' => 'WOO-TOPIC-' . $suffix,
+            'store_code' => 'WOO-TOPIC-'.$suffix,
+            'seller_id' => 'WOO-TOPIC-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -189,7 +189,7 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Shopify Topic Guidance Ltd.',
-            'tax_number' => '2' . $suffix,
+            'tax_number' => '2'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -200,8 +200,8 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'SHOPIFY TOPIC GUIDE',
-            'store_code' => 'SHOP-TOPIC-' . $suffix,
-            'seller_id' => 'SHOP-TOPIC-' . $suffix,
+            'store_code' => 'SHOP-TOPIC-'.$suffix,
+            'seller_id' => 'SHOP-TOPIC-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -266,7 +266,7 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Trendyol Safe Guidance Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => '7'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -277,8 +277,8 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'TRENDYOL SAFE GUIDE',
-            'store_code' => 'TY-SAFE-' . $suffix,
-            'seller_id' => 'TY-SAFE-' . $suffix,
+            'store_code' => 'TY-SAFE-'.$suffix,
+            'seller_id' => 'TY-SAFE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -326,7 +326,7 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Hepsiburada Safe Guidance Ltd.',
-            'tax_number' => '4' . $suffix,
+            'tax_number' => '4'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -337,8 +337,8 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'hepsiburada',
             'store_name' => 'HEPSIBURADA SAFE GUIDE',
-            'store_code' => 'HB-SAFE-' . $suffix,
-            'seller_id' => 'HB-SAFE-' . $suffix,
+            'store_code' => 'HB-SAFE-'.$suffix,
+            'seller_id' => 'HB-SAFE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -386,7 +386,7 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Legacy Finance Guidance Ltd.',
-            'tax_number' => '3' . $suffix,
+            'tax_number' => '3'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -397,8 +397,8 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'LEGACY FIN GUIDE',
-            'store_code' => 'LEG-FIN-' . $suffix,
-            'seller_id' => 'LEG-FIN-' . $suffix,
+            'store_code' => 'LEG-FIN-'.$suffix,
+            'seller_id' => 'LEG-FIN-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -419,7 +419,7 @@ class MarketplaceDiagnosticsGuidanceServiceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'LEGACY-FIN-GUIDE-' . $suffix;
+        $orderNumber = 'LEGACY-FIN-GUIDE-'.$suffix;
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,

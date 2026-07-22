@@ -25,7 +25,7 @@ class RepairMarketplaceMatchIssuesCommandTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -41,7 +41,7 @@ class RepairMarketplaceMatchIssuesCommandTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Repair Ltd.',
-            'tax_number' => '5' . $suffix,
+            'tax_number' => '5'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -52,8 +52,8 @@ class RepairMarketplaceMatchIssuesCommandTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM REPAIR',
-            'store_code' => 'ZEM-REPAIR-' . $suffix,
-            'seller_id' => 'R' . $suffix,
+            'store_code' => 'ZEM-REPAIR-'.$suffix,
+            'seller_id' => 'R'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -65,9 +65,9 @@ class RepairMarketplaceMatchIssuesCommandTest extends TestCase
 
         $candidate = MpProduct::query()->create([
             'user_id' => $user->id,
-            'product_name' => 'Benetta Bohem Kanepe Kırık Beyaz ' . $suffix,
-            'stock_code' => 'MASTER-BNT-' . $suffix,
-            'barcode' => '8685' . $suffix,
+            'product_name' => 'Benetta Bohem Kanepe Kırık Beyaz '.$suffix,
+            'stock_code' => 'MASTER-BNT-'.$suffix,
+            'barcode' => '8685'.$suffix,
             'model_code' => 'ZEMBNT',
             'brand' => 'Zem',
             'category_name' => 'Kanepe',
@@ -79,8 +79,8 @@ class RepairMarketplaceMatchIssuesCommandTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $entity->id,
-            'external_order_id' => 'ORD-REPAIR-' . $suffix,
-            'order_number' => 'ORD-REPAIR-' . $suffix,
+            'external_order_id' => 'ORD-REPAIR-'.$suffix,
+            'order_number' => 'ORD-REPAIR-'.$suffix,
             'order_status' => 'Created',
             'ordered_at' => now(),
         ]);
@@ -88,10 +88,10 @@ class RepairMarketplaceMatchIssuesCommandTest extends TestCase
         $item = ChannelOrderItem::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_line_id' => 'LINE-REPAIR-' . $suffix,
-            'stock_code' => 'REPAIR-SKU-' . $suffix,
-            'barcode' => '8695' . $suffix,
-            'product_name' => 'Benetta Koltuk Takımı Kırık Beyaz ZEMBNTKT010 ' . $suffix,
+            'external_line_id' => 'LINE-REPAIR-'.$suffix,
+            'stock_code' => 'REPAIR-SKU-'.$suffix,
+            'barcode' => '8695'.$suffix,
+            'product_name' => 'Benetta Koltuk Takımı Kırık Beyaz ZEMBNTKT010 '.$suffix,
             'quantity' => 1,
             'unit_price' => 1299.90,
             'gross_amount' => 1299.90,

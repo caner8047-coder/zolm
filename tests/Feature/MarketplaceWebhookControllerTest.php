@@ -24,7 +24,7 @@ class MarketplaceWebhookControllerTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -302,7 +302,7 @@ class MarketplaceWebhookControllerTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Woo Webhook Ltd.',
-            'tax_number' => '3' . $suffix,
+            'tax_number' => '3'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -313,8 +313,8 @@ class MarketplaceWebhookControllerTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'woocommerce',
             'store_name' => $prefix,
-            'store_code' => $prefix . '-' . $suffix,
-            'seller_id' => $prefix . '-' . $suffix,
+            'store_code' => $prefix.'-'.$suffix,
+            'seller_id' => $prefix.'-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -352,7 +352,7 @@ class MarketplaceWebhookControllerTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Trendyol Webhook Ltd.',
-            'tax_number' => '5' . $suffix,
+            'tax_number' => '5'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -363,8 +363,8 @@ class MarketplaceWebhookControllerTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => $prefix,
-            'store_code' => $prefix . '-' . $suffix,
-            'seller_id' => $prefix . '-' . $suffix,
+            'store_code' => $prefix.'-'.$suffix,
+            'seller_id' => $prefix.'-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -376,7 +376,7 @@ class MarketplaceWebhookControllerTest extends TestCase
             'provider' => 'trendyol',
             'auth_type' => 'api_key_secret',
             'credentials_encrypted' => [
-                'seller_id' => $prefix . '-' . $suffix,
+                'seller_id' => $prefix.'-'.$suffix,
                 'api_key' => 'ty_test_key',
                 'api_secret' => 'ty_test_secret',
             ],
@@ -402,7 +402,7 @@ class MarketplaceWebhookControllerTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Shopify Webhook Ltd.',
-            'tax_number' => '4' . $suffix,
+            'tax_number' => '4'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -413,8 +413,8 @@ class MarketplaceWebhookControllerTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => $prefix,
-            'store_code' => $prefix . '-' . $suffix,
-            'seller_id' => $prefix . '-' . $suffix,
+            'store_code' => $prefix.'-'.$suffix,
+            'seller_id' => $prefix.'-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

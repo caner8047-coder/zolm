@@ -30,7 +30,7 @@ class MarketplaceManualMatchServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -81,7 +81,7 @@ class MarketplaceManualMatchServiceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Listing Fallback Ltd.',
-            'tax_number' => '6' . $suffix,
+            'tax_number' => '6'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -92,8 +92,8 @@ class MarketplaceManualMatchServiceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM LISTING FALLBACK',
-            'store_code' => 'ZEM-FALLBACK-' . $suffix,
-            'seller_id' => 'F' . $suffix,
+            'store_code' => 'ZEM-FALLBACK-'.$suffix,
+            'seller_id' => 'F'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -105,7 +105,7 @@ class MarketplaceManualMatchServiceTest extends TestCase
             'provider' => 'trendyol',
             'auth_type' => 'api_key_secret',
             'credentials_encrypted' => [
-                'seller_id' => 'F' . $suffix,
+                'seller_id' => 'F'.$suffix,
                 'api_key' => 'key',
                 'api_secret' => 'secret',
             ],
@@ -124,9 +124,9 @@ class MarketplaceManualMatchServiceTest extends TestCase
 
         $product = MpProduct::query()->create([
             'user_id' => $user->id,
-            'product_name' => 'Master Manuel Koltuk ' . $suffix,
-            'stock_code' => 'MASTER-' . $suffix,
-            'barcode' => '868' . $suffix,
+            'product_name' => 'Master Manuel Koltuk '.$suffix,
+            'stock_code' => 'MASTER-'.$suffix,
+            'barcode' => '868'.$suffix,
             'brand' => 'ZEM',
             'category_name' => 'Mobilya',
             'sale_price' => 3499.90,
@@ -139,8 +139,8 @@ class MarketplaceManualMatchServiceTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $entity->id,
-            'external_order_id' => 'ORD-FALLBACK-' . $suffix,
-            'order_number' => 'ORD-FALLBACK-' . $suffix,
+            'external_order_id' => 'ORD-FALLBACK-'.$suffix,
+            'order_number' => 'ORD-FALLBACK-'.$suffix,
             'order_status' => 'Created',
             'customer_name' => 'Ayse Demir',
             'ordered_at' => now(),
@@ -149,10 +149,10 @@ class MarketplaceManualMatchServiceTest extends TestCase
         $item = ChannelOrderItem::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_line_id' => 'LINE-FALLBACK-' . $suffix,
-            'stock_code' => 'CHANNEL-' . $suffix,
-            'barcode' => '869' . $suffix,
-            'product_name' => 'Kanalda Farklı Başlık ' . $suffix,
+            'external_line_id' => 'LINE-FALLBACK-'.$suffix,
+            'stock_code' => 'CHANNEL-'.$suffix,
+            'barcode' => '869'.$suffix,
+            'product_name' => 'Kanalda Farklı Başlık '.$suffix,
             'quantity' => 1,
             'unit_price' => 3499.90,
             'gross_amount' => 3499.90,
@@ -178,7 +178,7 @@ class MarketplaceManualMatchServiceTest extends TestCase
 
         $listing = ChannelListing::query()->with('channelProduct')->findOrFail($item->channel_listing_id);
         $this->assertStringStartsWith('order-item:stock:', $listing->listing_id);
-        $this->assertSame('CHANNEL-' . $suffix, $listing->channelProduct?->stock_code);
+        $this->assertSame('CHANNEL-'.$suffix, $listing->channelProduct?->stock_code);
 
         $issue = ProductMatchIssue::query()
             ->where('store_id', $store->id)
@@ -216,7 +216,7 @@ class MarketplaceManualMatchServiceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Test Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => '7'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -227,8 +227,8 @@ class MarketplaceManualMatchServiceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM MATCH',
-            'store_code' => 'ZEM-MATCH-' . $suffix,
-            'seller_id' => 'S' . $suffix,
+            'store_code' => 'ZEM-MATCH-'.$suffix,
+            'seller_id' => 'S'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -240,7 +240,7 @@ class MarketplaceManualMatchServiceTest extends TestCase
             'provider' => 'trendyol',
             'auth_type' => 'api_key_secret',
             'credentials_encrypted' => [
-                'seller_id' => 'S' . $suffix,
+                'seller_id' => 'S'.$suffix,
                 'api_key' => 'key',
                 'api_secret' => 'secret',
             ],
@@ -251,8 +251,8 @@ class MarketplaceManualMatchServiceTest extends TestCase
         $product = MpProduct::query()->create([
             'user_id' => $user->id,
             'product_name' => 'ZEM Test Koltuk',
-            'stock_code' => 'STK-' . $suffix,
-            'barcode' => '869' . $suffix,
+            'stock_code' => 'STK-'.$suffix,
+            'barcode' => '869'.$suffix,
             'brand' => 'ZEM',
             'category_name' => 'Mobilya',
             'sale_price' => 1299.90,
@@ -264,9 +264,9 @@ class MarketplaceManualMatchServiceTest extends TestCase
 
         $channelProduct = ChannelProduct::query()->create([
             'store_id' => $store->id,
-            'external_product_id' => 'CP-' . $suffix,
-            'stock_code' => 'STK-' . $suffix,
-            'barcode' => '869' . $suffix,
+            'external_product_id' => 'CP-'.$suffix,
+            'stock_code' => 'STK-'.$suffix,
+            'barcode' => '869'.$suffix,
             'title' => 'ZEM Test Koltuk',
             'brand' => 'ZEM',
             'category_name' => 'Mobilya',
@@ -275,7 +275,7 @@ class MarketplaceManualMatchServiceTest extends TestCase
         $listing = ChannelListing::query()->create([
             'store_id' => $store->id,
             'channel_product_id' => $channelProduct->id,
-            'listing_id' => 'LIST-' . $suffix,
+            'listing_id' => 'LIST-'.$suffix,
             'listing_status' => 'active',
             'sale_price' => 1299.90,
             'stock_quantity' => 5,
@@ -285,8 +285,8 @@ class MarketplaceManualMatchServiceTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $entity->id,
-            'external_order_id' => 'ORD-' . $suffix,
-            'order_number' => 'ORD-' . $suffix,
+            'external_order_id' => 'ORD-'.$suffix,
+            'order_number' => 'ORD-'.$suffix,
             'order_status' => 'Created',
             'customer_name' => 'Ayse Demir',
             'ordered_at' => now(),
@@ -296,9 +296,9 @@ class MarketplaceManualMatchServiceTest extends TestCase
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
             'channel_listing_id' => $listing->id,
-            'external_line_id' => 'LINE-' . $suffix,
-            'stock_code' => 'STK-' . $suffix,
-            'barcode' => '869' . $suffix,
+            'external_line_id' => 'LINE-'.$suffix,
+            'stock_code' => 'STK-'.$suffix,
+            'barcode' => '869'.$suffix,
             'product_name' => 'ZEM Test Koltuk',
             'quantity' => 1,
             'unit_price' => 1299.90,

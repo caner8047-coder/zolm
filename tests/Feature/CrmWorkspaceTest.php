@@ -9,10 +9,10 @@ use App\Models\CrmNote;
 use App\Models\CrmTimelineEvent;
 use App\Models\SupplyOrder;
 use App\Models\User;
-use App\Services\Crm\CrmIdentityResolver;
-use App\Services\Crm\CrmProjectionService;
 use App\Services\Crm\CrmAlertRuleService;
 use App\Services\Crm\CrmCustomerSnapshotService;
+use App\Services\Crm\CrmIdentityResolver;
+use App\Services\Crm\CrmProjectionService;
 use App\Services\Crm\CrmSourceLinkService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +30,7 @@ class CrmWorkspaceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -139,7 +139,7 @@ class CrmWorkspaceTest extends TestCase
             'last_event_title' => 'Tedarik/üretim siparişi',
         ]);
         $order = SupplyOrder::query()->create([
-            'siparis_no' => 'CRM-DEEP-' . random_int(100000, 999999),
+            'siparis_no' => 'CRM-DEEP-'.random_int(100000, 999999),
             'kayit_tarihi' => now()->toDateString(),
             'musteri_adi' => 'Deep Link Müşteri',
             'urun_adi' => 'Deep ürün',
@@ -149,7 +149,7 @@ class CrmWorkspaceTest extends TestCase
         CrmTimelineEvent::query()->create([
             'user_id' => $user->id,
             'contact_id' => $contact->id,
-            'event_key' => 'supply-order:' . $order->id,
+            'event_key' => 'supply-order:'.$order->id,
             'event_type' => 'supply',
             'source_type' => 'supply_reports',
             'subject_type' => $order::class,
@@ -171,21 +171,21 @@ class CrmWorkspaceTest extends TestCase
             ->assertSee('Tedarik raporunda aç');
 
         $event = CrmTimelineEvent::query()
-            ->where('event_key', 'supply-order:' . $order->id)
+            ->where('event_key', 'supply-order:'.$order->id)
             ->firstOrFail();
         $action = app(CrmSourceLinkService::class)->actionForTimelineEvent($event);
 
         $this->assertNotNull($action);
         $this->assertSame('Tedarik raporunda aç', $action['label']);
         $this->assertStringContainsString('/supply-reports', $action['url']);
-        $this->assertStringContainsString('search=' . urlencode($order->siparis_no), $action['url']);
+        $this->assertStringContainsString('search='.urlencode($order->siparis_no), $action['url']);
 
         $snapshot = app(CrmCustomerSnapshotService::class)->forSubject($user, 'supply', $order);
 
         $this->assertNotNull($snapshot);
         $this->assertSame($contact->id, $snapshot['contact_id']);
         $this->assertSame('Deep Link Müşteri', $snapshot['display_name']);
-        $this->assertStringContainsString('/crm?contact=' . $contact->id, $snapshot['url']);
+        $this->assertStringContainsString('/crm?contact='.$contact->id, $snapshot['url']);
     }
 
     public function test_projection_can_be_limited_by_source_and_since_date(): void
@@ -196,7 +196,7 @@ class CrmWorkspaceTest extends TestCase
         ]);
         $suffix = (string) random_int(100000, 999999);
         $oldOrder = SupplyOrder::query()->create([
-            'siparis_no' => 'CRM-OLD-' . $suffix,
+            'siparis_no' => 'CRM-OLD-'.$suffix,
             'kayit_tarihi' => now()->subDays(10)->toDateString(),
             'musteri_adi' => 'Eski CRM Müşteri',
             'urun_adi' => 'Eski ürün',
@@ -210,7 +210,7 @@ class CrmWorkspaceTest extends TestCase
         ])->save();
 
         $recentOrder = SupplyOrder::query()->create([
-            'siparis_no' => 'CRM-NEW-' . $suffix,
+            'siparis_no' => 'CRM-NEW-'.$suffix,
             'kayit_tarihi' => now()->toDateString(),
             'musteri_adi' => 'Yeni CRM Müşteri',
             'telefon' => '05321112233',
@@ -226,12 +226,12 @@ class CrmWorkspaceTest extends TestCase
 
         $this->assertDatabaseHas('crm_timeline_events', [
             'user_id' => $user->id,
-            'event_key' => 'supply-order:' . $recentOrder->id,
+            'event_key' => 'supply-order:'.$recentOrder->id,
             'source_type' => 'supply_reports',
         ]);
         $this->assertDatabaseMissing('crm_timeline_events', [
             'user_id' => $user->id,
-            'event_key' => 'supply-order:' . $oldOrder->id,
+            'event_key' => 'supply-order:'.$oldOrder->id,
         ]);
     }
 
@@ -262,7 +262,7 @@ class CrmWorkspaceTest extends TestCase
                 'category' => $case['category'],
                 'priority' => 'normal',
                 'status' => 'open',
-                'case_key' => $case['case_key'] . ':' . $contact->id,
+                'case_key' => $case['case_key'].':'.$contact->id,
                 'title' => 'Operasyon vakası',
             ]);
         }
@@ -275,14 +275,14 @@ class CrmWorkspaceTest extends TestCase
             'contact_id' => $contact->id,
             'source_type' => 'crm',
             'category' => 'crm_alert',
-            'case_key' => 'crm-alert:multi-pressure:' . $contact->id,
+            'case_key' => 'crm-alert:multi-pressure:'.$contact->id,
             'status' => 'open',
             'title' => 'Çoklu operasyon baskısı',
         ]);
         $this->assertDatabaseHas('crm_cases', [
             'user_id' => $user->id,
             'contact_id' => $contact->id,
-            'case_key' => 'crm-alert:supply-experience:' . $contact->id,
+            'case_key' => 'crm-alert:supply-experience:'.$contact->id,
             'status' => 'open',
         ]);
 

@@ -25,7 +25,7 @@ class RecipeMaterialsImportTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -108,12 +108,12 @@ class RecipeMaterialsImportTest extends TestCase
      */
     private function makeExcelUpload(array $rows, string $filename): UploadedFile
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->fromArray($rows, null, 'A1', true);
 
-        $path = storage_path('framework/testing/' . uniqid('recipe-materials-', true) . '-' . $filename);
-        if (!is_dir(dirname($path))) {
+        $path = storage_path('framework/testing/'.uniqid('recipe-materials-', true).'-'.$filename);
+        if (! is_dir(dirname($path))) {
             mkdir(dirname($path), 0777, true);
         }
 

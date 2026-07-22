@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Hr;
 
+use App\Models\LegalEntity;
 use App\Models\User;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Lifecycle\Livewire\SeveranceCalculator;
@@ -18,7 +19,7 @@ class SeveranceCalculatorTest extends TestCase
             ?? User::where('role', 'admin')->first()
             ?? User::factory()->create(['role' => 'admin']);
 
-        $legalEntity = \App\Models\LegalEntity::firstOrCreate(
+        $legalEntity = LegalEntity::firstOrCreate(
             ['user_id' => $admin->id],
             ['name' => 'Test Şirketi', 'tax_number' => '1234567890', 'tax_office' => 'Kadıköy', 'company_type' => 'A.Ş.']
         );

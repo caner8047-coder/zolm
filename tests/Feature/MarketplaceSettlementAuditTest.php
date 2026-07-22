@@ -32,7 +32,7 @@ class MarketplaceSettlementAuditTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         config()->set('marketplace.features.settlement_audit_enabled', true);
@@ -155,14 +155,14 @@ class MarketplaceSettlementAuditTest extends TestCase
     {
         $suffix = (string) random_int(100000, 999999);
         $user = User::factory()->create([
-            'email' => 'settlement-' . Str::uuid() . '@example.test',
+            'email' => 'settlement-'.Str::uuid().'@example.test',
             'role' => 'admin',
             'is_active' => true,
         ]);
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Hakediş Kontrol Ltd.',
-            'tax_number' => '8' . $suffix,
+            'tax_number' => '8'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -172,15 +172,15 @@ class MarketplaceSettlementAuditTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'Hakediş Test Mağazası',
-            'store_code' => 'SET-' . $suffix,
-            'seller_id' => 'SET-' . $suffix,
+            'store_code' => 'SET-'.$suffix,
+            'seller_id' => 'SET-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
             'is_active' => true,
         ]);
 
-        $differenceOrder = $this->createOrder($store, $entity, 'SET-DIFF-' . $suffix, 1000, 10);
+        $differenceOrder = $this->createOrder($store, $entity, 'SET-DIFF-'.$suffix, 1000, 10);
 
         OrderProfitSnapshot::query()->create([
             'store_id' => $store->id,
@@ -211,7 +211,7 @@ class MarketplaceSettlementAuditTest extends TestCase
                 'channel_order_id' => $differenceOrder->id,
                 'event_source' => 'settlement-test',
                 'event_type' => $event['type'],
-                'external_event_id' => $differenceOrder->order_number . '-' . $index,
+                'external_event_id' => $differenceOrder->order_number.'-'.$index,
                 'event_date' => now(),
                 'settlement_date' => now(),
                 'amount' => $event['amount'],
@@ -226,14 +226,14 @@ class MarketplaceSettlementAuditTest extends TestCase
             'legal_entity_id' => $entity->id,
             'store_id' => $store->id,
             'channel_order_id' => $differenceOrder->id,
-            'shipment_no' => 'SHIP-' . $suffix,
+            'shipment_no' => 'SHIP-'.$suffix,
             'source_type' => 'test',
             'direction' => 'outgoing',
             'flow_type' => 'order',
             'carrier_code' => 'surat',
             'carrier_name' => 'Sürat Kargo',
             'order_number' => $differenceOrder->order_number,
-            'tracking_number' => 'TRK-' . $suffix,
+            'tracking_number' => 'TRK-'.$suffix,
             'status' => 'delivered',
             'parcel_count' => 1,
             'total_desi' => 5,
@@ -250,7 +250,7 @@ class MarketplaceSettlementAuditTest extends TestCase
             'legal_entity_id' => $entity->id,
             'shipment_id' => $shipment->id,
             'carrier_code' => 'surat',
-            'invoice_number' => 'INV-' . $suffix,
+            'invoice_number' => 'INV-'.$suffix,
             'invoice_date' => now()->toDateString(),
             'tracking_number' => $shipment->tracking_number,
             'order_reference' => $differenceOrder->order_number,
@@ -264,7 +264,7 @@ class MarketplaceSettlementAuditTest extends TestCase
             'is_reconciled' => false,
         ]);
 
-        $waitingOrder = $this->createOrder($store, $entity, 'SET-WAIT-' . $suffix, 400, 12);
+        $waitingOrder = $this->createOrder($store, $entity, 'SET-WAIT-'.$suffix, 400, 12);
         OrderProfitSnapshot::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $waitingOrder->id,
@@ -279,7 +279,7 @@ class MarketplaceSettlementAuditTest extends TestCase
             'version' => 1,
         ]);
 
-        $cancelledOrder = $this->createOrder($store, $entity, 'SET-CANCEL-' . $suffix, 250, 10);
+        $cancelledOrder = $this->createOrder($store, $entity, 'SET-CANCEL-'.$suffix, 250, 10);
         $cancelledOrder->update([
             'order_status' => 'Cancelled',
             'cancelled_at' => now(),
@@ -308,8 +308,8 @@ class MarketplaceSettlementAuditTest extends TestCase
         ChannelOrderItem::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_line_id' => $orderNumber . '-1',
-            'stock_code' => $orderNumber . '-SKU',
+            'external_line_id' => $orderNumber.'-1',
+            'stock_code' => $orderNumber.'-SKU',
             'product_name' => 'Hakediş Test Ürünü',
             'quantity' => 1,
             'unit_price' => $grossAmount,

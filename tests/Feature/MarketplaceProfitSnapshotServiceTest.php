@@ -29,7 +29,7 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -117,7 +117,7 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
                 'channel_order_id' => $order->id,
                 'event_source' => 'settlement',
                 'event_type' => $event['event_type'],
-                'external_event_id' => 'settlement-' . $index,
+                'external_event_id' => 'settlement-'.$index,
                 'event_date' => now(),
                 'settlement_date' => now(),
                 'amount' => $event['amount'],
@@ -161,7 +161,7 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
                 'channel_order_id' => $order->id,
                 'event_source' => 'settlement',
                 'event_type' => $event['event_type'],
-                'external_event_id' => 'extended-cost-' . $index,
+                'external_event_id' => 'extended-cost-'.$index,
                 'event_date' => now(),
                 'settlement_date' => now(),
                 'amount' => $event['amount'],
@@ -207,7 +207,7 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
                 'channel_order_id' => $order->id,
                 'event_source' => 'settlement',
                 'event_type' => $event['event_type'],
-                'external_event_id' => 'kdv-settlement-' . $index,
+                'external_event_id' => 'kdv-settlement-'.$index,
                 'event_date' => now(),
                 'settlement_date' => now(),
                 'amount' => $event['amount'],
@@ -238,7 +238,7 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
 
         $product = MpProduct::query()->create([
             'user_id' => $store->user_id,
-            'barcode' => 'KDV-PRODUCT-' . random_int(100000, 999999),
+            'barcode' => 'KDV-PRODUCT-'.random_int(100000, 999999),
             'stock_code' => 'KDV-PRODUCT',
             'product_name' => 'KDV Fallback Ürünü',
             'cogs' => 0,
@@ -351,7 +351,7 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
                 'channel_order_id' => $order->id,
                 'event_source' => 'settlement',
                 'event_type' => $event['event_type'],
-                'external_event_id' => 'stopaj-settlement-' . $index,
+                'external_event_id' => 'stopaj-settlement-'.$index,
                 'event_date' => now(),
                 'settlement_date' => now(),
                 'amount' => $event['amount'],

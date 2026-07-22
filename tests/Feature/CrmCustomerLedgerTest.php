@@ -29,7 +29,7 @@ class CrmCustomerLedgerTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -190,13 +190,13 @@ class CrmCustomerLedgerTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'Test Trendyol',
-            'seller_id' => 'CARI-' . random_int(10000, 99999),
+            'seller_id' => 'CARI-'.random_int(10000, 99999),
             'status' => 'active',
             'is_active' => true,
         ]);
         $product = MpProduct::query()->create([
             'user_id' => $user->id,
-            'barcode' => 'BRJ-CARI-' . random_int(10000, 99999),
+            'barcode' => 'BRJ-CARI-'.random_int(10000, 99999),
             'stock_code' => 'BRJ-CARI-1',
             'product_name' => 'Berjer Koltuk',
             'cogs' => 500,
@@ -218,7 +218,7 @@ class CrmCustomerLedgerTest extends TestCase
         $listing = ChannelListing::query()->create([
             'store_id' => $store->id,
             'mp_product_id' => $product->id,
-            'listing_id' => 'LIST-CARI-' . $suffix,
+            'listing_id' => 'LIST-CARI-'.$suffix,
             'listing_status' => 'active',
             'sale_price' => 1000,
             'commission_rate' => 18,
@@ -227,8 +227,8 @@ class CrmCustomerLedgerTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $legalEntity->id,
-            'external_order_id' => 'EXT-CARI-' . $suffix,
-            'order_number' => 'TY-CARI-ORDER-' . $suffix,
+            'external_order_id' => 'EXT-CARI-'.$suffix,
+            'order_number' => 'TY-CARI-ORDER-'.$suffix,
             'order_status' => 'delivered',
             'customer_name' => 'Mehmet Cari Test',
             'customer_phone' => '0532 222 33 44',
@@ -239,7 +239,7 @@ class CrmCustomerLedgerTest extends TestCase
             'channel_order_id' => $order->id,
             'channel_listing_id' => $listing->id,
             'mp_product_id' => $product->id,
-            'external_line_id' => 'LINE-CARI-' . $suffix,
+            'external_line_id' => 'LINE-CARI-'.$suffix,
             'stock_code' => 'BRJ-CARI-1',
             'barcode' => $product->barcode,
             'product_name' => 'Berjer Koltuk',
@@ -259,7 +259,7 @@ class CrmCustomerLedgerTest extends TestCase
 
         $entry = CrmCustomerLedgerEntry::query()
             ->where('user_id', $user->id)
-            ->where('marketplace_order_number', 'TY-CARI-ORDER-' . $suffix)
+            ->where('marketplace_order_number', 'TY-CARI-ORDER-'.$suffix)
             ->firstOrFail();
 
         $this->assertSame('Mehmet Cari Test', $entry->contact->display_name);

@@ -12,6 +12,7 @@ use App\Modules\Hr\Document\Enums\VerificationStatus;
 use App\Modules\Hr\Document\Models\HrDocumentRequest;
 use App\Modules\Hr\Document\Models\HrDocumentType;
 use App\Modules\Hr\Document\Models\HrEmployeeDocument;
+use App\Modules\Hr\Document\Services\HrPersonnelFileChecklistService;
 use App\Modules\Hr\Leave\Models\HrLeaveBalance;
 use App\Modules\Hr\Leave\Models\HrLeaveRequest;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
@@ -24,14 +25,17 @@ class EmployeeDetail extends Component
     use WithFileUploads;
 
     public HrEmployee $employee;
+
     public string $activeTab = 'overview';
 
     // Yeni sürüm yükleme
     public ?int $newVersionDocId = null;
+
     public $newVersionFile = null;
 
     // Ret gerekçesi
     public ?int $rejectDocId = null;
+
     public string $rejectReason = '';
 
     public function mount(HrEmployee|int|null $employee = null, ?int $id = null): void
@@ -80,7 +84,7 @@ class EmployeeDetail extends Component
         $mandatoryCount = $documents->where('status', DocumentStatus::Requested)->count();
         $activeCount = $documents->where('status', DocumentStatus::Active)->count();
         $pendingVerification = $documents->where('verification_status', VerificationStatus::Pending)->count();
-        $expiringSoon = $documents->filter(fn($d) => $d->days_until_expiry !== null && $d->days_until_expiry <= 30 && $d->days_until_expiry > 0)->count();
+        $expiringSoon = $documents->filter(fn ($d) => $d->days_until_expiry !== null && $d->days_until_expiry <= 30 && $d->days_until_expiry > 0)->count();
         $expired = $documents->where('status', DocumentStatus::Expired)->count();
 
         $pendingRequests = HrDocumentRequest::withoutGlobalScope('tenant')
@@ -99,7 +103,7 @@ class EmployeeDetail extends Component
         $leaveRequests = HrLeaveRequest::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $this->employee->id)->with('leaveType')->latest()->get();
         $leaveBalances = HrLeaveBalance::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $this->employee->id)->where('period_year', now()->year)->with('leaveType')->get();
 
-        $fileChecklist = app(\App\Modules\Hr\Document\Services\HrPersonnelFileChecklistService::class)->analyzeEmployeeFile($tenantId, $this->employee->id);
+        $fileChecklist = app(HrPersonnelFileChecklistService::class)->analyzeEmployeeFile($tenantId, $this->employee->id);
         if (! $canViewHealth) {
             $visibleChecklist = collect($fileChecklist['checklist'])
                 ->reject(fn (array $item): bool => ($item['type_key'] ?? null) === 'health_report')
@@ -138,17 +142,18 @@ class EmployeeDetail extends Component
 
     public function startNewVersion(int $documentId): void
     {
-        abort_unless(auth()->user() && auth()->user()->hasHrPermission('hr.documents.create'), 403);
+        $doc = $this->resolveDocument($documentId);
+        Gate::authorize('uploadVersion', $doc);
         $this->newVersionDocId = $documentId;
         $this->newVersionFile = null;
     }
 
     public function uploadNewVersion(): void
     {
-        abort_unless(auth()->user() && auth()->user()->hasHrPermission('hr.documents.create'), 403);
         $this->validate(['newVersionFile' => 'required|file|max:20480']);
 
         $doc = $this->resolveDocument($this->newVersionDocId);
+        Gate::authorize('uploadVersion', $doc);
         app(UploadNewVersionAction::class)->execute($doc, $this->newVersionFile, 'Profil sekmesinden yeni sürüm');
 
         $this->reset(['newVersionDocId', 'newVersionFile']);
@@ -183,8 +188,8 @@ class EmployeeDetail extends Component
 
     public function archiveDocument(int $documentId): void
     {
-        abort_unless(auth()->user() && auth()->user()->hasHrPermission('hr.documents.archive'), 403);
         $doc = $this->resolveDocument($documentId);
+        Gate::authorize('archive', $doc);
         $doc->update(['status' => DocumentStatus::Archived, 'updated_by' => auth()->id()]);
         session()->flash('document_success', 'Belge arşivlendi.');
     }

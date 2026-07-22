@@ -33,7 +33,7 @@ class MarketplaceHealthRetryBatchTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -80,7 +80,7 @@ class MarketplaceHealthRetryBatchTest extends TestCase
             'store_id' => $store->id,
             'provider' => 'trendyol',
             'event_type' => 'order_created',
-            'external_event_id' => 'WH-' . random_int(1000, 9999),
+            'external_event_id' => 'WH-'.random_int(1000, 9999),
             'signature_valid' => true,
             'payload_json' => [
                 'orderNumber' => $order->order_number,
@@ -145,7 +145,7 @@ class MarketplaceHealthRetryBatchTest extends TestCase
             'store_id' => $store->id,
             'provider' => 'trendyol',
             'event_type' => 'order_updated',
-            'external_event_id' => 'WH-NESTED-' . random_int(1000, 9999),
+            'external_event_id' => 'WH-NESTED-'.random_int(1000, 9999),
             'signature_valid' => true,
             'payload_json' => [
                 'orderNumber' => $order->order_number,
@@ -179,7 +179,7 @@ class MarketplaceHealthRetryBatchTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Retry Ltd.',
-            'tax_number' => '6' . $suffix,
+            'tax_number' => '6'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -190,8 +190,8 @@ class MarketplaceHealthRetryBatchTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM RETRY',
-            'store_code' => 'RET-' . $suffix,
-            'seller_id' => 'RET-' . $suffix,
+            'store_code' => 'RET-'.$suffix,
+            'seller_id' => 'RET-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -220,8 +220,8 @@ class MarketplaceHealthRetryBatchTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $legalEntity->id,
-            'external_order_id' => 'RETRY-ORDER-' . $suffix,
-            'order_number' => 'RETRY-ORDER-' . $suffix,
+            'external_order_id' => 'RETRY-ORDER-'.$suffix,
+            'order_number' => 'RETRY-ORDER-'.$suffix,
             'order_status' => 'Created',
             'customer_name' => 'Retry Test',
             'ordered_at' => now(),
@@ -230,8 +230,8 @@ class MarketplaceHealthRetryBatchTest extends TestCase
         $package = ChannelOrderPackage::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_package_id' => 'PKG-' . $suffix,
-            'package_number' => 'PKG-' . $suffix,
+            'external_package_id' => 'PKG-'.$suffix,
+            'package_number' => 'PKG-'.$suffix,
             'package_status' => 'Created',
         ]);
 

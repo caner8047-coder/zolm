@@ -25,7 +25,7 @@ class CampaignDecisionCenterTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         config()->set('marketplace.features.campaign_decision_center_enabled', true);
@@ -98,7 +98,7 @@ class CampaignDecisionCenterTest extends TestCase
             ->assertHasNoErrors();
 
         $this->assertStringContainsString(
-            '/campaigns/product-commission?report=' . $tariff->id,
+            '/campaigns/product-commission?report='.$tariff->id,
             $component->instance()->moduleUrl(
                 collect($component->instance()->dashboard['modules'])->firstWhere('campaign_type', 'tariff')
             )
@@ -233,8 +233,8 @@ class CampaignDecisionCenterTest extends TestCase
         foreach ($items as $index => $item) {
             OptimizationReportItem::query()->create(array_merge([
                 'report_id' => $report->id,
-                'stock_code' => 'ITEM-' . $index,
-                'barcode' => 'BARCODE-' . $report->id . '-' . $index,
+                'stock_code' => 'ITEM-'.$index,
+                'barcode' => 'BARCODE-'.$report->id.'-'.$index,
                 'product_name' => 'Kampanya Test Ürünü',
                 'current_price' => 1000,
                 'current_commission' => 15,

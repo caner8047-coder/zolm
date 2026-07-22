@@ -6,8 +6,8 @@ use App\Jobs\SyncMarketplaceDataJob;
 use App\Livewire\MarketplaceMatchingCenter;
 use App\Models\ChannelOrder;
 use App\Models\IntegrationConnection;
-use App\Models\IntegrationSyncRun;
 use App\Models\IntegrationSyncProfile;
+use App\Models\IntegrationSyncRun;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
 use App\Models\MpOrder;
@@ -30,7 +30,7 @@ class MarketplaceMatchingCenterGuidanceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -151,7 +151,7 @@ class MarketplaceMatchingCenterGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'MATCH-LEGACY-' . random_int(100000, 999999);
+        $orderNumber = 'MATCH-LEGACY-'.random_int(100000, 999999);
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -190,7 +190,7 @@ class MarketplaceMatchingCenterGuidanceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Matching Guidance Ltd.',
-            'tax_number' => '6' . $suffix,
+            'tax_number' => '6'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -200,9 +200,9 @@ class MarketplaceMatchingCenterGuidanceTest extends TestCase
             'user_id' => $user->id,
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
-            'store_name' => 'ZEM ' . $prefix,
-            'store_code' => $prefix . '-' . $suffix,
-            'seller_id' => $prefix . '-' . $suffix,
+            'store_name' => 'ZEM '.$prefix,
+            'store_code' => $prefix.'-'.$suffix,
+            'seller_id' => $prefix.'-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

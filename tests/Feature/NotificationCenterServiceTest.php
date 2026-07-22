@@ -27,7 +27,7 @@ class NotificationCenterServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -118,8 +118,8 @@ class NotificationCenterServiceTest extends TestCase
 
         $this->assertNotNull($notification);
         $this->assertSame('question_received', $notification->type);
-        $this->assertStringContainsString('question=' . $question->id, (string) $notification->action_url);
-        $this->assertStringContainsString('storeFilter=' . $store->id, (string) $notification->action_url);
+        $this->assertStringContainsString('question='.$question->id, (string) $notification->action_url);
+        $this->assertStringContainsString('storeFilter='.$store->id, (string) $notification->action_url);
     }
 
     public function test_muted_notification_types_are_not_created_or_counted(): void
@@ -208,7 +208,7 @@ class NotificationCenterServiceTest extends TestCase
         $payload = app(NotificationCenterService::class)->toPayload($notification);
 
         $this->assertSame('ZEM NOTIFY TRENDYOL · Trendyol · Stok bitti', $payload['context_label']);
-        $this->assertStringContainsString('edit=' . $product->id, $payload['action_url']);
+        $this->assertStringContainsString('edit='.$product->id, $payload['action_url']);
         $this->assertStringContainsString('tab=logistics', $payload['action_url']);
     }
 
@@ -301,7 +301,7 @@ class NotificationCenterServiceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Notify Ltd.',
-            'tax_number' => '8' . $suffix,
+            'tax_number' => '8'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -310,9 +310,9 @@ class NotificationCenterServiceTest extends TestCase
             'user_id' => $user->id,
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => $marketplace,
-            'store_name' => 'ZEM NOTIFY ' . strtoupper($marketplace),
-            'store_code' => 'NF-' . $suffix,
-            'seller_id' => 'SELLER-NF-' . $suffix,
+            'store_name' => 'ZEM NOTIFY '.strtoupper($marketplace),
+            'store_code' => 'NF-'.$suffix,
+            'seller_id' => 'SELLER-NF-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

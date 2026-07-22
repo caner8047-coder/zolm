@@ -24,7 +24,7 @@ class ProjectLegacyOperationalOrdersCommandTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -66,7 +66,7 @@ class ProjectLegacyOperationalOrdersCommandTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Legacy Command Ltd.',
-            'tax_number' => '5' . $suffix,
+            'tax_number' => '5'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -77,8 +77,8 @@ class ProjectLegacyOperationalOrdersCommandTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'woocommerce',
             'store_name' => 'LEGACY COMMAND',
-            'store_code' => 'LEGACY-CMD-' . $suffix,
-            'seller_id' => 'LEGACY-CMD-' . $suffix,
+            'store_code' => 'LEGACY-CMD-'.$suffix,
+            'seller_id' => 'LEGACY-CMD-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -92,8 +92,8 @@ class ProjectLegacyOperationalOrdersCommandTest extends TestCase
 
         $product = MpProduct::query()->create([
             'user_id' => $user->id,
-            'barcode' => 'LEGACY-CMD-BARCODE-' . $suffix,
-            'stock_code' => 'LEGACY-CMD-STOCK-' . $suffix,
+            'barcode' => 'LEGACY-CMD-BARCODE-'.$suffix,
+            'stock_code' => 'LEGACY-CMD-STOCK-'.$suffix,
             'product_name' => 'Legacy Command Ürün',
             'cogs' => 400,
             'packaging_cost' => 15,
@@ -103,8 +103,8 @@ class ProjectLegacyOperationalOrdersCommandTest extends TestCase
         ]);
 
         $order = MpOperationalOrder::query()->create([
-            'order_number' => 'CMD-ORD-' . $suffix,
-            'package_number' => 'CMD-PKG-' . $suffix,
+            'order_number' => 'CMD-ORD-'.$suffix,
+            'package_number' => 'CMD-PKG-'.$suffix,
             'order_date' => now()->subHours(2),
             'customer_name' => 'Komut Müşteri',
             'customer_city' => 'Ankara',

@@ -27,7 +27,7 @@ class MarketplaceSmokeTestCommandTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -43,7 +43,7 @@ class MarketplaceSmokeTestCommandTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Smoke Ltd.',
-            'tax_number' => '6' . $suffix,
+            'tax_number' => '6'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -54,8 +54,8 @@ class MarketplaceSmokeTestCommandTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM SMOKE',
-            'store_code' => 'SMOKE-' . $suffix,
-            'seller_id' => 'SMOKE-' . $suffix,
+            'store_code' => 'SMOKE-'.$suffix,
+            'seller_id' => 'SMOKE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -75,10 +75,12 @@ class MarketplaceSmokeTestCommandTest extends TestCase
             'status' => 'configured',
         ]);
 
-        app()->bind(MarketplaceConnectorManager::class, fn () => new class extends MarketplaceConnectorManager {
+        app()->bind(MarketplaceConnectorManager::class, fn () => new class extends MarketplaceConnectorManager
+        {
             public function resolve(string $provider): MarketplaceConnector
             {
-                return new class implements MarketplaceConnector, TestsConnection, PullsOrders {
+                return new class implements MarketplaceConnector, PullsOrders, TestsConnection
+                {
                     public function providerKey(): string
                     {
                         return 'trendyol';
@@ -168,7 +170,7 @@ class MarketplaceSmokeTestCommandTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Woo Smoke Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => '7'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -179,8 +181,8 @@ class MarketplaceSmokeTestCommandTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'woocommerce',
             'store_name' => 'ZEM WOO SMOKE',
-            'store_code' => 'WOO-SMOKE-' . $suffix,
-            'seller_id' => 'WOO-' . $suffix,
+            'store_code' => 'WOO-SMOKE-'.$suffix,
+            'seller_id' => 'WOO-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -199,10 +201,12 @@ class MarketplaceSmokeTestCommandTest extends TestCase
             'status' => 'configured',
         ]);
 
-        app()->bind(MarketplaceConnectorManager::class, fn () => new class extends MarketplaceConnectorManager {
+        app()->bind(MarketplaceConnectorManager::class, fn () => new class extends MarketplaceConnectorManager
+        {
             public function resolve(string $provider): MarketplaceConnector
             {
-                return new class implements MarketplaceConnector, TestsConnection, PullsOrders, PullsProducts {
+                return new class implements MarketplaceConnector, PullsOrders, PullsProducts, TestsConnection
+                {
                     public function providerKey(): string
                     {
                         return 'woocommerce';
@@ -230,7 +234,7 @@ class MarketplaceSmokeTestCommandTest extends TestCase
                         ];
                     }
 
-                    public function testConnection(MarketplaceStore $store): array
+                    public function test_connection(MarketplaceStore $store): array
                     {
                         return [
                             'ok' => true,

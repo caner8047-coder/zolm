@@ -21,7 +21,7 @@ class MarketplaceDiagnosticsGuidanceCommandTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -37,7 +37,7 @@ class MarketplaceDiagnosticsGuidanceCommandTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Guidance Cmd Ltd.',
-            'tax_number' => '1' . $suffix,
+            'tax_number' => '1'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -48,8 +48,8 @@ class MarketplaceDiagnosticsGuidanceCommandTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'ZEM GUIDE CMD',
-            'store_code' => 'GUIDE-CMD-' . $suffix,
-            'seller_id' => 'GUIDE-CMD-' . $suffix,
+            'store_code' => 'GUIDE-CMD-'.$suffix,
+            'seller_id' => 'GUIDE-CMD-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

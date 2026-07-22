@@ -27,7 +27,7 @@ class MarketplaceFinanceReconciliationTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -93,7 +93,7 @@ class MarketplaceFinanceReconciliationTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Finance Ltd.',
-            'tax_number' => '9' . $suffix,
+            'tax_number' => '9'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -104,8 +104,8 @@ class MarketplaceFinanceReconciliationTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM FINANCE',
-            'store_code' => 'ZEM-FIN-' . $suffix,
-            'seller_id' => 'FIN-' . $suffix,
+            'store_code' => 'ZEM-FIN-'.$suffix,
+            'seller_id' => 'FIN-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -115,7 +115,7 @@ class MarketplaceFinanceReconciliationTest extends TestCase
         $materialOrder = $this->createOrderWithFinance(
             $store,
             $legalEntity,
-            'FIN-MATERIAL-' . $suffix,
+            'FIN-MATERIAL-'.$suffix,
             1,
             1000,
             10,
@@ -143,7 +143,7 @@ class MarketplaceFinanceReconciliationTest extends TestCase
         $alignedOrder = $this->createOrderWithFinance(
             $store,
             $legalEntity,
-            'FIN-ALIGNED-' . $suffix,
+            'FIN-ALIGNED-'.$suffix,
             1,
             500,
             10,
@@ -168,7 +168,7 @@ class MarketplaceFinanceReconciliationTest extends TestCase
         $waitingOrder = $this->createOrderWithFinance(
             $store,
             $legalEntity,
-            'FIN-WAITING-' . $suffix,
+            'FIN-WAITING-'.$suffix,
             1,
             300,
             10,
@@ -190,7 +190,7 @@ class MarketplaceFinanceReconciliationTest extends TestCase
         $snapshotMissingOrder = $this->createOrderWithFinance(
             $store,
             $legalEntity,
-            'FIN-SNAPSHOT-' . $suffix,
+            'FIN-SNAPSHOT-'.$suffix,
             1,
             700,
             12,
@@ -227,9 +227,9 @@ class MarketplaceFinanceReconciliationTest extends TestCase
         ChannelOrderItem::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_line_id' => $orderNumber . '-LINE',
-            'stock_code' => 'SKU-' . $orderNumber,
-            'barcode' => 'BAR-' . $orderNumber,
+            'external_line_id' => $orderNumber.'-LINE',
+            'stock_code' => 'SKU-'.$orderNumber,
+            'barcode' => 'BAR-'.$orderNumber,
             'product_name' => 'Finans Test Ürünü',
             'quantity' => $quantity,
             'unit_price' => $grossAmount / max($quantity, 1),
@@ -263,8 +263,8 @@ class MarketplaceFinanceReconciliationTest extends TestCase
                 'channel_order_id' => $order->id,
                 'event_source' => 'sync',
                 'event_type' => $event['event_type'],
-                'external_event_id' => $orderNumber . '-EVT-' . $index,
-                'reference_number' => $orderNumber . '-REF-' . $index,
+                'external_event_id' => $orderNumber.'-EVT-'.$index,
+                'reference_number' => $orderNumber.'-REF-'.$index,
                 'event_date' => now(),
                 'settlement_date' => now(),
                 'amount' => $event['amount'],

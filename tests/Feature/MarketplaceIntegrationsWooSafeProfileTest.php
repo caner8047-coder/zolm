@@ -24,7 +24,7 @@ class MarketplaceIntegrationsWooSafeProfileTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -71,7 +71,7 @@ class MarketplaceIntegrationsWooSafeProfileTest extends TestCase
             ->assertSet('syncForm.backfillMode', '7_days')
             ->assertSet('syncForm.backfillCustomFrom', '')
             ->assertSet('syncForm.backfillCustomTo', '')
-            ->assertSet('syncForm.webhookTopics', \App\Models\IntegrationSyncProfile::recommendedWooWebhookTopics())
+            ->assertSet('syncForm.webhookTopics', IntegrationSyncProfile::recommendedWooWebhookTopics())
             ->assertSet('syncForm.financeEnabled', false)
             ->assertSet('syncForm.pricePushEnabled', false)
             ->assertSet('syncForm.stockPushEnabled', false)
@@ -117,7 +117,7 @@ class MarketplaceIntegrationsWooSafeProfileTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Woo Ltd.',
-            'tax_number' => '8' . $suffix,
+            'tax_number' => '8'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -127,9 +127,9 @@ class MarketplaceIntegrationsWooSafeProfileTest extends TestCase
             'user_id' => $user->id,
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'woocommerce',
-            'store_name' => 'WOO ' . $prefix,
-            'store_code' => $prefix . '-' . $suffix,
-            'seller_id' => $prefix . '-' . $suffix,
+            'store_name' => 'WOO '.$prefix,
+            'store_code' => $prefix.'-'.$suffix,
+            'seller_id' => $prefix.'-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

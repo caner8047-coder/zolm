@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\MpProductsManager;
 use App\Jobs\SyncMarketplaceDataJob;
+use App\Livewire\MpProductsManager;
 use App\Models\ChannelListing;
 use App\Models\ChannelOrder;
 use App\Models\ChannelOrderItem;
@@ -38,7 +38,7 @@ class MpProductsManagerActionsTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -79,9 +79,9 @@ class MpProductsManagerActionsTest extends TestCase
             ->first();
 
         $this->assertNotNull($duplicate);
-        $this->assertSame($product->product_name . ' (Kopya)', $duplicate->product_name);
-        $this->assertStringStartsWith($product->barcode . '-KOPYA', (string) $duplicate->barcode);
-        $this->assertStringStartsWith($product->stock_code . '-KOPYA', (string) $duplicate->stock_code);
+        $this->assertSame($product->product_name.' (Kopya)', $duplicate->product_name);
+        $this->assertStringStartsWith($product->barcode.'-KOPYA', (string) $duplicate->barcode);
+        $this->assertStringStartsWith($product->stock_code.'-KOPYA', (string) $duplicate->stock_code);
     }
 
     public function test_delete_product_removes_record(): void
@@ -359,7 +359,7 @@ class MpProductsManagerActionsTest extends TestCase
 
         $component = Livewire::test(MpProductsManager::class)
             ->assertSee('Reçeteye bağlı ürün')
-            ->assertSee($product->stock_code . ' stok kodu aktif reçeteye bağlı');
+            ->assertSee($product->stock_code.' stok kodu aktif reçeteye bağlı');
 
         $queryMethod = new \ReflectionMethod(MpProductsManager::class, 'buildProductsQuery');
         $queryMethod->setAccessible(true);
@@ -642,7 +642,7 @@ class MpProductsManagerActionsTest extends TestCase
 
         $this->actingAs($user);
 
-        $scenario = (new MpProductsManager())->selectedProductCommissionScenario(
+        $scenario = (new MpProductsManager)->selectedProductCommissionScenario(
             $product->fresh()->load('channelListings.store')
         );
 
@@ -694,7 +694,7 @@ class MpProductsManagerActionsTest extends TestCase
 
         $this->actingAs($user);
 
-        $scenario = (new MpProductsManager())->selectedProductCommissionScenario(
+        $scenario = (new MpProductsManager)->selectedProductCommissionScenario(
             $product->fresh()->load('channelListings.store')
         );
 
@@ -743,7 +743,7 @@ class MpProductsManagerActionsTest extends TestCase
 
         $this->actingAs($user);
 
-        $scenario = (new MpProductsManager())->selectedProductCommissionScenario(
+        $scenario = (new MpProductsManager)->selectedProductCommissionScenario(
             $product->fresh()->load('channelListings.store')
         );
 
@@ -798,11 +798,11 @@ class MpProductsManagerActionsTest extends TestCase
 
         $this->actingAs($user);
 
-        $scenario = (new MpProductsManager())->selectedProductCommissionScenario(
+        $scenario = (new MpProductsManager)->selectedProductCommissionScenario(
             $product->fresh()->load('channelListings.store')
         );
 
-        $this->assertSame('manual:' . $product->id, $scenario['key']);
+        $this->assertSame('manual:'.$product->id, $scenario['key']);
         $this->assertSame('Manuel ürün komisyonu', $scenario['selection_label']);
         $this->assertSame(25.0, (float) $scenario['commission_rate']);
         $this->assertSame(125.0, (float) $scenario['commission_amount']);
@@ -1039,7 +1039,7 @@ class MpProductsManagerActionsTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'Zem Trendyol',
-            'seller_id' => 'TY-SELLER-' . $user->id,
+            'seller_id' => 'TY-SELLER-'.$user->id,
             'status' => 'active',
             'currency' => 'TRY',
             'is_active' => true,
@@ -1049,7 +1049,7 @@ class MpProductsManagerActionsTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'hepsiburada',
             'store_name' => 'Zem Hepsiburada',
-            'seller_id' => 'HB-SELLER-' . $user->id,
+            'seller_id' => 'HB-SELLER-'.$user->id,
             'status' => 'active',
             'currency' => 'TRY',
             'is_active' => true,
@@ -1139,7 +1139,7 @@ class MpProductsManagerActionsTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'Zem Trendyol',
-            'seller_id' => 'TY-SELLER-PRICE-' . $user->id,
+            'seller_id' => 'TY-SELLER-PRICE-'.$user->id,
             'status' => 'active',
             'currency' => 'TRY',
             'is_active' => true,
@@ -1149,7 +1149,7 @@ class MpProductsManagerActionsTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'hepsiburada',
             'store_name' => 'Zem Hepsiburada',
-            'seller_id' => 'HB-SELLER-PRICE-' . $user->id,
+            'seller_id' => 'HB-SELLER-PRICE-'.$user->id,
             'status' => 'active',
             'currency' => 'TRY',
             'is_active' => true,
@@ -1248,7 +1248,7 @@ class MpProductsManagerActionsTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'Zem Trendyol',
-            'seller_id' => 'TY-SELLER-PROFIT-' . $user->id,
+            'seller_id' => 'TY-SELLER-PROFIT-'.$user->id,
             'status' => 'active',
             'currency' => 'TRY',
             'is_active' => true,
@@ -1258,7 +1258,7 @@ class MpProductsManagerActionsTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'hepsiburada',
             'store_name' => 'Zem Hepsiburada',
-            'seller_id' => 'HB-SELLER-PROFIT-' . $user->id,
+            'seller_id' => 'HB-SELLER-PROFIT-'.$user->id,
             'status' => 'active',
             'currency' => 'TRY',
             'is_active' => true,
@@ -1446,7 +1446,7 @@ class MpProductsManagerActionsTest extends TestCase
             'external_product_id' => 'HB-QM-1',
             'stock_code' => $product->stock_code,
             'barcode' => $product->barcode,
-            'title' => 'HB ' . $product->product_name,
+            'title' => 'HB '.$product->product_name,
             'brand' => 'Zem',
             'category_name' => 'Mobilya',
             'last_synced_at' => now(),
@@ -1495,7 +1495,7 @@ class MpProductsManagerActionsTest extends TestCase
             ->call('openQuickMatchModal', $product->id)
             ->assertSet('showQuickMatchModal', true)
             ->assertSee('Hızlı Eşleştirme')
-            ->assertSee('HB ' . $product->product_name)
+            ->assertSee('HB '.$product->product_name)
             ->call('quickMatchIssue', $issue->id)
             ->assertSet('showQuickMatchModal', false);
 
@@ -1509,7 +1509,7 @@ class MpProductsManagerActionsTest extends TestCase
     {
         return LegalEntity::query()->create([
             'user_id' => $user->id,
-            'name' => 'Zem Test ' . $suffix,
+            'name' => 'Zem Test '.$suffix,
             'tax_number' => (string) (9000000000 + (int) $user->id),
             'company_type' => 'limited',
             'currency' => 'TRY',
@@ -1523,8 +1523,8 @@ class MpProductsManagerActionsTest extends TestCase
             'user_id' => $user->id,
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => $marketplace,
-            'store_name' => 'Zem ' . strtoupper($marketplace),
-            'seller_id' => $suffix . '-' . $user->id . '-' . substr(md5((string) microtime(true)), 0, 8),
+            'store_name' => 'Zem '.strtoupper($marketplace),
+            'seller_id' => $suffix.'-'.$user->id.'-'.substr(md5((string) microtime(true)), 0, 8),
             'status' => 'active',
             'currency' => 'TRY',
             'is_active' => true,
@@ -1655,12 +1655,12 @@ class MpProductsManagerActionsTest extends TestCase
      */
     protected function makeExcelUpload(array $rows, string $filename): UploadedFile
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->fromArray($rows, null, 'A1', true);
 
-        $path = storage_path('framework/testing/' . uniqid('mp-products-', true) . '-' . $filename);
-        if (!is_dir(dirname($path))) {
+        $path = storage_path('framework/testing/'.uniqid('mp-products-', true).'-'.$filename);
+        if (! is_dir(dirname($path))) {
             mkdir(dirname($path), 0777, true);
         }
 

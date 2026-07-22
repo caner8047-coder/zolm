@@ -18,6 +18,7 @@ use App\Models\TrendyolBoosterCommissionRate;
 use App\Models\TrendyolBoosterCompetitor;
 use App\Models\TrendyolBoosterCostPreset;
 use App\Models\TrendyolBoosterKeyword;
+use App\Models\TrendyolBoosterKeywordLookup;
 use App\Models\TrendyolBoosterProduct;
 use App\Models\TrendyolBoosterReview;
 use App\Models\TrendyolBoosterReviewSource;
@@ -52,9 +53,9 @@ use App\Services\Marketplace\TrendyolBoosterReadinessService;
 use App\Services\Marketplace\TrendyolBoosterResearchService;
 use App\Services\Marketplace\TrendyolBoosterRetentionCleanupService;
 use App\Services\Marketplace\TrendyolBoosterRetentionReportService;
+use App\Services\Marketplace\TrendyolBoosterReviewMatchEngine;
 use App\Services\Marketplace\TrendyolBoosterReviewPushService;
 use App\Services\Marketplace\TrendyolBoosterReviewService;
-use App\Services\Marketplace\TrendyolBoosterReviewMatchEngine;
 use App\Services\Marketplace\TrendyolBoosterScheduledAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterSellDecisionService;
 use App\Services\Marketplace\TrendyolBoosterShippingRateService;
@@ -89,7 +90,7 @@ class TrendyolBoosterTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         config()->set('marketplace.features.notifications_enabled', true);
@@ -3930,7 +3931,7 @@ class TrendyolBoosterTest extends TestCase
         $this->assertSame(0, data_get($report, 'summary.blocking_count'));
         $this->assertSame(0, data_get($report, 'summary.warning_count'));
         $this->assertSame('pass', data_get($checks, 'schema.status'));
-        $this->assertSame('24 tablo hazır.', data_get($checks, 'schema.detail'));
+        $this->assertSame('29 tablo hazır.', data_get($checks, 'schema.detail'));
         $this->assertSame('pass', data_get($checks, 'companion_version.status'));
         $this->assertSame($updatedAt->toISOString(), $tracked->fresh()->updated_at->toISOString());
     }
@@ -4236,7 +4237,7 @@ class TrendyolBoosterTest extends TestCase
             'result_count' => 77143,
         ]);
 
-        $lookup = \App\Models\TrendyolBoosterKeywordLookup::query()
+        $lookup = TrendyolBoosterKeywordLookup::query()
             ->where('user_id', $user->id)
             ->latest('id')
             ->firstOrFail();

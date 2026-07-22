@@ -34,7 +34,7 @@ class MarketplaceReportDigestTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         config()->set('marketplace.features.report_digest_enabled', true);
@@ -133,8 +133,8 @@ class MarketplaceReportDigestTest extends TestCase
             'legal_entity_id' => $entity->id,
             'store_name' => 'ZEM HOME',
             'marketplace' => 'trendyol',
-            'store_code' => 'ZEM-' . $suffix,
-            'seller_id' => 'TY-' . $suffix,
+            'store_code' => 'ZEM-'.$suffix,
+            'seller_id' => 'TY-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

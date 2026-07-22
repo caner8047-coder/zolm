@@ -32,7 +32,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -142,7 +142,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Woo Integrations Ltd.',
-            'tax_number' => '5' . $suffix,
+            'tax_number' => '5'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -153,8 +153,8 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'woocommerce',
             'store_name' => 'WOO SAFE GUIDE',
-            'store_code' => 'WOO-SAFE-' . $suffix,
-            'seller_id' => 'WOO-SAFE-' . $suffix,
+            'store_code' => 'WOO-SAFE-'.$suffix,
+            'seller_id' => 'WOO-SAFE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -216,8 +216,8 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $pendingOrderNumber = 'INT-LEG-PEND-' . random_int(100000, 999999);
-        $confirmedOrderNumber = 'INT-LEG-CONF-' . random_int(100000, 999999);
+        $pendingOrderNumber = 'INT-LEG-PEND-'.random_int(100000, 999999);
+        $confirmedOrderNumber = 'INT-LEG-CONF-'.random_int(100000, 999999);
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -268,7 +268,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'channel_order_id' => $confirmedOrder->id,
             'event_source' => 'legacy_mp_order',
             'event_type' => 'seller_revenue',
-            'external_event_id' => sha1('int-legacy-' . $confirmedOrderNumber),
+            'external_event_id' => sha1('int-legacy-'.$confirmedOrderNumber),
             'reference_number' => $confirmedOrderNumber,
             'event_date' => now()->subHours(5),
             'settlement_date' => now()->subHours(5),
@@ -327,7 +327,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'INT-LEG-PREV-' . random_int(100000, 999999);
+        $orderNumber = 'INT-LEG-PREV-'.random_int(100000, 999999);
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -374,7 +374,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'INT-LEG-EXEC-' . random_int(100000, 999999);
+        $orderNumber = 'INT-LEG-EXEC-'.random_int(100000, 999999);
 
         $channelOrder = ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -433,7 +433,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Woo Topic Integrations Ltd.',
-            'tax_number' => '6' . $suffix,
+            'tax_number' => '6'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -444,8 +444,8 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'woocommerce',
             'store_name' => 'WOO TOPIC INTEGRATIONS',
-            'store_code' => 'WOO-TOPIC-INT-' . $suffix,
-            'seller_id' => 'WOO-TOPIC-INT-' . $suffix,
+            'store_code' => 'WOO-TOPIC-INT-'.$suffix,
+            'seller_id' => 'WOO-TOPIC-INT-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -505,7 +505,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Shopify Topic Integrations Ltd.',
-            'tax_number' => '3' . $suffix,
+            'tax_number' => '3'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -516,8 +516,8 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'SHOPIFY TOPIC INTEGRATIONS',
-            'store_code' => 'SHOP-INT-' . $suffix,
-            'seller_id' => 'SHOP-INT-' . $suffix,
+            'store_code' => 'SHOP-INT-'.$suffix,
+            'seller_id' => 'SHOP-INT-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -578,7 +578,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Shopify Topic Apply Ltd.',
-            'tax_number' => '2' . $suffix,
+            'tax_number' => '2'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -589,8 +589,8 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'SHOPIFY TOPIC APPLY',
-            'store_code' => 'SHOP-APPLY-' . $suffix,
-            'seller_id' => 'SHOP-APPLY-' . $suffix,
+            'store_code' => 'SHOP-APPLY-'.$suffix,
+            'seller_id' => 'SHOP-APPLY-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -641,7 +641,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             ->assertSet('selectedStoreId', $store->id)
             ->call('applyRecommendedWebhookTopics')
             ->assertSet('syncForm.webhookEnabled', true)
-            ->assertSet('syncForm.webhookTopics', \App\Models\IntegrationSyncProfile::recommendedShopifyWebhookTopics())
+            ->assertSet('syncForm.webhookTopics', IntegrationSyncProfile::recommendedShopifyWebhookTopics())
             ->assertSet('flashMessageType', 'success');
     }
 
@@ -653,7 +653,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Shopify Safe Integrations Ltd.',
-            'tax_number' => '1' . $suffix,
+            'tax_number' => '1'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -664,8 +664,8 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'SHOPIFY SAFE INTEGRATIONS',
-            'store_code' => 'SHOP-SAFE-INT-' . $suffix,
-            'seller_id' => 'SHOP-SAFE-INT-' . $suffix,
+            'store_code' => 'SHOP-SAFE-INT-'.$suffix,
+            'seller_id' => 'SHOP-SAFE-INT-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -726,7 +726,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Shopify Apply Ltd.',
-            'tax_number' => '5' . $suffix,
+            'tax_number' => '5'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -737,8 +737,8 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'SHOPIFY APPLY SAFE',
-            'store_code' => 'SHOP-APPLY-SAFE-' . $suffix,
-            'seller_id' => 'SHOP-APPLY-SAFE-' . $suffix,
+            'store_code' => 'SHOP-APPLY-SAFE-'.$suffix,
+            'seller_id' => 'SHOP-APPLY-SAFE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -795,7 +795,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             ->assertSet('syncForm.productsPollMinutes', 720)
             ->assertSet('syncForm.backfillMode', '7_days')
             ->assertSet('syncForm.webhookEnabled', true)
-            ->assertSet('syncForm.webhookTopics', \App\Models\IntegrationSyncProfile::recommendedShopifyWebhookTopics())
+            ->assertSet('syncForm.webhookTopics', IntegrationSyncProfile::recommendedShopifyWebhookTopics())
             ->assertSet('syncForm.pricePushEnabled', false)
             ->assertSet('syncForm.stockPushEnabled', false)
             ->assertSet('syncForm.maxParallelJobs', 1)
@@ -811,7 +811,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Integrations Legacy Finance Ltd.',
-            'tax_number' => '1' . $suffix,
+            'tax_number' => '1'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -822,8 +822,8 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'INTEGRATIONS LEGACY FIN',
-            'store_code' => 'INT-LEG-' . $suffix,
-            'seller_id' => 'INT-LEG-' . $suffix,
+            'store_code' => 'INT-LEG-'.$suffix,
+            'seller_id' => 'INT-LEG-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -856,7 +856,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'INT-LEGACY-' . $suffix;
+        $orderNumber = 'INT-LEGACY-'.$suffix;
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -896,7 +896,7 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Guidance Integrations Ltd.',
-            'tax_number' => '4' . $suffix,
+            'tax_number' => '4'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -906,9 +906,9 @@ class MarketplaceIntegrationsGuidanceTest extends TestCase
             'user_id' => $user->id,
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
-            'store_name' => 'ZEM ' . $prefix,
-            'store_code' => $prefix . '-' . $suffix,
-            'seller_id' => $prefix . '-' . $suffix,
+            'store_name' => 'ZEM '.$prefix,
+            'store_code' => $prefix.'-'.$suffix,
+            'seller_id' => $prefix.'-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

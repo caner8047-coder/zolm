@@ -6,8 +6,8 @@ use App\Jobs\SyncMarketplaceDataJob;
 use App\Livewire\MarketplaceFinance;
 use App\Models\ChannelOrder;
 use App\Models\IntegrationConnection;
-use App\Models\IntegrationSyncRun;
 use App\Models\IntegrationSyncProfile;
+use App\Models\IntegrationSyncRun;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
 use App\Models\MpOrder;
@@ -16,6 +16,7 @@ use App\Models\OrderFinancialEvent;
 use App\Models\OrderProfitSnapshot;
 use App\Models\User;
 use App\Services\MpSettingsService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -33,7 +34,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -49,7 +50,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Finance Guidance Ltd.',
-            'tax_number' => '2' . $suffix,
+            'tax_number' => '2'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -60,8 +61,8 @@ class MarketplaceFinanceGuidanceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM FIN GUIDE',
-            'store_code' => 'FIN-GUIDE-' . $suffix,
-            'seller_id' => 'FIN-GUIDE-' . $suffix,
+            'store_code' => 'FIN-GUIDE-'.$suffix,
+            'seller_id' => 'FIN-GUIDE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -174,7 +175,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'FIN-LEGACY-' . random_int(100000, 999999);
+        $orderNumber = 'FIN-LEGACY-'.random_int(100000, 999999);
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -216,7 +217,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'FIN-CARD-' . random_int(100000, 999999);
+        $orderNumber = 'FIN-CARD-'.random_int(100000, 999999);
 
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -241,7 +242,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
             'projected_at' => now()->subMinutes(10),
         ]);
 
-        \App\Models\OrderFinancialEvent::query()->create([
+        OrderFinancialEvent::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $store->legal_entity_id,
             'channel_order_id' => $order->id,
@@ -257,7 +258,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
             'status' => 'posted',
         ]);
 
-        \App\Models\OrderProfitSnapshot::query()->create([
+        OrderProfitSnapshot::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
             'channel_order_item_id' => null,
@@ -307,8 +308,8 @@ class MarketplaceFinanceGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $pendingOrderNumber = 'FIN-PEND-' . random_int(100000, 999999);
-        $confirmedOrderNumber = 'FIN-CONF-' . random_int(100000, 999999);
+        $pendingOrderNumber = 'FIN-PEND-'.random_int(100000, 999999);
+        $confirmedOrderNumber = 'FIN-CONF-'.random_int(100000, 999999);
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -428,7 +429,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
             'store_id' => $store->id,
             'legal_entity_id' => $store->legal_entity_id,
             'source_marketplace' => 'trendyol',
-            'order_number' => $orderNumber = 'FIN-FOCUS-' . random_int(100000, 999999),
+            'order_number' => $orderNumber = 'FIN-FOCUS-'.random_int(100000, 999999),
             'status' => 'Teslim Edildi',
             'order_date' => now()->subDay(),
             'payment_date' => now()->subHours(6)->toDateString(),
@@ -470,7 +471,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'FIN-CONF-FOCUS-' . random_int(100000, 999999);
+        $orderNumber = 'FIN-CONF-FOCUS-'.random_int(100000, 999999);
 
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -556,7 +557,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Finance Guidance Ltd.',
-            'tax_number' => $prefix . $suffix,
+            'tax_number' => $prefix.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -567,8 +568,8 @@ class MarketplaceFinanceGuidanceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM FIN GUIDE',
-            'store_code' => 'FIN-GUIDE-' . $suffix,
-            'seller_id' => 'FIN-GUIDE-' . $suffix,
+            'store_code' => 'FIN-GUIDE-'.$suffix,
+            'seller_id' => 'FIN-GUIDE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -598,14 +599,14 @@ class MarketplaceFinanceGuidanceTest extends TestCase
 
         $this->actingAs($user);
 
-        \Carbon\Carbon::setTestNow('2026-07-01 12:00:00');
+        Carbon::setTestNow('2026-07-01 12:00:00');
 
         try {
             Livewire::test(MarketplaceFinance::class)
                 ->assertSet('dateFrom', '2026-06-24')
                 ->assertSet('dateTo', '2026-07-01');
         } finally {
-            \Carbon\Carbon::setTestNow(null);
+            Carbon::setTestNow(null);
         }
     }
 
@@ -644,7 +645,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
 
         $this->actingAs($user);
 
-        \Carbon\Carbon::setTestNow('2026-07-01 12:00:00');
+        Carbon::setTestNow('2026-07-01 12:00:00');
 
         try {
             Livewire::test(MarketplaceFinance::class)
@@ -654,7 +655,7 @@ class MarketplaceFinanceGuidanceTest extends TestCase
                 ->assertSet('dateFrom', '2026-05-02')
                 ->assertSet('dateTo', '2026-07-01');
         } finally {
-            \Carbon\Carbon::setTestNow(null);
+            Carbon::setTestNow(null);
         }
     }
 }

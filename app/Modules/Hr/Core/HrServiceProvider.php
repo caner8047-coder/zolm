@@ -3,6 +3,7 @@
 namespace App\Modules\Hr\Core;
 
 use App\Models\HrFile;
+use App\Modules\Hr\Core\Livewire\HrComplianceWidget;
 use App\Modules\Hr\Core\Policies\HrFilePolicy;
 use App\Modules\Hr\Core\Services\ConfigBasedMalwareScanner;
 use App\Modules\Hr\Core\Services\HrAuditService;
@@ -10,11 +11,10 @@ use App\Modules\Hr\Core\Services\HrCalendarService;
 use App\Modules\Hr\Core\Services\HrFileService;
 use App\Modules\Hr\Core\Services\MalwareScanner;
 use App\Modules\Hr\Core\Services\TenantContext;
-use App\Modules\Hr\Core\Livewire\HrComplianceWidget;
 use App\Modules\Hr\Document\Events\EmployeeDocumentExpired;
 use App\Modules\Hr\Document\Events\EmployeeDocumentRejected;
-use App\Modules\Hr\Document\Events\EmployeeDocumentRequestFulfilled;
 use App\Modules\Hr\Document\Events\EmployeeDocumentRequested;
+use App\Modules\Hr\Document\Events\EmployeeDocumentRequestFulfilled;
 use App\Modules\Hr\Document\Events\EmployeeDocumentUploaded;
 use App\Modules\Hr\Document\Events\EmployeeDocumentVerified;
 use App\Modules\Hr\Document\Listeners\FulfillDocumentRequest;
@@ -25,15 +25,15 @@ use App\Modules\Hr\Document\Models\HrDocumentType;
 use App\Modules\Hr\Document\Models\HrEmployeeDocument;
 use App\Modules\Hr\Document\Policies\HrDocumentTypePolicy;
 use App\Modules\Hr\Document\Policies\HrEmployeeDocumentPolicy;
+use App\Modules\Hr\Leave\Events\LeaveApproved;
+use App\Modules\Hr\Leave\Events\LeaveCancelled;
+use App\Modules\Hr\Leave\Events\LeaveRejected;
+use App\Modules\Hr\Leave\Events\LeaveRequested;
+use App\Modules\Hr\Leave\Listeners\LogLeaveEvent;
 use App\Modules\Hr\Leave\Models\HrLeaveRequest;
 use App\Modules\Hr\Leave\Models\HrLeaveType;
 use App\Modules\Hr\Leave\Policies\HrLeaveRequestPolicy;
 use App\Modules\Hr\Leave\Policies\HrLeaveTypePolicy;
-use App\Modules\Hr\Leave\Events\LeaveRequested;
-use App\Modules\Hr\Leave\Events\LeaveApproved;
-use App\Modules\Hr\Leave\Events\LeaveRejected;
-use App\Modules\Hr\Leave\Events\LeaveCancelled;
-use App\Modules\Hr\Leave\Listeners\LogLeaveEvent;
 use App\Modules\Hr\Organization\Models\HrDepartment;
 use App\Modules\Hr\Organization\Models\HrDepartmentPolicy;
 use App\Modules\Hr\Organization\Models\HrSgkWorkplace;
@@ -61,8 +61,8 @@ class HrServiceProvider extends ServiceProvider
     {
         Livewire::component('hr.core.hr-compliance-widget', HrComplianceWidget::class);
 
-        Route::middleware('web')->group(__DIR__ . '/Routes/hr.php');
-        $this->loadViewsFrom(__DIR__ . '/Resources/views', 'hr');
+        Route::middleware('web')->group(__DIR__.'/Routes/hr.php');
+        $this->loadViewsFrom(__DIR__.'/Resources/views', 'hr');
         $this->mergeConfigFrom(base_path('config/hr.php'), 'hr');
 
         $this->publishes([

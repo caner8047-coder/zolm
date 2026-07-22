@@ -1,7 +1,22 @@
 <?php
 
+use App\Jobs\SyncMarketplaceBuyboxJob;
+use App\Jobs\SyncMarketplaceCargoInvoiceJob;
+use App\Jobs\SyncMarketplaceReferenceJob;
+use App\Jobs\TrackMarketplaceBatchRequestsJob;
+use App\Models\LegalEntity;
+use App\Models\MarketplaceStore;
+use App\Modules\Hr\Core\Services\TenantContext;
+use App\Modules\Hr\Document\Jobs\MarkExpiredEmployeeDocumentsJob;
+use App\Modules\Hr\Document\Jobs\MarkOverdueDocumentRequestsJob;
+use App\Modules\Hr\Document\Jobs\NotifyExpiringEmployeeDocumentsJob;
+use App\Modules\Hr\Document\Jobs\SendPendingDocumentRequestRemindersJob;
+use App\Services\Returns\ReturnAutoDecisionPolicyService;
+use App\Services\Returns\ReturnDailyReportService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('hr:performance-reminders')->dailyAt('09:00')->withoutOverlapping();
@@ -12,13 +27,13 @@ Artisan::command('inspire', function () {
 
 Artisan::command('returns:run-auto-policies {--item=} {--date=} {--limit=} {--dry-run} {--allow-marketplace}', function () {
     $date = filled($this->option('date'))
-        ? \Carbon\Carbon::parse((string) $this->option('date'))
+        ? Carbon::parse((string) $this->option('date'))
         : null;
     $itemId = filled($this->option('item')) ? (int) $this->option('item') : null;
     $limit = filled($this->option('limit')) ? (int) $this->option('limit') : null;
     $allowMarketplace = (bool) $this->option('allow-marketplace') ? true : null;
 
-    $summary = app(\App\Services\Returns\ReturnAutoDecisionPolicyService::class)->run(
+    $summary = app(ReturnAutoDecisionPolicyService::class)->run(
         dryRun: (bool) $this->option('dry-run'),
         date: $date,
         itemId: $itemId,
@@ -40,9 +55,9 @@ Artisan::command('returns:run-auto-policies {--item=} {--date=} {--limit=} {--dr
 
 Artisan::command('returns:daily-report {--date=} {--persist}', function () {
     $date = filled($this->option('date'))
-        ? \Carbon\Carbon::parse((string) $this->option('date'))
+        ? Carbon::parse((string) $this->option('date'))
         : today();
-    $service = app(\App\Services\Returns\ReturnDailyReportService::class);
+    $service = app(ReturnDailyReportService::class);
     $report = (bool) $this->option('persist')
         ? $service->persist($date)->toArray()
         : $service->build($date);
@@ -214,16 +229,16 @@ Schedule::call(fn () => $runInlineCommand('customer-care:reconcile-projections',
 // Tüm job'lar tenant bazlı çalışır: aktif her tüzel kişilik için ayrı dispatch.
 // Job'lar kendi TenantContext'lerini kurar ve finally ile temizler (HrJob).
 $runHrDocumentJobs = function (string $jobClass): void {
-    $tenants = \App\Models\LegalEntity::where('is_active', true)->get();
-    $context = app(\App\Modules\Hr\Core\Services\TenantContext::class);
+    $tenants = LegalEntity::where('is_active', true)->get();
+    $context = app(TenantContext::class);
 
     foreach ($tenants as $tenant) {
         $context->set($tenant);
         try {
             // Sync çalıştırma: scheduler süreci içinde güvenli ve kararlı.
             $jobClass::dispatchSync();
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('HR belge job dispatch başarısız', [
+        } catch (Throwable $e) {
+            Log::warning('HR belge job dispatch başarısız', [
                 'tenant_id' => $tenant->id,
                 'job' => $jobClass,
                 'error' => $e->getMessage(),
@@ -235,37 +250,37 @@ $runHrDocumentJobs = function (string $jobClass): void {
 };
 
 // Süresi dolmuş belgeleri expired işaretle (günlük 01:00)
-Schedule::call(fn () => $runHrDocumentJobs(\App\Modules\Hr\Document\Jobs\MarkExpiredEmployeeDocumentsJob::class))
+Schedule::call(fn () => $runHrDocumentJobs(MarkExpiredEmployeeDocumentsJob::class))
     ->name('hr-mark-expired-documents')
     ->dailyAt('01:00')
     ->withoutOverlapping();
 
 // Süresi yaklaşan belgeler için hatırlatma (günlük 01:15)
-Schedule::call(fn () => $runHrDocumentJobs(\App\Modules\Hr\Document\Jobs\NotifyExpiringEmployeeDocumentsJob::class))
+Schedule::call(fn () => $runHrDocumentJobs(NotifyExpiringEmployeeDocumentsJob::class))
     ->name('hr-notify-expiring-documents')
     ->dailyAt('01:15')
     ->withoutOverlapping();
 
 // Geciken belge taleplerini overdue işaretle (günlük 01:30)
-Schedule::call(fn () => $runHrDocumentJobs(\App\Modules\Hr\Document\Jobs\MarkOverdueDocumentRequestsJob::class))
+Schedule::call(fn () => $runHrDocumentJobs(MarkOverdueDocumentRequestsJob::class))
     ->name('hr-mark-overdue-document-requests')
     ->dailyAt('01:30')
     ->withoutOverlapping();
 
 // Bekleyen belge talepleri için hatırlatma (günlük 01:45)
-Schedule::call(fn () => $runHrDocumentJobs(\App\Modules\Hr\Document\Jobs\SendPendingDocumentRequestRemindersJob::class))
+Schedule::call(fn () => $runHrDocumentJobs(SendPendingDocumentRequestRemindersJob::class))
     ->name('hr-send-pending-document-request-reminders')
     ->dailyAt('01:45')
     ->withoutOverlapping();
 
 // Trendyol Sprint 1: Buybox, References, Batch Tracking
 Schedule::call(function () {
-    $stores = \App\Models\MarketplaceStore::where('marketplace', 'trendyol')
-        ->whereHas('connection', fn ($query) => $query->where('status', 'active'))
+    $stores = MarketplaceStore::where('marketplace', 'trendyol')
+        ->whereHas('connection', fn ($query) => $query->operational())
         ->get();
 
     foreach ($stores as $store) {
-        dispatch(new \App\Jobs\SyncMarketplaceBuyboxJob($store));
+        dispatch(new SyncMarketplaceBuyboxJob($store));
     }
 })
     ->name('marketplace-sync-buybox')
@@ -273,12 +288,12 @@ Schedule::call(function () {
     ->withoutOverlapping();
 
 Schedule::call(function () {
-    $stores = \App\Models\MarketplaceStore::where('marketplace', 'trendyol')
-        ->whereHas('connection', fn ($query) => $query->where('status', 'active'))
+    $stores = MarketplaceStore::where('marketplace', 'trendyol')
+        ->whereHas('connection', fn ($query) => $query->operational())
         ->get();
 
     foreach ($stores as $store) {
-        dispatch(new \App\Jobs\SyncMarketplaceReferenceJob($store));
+        dispatch(new SyncMarketplaceReferenceJob($store));
     }
 })
     ->name('marketplace-sync-references')
@@ -286,19 +301,19 @@ Schedule::call(function () {
     ->withoutOverlapping();
 
 Schedule::call(function () {
-    $stores = \App\Models\MarketplaceStore::where('marketplace', 'trendyol')
-        ->whereHas('connection', fn ($query) => $query->where('status', 'active'))
+    $stores = MarketplaceStore::where('marketplace', 'trendyol')
+        ->whereHas('connection', fn ($query) => $query->operational())
         ->get();
 
     foreach ($stores as $store) {
-        dispatch(new \App\Jobs\SyncMarketplaceCargoInvoiceJob($store));
+        dispatch(new SyncMarketplaceCargoInvoiceJob($store));
     }
 })
     ->name('marketplace-sync-cargo-invoices')
     ->dailyAt('05:00')
     ->withoutOverlapping();
 
-Schedule::job(new \App\Jobs\TrackMarketplaceBatchRequestsJob)
+Schedule::job(new TrackMarketplaceBatchRequestsJob)
     ->name('marketplace-track-batch-requests')
     ->everyFiveMinutes()
     ->withoutOverlapping();

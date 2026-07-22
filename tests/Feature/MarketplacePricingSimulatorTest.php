@@ -28,7 +28,7 @@ class MarketplacePricingSimulatorTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         config()->set('marketplace.features.pricing_simulator_enabled', true);
@@ -206,14 +206,14 @@ class MarketplacePricingSimulatorTest extends TestCase
     {
         $suffix = (string) random_int(100000, 999999);
         $user = User::factory()->create([
-            'email' => 'pricing-' . Str::uuid() . '@example.test',
+            'email' => 'pricing-'.Str::uuid().'@example.test',
             'role' => 'admin',
             'is_active' => true,
         ]);
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Pricing Test Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => '7'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -223,8 +223,8 @@ class MarketplacePricingSimulatorTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'Pricing Store',
-            'store_code' => 'PRICE-' . $suffix,
-            'seller_id' => 'PRICE-' . $suffix,
+            'store_code' => 'PRICE-'.$suffix,
+            'seller_id' => 'PRICE-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -232,8 +232,8 @@ class MarketplacePricingSimulatorTest extends TestCase
         ]);
         $product = MpProduct::query()->create([
             'user_id' => $user->id,
-            'barcode' => 'PRICE-' . $suffix,
-            'stock_code' => 'PRICE-' . $suffix,
+            'barcode' => 'PRICE-'.$suffix,
+            'stock_code' => 'PRICE-'.$suffix,
             'product_name' => 'Fiyatlandırma Test Ürünü',
             'sale_price' => 1400,
             'market_price' => 1600,
@@ -249,7 +249,7 @@ class MarketplacePricingSimulatorTest extends TestCase
         $listing = ChannelListing::query()->create([
             'store_id' => $store->id,
             'mp_product_id' => $product->id,
-            'listing_id' => 'LIST-' . $suffix,
+            'listing_id' => 'LIST-'.$suffix,
             'listing_status' => 'active',
             'sale_price' => 1500,
             'list_price' => 1600,

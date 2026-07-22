@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,13 @@ class IntegrationConnection extends Model
     use HasFactory;
 
     public const STATUS_DEMO = 'demo';
+
+    public const OPERATIONAL_STATUSES = [
+        'configured',
+        'verified',
+        'active',
+        'connected',
+    ];
 
     protected $fillable = [
         'store_id',
@@ -42,5 +50,15 @@ class IntegrationConnection extends Model
     public function isDemo(): bool
     {
         return $this->status === self::STATUS_DEMO;
+    }
+
+    public function isOperational(): bool
+    {
+        return in_array($this->status, self::OPERATIONAL_STATUSES, true);
+    }
+
+    public function scopeOperational(Builder $query): Builder
+    {
+        return $query->whereIn('status', self::OPERATIONAL_STATUSES);
     }
 }

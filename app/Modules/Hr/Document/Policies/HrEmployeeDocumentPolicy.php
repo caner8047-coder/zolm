@@ -16,42 +16,63 @@ class HrEmployeeDocumentPolicy extends HrBasePolicy
 
     public function view(User $user, HrEmployeeDocument $document): bool
     {
-        if ($document->legal_entity_id !== app(TenantContext::class)->getId()) {
-            return false;
-        }
-
-        // Hassas belge için ek izin
-        if ($document->documentType && $document->documentType->sensitivity->value === 'highly_sensitive') {
-            return $this->checkPermission($user, 'hr.documents.view_sensitive');
-        }
-
-        if ($document->documentType && $document->documentType->category->value === 'health') {
-            return $this->checkPermission($user, 'hr.documents.view_health');
-        }
-
-        return $this->checkPermission($user, 'hr.documents.view');
+        return $this->belongsToCurrentTenant($document)
+            && $this->checkPermission($user, 'hr.documents.view')
+            && $this->canAccessProtectedContent($user, $document);
     }
 
     public function download(User $user, HrEmployeeDocument $document): bool
     {
-        if ($document->legal_entity_id !== app(TenantContext::class)->getId()) {
-            return false;
-        }
-
-        return $this->checkPermission($user, 'hr.documents.download');
+        return $this->belongsToCurrentTenant($document)
+            && $this->checkPermission($user, 'hr.documents.download')
+            && $this->canAccessProtectedContent($user, $document);
     }
 
     public function verify(User $user, HrEmployeeDocument $document): bool
     {
-        if ($document->legal_entity_id !== app(TenantContext::class)->getId()) {
-            return false;
-        }
-
-        return $this->checkPermission($user, 'hr.documents.verify');
+        return $this->belongsToCurrentTenant($document)
+            && $this->checkPermission($user, 'hr.documents.verify')
+            && $this->canAccessProtectedContent($user, $document);
     }
 
     public function upload(User $user): bool
     {
         return $this->checkPermission($user, 'hr.documents.create');
+    }
+
+    public function uploadVersion(User $user, HrEmployeeDocument $document): bool
+    {
+        return $this->belongsToCurrentTenant($document)
+            && $this->checkPermission($user, 'hr.documents.create')
+            && $this->canAccessProtectedContent($user, $document);
+    }
+
+    public function archive(User $user, HrEmployeeDocument $document): bool
+    {
+        return $this->belongsToCurrentTenant($document)
+            && $this->checkPermission($user, 'hr.documents.archive')
+            && $this->canAccessProtectedContent($user, $document);
+    }
+
+    private function belongsToCurrentTenant(HrEmployeeDocument $document): bool
+    {
+        return $document->legal_entity_id === app(TenantContext::class)->getId();
+    }
+
+    private function canAccessProtectedContent(User $user, HrEmployeeDocument $document): bool
+    {
+        $type = $document->documentType;
+
+        if ($type?->sensitivity?->value === 'highly_sensitive'
+            && ! $this->checkPermission($user, 'hr.documents.view_sensitive')) {
+            return false;
+        }
+
+        if ($type?->category?->value === 'health'
+            && ! $this->checkPermission($user, 'hr.documents.view_health')) {
+            return false;
+        }
+
+        return true;
     }
 }

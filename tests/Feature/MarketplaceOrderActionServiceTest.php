@@ -29,7 +29,7 @@ class MarketplaceOrderActionServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -188,7 +188,7 @@ class MarketplaceOrderActionServiceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Test Ltd.',
-            'tax_number' => '1' . $suffix,
+            'tax_number' => '1'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -199,7 +199,7 @@ class MarketplaceOrderActionServiceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM HOME',
-            'store_code' => 'ZEM-' . $suffix,
+            'store_code' => 'ZEM-'.$suffix,
             'seller_id' => $suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
@@ -229,8 +229,8 @@ class MarketplaceOrderActionServiceTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $legalEntity->id,
-            'external_order_id' => 'TY-ORDER-' . $suffix,
-            'order_number' => 'TY-ORDER-' . $suffix,
+            'external_order_id' => 'TY-ORDER-'.$suffix,
+            'order_number' => 'TY-ORDER-'.$suffix,
             'order_status' => 'Created',
             'customer_name' => 'Test Müşteri',
             'ordered_at' => now(),
@@ -239,10 +239,10 @@ class MarketplaceOrderActionServiceTest extends TestCase
         $package = ChannelOrderPackage::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_package_id' => 'PKG-' . $suffix,
-            'package_number' => 'PKG-' . $suffix,
+            'external_package_id' => 'PKG-'.$suffix,
+            'package_number' => 'PKG-'.$suffix,
             'package_status' => 'Created',
-            'cargo_tracking_number' => 'TRK-' . $suffix,
+            'cargo_tracking_number' => 'TRK-'.$suffix,
         ]);
 
         return [$user, $store, $order, $package];

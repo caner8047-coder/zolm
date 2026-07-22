@@ -22,7 +22,7 @@ class MarketplaceDiagnosticsReportServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -38,7 +38,7 @@ class MarketplaceDiagnosticsReportServiceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Diagnostics Ltd.',
-            'tax_number' => '3' . $suffix,
+            'tax_number' => '3'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -49,8 +49,8 @@ class MarketplaceDiagnosticsReportServiceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM DIAG',
-            'store_code' => 'DIAG-' . $suffix,
-            'seller_id' => 'DIAG-' . $suffix,
+            'store_code' => 'DIAG-'.$suffix,
+            'seller_id' => 'DIAG-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

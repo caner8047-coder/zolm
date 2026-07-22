@@ -30,7 +30,7 @@ class MarketplaceOverviewGuidanceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -141,7 +141,7 @@ class MarketplaceOverviewGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Woo Guidance Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => '7'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -152,8 +152,8 @@ class MarketplaceOverviewGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'woocommerce',
             'store_name' => 'WOO GUIDE',
-            'store_code' => 'WOO-' . $suffix,
-            'seller_id' => 'WOO-' . $suffix,
+            'store_code' => 'WOO-'.$suffix,
+            'seller_id' => 'WOO-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -211,7 +211,7 @@ class MarketplaceOverviewGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Woo Topic Overview Ltd.',
-            'tax_number' => '9' . $suffix,
+            'tax_number' => '9'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -222,8 +222,8 @@ class MarketplaceOverviewGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'woocommerce',
             'store_name' => 'WOO TOPIC OVERVIEW',
-            'store_code' => 'WOO-TOPIC-OV-' . $suffix,
-            'seller_id' => 'WOO-TOPIC-OV-' . $suffix,
+            'store_code' => 'WOO-TOPIC-OV-'.$suffix,
+            'seller_id' => 'WOO-TOPIC-OV-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -287,7 +287,7 @@ class MarketplaceOverviewGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Shopify Topic Overview Ltd.',
-            'tax_number' => '1' . $suffix,
+            'tax_number' => '1'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -298,8 +298,8 @@ class MarketplaceOverviewGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'SHOPIFY TOPIC OVERVIEW',
-            'store_code' => 'SHOP-OV-' . $suffix,
-            'seller_id' => 'SHOP-OV-' . $suffix,
+            'store_code' => 'SHOP-OV-'.$suffix,
+            'seller_id' => 'SHOP-OV-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -364,7 +364,7 @@ class MarketplaceOverviewGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Shopify Safe Overview Ltd.',
-            'tax_number' => '8' . $suffix,
+            'tax_number' => '8'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -375,8 +375,8 @@ class MarketplaceOverviewGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'SHOPIFY SAFE OVERVIEW',
-            'store_code' => 'SHOP-SAFE-OV-' . $suffix,
-            'seller_id' => 'SHOP-SAFE-OV-' . $suffix,
+            'store_code' => 'SHOP-SAFE-OV-'.$suffix,
+            'seller_id' => 'SHOP-SAFE-OV-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -441,7 +441,7 @@ class MarketplaceOverviewGuidanceTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Overview Legacy Finance Ltd.',
-            'tax_number' => '1' . $suffix,
+            'tax_number' => '1'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -452,8 +452,8 @@ class MarketplaceOverviewGuidanceTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'OVERVIEW LEGACY FIN',
-            'store_code' => 'OV-LEG-' . $suffix,
-            'seller_id' => 'OV-LEG-' . $suffix,
+            'store_code' => 'OV-LEG-'.$suffix,
+            'seller_id' => 'OV-LEG-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -486,7 +486,7 @@ class MarketplaceOverviewGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'OVERVIEW-LEGACY-' . $suffix;
+        $orderNumber = 'OVERVIEW-LEGACY-'.$suffix;
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -524,8 +524,8 @@ class MarketplaceOverviewGuidanceTest extends TestCase
 
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
-            'name' => 'Zem ' . $prefix . ' Ltd.',
-            'tax_number' => '6' . $suffix,
+            'name' => 'Zem '.$prefix.' Ltd.',
+            'tax_number' => '6'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -535,9 +535,9 @@ class MarketplaceOverviewGuidanceTest extends TestCase
             'user_id' => $user->id,
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
-            'store_name' => 'ZEM ' . $prefix,
-            'store_code' => $prefix . '-' . $suffix,
-            'seller_id' => $prefix . '-' . $suffix,
+            'store_name' => 'ZEM '.$prefix,
+            'store_code' => $prefix.'-'.$suffix,
+            'seller_id' => $prefix.'-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

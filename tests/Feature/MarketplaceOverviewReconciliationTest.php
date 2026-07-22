@@ -31,7 +31,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -47,7 +47,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Overview Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => '7'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -58,15 +58,15 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM OVERVIEW',
-            'store_code' => 'ZEM-OVR-' . $suffix,
-            'seller_id' => 'OVR-' . $suffix,
+            'store_code' => 'ZEM-OVR-'.$suffix,
+            'seller_id' => 'OVR-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
             'is_active' => true,
         ]);
 
-        $this->createOrder($store, $legalEntity, 'OVR-MAT-' . $suffix, 1000, 10, [
+        $this->createOrder($store, $legalEntity, 'OVR-MAT-'.$suffix, 1000, 10, [
             'gross_revenue' => 1000,
             'commission_total' => 100,
             'cargo_total' => 50,
@@ -76,7 +76,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'confirmed_profit' => 250,
         ], true);
 
-        $this->createOrder($store, $legalEntity, 'OVR-WAIT-' . $suffix, 300, 10, [
+        $this->createOrder($store, $legalEntity, 'OVR-WAIT-'.$suffix, 300, 10, [
             'gross_revenue' => 300,
             'commission_total' => 30,
             'cargo_total' => 0,
@@ -86,7 +86,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'confirmed_profit' => 0,
         ], false, 'estimated');
 
-        $this->createOrder($store, $legalEntity, 'OVR-MISS-' . $suffix, 700, 12, null, true);
+        $this->createOrder($store, $legalEntity, 'OVR-MISS-'.$suffix, 700, 12, null, true);
 
         $this->actingAs($user);
 
@@ -109,7 +109,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Overview Legacy Ltd.',
-            'tax_number' => '5' . $suffix,
+            'tax_number' => '5'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -120,8 +120,8 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'OVERVIEW LEGACY',
-            'store_code' => 'OVR-LEG-' . $suffix,
-            'seller_id' => 'OVR-LEG-' . $suffix,
+            'store_code' => 'OVR-LEG-'.$suffix,
+            'seller_id' => 'OVR-LEG-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -137,8 +137,8 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $pendingOrderNumber = 'OVR-LEG-PEND-' . $suffix;
-        $confirmedOrderNumber = 'OVR-LEG-CONF-' . $suffix;
+        $pendingOrderNumber = 'OVR-LEG-PEND-'.$suffix;
+        $confirmedOrderNumber = 'OVR-LEG-CONF-'.$suffix;
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -189,7 +189,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'channel_order_id' => $confirmedOrder->id,
             'event_source' => 'legacy_mp_order',
             'event_type' => 'seller_revenue',
-            'external_event_id' => sha1('overview-legacy-' . $suffix),
+            'external_event_id' => sha1('overview-legacy-'.$suffix),
             'reference_number' => $confirmedOrderNumber,
             'event_date' => now()->subHours(6),
             'settlement_date' => now()->subHours(6),
@@ -240,7 +240,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Overview Store Breakdown Ltd.',
-            'tax_number' => '6' . $suffix,
+            'tax_number' => '6'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -251,8 +251,8 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'LEGACY BREAKDOWN A',
-            'store_code' => 'LEG-BRK-A-' . $suffix,
-            'seller_id' => 'LEG-BRK-A-' . $suffix,
+            'store_code' => 'LEG-BRK-A-'.$suffix,
+            'seller_id' => 'LEG-BRK-A-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -264,8 +264,8 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'LEGACY BREAKDOWN B',
-            'store_code' => 'LEG-BRK-B-' . $suffix,
-            'seller_id' => 'LEG-BRK-B-' . $suffix,
+            'store_code' => 'LEG-BRK-B-'.$suffix,
+            'seller_id' => 'LEG-BRK-B-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -290,9 +290,9 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $pendingAOne = 'LEG-A-PEND-1-' . $suffix;
-        $pendingATwo = 'LEG-A-PEND-2-' . $suffix;
-        $confirmedB = 'LEG-B-CONF-1-' . $suffix;
+        $pendingAOne = 'LEG-A-PEND-1-'.$suffix;
+        $pendingATwo = 'LEG-A-PEND-2-'.$suffix;
+        $confirmedB = 'LEG-B-CONF-1-'.$suffix;
 
         ChannelOrder::query()->create([
             'store_id' => $storeA->id,
@@ -363,7 +363,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'channel_order_id' => $confirmedBOrder->id,
             'event_source' => 'legacy_mp_order',
             'event_type' => 'seller_revenue',
-            'external_event_id' => sha1('overview-store-breakdown-' . $suffix),
+            'external_event_id' => sha1('overview-store-breakdown-'.$suffix),
             'reference_number' => $confirmedB,
             'event_date' => now()->subHours(4),
             'settlement_date' => now()->subHours(4),
@@ -421,7 +421,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Overview Route Ltd.',
-            'tax_number' => '8' . $suffix,
+            'tax_number' => '8'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -432,8 +432,8 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'shopify',
             'store_name' => 'LEGACY ROUTE STORE',
-            'store_code' => 'LEG-ROUTE-' . $suffix,
-            'seller_id' => 'LEG-ROUTE-' . $suffix,
+            'store_code' => 'LEG-ROUTE-'.$suffix,
+            'seller_id' => 'LEG-ROUTE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -482,7 +482,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Overview Preview Ltd.',
-            'tax_number' => '9' . $suffix,
+            'tax_number' => '9'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -493,8 +493,8 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'LEGACY PREVIEW STORE',
-            'store_code' => 'LEG-PREV-' . $suffix,
-            'seller_id' => 'LEG-PREV-' . $suffix,
+            'store_code' => 'LEG-PREV-'.$suffix,
+            'seller_id' => 'LEG-PREV-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -510,7 +510,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'OVR-PREV-' . $suffix;
+        $orderNumber = 'OVR-PREV-'.$suffix;
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -549,7 +549,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Pilot Rollout Ltd.',
-            'tax_number' => '4' . $suffix,
+            'tax_number' => '4'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -560,8 +560,8 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'woocommerce',
             'store_name' => 'PILOT ROLLOUT STORE',
-            'store_code' => 'PILOT-' . $suffix,
-            'seller_id' => 'PILOT-' . $suffix,
+            'store_code' => 'PILOT-'.$suffix,
+            'seller_id' => 'PILOT-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -610,7 +610,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $legacyOrderNumber = 'PILOT-LEGACY-' . $suffix;
+        $legacyOrderNumber = 'PILOT-LEGACY-'.$suffix;
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -657,7 +657,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Overview Execute Ltd.',
-            'tax_number' => '1' . $suffix,
+            'tax_number' => '1'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -668,8 +668,8 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'LEGACY EXEC STORE',
-            'store_code' => 'LEG-EXEC-' . $suffix,
-            'seller_id' => 'LEG-EXEC-' . $suffix,
+            'store_code' => 'LEG-EXEC-'.$suffix,
+            'seller_id' => 'LEG-EXEC-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -685,7 +685,7 @@ class MarketplaceOverviewReconciliationTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'OVR-EXEC-' . $suffix;
+        $orderNumber = 'OVR-EXEC-'.$suffix;
 
         $channelOrder = ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -757,9 +757,9 @@ class MarketplaceOverviewReconciliationTest extends TestCase
         ChannelOrderItem::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_line_id' => $orderNumber . '-LINE',
-            'stock_code' => 'SKU-' . $orderNumber,
-            'barcode' => 'BAR-' . $orderNumber,
+            'external_line_id' => $orderNumber.'-LINE',
+            'stock_code' => 'SKU-'.$orderNumber,
+            'barcode' => 'BAR-'.$orderNumber,
             'product_name' => 'Overview Test Ürünü',
             'quantity' => 1,
             'unit_price' => $grossAmount,
@@ -796,8 +796,8 @@ class MarketplaceOverviewReconciliationTest extends TestCase
                 'channel_order_id' => $order->id,
                 'event_source' => 'sync',
                 'event_type' => 'seller_revenue',
-                'external_event_id' => $orderNumber . '-REV',
-                'reference_number' => $orderNumber . '-REV',
+                'external_event_id' => $orderNumber.'-REV',
+                'reference_number' => $orderNumber.'-REV',
                 'event_date' => now(),
                 'settlement_date' => now(),
                 'amount' => $grossAmount,

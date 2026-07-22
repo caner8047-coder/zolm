@@ -25,6 +25,7 @@ use App\Services\Marketplace\MarketplaceQuestionSyncService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -39,7 +40,7 @@ class MarketplaceQuestionsTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -206,8 +207,8 @@ class MarketplaceQuestionsTest extends TestCase
             'legal_entity_id' => $trendyolStore->legal_entity_id,
             'marketplace' => 'amazon',
             'store_name' => 'AMAZON TEST',
-            'store_code' => 'AMZ-Q-' . $suffix,
-            'seller_id' => 'AMZ-SELLER-' . $suffix,
+            'store_code' => 'AMZ-Q-'.$suffix,
+            'seller_id' => 'AMZ-SELLER-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -242,8 +243,8 @@ class MarketplaceQuestionsTest extends TestCase
             'legal_entity_id' => $ciceksepetiStore->legal_entity_id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM SORULAR TRENDYOL',
-            'store_code' => 'Q-TREND-' . random_int(100000, 999999),
-            'seller_id' => 'SELLER-TREND-' . random_int(100000, 999999),
+            'store_code' => 'Q-TREND-'.random_int(100000, 999999),
+            'seller_id' => 'SELLER-TREND-'.random_int(100000, 999999),
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -373,7 +374,7 @@ class MarketplaceQuestionsTest extends TestCase
         $this->assertSame(2, $response['meta']['pages_processed']);
         Http::assertSentCount(2);
         Http::assertSent(function ($request) {
-            if (!str_contains($request->url(), '/questions/filter?')) {
+            if (! str_contains($request->url(), '/questions/filter?')) {
                 return false;
             }
 
@@ -656,10 +657,10 @@ class MarketplaceQuestionsTest extends TestCase
      */
     protected function createStoreGraph(string $marketplace): array
     {
-        $randStr = \Illuminate\Support\Str::random(12);
-        $taxNumber = '7' . random_int(100000000, 999999999);
+        $randStr = Str::random(12);
+        $taxNumber = '7'.random_int(100000000, 999999999);
         $user = User::factory()->create([
-            'email' => "questions-" . \Illuminate\Support\Str::uuid() . "@example.test",
+            'email' => 'questions-'.Str::uuid().'@example.test',
             'role' => 'admin',
             'is_active' => true,
         ]);
@@ -675,9 +676,9 @@ class MarketplaceQuestionsTest extends TestCase
             'user_id' => $user->id,
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => $marketplace,
-            'store_name' => 'ZEM SORULAR ' . strtoupper($marketplace),
-            'store_code' => 'Q-' . $randStr,
-            'seller_id' => 'SELLER-' . $randStr,
+            'store_name' => 'ZEM SORULAR '.strtoupper($marketplace),
+            'store_code' => 'Q-'.$randStr,
+            'seller_id' => 'SELLER-'.$randStr,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

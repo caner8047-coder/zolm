@@ -12,11 +12,12 @@ use App\Modules\Hr\Document\Models\HrDocumentType;
 use App\Modules\Hr\Document\Models\HrEmployeeDocument;
 use App\Modules\Hr\Personnel\Livewire\EmployeeDetail;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
+use Database\Seeders\Hr\HrPermissionSeeder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
-use Tests\Feature\Hr\RefreshHrDatabase;
 use Tests\TestCase;
 
 class EmployeeProfileDocumentsTabTest extends TestCase
@@ -24,14 +25,16 @@ class EmployeeProfileDocumentsTabTest extends TestCase
     use RefreshHrDatabase;
 
     private LegalEntity $tenant;
+
     private User $hrAdmin;
+
     private HrEmployee $employee;
 
     protected function setUp(): void
     {
         parent::setUp();
         Storage::fake('private');
-        (new \Database\Seeders\Hr\HrPermissionSeeder)->run();
+        (new HrPermissionSeeder)->run();
         $this->hrAdmin = User::factory()->create(['role' => 'admin']);
         $adminRole = DB::table('roles')->where('slug', 'hr_admin')->first();
         DB::table('model_has_roles')->insert(['role_id' => $adminRole->id, 'model_id' => $this->hrAdmin->id, 'model_type' => User::class]);
@@ -103,5 +106,100 @@ class EmployeeProfileDocumentsTabTest extends TestCase
         Livewire::test(EmployeeDetail::class, ['id' => $this->employee->id])
             ->set('activeTab', 'documents')
             ->assertDontSee('Sağlık Raporu');
+    }
+
+    public function test_protected_document_actions_require_sensitive_and_health_permissions(): void
+    {
+        $type = HrDocumentType::create([
+            'legal_entity_id' => $this->tenant->id,
+            'code' => 'PROTECTED_HEALTH',
+            'name' => 'Korunan Sağlık Raporu',
+            'category' => 'health',
+            'sensitivity' => 'highly_sensitive',
+            'is_active' => true,
+        ]);
+        $document = HrEmployeeDocument::withoutGlobalScope('tenant')->create([
+            'legal_entity_id' => $this->tenant->id,
+            'employee_id' => $this->employee->id,
+            'document_type_id' => $type->id,
+            'status' => DocumentStatus::Uploaded,
+            'verification_status' => VerificationStatus::Pending,
+            'version_number' => 1,
+        ]);
+
+        $operator = User::factory()->create(['role' => 'admin']);
+        $permissionIds = DB::table('permissions')
+            ->whereIn('name', [
+                'hr.documents.view',
+                'hr.documents.create',
+                'hr.documents.download',
+                'hr.documents.verify',
+                'hr.documents.archive',
+            ])
+            ->pluck('id');
+        foreach ($permissionIds as $permissionId) {
+            DB::table('model_has_permissions')->insert([
+                'permission_id' => $permissionId,
+                'model_id' => $operator->id,
+                'model_type' => User::class,
+            ]);
+        }
+
+        $this->actingAs($operator);
+
+        foreach (['view', 'download', 'verify', 'uploadVersion', 'archive'] as $ability) {
+            $this->assertFalse(Gate::forUser($operator)->allows($ability, $document));
+        }
+
+        Livewire::test(EmployeeDetail::class, ['id' => $this->employee->id])
+            ->call('verifyDocument', $document->id)
+            ->assertForbidden();
+
+        Livewire::test(EmployeeDetail::class, ['id' => $this->employee->id])
+            ->call('archiveDocument', $document->id)
+            ->assertForbidden();
+
+        Livewire::test(EmployeeDetail::class, ['id' => $this->employee->id])
+            ->call('startNewVersion', $document->id)
+            ->assertForbidden();
+
+        $this->assertEquals(DocumentStatus::Uploaded, $document->fresh()->status);
+        $this->assertEquals(VerificationStatus::Pending, $document->fresh()->verification_status);
+        $this->assertSame(1, $document->fresh()->version_number);
+    }
+
+    public function test_health_and_sensitive_permissions_are_both_required_for_combined_document(): void
+    {
+        $type = HrDocumentType::create([
+            'legal_entity_id' => $this->tenant->id,
+            'code' => 'COMBINED_PROTECTION',
+            'name' => 'Birleşik Korumalı Belge',
+            'category' => 'health',
+            'sensitivity' => 'highly_sensitive',
+            'is_active' => true,
+        ]);
+        $document = HrEmployeeDocument::withoutGlobalScope('tenant')->create([
+            'legal_entity_id' => $this->tenant->id,
+            'employee_id' => $this->employee->id,
+            'document_type_id' => $type->id,
+            'status' => DocumentStatus::Active,
+            'version_number' => 1,
+        ]);
+
+        foreach (['hr.documents.view_sensitive', 'hr.documents.view_health'] as $singleProtectionPermission) {
+            $viewer = User::factory()->create(['role' => 'admin']);
+            $permissionIds = DB::table('permissions')
+                ->whereIn('name', ['hr.documents.view', $singleProtectionPermission])
+                ->pluck('id');
+            foreach ($permissionIds as $permissionId) {
+                DB::table('model_has_permissions')->insert([
+                    'permission_id' => $permissionId,
+                    'model_id' => $viewer->id,
+                    'model_type' => User::class,
+                ]);
+            }
+
+            $this->assertFalse(Gate::forUser($viewer)->allows('view', $document));
+        }
     }
 }

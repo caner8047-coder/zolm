@@ -29,7 +29,7 @@ class LegacyFinancialProjectionServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -100,7 +100,7 @@ class LegacyFinancialProjectionServiceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Legacy Finans Ltd.',
-            'tax_number' => '6' . $suffix,
+            'tax_number' => '6'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -111,8 +111,8 @@ class LegacyFinancialProjectionServiceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'LEGACY FINANS',
-            'store_code' => 'LEG-FIN-' . $suffix,
-            'seller_id' => 'LEG-FIN-' . $suffix,
+            'store_code' => 'LEG-FIN-'.$suffix,
+            'seller_id' => 'LEG-FIN-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -136,8 +136,8 @@ class LegacyFinancialProjectionServiceTest extends TestCase
         $channelOrder = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $entity->id,
-            'external_order_id' => 'LEGACY-FIN-' . $suffix,
-            'order_number' => 'LEGACY-FIN-' . $suffix,
+            'external_order_id' => 'LEGACY-FIN-'.$suffix,
+            'order_number' => 'LEGACY-FIN-'.$suffix,
             'order_status' => 'Teslim Edildi',
             'customer_name' => 'Finans Musteri',
             'ordered_at' => now()->subDay(),
@@ -146,9 +146,9 @@ class LegacyFinancialProjectionServiceTest extends TestCase
         $channelItem = ChannelOrderItem::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $channelOrder->id,
-            'external_line_id' => 'LINE-' . $suffix,
-            'stock_code' => 'FIN-STOCK-' . $suffix,
-            'barcode' => 'FIN-BARCODE-' . $suffix,
+            'external_line_id' => 'LINE-'.$suffix,
+            'stock_code' => 'FIN-STOCK-'.$suffix,
+            'barcode' => 'FIN-BARCODE-'.$suffix,
             'product_name' => 'Finans Ürün',
             'quantity' => 1,
             'unit_price' => 2200,
@@ -183,7 +183,7 @@ class LegacyFinancialProjectionServiceTest extends TestCase
             'order_id' => $order->id,
             'transaction_type' => 'Satis',
             'order_number' => $order->order_number,
-            'document_number' => 'DOC-' . $suffix,
+            'document_number' => 'DOC-'.$suffix,
             'transaction_date' => now()->subDay()->toDateString(),
             'settlement_date' => now()->subHours(6)->toDateString(),
             'due_date' => now()->subHours(3)->toDateString(),

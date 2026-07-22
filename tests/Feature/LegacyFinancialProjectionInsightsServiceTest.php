@@ -26,7 +26,7 @@ class LegacyFinancialProjectionInsightsServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -42,7 +42,7 @@ class LegacyFinancialProjectionInsightsServiceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Legacy Insights Ltd.',
-            'tax_number' => '4' . $suffix,
+            'tax_number' => '4'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -53,8 +53,8 @@ class LegacyFinancialProjectionInsightsServiceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'LEGACY INSIGHTS',
-            'store_code' => 'LEGACY-INS-' . $suffix,
-            'seller_id' => 'LEGACY-INS-' . $suffix,
+            'store_code' => 'LEGACY-INS-'.$suffix,
+            'seller_id' => 'LEGACY-INS-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -70,8 +70,8 @@ class LegacyFinancialProjectionInsightsServiceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $pendingOrderNumber = 'LEGACY-PENDING-' . $suffix;
-        $projectedOrderNumber = 'LEGACY-PROJECTED-' . $suffix;
+        $pendingOrderNumber = 'LEGACY-PENDING-'.$suffix;
+        $projectedOrderNumber = 'LEGACY-PROJECTED-'.$suffix;
 
         $pendingOrder = ChannelOrder::query()->create([
             'store_id' => $store->id,

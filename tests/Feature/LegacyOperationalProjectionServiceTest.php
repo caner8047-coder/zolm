@@ -26,7 +26,7 @@ class LegacyOperationalProjectionServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -77,7 +77,7 @@ class LegacyOperationalProjectionServiceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Legacy Projection Ltd.',
-            'tax_number' => '4' . $suffix,
+            'tax_number' => '4'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -88,8 +88,8 @@ class LegacyOperationalProjectionServiceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'LEGACY PROJECTION',
-            'store_code' => 'LEG-' . $suffix,
-            'seller_id' => 'LEGACY-' . $suffix,
+            'store_code' => 'LEG-'.$suffix,
+            'seller_id' => 'LEGACY-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -103,8 +103,8 @@ class LegacyOperationalProjectionServiceTest extends TestCase
 
         $product = MpProduct::query()->create([
             'user_id' => $user->id,
-            'barcode' => 'LEGACY-BARCODE-' . $suffix,
-            'stock_code' => 'LEGACY-STOCK-' . $suffix,
+            'barcode' => 'LEGACY-BARCODE-'.$suffix,
+            'stock_code' => 'LEGACY-STOCK-'.$suffix,
             'product_name' => 'Legacy Ürün',
             'cogs' => 500,
             'packaging_cost' => 25,
@@ -114,8 +114,8 @@ class LegacyOperationalProjectionServiceTest extends TestCase
         ]);
 
         $order = MpOperationalOrder::query()->create([
-            'order_number' => 'ORD-' . $suffix,
-            'package_number' => 'PKT-' . $suffix,
+            'order_number' => 'ORD-'.$suffix,
+            'package_number' => 'PKT-'.$suffix,
             'order_date' => now()->subHour(),
             'delivery_date' => now(),
             'customer_name' => 'Test Müşteri',
@@ -124,8 +124,8 @@ class LegacyOperationalProjectionServiceTest extends TestCase
             'customer_phone' => '5551234567',
             'billing_name' => 'Test Müşteri',
             'cargo_company' => 'Trendyol Express',
-            'tracking_number' => 'TRK-' . $suffix,
-            'cargo_code' => 'CRG-' . $suffix,
+            'tracking_number' => 'TRK-'.$suffix,
+            'cargo_code' => 'CRG-'.$suffix,
             'status' => 'Teslim Edildi',
             'total_gross_amount' => 2199.90,
             'total_discount' => 100.00,

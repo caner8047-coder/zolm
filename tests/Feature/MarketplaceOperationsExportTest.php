@@ -32,7 +32,7 @@ class MarketplaceOperationsExportTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -100,7 +100,7 @@ class MarketplaceOperationsExportTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $legacyOrderNumber = 'LEGACY-EXPORT-' . random_int(100000, 999999);
+        $legacyOrderNumber = 'LEGACY-EXPORT-'.random_int(100000, 999999);
 
         $channelOrder = ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -131,7 +131,7 @@ class MarketplaceOperationsExportTest extends TestCase
             'channel_order_id' => $channelOrder->id,
             'event_source' => 'legacy_mp_order',
             'event_type' => 'seller_revenue',
-            'external_event_id' => sha1('legacy-export-' . $legacyOrderNumber),
+            'external_event_id' => sha1('legacy-export-'.$legacyOrderNumber),
             'reference_number' => $legacyOrderNumber,
             'event_date' => now()->subHours(4),
             'settlement_date' => now()->subHours(4),
@@ -227,7 +227,7 @@ class MarketplaceOperationsExportTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Export Ltd.',
-            'tax_number' => '9' . $suffix,
+            'tax_number' => '9'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -238,8 +238,8 @@ class MarketplaceOperationsExportTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM EXPORT',
-            'store_code' => 'EXP-' . $suffix,
-            'seller_id' => 'EXP-' . $suffix,
+            'store_code' => 'EXP-'.$suffix,
+            'seller_id' => 'EXP-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

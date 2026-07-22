@@ -30,7 +30,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -86,7 +86,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Recommended Ltd.',
-            'tax_number' => '9' . $suffix,
+            'tax_number' => '9'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -97,8 +97,8 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'n11',
             'store_name' => 'ZEM RECOMMENDED',
-            'store_code' => 'ZEM-REC-' . $suffix,
-            'seller_id' => 'REC' . $suffix,
+            'store_code' => 'ZEM-REC-'.$suffix,
+            'seller_id' => 'REC'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -119,9 +119,9 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $product = MpProduct::query()->create([
             'user_id' => $user->id,
-            'product_name' => 'Master Aday Urun ' . $suffix,
-            'stock_code' => 'MASTER-' . $suffix,
-            'barcode' => '868' . $suffix,
+            'product_name' => 'Master Aday Urun '.$suffix,
+            'stock_code' => 'MASTER-'.$suffix,
+            'barcode' => '868'.$suffix,
             'brand' => 'Zem',
             'category_name' => 'Mobilya',
             'sale_price' => 2499.90,
@@ -131,10 +131,10 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $channelProduct = ChannelProduct::query()->create([
             'store_id' => $store->id,
-            'external_product_id' => 'CP-REC-' . $suffix,
+            'external_product_id' => 'CP-REC-'.$suffix,
             'stock_code' => $product->stock_code,
             'barcode' => $product->barcode,
-            'title' => 'Pazaryeri Farkli Baslik ' . $suffix,
+            'title' => 'Pazaryeri Farkli Baslik '.$suffix,
             'brand' => 'Zem',
             'category_name' => 'Mobilya',
         ]);
@@ -142,7 +142,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
         $listing = ChannelListing::query()->create([
             'store_id' => $store->id,
             'channel_product_id' => $channelProduct->id,
-            'listing_id' => 'LIST-REC-' . $suffix,
+            'listing_id' => 'LIST-REC-'.$suffix,
             'listing_status' => 'active',
             'sale_price' => 2499.90,
             'stock_quantity' => 2,
@@ -152,8 +152,8 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $entity->id,
-            'external_order_id' => 'ORD-REC-' . $suffix,
-            'order_number' => 'ORD-REC-' . $suffix,
+            'external_order_id' => 'ORD-REC-'.$suffix,
+            'order_number' => 'ORD-REC-'.$suffix,
             'order_status' => 'Created',
             'ordered_at' => now(),
         ]);
@@ -162,7 +162,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
             'channel_listing_id' => $listing->id,
-            'external_line_id' => 'LINE-REC-' . $suffix,
+            'external_line_id' => 'LINE-REC-'.$suffix,
             'stock_code' => $channelProduct->stock_code,
             'barcode' => $channelProduct->barcode,
             'product_name' => $channelProduct->title,
@@ -203,7 +203,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Test Ltd.',
-            'tax_number' => '8' . $suffix,
+            'tax_number' => '8'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -214,8 +214,8 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM MATCH CENTER',
-            'store_code' => 'ZEM-MC-' . $suffix,
-            'seller_id' => 'MC' . $suffix,
+            'store_code' => 'ZEM-MC-'.$suffix,
+            'seller_id' => 'MC'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -227,7 +227,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
             'provider' => 'trendyol',
             'auth_type' => 'api_key_secret',
             'credentials_encrypted' => [
-                'seller_id' => 'MC' . $suffix,
+                'seller_id' => 'MC'.$suffix,
                 'api_key' => 'key',
                 'api_secret' => 'secret',
             ],
@@ -237,16 +237,16 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $channelProduct = ChannelProduct::query()->create([
             'store_id' => $store->id,
-            'external_product_id' => 'CP-' . $suffix,
-            'stock_code' => 'STK-' . $suffix,
-            'barcode' => '869' . $suffix,
+            'external_product_id' => 'CP-'.$suffix,
+            'stock_code' => 'STK-'.$suffix,
+            'barcode' => '869'.$suffix,
             'title' => 'ZEM Test Urun',
         ]);
 
         $listing = ChannelListing::query()->create([
             'store_id' => $store->id,
             'channel_product_id' => $channelProduct->id,
-            'listing_id' => 'LIST-' . $suffix,
+            'listing_id' => 'LIST-'.$suffix,
             'listing_status' => 'active',
             'sale_price' => 999.90,
             'stock_quantity' => 2,
@@ -299,7 +299,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $this->actingAs($user);
 
-        $component = new MarketplaceMatchingCenter();
+        $component = new MarketplaceMatchingCenter;
 
         $reflection = new \ReflectionMethod(MarketplaceMatchingCenter::class, 'canAutoRecommend');
         $reflection->setAccessible(true);
@@ -333,7 +333,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $this->actingAs($user);
 
-        $component = new MarketplaceMatchingCenter();
+        $component = new MarketplaceMatchingCenter;
 
         $reflection = new \ReflectionMethod(MarketplaceMatchingCenter::class, 'canAutoRecommend');
         $reflection->setAccessible(true);
@@ -374,7 +374,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $this->actingAs($user);
 
-        $component = new MarketplaceMatchingCenter();
+        $component = new MarketplaceMatchingCenter;
         $reflection = new \ReflectionMethod(MarketplaceMatchingCenter::class, 'candidateScoreTone');
         $reflection->setAccessible(true);
 
@@ -391,7 +391,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $this->actingAs($user);
 
-        $component = new MarketplaceMatchingCenter();
+        $component = new MarketplaceMatchingCenter;
         $reflection = new \ReflectionMethod(MarketplaceMatchingCenter::class, 'candidateScoreTone');
         $reflection->setAccessible(true);
 
@@ -408,7 +408,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $this->actingAs($user);
 
-        $component = new MarketplaceMatchingCenter();
+        $component = new MarketplaceMatchingCenter;
         $reflection = new \ReflectionMethod(MarketplaceMatchingCenter::class, 'candidateScoreTone');
         $reflection->setAccessible(true);
 
@@ -449,7 +449,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Limit Test Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => '7'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -460,8 +460,8 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM LIMIT',
-            'store_code' => 'ZEM-LT-' . $suffix,
-            'seller_id' => 'LT' . $suffix,
+            'store_code' => 'ZEM-LT-'.$suffix,
+            'seller_id' => 'LT'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -470,16 +470,16 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $channelProduct = ChannelProduct::query()->create([
             'store_id' => $store->id,
-            'external_product_id' => 'CP-LT-' . $suffix,
-            'stock_code' => 'STK-LT-' . $suffix,
-            'barcode' => '869' . $suffix,
+            'external_product_id' => 'CP-LT-'.$suffix,
+            'stock_code' => 'STK-LT-'.$suffix,
+            'barcode' => '869'.$suffix,
             'title' => 'Koltuk Takimi Test',
         ]);
 
         $listing = ChannelListing::query()->create([
             'store_id' => $store->id,
             'channel_product_id' => $channelProduct->id,
-            'listing_id' => 'LIST-LT-' . $suffix,
+            'listing_id' => 'LIST-LT-'.$suffix,
             'listing_status' => 'active',
             'sale_price' => 1999.90,
             'stock_quantity' => 5,
@@ -537,7 +537,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Fallback Ltd.',
-            'tax_number' => '6' . $suffix,
+            'tax_number' => '6'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -548,8 +548,8 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM FALLBACK',
-            'store_code' => 'ZEM-FB-' . $suffix,
-            'seller_id' => 'FB' . $suffix,
+            'store_code' => 'ZEM-FB-'.$suffix,
+            'seller_id' => 'FB'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -558,16 +558,16 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $channelProduct = ChannelProduct::query()->create([
             'store_id' => $store->id,
-            'external_product_id' => 'CP-FB-' . $suffix,
-            'stock_code' => 'STK-FB-' . $suffix,
-            'barcode' => '869FB' . $suffix,
+            'external_product_id' => 'CP-FB-'.$suffix,
+            'stock_code' => 'STK-FB-'.$suffix,
+            'barcode' => '869FB'.$suffix,
             'title' => 'Dolap Beyaz Modern',
         ]);
 
         $listing = ChannelListing::query()->create([
             'store_id' => $store->id,
             'channel_product_id' => $channelProduct->id,
-            'listing_id' => 'LIST-FB-' . $suffix,
+            'listing_id' => 'LIST-FB-'.$suffix,
             'listing_status' => 'active',
             'sale_price' => 3499.90,
             'stock_quantity' => 3,
@@ -623,7 +623,7 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Cap Test Ltd.',
-            'tax_number' => '5' . $suffix,
+            'tax_number' => '5'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -634,8 +634,8 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM CAP',
-            'store_code' => 'ZEM-CP-' . $suffix,
-            'seller_id' => 'CP' . $suffix,
+            'store_code' => 'ZEM-CP-'.$suffix,
+            'seller_id' => 'CP'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -644,16 +644,16 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
 
         $channelProduct = ChannelProduct::query()->create([
             'store_id' => $store->id,
-            'external_product_id' => 'CP-CP-' . $suffix,
-            'stock_code' => 'STK-CP-' . $suffix,
-            'barcode' => '869CP' . $suffix,
+            'external_product_id' => 'CP-CP-'.$suffix,
+            'stock_code' => 'STK-CP-'.$suffix,
+            'barcode' => '869CP'.$suffix,
             'title' => 'Sandalye Test',
         ]);
 
         $listing = ChannelListing::query()->create([
             'store_id' => $store->id,
             'channel_product_id' => $channelProduct->id,
-            'listing_id' => 'LIST-CP-' . $suffix,
+            'listing_id' => 'LIST-CP-'.$suffix,
             'listing_status' => 'active',
             'sale_price' => 999.90,
             'stock_quantity' => 10,

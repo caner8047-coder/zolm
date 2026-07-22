@@ -28,7 +28,7 @@ class MarketplaceListingPushServiceTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -190,7 +190,7 @@ class MarketplaceListingPushServiceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Push Ltd.',
-            'tax_number' => '7' . $suffix,
+            'tax_number' => '7'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -201,8 +201,8 @@ class MarketplaceListingPushServiceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM PUSH',
-            'store_code' => 'PUSH-' . $suffix,
-            'seller_id' => 'SELLER-' . $suffix,
+            'store_code' => 'PUSH-'.$suffix,
+            'seller_id' => 'SELLER-'.$suffix,
             'status' => 'active',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -221,8 +221,8 @@ class MarketplaceListingPushServiceTest extends TestCase
 
         $product = MpProduct::query()->create([
             'user_id' => $user->id,
-            'stock_code' => 'PUSH-STK-' . $suffix,
-            'barcode' => '869' . $suffix,
+            'stock_code' => 'PUSH-STK-'.$suffix,
+            'barcode' => '869'.$suffix,
             'product_name' => 'ZEM Push Test',
             'brand' => 'ZEM',
             'category_name' => 'Mobilya',
@@ -234,9 +234,9 @@ class MarketplaceListingPushServiceTest extends TestCase
 
         $channelProduct = ChannelProduct::query()->create([
             'store_id' => $store->id,
-            'external_product_id' => 'CP-' . $suffix,
-            'stock_code' => 'PUSH-STK-' . $suffix,
-            'barcode' => '869' . $suffix,
+            'external_product_id' => 'CP-'.$suffix,
+            'stock_code' => 'PUSH-STK-'.$suffix,
+            'barcode' => '869'.$suffix,
             'title' => 'ZEM Push Test',
             'brand' => 'ZEM',
             'category_name' => 'Mobilya',
@@ -246,7 +246,7 @@ class MarketplaceListingPushServiceTest extends TestCase
             'store_id' => $store->id,
             'channel_product_id' => $channelProduct->id,
             'mp_product_id' => $product->id,
-            'listing_id' => 'LIST-' . $suffix,
+            'listing_id' => 'LIST-'.$suffix,
             'listing_status' => 'active',
             'sale_price' => 1499.90,
             'list_price' => 1699.90,

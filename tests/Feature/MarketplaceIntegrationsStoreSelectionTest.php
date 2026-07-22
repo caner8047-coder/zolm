@@ -23,7 +23,7 @@ class MarketplaceIntegrationsStoreSelectionTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -39,7 +39,7 @@ class MarketplaceIntegrationsStoreSelectionTest extends TestCase
         $legalEntity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Integrations Ltd.',
-            'tax_number' => '5' . $suffix,
+            'tax_number' => '5'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -50,8 +50,8 @@ class MarketplaceIntegrationsStoreSelectionTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM FIRST',
-            'store_code' => 'FIRST-' . $suffix,
-            'seller_id' => 'SELLER-FIRST-' . $suffix,
+            'store_code' => 'FIRST-'.$suffix,
+            'seller_id' => 'SELLER-FIRST-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -63,8 +63,8 @@ class MarketplaceIntegrationsStoreSelectionTest extends TestCase
             'legal_entity_id' => $legalEntity->id,
             'marketplace' => 'hepsiburada',
             'store_name' => 'ZEM SECOND',
-            'store_code' => 'SECOND-' . $suffix,
-            'seller_id' => 'SELLER-SECOND-' . $suffix,
+            'store_code' => 'SECOND-'.$suffix,
+            'seller_id' => 'SELLER-SECOND-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',

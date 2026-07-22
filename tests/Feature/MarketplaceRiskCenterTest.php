@@ -31,7 +31,7 @@ class MarketplaceRiskCenterTest extends TestCase
         config()->set('database.default', 'mysql');
         config()->set('database.connections.mysql.host', 'mysql');
         config()->set('database.connections.mysql.port', '3306');
-        config()->set('database.connections.mysql.database', 'zolm');
+        config()->set('database.connections.mysql.database', $this->mysqlTestDatabaseName());
         config()->set('database.connections.mysql.username', 'sail');
         config()->set('database.connections.mysql.password', 'password');
         DB::purge('mysql');
@@ -149,7 +149,7 @@ class MarketplaceRiskCenterTest extends TestCase
             'user_id' => $user->id,
             'type' => 'risk_critical',
             'severity' => 'critical',
-            'event_key' => 'risk-signal:legacy-fingerprint:' . now()->format('Ymd'),
+            'event_key' => 'risk-signal:legacy-fingerprint:'.now()->format('Ymd'),
             'title' => 'Eski tekil risk bildirimi',
             'body' => 'Bu bildirim özet modele geçerken temizlenmeli.',
             'action_url' => route('mp.risk-center'),
@@ -165,7 +165,7 @@ class MarketplaceRiskCenterTest extends TestCase
         $this->assertSame(2, $result['notifications']);
         $this->assertDatabaseMissing('app_notifications', [
             'user_id' => $user->id,
-            'event_key' => 'risk-signal:legacy-fingerprint:' . now()->format('Ymd'),
+            'event_key' => 'risk-signal:legacy-fingerprint:'.now()->format('Ymd'),
         ]);
 
         $critical = AppNotification::query()
@@ -289,7 +289,7 @@ class MarketplaceRiskCenterTest extends TestCase
             'value' => $value,
             'impact' => $impact,
             'tone' => $key === 'loss_orders' ? 'danger' : 'warning',
-            'description' => $label . ' açıklaması.',
+            'description' => $label.' açıklaması.',
             'action_label' => 'Detayı aç',
             'route' => $route,
             'query' => [],
