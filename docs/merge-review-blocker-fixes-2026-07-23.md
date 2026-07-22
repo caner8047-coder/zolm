@@ -4,7 +4,7 @@
 
 ### Başlık ve özet
 
-`e7fca9e` birleşme incelemesinde bulunan pazaryeri zamanlayıcı, hassas İK belge yetkilendirmesi ve test veritabanı izolasyonu blokajları giderildi. Düzeltmeler, mevcut kullanıcı çalışma ağacını etkilememek için `codex/fix-e7fca9e-review-blockers` dalında hazırlandı.
+`e7fca9e` birleşme incelemesinde bulunan pazaryeri zamanlayıcı, hassas İK belge yetkilendirmesi ve test veritabanı izolasyonu blokajları giderildi. Diğer bilgisayardan gelen recovery/İK geliştirmeleri, bu bilgisayardaki kargo ve pazaryeri entegrasyonlarıyla `codex/fix-e7fca9e-review-blockers` dalında birleştirildi. Yerel çalışma ayrıca `codex/local-cargo-marketplace-backup-20260723` dalında korunmaktadır.
 
 ### İş ihtiyacı ve kullanıcıya etkisi
 
@@ -20,6 +20,8 @@
 - Livewire belge aksiyonları policy üzerinden yetkilendirildi.
 - MySQL test veritabanı adı `Tests\TestCase::mysqlTestDatabaseName()` ile merkezileştirildi. `DB_TEST_DATABASE` verilmezse güvenli `testing` varsayılanı kullanılır; `zolm` reddedilir.
 - Eski smoke-test connector metod adı güncel sözleşmeyle eşitlendi ve Booster şema beklentisi yeni tablo sayısına güncellendi.
+- Yerel çoklu kargo ve hazır e-ticaret connector çalışması recovery dalıyla birleştirildi; route ve middleware çatışmaları mevcut güvenlik katmanları korunarak çözüldü.
+- İK payroll migration rollback işlemi, oluşturulmayan bir foreign key'i silmek yerine gerçek `salary_record_id` kolonunu kaldıracak şekilde düzeltildi.
 
 ### Değiştirilen bileşenler
 
@@ -30,10 +32,13 @@
 - `tests/TestCase.php`
 - MySQL kullanan pazaryeri ve CRM testleri
 - Yeni scheduler, bağlantı durumu, yetkilendirme ve test DB izolasyon testleri
+- Çoklu kargo ve pazaryeri connector servisleri, Livewire ekranları, route'lar ve bunların testleri
+- `database/migrations/2026_08_04_470000_add_generic_credentials_to_cargo_carrier_accounts.php`
+- `database/migrations/2026_08_24_100003_add_calculation_trace_to_hr_payroll_records.php`
 
 ### Veri modeli veya migration değişiklikleri
 
-Yeni migration veya üretim veri modeli değişikliği yoktur. Yerel `testing` veritabanına bu dalda zaten bulunan eksik migration'lar doğrulama amacıyla uygulanmıştır; canlı `zolm` veritabanına işlem yapılmamıştır.
+Birleştirilen yerel kargo çalışması, taşıyıcı hesaplarına genel credential alanlarını ekleyen backward-compatible bir migration içerir. Ayrıca mevcut İK payroll migration'ının yalnız rollback davranışı düzeltildi; `up()` şeması değiştirilmedi. Ayrı `testing` veritabanına kargo migration'ı doğrulama amacıyla uygulanmıştır; canlı `zolm` veritabanına test sırasında işlem yapılmamıştır.
 
 ### Kullanım adımları
 
@@ -50,12 +55,13 @@ Yeni migration veya üretim veri modeli değişikliği yoktur. Yerel `testing` v
 
 ### Test kapsamı
 
-- Hedefli blokaj testleri: 22 test, 81 assertion
-- MySQL bağımlı pazaryeri/CRM paketi: 420 test, 2.843 assertion
+- Birleşik kargo/pazaryeri/İK hedef paketi: 62 test, 363 assertion
+- MySQL bağımlı pazaryeri/CRM paketi: 420 test, 2.845 assertion
 - HR paketi: 336 test, 1.028 assertion
-- Unit paketi: 60 test, 256 assertion
+- Unit paketi: 72 test, 293 assertion
 - Hepsiburada/Trendyol V2/Pazarama seçili paket: 67 test, 287 assertion
-- Kod stili: değişen 72 PHP dosyası Pint kontrolünden geçti
+- Kod stili: birleşimde değişen 134 PHP dosyası Pint kontrolünden geçti
+- Frontend: Vite production build başarıyla tamamlandı
 
 ### Bilinen sınırlamalar
 
@@ -71,7 +77,11 @@ Yeni migration veya üretim veri modeli değişikliği yoktur. Yerel `testing` v
 
 ### Commit veya PR bağlantıları
 
-Henüz commit veya PR oluşturulmadı. Önerilen dal: `codex/fix-e7fca9e-review-blockers`.
+- `8be4ae7` — `fix: resolve e7fca9e merge blockers`
+- `0caadf4` — `chore: checkpoint local cargo and marketplace work`
+- `f02d5fa` — `merge: combine local cargo marketplace work with e7fca9e fixes`
+- `7bf1cdc` — `fix: align merged smoke and payroll rollback`
+- PR oluşturulmadı ve uzak repoya push yapılmadı.
 
 ### Yayın tarihi ve sorumlu kişi
 
@@ -102,16 +112,27 @@ Henüz commit veya PR oluşturulmadı. Önerilen dal: `codex/fix-e7fca9e-review-
 - **Olumsuz sonuç:** Test ortamında `testing` veritabanının migration'ları güncel tutulmalıdır.
 - **Yeniden değerlendirme koşulu:** Tüm paket SQLite uyumlu hale gelirse MySQL bağımlılığı azaltılabilir.
 
+### Payroll rollback şemasını gerçek `up()` davranışıyla eşitleme — 23 Temmuz 2026
+
+- **Durum:** Kabul Edildi
+- **Bağlam:** `salary_record_id` normal unsigned bigint olarak eklenmesine rağmen rollback, mevcut olmayan bir foreign key'i silmeye çalışıyordu.
+- **Değerlendirilen seçenekler:** Geçmiş `up()` migration'ına foreign key eklemek, koşullu foreign key kontrolü yapmak, yalnız oluşturulan kolonu kaldırmak.
+- **Seçilen yaklaşım:** `down()` içinde `salary_record_id` kolonu doğrudan kaldırılır.
+- **Gerekçe:** Yayınlanmış `up()` şemasını değiştirmez ve rollback'i migration'ın gerçekten oluşturduğu nesnelerle sınırlar.
+- **Olumlu sonuç:** MySQL ve SQLite rollback akışları tutarlı çalışır.
+- **Olumsuz sonuç:** İleride bu kolona ayrı migration ile foreign key eklenirse o migration kendi rollback'ini yönetmelidir.
+- **Yeniden değerlendirme koşulu:** Kolon için yeni bir ilişki migration'ı eklendiğinde bağımlı rollback sırası tekrar test edilir.
+
 ## Slack taslağı
 
 ```text
-🚀 e7fca9e birleşme blokajı düzeltmeleri tamamlandı
+🚀 Recovery, kargo ve pazaryeri entegrasyon birleşimi tamamlandı
 
-- Ne değişti: Trendyol scheduler bağlantı durumları düzeltildi, hassas İK belge aksiyonları ek yetki kontrolüne alındı, testler ayrı testing DB'ye taşındı.
-- Kullanıcıya etkisi: API bilgileri girilmiş mağazaların otomatik görevleri çalışır; sağlık/hassas belgelerde işlem güvenliği güçlendi.
-- Test durumu: 420 pazaryeri/CRM, 336 HR ve 60 unit test geçti. Pint temiz.
+- Ne değişti: Diğer bilgisayardaki recovery/İK kodu yerel çoklu kargo ve pazaryeri entegrasyonlarıyla birleştirildi; scheduler, belge yetkisi, test DB izolasyonu ve iki birleşim kusuru düzeltildi.
+- Kullanıcıya etkisi: Yerel proje iki geliştirme grubunu birlikte içeriyor; API bilgileri girilmiş mağazaların otomatik görevleri çalışır ve hassas İK belge işlemleri korunur.
+- Test durumu: 420 pazaryeri/CRM, 336 HR, 72 unit ve 62 hedefli birleşim testi geçti. 134 PHP dosyasında Pint ve Vite production build temiz.
 - Yayın / feature flag durumu: Mevcut feature flag'ler korundu; henüz main veya canlıya alınmadı.
 - Dikkat edilmesi gerekenler: Canlı credential smoke testi yayın öncesi ayrıca yapılmalı.
 - Dokümantasyon: docs/merge-review-blocker-fixes-2026-07-23.md
-- PR / commit: Henüz oluşturulmadı; dal codex/fix-e7fca9e-review-blockers.
+- PR / commit: codex/fix-e7fca9e-review-blockers; 8be4ae7, 0caadf4, f02d5fa ve 7bf1cdc.
 ```
