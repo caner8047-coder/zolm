@@ -8,6 +8,7 @@ use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
 use App\Modules\Hr\Personnel\Models\HrEmploymentRecord;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class CreateEmployeeAction
 {
@@ -21,14 +22,31 @@ class CreateEmployeeAction
         return DB::transaction(function () use ($employeeData, $employmentData) {
             $tenantId = app(TenantContext::class)->getId();
 
-            // national_id hash ve last_four hesapla
-            $nationalId = $employeeData['national_id'] ?? null;
-            if ($nationalId) {
-                $employeeData['national_id_hash'] = hash('sha256', $nationalId . config('app.key'));
-                $employeeData['national_id_last_four'] = substr($nationalId, -4);
-                $employeeData['national_id_encrypted'] = $nationalId;
-                unset($employeeData['national_id']);
+            // TC kimlik alanları veritabanında zorunludur. Action doğrudan
+            // çağrılsa bile eksik veya geçersiz değer DB hatasına dönüşmemeli.
+            $nationalId = trim((string) ($employeeData['national_id'] ?? ''));
+            if (!preg_match('/^\d{11}$/', $nationalId)) {
+                throw ValidationException::withMessages([
+                    'national_id' => 'TC kimlik numarası 11 rakamdan oluşmalıdır.',
+                ]);
             }
+
+            $nationalIdHash = hash('sha256', $nationalId . config('app.key'));
+            $duplicateExists = HrEmployee::withoutGlobalScope('tenant')
+                ->where('legal_entity_id', $tenantId)
+                ->where('national_id_hash', $nationalIdHash)
+                ->exists();
+
+            if ($duplicateExists) {
+                throw ValidationException::withMessages([
+                    'national_id' => 'Bu TC kimlik numarasıyla kayıtlı bir çalışan zaten var.',
+                ]);
+            }
+
+            $employeeData['national_id_hash'] = $nationalIdHash;
+            $employeeData['national_id_last_four'] = substr($nationalId, -4);
+            $employeeData['national_id_encrypted'] = $nationalId;
+            unset($employeeData['national_id']);
 
             // Employee number üret
             if (empty($employeeData['employee_number'])) {

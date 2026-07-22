@@ -29,8 +29,9 @@
                     <input type="text" wire:model="middle_name" class="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-gray-900 focus:border-gray-900">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">TC Kimlik No</label>
-                    <input type="text" wire:model="national_id" maxlength="11" class="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-gray-900 focus:border-gray-900">
+                    <label class="block text-sm font-medium text-gray-700">TC Kimlik No <span class="text-red-500">*</span></label>
+                    <input type="text" wire:model="national_id" maxlength="11" inputmode="numeric" autocomplete="off" class="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-base sm:text-sm focus:ring-1 focus:ring-gray-900 focus:border-gray-900">
+                    @error('national_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Cinsiyet</label>

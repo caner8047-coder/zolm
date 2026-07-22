@@ -64,15 +64,21 @@ class EmployeeCreate extends Component
 
     public function save(): void
     {
-        $this->validate([
-            'first_name' => 'required|string|max:100',
-            'last_name' => 'required|string|max:100',
-            'national_id' => 'nullable|string|size:11',
-            'phone' => 'nullable|string|max:20',
-            'personal_email' => 'nullable|email|max:255',
-            'start_date' => 'required|date',
-            'employment_type' => 'required|in:full_time,part_time,contract,intern,temporary',
-        ]);
+        $this->validate(
+            [
+                'first_name' => 'required|string|max:100',
+                'last_name' => 'required|string|max:100',
+                'national_id' => 'required|digits:11',
+                'phone' => 'nullable|string|max:20',
+                'personal_email' => 'nullable|email|max:255',
+                'start_date' => 'required|date',
+                'employment_type' => 'required|in:full_time,part_time,contract,intern,temporary',
+            ],
+            [
+                'national_id.required' => 'TC kimlik numarası zorunludur.',
+                'national_id.digits' => 'TC kimlik numarası 11 rakamdan oluşmalıdır.',
+            ]
+        );
 
         $employeeData = [
             'first_name' => $this->first_name,
