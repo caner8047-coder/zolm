@@ -5,6 +5,7 @@ namespace App\Services\Marketplace\Connectors;
 use App\Models\ChannelListing;
 use App\Models\IntegrationConnection;
 use App\Models\MarketplaceStore;
+use App\Services\Marketplace\Contracts\PullsClaims;
 use App\Services\Marketplace\Contracts\PullsFinancials;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
@@ -12,11 +13,11 @@ use App\Services\Marketplace\Contracts\PushesPrice;
 use App\Services\Marketplace\Contracts\PushesStock;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFinancials, PullsOrders, PullsProducts, PushesPrice, PushesStock
+class ShopifyConnector extends AbstractMarketplaceConnector implements PullsClaims, PullsFinancials, PullsOrders, PullsProducts, PushesPrice, PushesStock
 {
     public function providerKey(): string
     {
@@ -53,6 +54,122 @@ class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFina
             'package_common_label_get' => false,
             'invoice_link' => false,
             'package_invoice_link' => false,
+            'questions' => false,
+            'question_answer' => false,
+            'claims' => true,
+            'claim_approve' => false,
+            'claim_reject' => false,
+        ];
+    }
+
+    public function pullClaims(MarketplaceStore $store, array $options = []): array
+    {
+        $pageSize = min(100, max(1, (int) ($options['page_size'] ?? config('marketplace.shopify.claim_page_size', 50))));
+        $items = [];
+        $cursor = null;
+        $hasNextPage = true;
+        $query = $this->buildOrderSearchQuery($options);
+        $requestedStatus = Str::upper(trim((string) ($options['status'] ?? '')));
+
+        while ($hasNextPage) {
+            $payload = $this->graphQl($store, <<<'GRAPHQL'
+                query ZolmReturns($first: Int!, $after: String, $query: String) {
+                  orders(first: $first, after: $after, sortKey: UPDATED_AT, reverse: true, query: $query) {
+                    pageInfo {
+                      hasNextPage
+                      endCursor
+                    }
+                    nodes {
+                      id
+                      legacyResourceId
+                      name
+                      customer {
+                        displayName
+                      }
+                      fulfillments(first: 10) {
+                        nodes {
+                          trackingInfo(first: 10) {
+                            company
+                            number
+                            url
+                          }
+                        }
+                      }
+                      returns(first: 100) {
+                        nodes {
+                          id
+                          name
+                          status
+                          createdAt
+                          closedAt
+                          requestApprovedAt
+                          totalQuantity
+                          returnLineItems(first: 100) {
+                            nodes {
+                              ... on ReturnLineItem {
+                                id
+                                quantity
+                                processableQuantity
+                                processedQuantity
+                                refundableQuantity
+                                refundedQuantity
+                                customerNote
+                                returnReasonNote
+                                fulfillmentLineItem {
+                                  id
+                                  lineItem {
+                                    id
+                                    name
+                                    sku
+                                    variant {
+                                      id
+                                      sku
+                                      barcode
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+            GRAPHQL, [
+                'first' => $pageSize,
+                'after' => $cursor,
+                'query' => $query,
+            ]);
+
+            $connection = data_get($payload, 'data.orders', []);
+            $nodes = collect(data_get($connection, 'nodes', []))
+                ->filter(fn ($row) => is_array($row))
+                ->values();
+
+            foreach ($nodes as $order) {
+                foreach ($this->normalizeClaims($order) as $claim) {
+                    if ($requestedStatus !== '' && Str::upper((string) data_get($claim, 'status')) !== $requestedStatus) {
+                        continue;
+                    }
+
+                    $items[] = $claim;
+                }
+            }
+
+            $hasNextPage = (bool) data_get($connection, 'pageInfo.hasNextPage', false);
+            $cursor = data_get($connection, 'pageInfo.endCursor');
+        }
+
+        return [
+            'items' => $items,
+            'meta' => [
+                'items_received' => count($items),
+                'cursor_after' => now()->toIso8601String(),
+                'graphql_query' => $query,
+                'required_scope' => 'read_returns',
+                'per_order_return_limit' => 100,
+            ],
         ];
     }
 
@@ -296,6 +413,41 @@ class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFina
                       updatedAt
                       cancelledAt
                       closedAt
+                      confirmationNumber
+                      currencyCode
+                      presentmentCurrencyCode
+                      processedAt
+                      confirmed
+                      note
+                      tags
+                      discountCodes
+                      paymentGatewayNames
+                      taxesIncluded
+                      currentTotalWeight
+                      currentSubtotalPriceSet {
+                        shopMoney { amount currencyCode }
+                        presentmentMoney { amount currencyCode }
+                      }
+                      currentShippingPriceSet {
+                        shopMoney { amount currencyCode }
+                        presentmentMoney { amount currencyCode }
+                      }
+                      currentTotalDiscountsSet {
+                        shopMoney { amount currencyCode }
+                        presentmentMoney { amount currencyCode }
+                      }
+                      currentTotalTaxSet {
+                        shopMoney { amount currencyCode }
+                        presentmentMoney { amount currencyCode }
+                      }
+                      currentTotalPriceSet {
+                        shopMoney { amount currencyCode }
+                        presentmentMoney { amount currencyCode }
+                      }
+                      totalRefundedSet {
+                        shopMoney { amount currencyCode }
+                        presentmentMoney { amount currencyCode }
+                      }
                       displayFinancialStatus
                       displayFulfillmentStatus
                       customer {
@@ -423,11 +575,29 @@ class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFina
                       id
                       legacyResourceId
                       title
+                      handle
+                      descriptionHtml
                       vendor
                       productType
                       status
+                      createdAt
                       publishedAt
                       updatedAt
+                      tags
+                      totalInventory
+                      tracksInventory
+                      isGiftCard
+                      onlineStoreUrl
+                      seo {
+                        title
+                        description
+                      }
+                      options {
+                        id
+                        name
+                        position
+                        values
+                      }
                       variants(first: 100) {
                         nodes {
                           id
@@ -536,7 +706,7 @@ class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFina
 
     public function verifyWebhookSignature(Request $request, ?IntegrationConnection $connection): bool
     {
-        if (!$connection) {
+        if (! $connection) {
             return false;
         }
 
@@ -624,7 +794,7 @@ class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFina
             return $base.'/graphql.json';
         }
 
-        $version = trim((string) config('marketplace.shopify.api_version', '2025-10'), '/');
+        $version = trim((string) config('marketplace.shopify.api_version', '2026-07'), '/');
 
         return $base.'/admin/api/'.$version.'/graphql.json';
     }
@@ -648,7 +818,7 @@ class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFina
             ->throw()
             ->json();
 
-        if (!is_array($response)) {
+        if (! is_array($response)) {
             throw new \RuntimeException('Shopify GraphQL cevabı beklenen formatta değil.');
         }
 
@@ -772,6 +942,70 @@ class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFina
     }
 
     /**
+     * @param  array<string, mixed>  $orderPayload
+     * @return array<int, array<string, mixed>>
+     */
+    protected function normalizeClaims(array $orderPayload): array
+    {
+        $orderNumber = (string) (
+            data_get($orderPayload, 'name')
+            ?: data_get($orderPayload, 'legacyResourceId')
+            ?: data_get($orderPayload, 'id')
+        );
+        $tracking = collect(data_get($orderPayload, 'fulfillments.nodes', []))
+            ->filter(fn ($row) => is_array($row))
+            ->flatMap(fn (array $fulfillment) => collect(data_get($fulfillment, 'trackingInfo', [])))
+            ->filter(fn ($row) => is_array($row))
+            ->first() ?: [];
+
+        return collect(data_get($orderPayload, 'returns.nodes', []))
+            ->filter(fn ($row) => is_array($row))
+            ->map(function (array $return) use ($orderPayload, $orderNumber, $tracking): array {
+                $lineItems = collect(data_get($return, 'returnLineItems.nodes', []))
+                    ->filter(fn ($row) => is_array($row))
+                    ->map(function (array $row): array {
+                        $lineItem = data_get($row, 'fulfillmentLineItem.lineItem', []);
+
+                        return [
+                            'external_item_id' => (string) (
+                                data_get($row, 'id')
+                                ?: data_get($row, 'fulfillmentLineItem.id')
+                                ?: data_get($lineItem, 'id')
+                            ),
+                            'external_order_line_id' => data_get($lineItem, 'id'),
+                            'product_name' => data_get($lineItem, 'name'),
+                            'stock_code' => data_get($lineItem, 'variant.sku') ?: data_get($lineItem, 'sku'),
+                            'barcode' => data_get($lineItem, 'variant.barcode'),
+                            'quantity' => (int) data_get($row, 'quantity', 0),
+                            'reason' => data_get($row, 'returnReasonNote'),
+                            'customer_note' => data_get($row, 'customerNote'),
+                            'raw_payload' => $row,
+                        ];
+                    })
+                    ->values()
+                    ->all();
+
+                return [
+                    'external_claim_id' => (string) (data_get($return, 'id') ?: data_get($return, 'name')),
+                    'order_number' => $orderNumber,
+                    'cargo_tracking_number' => data_get($tracking, 'number'),
+                    'cargo_provider' => data_get($tracking, 'company'),
+                    'status' => data_get($return, 'status') ?: 'pending',
+                    'type' => 'return',
+                    'reason' => collect($lineItems)->pluck('reason')->filter()->unique()->implode('; ') ?: null,
+                    'reason_detail' => null,
+                    'customer_note' => collect($lineItems)->pluck('customer_note')->filter()->unique()->implode('; ') ?: null,
+                    'customer_name' => data_get($orderPayload, 'customer.displayName'),
+                    'created_date' => data_get($return, 'createdAt'),
+                    'items' => $lineItems,
+                    'raw_payload' => $return,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      * @return array<int, array<string, mixed>>
      */
@@ -859,9 +1093,6 @@ class ShopifyConnector extends AbstractMarketplaceConnector implements PullsFina
         ];
     }
 
-    /**
-     * @param  mixed  $value
-     */
     protected function moneyAmount(mixed $value): ?float
     {
         if ($value === null || $value === '') {

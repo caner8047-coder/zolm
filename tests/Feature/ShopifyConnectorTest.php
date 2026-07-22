@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Models\IntegrationConnection;
 use App\Models\ChannelListing;
 use App\Models\ChannelProduct;
+use App\Models\IntegrationConnection;
 use App\Models\MarketplaceStore;
 use App\Services\Marketplace\Connectors\ShopifyConnector;
 use App\Services\Marketplace\MarketplaceConnectorManager;
@@ -24,6 +24,7 @@ class ShopifyConnectorTest extends TestCase
         $this->assertTrue(app(ShopifyConnector::class)->capabilities()['orders']);
         $this->assertTrue(app(ShopifyConnector::class)->capabilities()['products']);
         $this->assertTrue(app(ShopifyConnector::class)->capabilities()['finance']);
+        $this->assertTrue(app(ShopifyConnector::class)->capabilities()['claims']);
         $this->assertTrue(app(ShopifyConnector::class)->capabilities()['price_push']);
         $this->assertTrue(app(ShopifyConnector::class)->capabilities()['stock_push']);
     }
@@ -31,7 +32,7 @@ class ShopifyConnectorTest extends TestCase
     public function test_it_verifies_shopify_connection_with_graphql_probe(): void
     {
         Http::fake([
-            'https://ornek.myshopify.com/admin/api/2025-10/graphql.json' => Http::response([
+            'https://ornek.myshopify.com/admin/api/2026-07/graphql.json' => Http::response([
                 'data' => [
                     'shop' => [
                         'name' => 'ZOLM Demo',
@@ -98,7 +99,7 @@ class ShopifyConnectorTest extends TestCase
     public function test_it_pulls_and_normalizes_shopify_orders(): void
     {
         Http::fake([
-            'https://ornek.myshopify.com/admin/api/2025-10/graphql.json' => Http::response([
+            'https://ornek.myshopify.com/admin/api/2026-07/graphql.json' => Http::response([
                 'data' => [
                     'orders' => [
                         'pageInfo' => [
@@ -205,7 +206,7 @@ class ShopifyConnectorTest extends TestCase
     public function test_it_pulls_and_normalizes_shopify_products(): void
     {
         Http::fake([
-            'https://ornek.myshopify.com/admin/api/2025-10/graphql.json' => Http::response([
+            'https://ornek.myshopify.com/admin/api/2026-07/graphql.json' => Http::response([
                 'data' => [
                     'products' => [
                         'pageInfo' => [
@@ -260,7 +261,7 @@ class ShopifyConnectorTest extends TestCase
     public function test_it_pulls_and_normalizes_shopify_financial_events(): void
     {
         Http::fake([
-            'https://ornek.myshopify.com/admin/api/2025-10/graphql.json' => Http::response([
+            'https://ornek.myshopify.com/admin/api/2026-07/graphql.json' => Http::response([
                 'data' => [
                     'orders' => [
                         'pageInfo' => [
@@ -347,10 +348,97 @@ class ShopifyConnectorTest extends TestCase
         $this->assertSame('order_transactions', data_get($result, 'meta.finance_mode'));
     }
 
+    public function test_it_pulls_and_normalizes_shopify_returns_as_claims(): void
+    {
+        Http::fake([
+            'https://ornek.myshopify.com/admin/api/2026-07/graphql.json' => Http::response([
+                'data' => [
+                    'orders' => [
+                        'pageInfo' => [
+                            'hasNextPage' => false,
+                            'endCursor' => null,
+                        ],
+                        'nodes' => [[
+                            'id' => 'gid://shopify/Order/1001',
+                            'legacyResourceId' => '1001',
+                            'name' => '#1001',
+                            'customer' => [
+                                'displayName' => 'Merve Test',
+                            ],
+                            'fulfillments' => [
+                                'nodes' => [[
+                                    'trackingInfo' => [[
+                                        'company' => 'Yurtiçi Kargo',
+                                        'number' => 'YK123',
+                                        'url' => 'https://example.test/YK123',
+                                    ]],
+                                ]],
+                            ],
+                            'returns' => [
+                                'nodes' => [[
+                                    'id' => 'gid://shopify/Return/501',
+                                    'name' => '#R501',
+                                    'status' => 'REQUESTED',
+                                    'createdAt' => '2026-07-21T09:00:00Z',
+                                    'closedAt' => null,
+                                    'requestApprovedAt' => null,
+                                    'totalQuantity' => 1,
+                                    'returnLineItems' => [
+                                        'nodes' => [[
+                                            'id' => 'gid://shopify/ReturnLineItem/701',
+                                            'quantity' => 1,
+                                            'processableQuantity' => 1,
+                                            'processedQuantity' => 0,
+                                            'refundableQuantity' => 1,
+                                            'refundedQuantity' => 0,
+                                            'customerNote' => 'Bedeni olmadı',
+                                            'returnReasonNote' => 'Beden uyumsuz',
+                                            'fulfillmentLineItem' => [
+                                                'id' => 'gid://shopify/FulfillmentLineItem/601',
+                                                'lineItem' => [
+                                                    'id' => 'gid://shopify/LineItem/9001',
+                                                    'name' => 'Test Ürünü',
+                                                    'sku' => 'STK-001',
+                                                    'variant' => [
+                                                        'id' => 'gid://shopify/ProductVariant/7001',
+                                                        'sku' => 'STK-001',
+                                                        'barcode' => '869000000001',
+                                                    ],
+                                                ],
+                                            ],
+                                        ]],
+                                    ],
+                                ]],
+                            ],
+                        ]],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $result = app(ShopifyConnector::class)->pullClaims($this->makeStore());
+
+        $this->assertCount(1, $result['items']);
+        $this->assertSame('gid://shopify/Return/501', data_get($result, 'items.0.external_claim_id'));
+        $this->assertSame('#1001', data_get($result, 'items.0.order_number'));
+        $this->assertSame('REQUESTED', data_get($result, 'items.0.status'));
+        $this->assertSame('YK123', data_get($result, 'items.0.cargo_tracking_number'));
+        $this->assertSame('STK-001', data_get($result, 'items.0.items.0.stock_code'));
+        $this->assertSame('read_returns', data_get($result, 'meta.required_scope'));
+
+        Http::assertSent(function ($request) {
+            $query = (string) data_get($request->data(), 'query', '');
+
+            return str_contains($query, 'query ZolmReturns')
+                && str_contains($query, 'returns(first: 100)')
+                && str_contains($query, 'returnLineItems(first: 100)');
+        });
+    }
+
     public function test_it_pushes_price_to_shopify_variant_mutation(): void
     {
         Http::fake([
-            'https://ornek.myshopify.com/admin/api/2025-10/graphql.json' => Http::response([
+            'https://ornek.myshopify.com/admin/api/2026-07/graphql.json' => Http::response([
                 'data' => [
                     'productVariantsBulkUpdate' => [
                         'product' => ['id' => 'gid://shopify/Product/501'],
@@ -376,7 +464,7 @@ class ShopifyConnectorTest extends TestCase
             $body = $request->data();
             $variables = $body['variables'] ?? [];
 
-            return $request->url() === 'https://ornek.myshopify.com/admin/api/2025-10/graphql.json'
+            return $request->url() === 'https://ornek.myshopify.com/admin/api/2026-07/graphql.json'
                 && $request->hasHeader('X-Shopify-Access-Token', 'shpat_test_token')
                 && ($variables['productId'] ?? null) === 'gid://shopify/Product/501'
                 && data_get($variables, 'variants.0.id') === 'gid://shopify/ProductVariant/701'
@@ -388,7 +476,7 @@ class ShopifyConnectorTest extends TestCase
     public function test_it_pushes_stock_to_shopify_inventory_mutation_with_primary_location_fallback(): void
     {
         Http::fake([
-            'https://ornek.myshopify.com/admin/api/2025-10/graphql.json' => Http::sequence()
+            'https://ornek.myshopify.com/admin/api/2026-07/graphql.json' => Http::sequence()
                 ->push([
                     'data' => [
                         'location' => [

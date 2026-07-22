@@ -1,5 +1,14 @@
 <?php
 
+use App\Http\Middleware\EnforceCustomerCareTls;
+use App\Http\Middleware\EnsureCustomerCareFeatureEnabled;
+use App\Http\Middleware\EnsureMarketplaceFeatureEnabled;
+use App\Http\Middleware\EnsureTrendyolBoosterReleaseAccess;
+use App\Http\Middleware\RecordTrendyolBoosterOperationMetric;
+use App\Http\Middleware\ZolmRuntimeParityMiddleware;
+use App\Modules\Hr\Core\Http\Middleware\HrAuthorize;
+use App\Modules\Hr\Core\Http\Middleware\RequireHrModule;
+use App\Modules\Hr\Core\Http\Middleware\ResolveHrTenant;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -12,15 +21,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->prepend(\App\Http\Middleware\EnforceCustomerCareTls::class);
+        $middleware->prepend(EnforceCustomerCareTls::class);
+        $middleware->web(append: ZolmRuntimeParityMiddleware::class);
         $middleware->alias([
-            'mp.feature' => \App\Http\Middleware\EnsureMarketplaceFeatureEnabled::class,
-            'booster.release' => \App\Http\Middleware\EnsureTrendyolBoosterReleaseAccess::class,
-            'booster.metric' => \App\Http\Middleware\RecordTrendyolBoosterOperationMetric::class,
-            'customer-care.feature' => \App\Http\Middleware\EnsureCustomerCareFeatureEnabled::class,
-            'hr.authorize' => \App\Modules\Hr\Core\Http\Middleware\HrAuthorize::class,
-            'hr.tenant' => \App\Modules\Hr\Core\Http\Middleware\ResolveHrTenant::class,
-            'hr.module' => \App\Modules\Hr\Core\Http\Middleware\RequireHrModule::class,
+            'mp.feature' => EnsureMarketplaceFeatureEnabled::class,
+            'booster.release' => EnsureTrendyolBoosterReleaseAccess::class,
+            'booster.metric' => RecordTrendyolBoosterOperationMetric::class,
+            'customer-care.feature' => EnsureCustomerCareFeatureEnabled::class,
+            'hr.authorize' => HrAuthorize::class,
+            'hr.tenant' => ResolveHrTenant::class,
+            'hr.module' => RequireHrModule::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

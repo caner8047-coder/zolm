@@ -114,4 +114,54 @@ class IntegrationSyncProfileDefaultsTest extends TestCase
         $this->assertSame(10, $defaults['request_jitter_seconds']);
         $this->assertSame('7_days', $defaults['backfill_mode']);
     }
+
+    public function test_it_enables_read_only_data_defaults_for_tsoft(): void
+    {
+        $defaults = IntegrationSyncProfile::defaultsForMarketplace('tsoft');
+
+        $this->assertSame(15, $defaults['orders_poll_minutes']);
+        $this->assertSame(240, $defaults['finance_poll_minutes']);
+        $this->assertSame(720, $defaults['products_poll_minutes']);
+        $this->assertSame(30, $defaults['claims_poll_minutes']);
+        $this->assertTrue($defaults['finance_enabled']);
+        $this->assertFalse($defaults['questions_enabled']);
+        $this->assertFalse($defaults['webhook_enabled']);
+        $this->assertFalse($defaults['price_push_enabled']);
+        $this->assertFalse($defaults['stock_push_enabled']);
+        $this->assertSame(1, $defaults['max_parallel_jobs']);
+        $this->assertSame(10, $defaults['request_jitter_seconds']);
+        $this->assertSame('7_days', $defaults['backfill_mode']);
+    }
+
+    public function test_it_enables_read_only_data_defaults_for_magento(): void
+    {
+        $defaults = IntegrationSyncProfile::defaultsForMarketplace('magento');
+
+        $this->assertSame(15, $defaults['orders_poll_minutes']);
+        $this->assertSame(240, $defaults['finance_poll_minutes']);
+        $this->assertSame(720, $defaults['products_poll_minutes']);
+        $this->assertSame(30, $defaults['claims_poll_minutes']);
+        $this->assertTrue($defaults['finance_enabled']);
+        $this->assertFalse($defaults['questions_enabled']);
+        $this->assertFalse($defaults['webhook_enabled']);
+        $this->assertFalse($defaults['price_push_enabled']);
+        $this->assertFalse($defaults['stock_push_enabled']);
+        $this->assertSame(1, $defaults['max_parallel_jobs']);
+        $this->assertSame(10, $defaults['request_jitter_seconds']);
+        $this->assertSame('7_days', $defaults['backfill_mode']);
+    }
+
+    public function test_ready_commerce_providers_enable_all_supported_read_flows_by_default(): void
+    {
+        foreach (['shopify', 'ikas', 'ideasoft', 'ticimax', 'tsoft', 'magento'] as $provider) {
+            $defaults = IntegrationSyncProfile::defaultsForMarketplace($provider);
+
+            $this->assertTrue($defaults['orders_enabled'], $provider.' sipariş okuma kapalı.');
+            $this->assertTrue($defaults['products_enabled'], $provider.' ürün okuma kapalı.');
+            $this->assertTrue($defaults['finance_enabled'], $provider.' finans okuma kapalı.');
+            $this->assertTrue($defaults['claims_enabled'], $provider.' iade/claim okuma kapalı.');
+            $this->assertFalse($defaults['price_push_enabled'], $provider.' fiyat yazma açık olmamalı.');
+            $this->assertFalse($defaults['stock_push_enabled'], $provider.' stok yazma açık olmamalı.');
+        }
+    }
 }

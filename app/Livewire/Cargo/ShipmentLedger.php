@@ -7,6 +7,7 @@ use App\Models\ChannelClaim;
 use App\Models\ChannelOrderPackage;
 use App\Models\Shipment;
 use App\Models\SupplyOrder;
+use App\Services\Cargo\CargoCarrierRegistry;
 use App\Services\Cargo\CargoShipmentService;
 use App\Services\ExcelService;
 use Illuminate\Database\Eloquent\Builder;
@@ -24,15 +25,29 @@ class ShipmentLedger extends Component
     use WithPagination;
 
     public string $search = '';
+
     public string $statusFilter = '';
+
+    public string $carrierFilter = '';
+
     public string $flowFilter = '';
+
     public string $directionFilter = '';
+
+    public string $draftCarrierCode = 'surat';
+
     public string $dateFrom = '';
+
     public string $dateTo = '';
+
     public string $message = '';
+
     public string $messageTone = 'info';
+
     public $invoiceFile;
+
     public string $invoiceNumber = '';
+
     public string $invoiceDate = '';
 
     public array $visibleColumns = [
@@ -56,6 +71,7 @@ class ShipmentLedger extends Component
     protected $queryString = [
         'search' => ['except' => ''],
         'statusFilter' => ['except' => ''],
+        'carrierFilter' => ['except' => ''],
         'flowFilter' => ['except' => ''],
         'directionFilter' => ['except' => ''],
     ];
@@ -66,6 +82,11 @@ class ShipmentLedger extends Component
     }
 
     public function updatedStatusFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedCarrierFilter(): void
     {
         $this->resetPage();
     }
@@ -87,9 +108,15 @@ class ShipmentLedger extends Component
     }
 
     #[Computed]
+    public function carrierOptions(): array
+    {
+        return app(CargoCarrierRegistry::class)->all();
+    }
+
+    #[Computed]
     public function stats(): array
     {
-        if (!$this->tableReady) {
+        if (! $this->tableReady) {
             return [
                 'total' => 0,
                 'active' => 0,
@@ -113,7 +140,7 @@ class ShipmentLedger extends Component
     #[Computed]
     public function shipments()
     {
-        if (!$this->tableReady) {
+        if (! $this->tableReady) {
             return collect();
         }
 
@@ -132,15 +159,16 @@ class ShipmentLedger extends Component
 
     public function createDraftsFromMarketplacePackages(): void
     {
-        if (!$this->tableReady) {
+        if (! $this->tableReady) {
             $this->showMessage('Gönderi tabloları henüz hazır değil. Migration çalıştıktan sonra işlem aktif olur.', 'warning');
+
             return;
         }
 
         $packages = ChannelOrderPackage::query()
             ->with(['order.items.product', 'order.store', 'items.product', 'store'])
             ->whereHas('store', fn (Builder $query) => $query->where('user_id', auth()->id()))
-            ->whereDoesntHave('shipments', fn (Builder $query) => $query->where('carrier_code', 'surat')->where('flow_type', 'order'))
+            ->whereDoesntHave('shipments', fn (Builder $query) => $query->where('carrier_code', $this->draftCarrierCode)->where('flow_type', 'order'))
             ->latest('updated_at')
             ->limit(100)
             ->get();
@@ -149,19 +177,20 @@ class ShipmentLedger extends Component
         $created = 0;
 
         foreach ($packages as $package) {
-            $service->createOrUpdateFromPackage($package);
+            $service->createOrUpdateFromPackage($package, carrierCode: $this->draftCarrierCode);
             $created++;
         }
 
         $this->showMessage($created > 0
-            ? "{$created} paket için Sürat gönderi taslağı hazırlandı."
+            ? "{$created} paket için {$this->selectedCarrierName()} gönderi taslağı hazırlandı."
             : 'Taslak oluşturulacak yeni pazaryeri paketi bulunamadı.', $created > 0 ? 'success' : 'info');
     }
 
     public function createDraftsFromMarketplaceClaims(): void
     {
-        if (!$this->tableReady || !Schema::hasTable('channel_claims')) {
+        if (! $this->tableReady || ! Schema::hasTable('channel_claims')) {
             $this->showMessage('İade/değişim gönderi kaynağı hazır değil.', 'warning');
+
             return;
         }
 
@@ -169,7 +198,7 @@ class ShipmentLedger extends Component
             ->with(['store', 'items'])
             ->whereHas('store', fn (Builder $query) => $query->where('user_id', auth()->id()))
             ->whereIn('type', ['return', 'exchange'])
-            ->whereDoesntHave('shipments', fn (Builder $query) => $query->where('carrier_code', 'surat'))
+            ->whereDoesntHave('shipments', fn (Builder $query) => $query->where('carrier_code', $this->draftCarrierCode))
             ->latest('updated_at')
             ->limit(100)
             ->get();
@@ -178,24 +207,25 @@ class ShipmentLedger extends Component
         $created = 0;
 
         foreach ($claims as $claim) {
-            $service->createOrUpdateFromClaim($claim);
+            $service->createOrUpdateFromClaim($claim, carrierCode: $this->draftCarrierCode);
             $created++;
         }
 
         $this->showMessage($created > 0
-            ? "{$created} iade/değişim kaydı için Sürat gönderi taslağı hazırlandı."
+            ? "{$created} iade/değişim kaydı için {$this->selectedCarrierName()} gönderi taslağı hazırlandı."
             : 'Taslak oluşturulacak yeni iade/değişim kaydı bulunamadı.', $created > 0 ? 'success' : 'info');
     }
 
     public function createDraftsFromSupplyOrders(): void
     {
-        if (!$this->tableReady || !Schema::hasTable('supply_orders')) {
+        if (! $this->tableReady || ! Schema::hasTable('supply_orders')) {
             $this->showMessage('Tedarik gönderi kaynağı hazır değil.', 'warning');
+
             return;
         }
 
         $orders = SupplyOrder::query()
-            ->whereDoesntHave('shipments', fn (Builder $query) => $query->where('carrier_code', 'surat'))
+            ->whereDoesntHave('shipments', fn (Builder $query) => $query->where('carrier_code', $this->draftCarrierCode))
             ->latest('updated_at')
             ->limit(100)
             ->get();
@@ -204,12 +234,12 @@ class ShipmentLedger extends Component
         $created = 0;
 
         foreach ($orders as $order) {
-            $service->createOrUpdateFromSupplyOrder($order);
+            $service->createOrUpdateFromSupplyOrder($order, carrierCode: $this->draftCarrierCode);
             $created++;
         }
 
         $this->showMessage($created > 0
-            ? "{$created} tedarik kaydı için Sürat gönderi taslağı hazırlandı."
+            ? "{$created} tedarik kaydı için {$this->selectedCarrierName()} gönderi taslağı hazırlandı."
             : 'Taslak oluşturulacak yeni tedarik kaydı bulunamadı.', $created > 0 ? 'success' : 'info');
     }
 
@@ -219,7 +249,7 @@ class ShipmentLedger extends Component
 
         try {
             app(CargoShipmentService::class)->pushToCarrier($shipment);
-            $this->showMessage('Sürat gönderi/barkod isteği tamamlandı.', 'success');
+            $this->showMessage("{$shipment->carrier_name} gönderi/barkod isteği tamamlandı.", 'success');
         } catch (\Throwable $exception) {
             $shipment->forceFill(['last_error' => $exception->getMessage()])->save();
             $this->showMessage($exception->getMessage(), 'warning');
@@ -232,7 +262,7 @@ class ShipmentLedger extends Component
 
         try {
             app(CargoShipmentService::class)->refreshTracking($shipment);
-            $this->showMessage('Sürat takip bilgisi güncellendi.', 'success');
+            $this->showMessage("{$shipment->carrier_name} takip bilgisi güncellendi.", 'success');
         } catch (\Throwable $exception) {
             $shipment->forceFill([
                 'last_error' => $exception->getMessage(),
@@ -251,7 +281,7 @@ class ShipmentLedger extends Component
                 'source' => 'shipment_ledger',
                 'cancelled_by' => auth()->id(),
             ]);
-            $this->showMessage('Sürat gönderisi iptal edildi.', 'success');
+            $this->showMessage("{$shipment->carrier_name} gönderisi iptal edildi.", 'success');
         } catch (\Throwable $exception) {
             $shipment->forceFill(['last_error' => $exception->getMessage()])->save();
             $this->showMessage($exception->getMessage(), 'warning');
@@ -260,8 +290,9 @@ class ShipmentLedger extends Component
 
     public function importSuratInvoice(): void
     {
-        if (!$this->tableReady || !Schema::hasTable('cargo_invoice_lines')) {
+        if (! $this->tableReady || ! Schema::hasTable('cargo_invoice_lines')) {
             $this->showMessage('Kargo fatura mutabakat tabloları hazır değil. Migration çalıştırılmalı.', 'warning');
+
             return;
         }
 
@@ -292,6 +323,7 @@ class ShipmentLedger extends Component
                 && blank($payload['order_reference'])
             ) {
                 $skipped++;
+
                 continue;
             }
 
@@ -346,7 +378,7 @@ class ShipmentLedger extends Component
 
     public function toggleColumn(string $column): void
     {
-        if (!array_key_exists($column, static::$columnDefs)) {
+        if (! array_key_exists($column, static::$columnDefs)) {
             return;
         }
 
@@ -356,6 +388,7 @@ class ShipmentLedger extends Component
             }
 
             $this->visibleColumns = array_values(array_diff($this->visibleColumns, [$column]));
+
             return;
         }
 
@@ -369,7 +402,7 @@ class ShipmentLedger extends Component
             ->where('user_id', auth()->id());
 
         if ($this->search !== '') {
-            $term = '%' . $this->search . '%';
+            $term = '%'.$this->search.'%';
             $query->where(function (Builder $subQuery) use ($term) {
                 $subQuery->where('shipment_no', 'like', $term)
                     ->orWhere('tracking_number', 'like', $term)
@@ -382,6 +415,10 @@ class ShipmentLedger extends Component
 
         if ($this->statusFilter !== '') {
             $query->where('status', $this->statusFilter);
+        }
+
+        if ($this->carrierFilter !== '') {
+            $query->where('carrier_code', $this->carrierFilter);
         }
 
         if ($this->flowFilter !== '') {
@@ -414,6 +451,11 @@ class ShipmentLedger extends Component
     {
         $this->message = $message;
         $this->messageTone = $tone;
+    }
+
+    protected function selectedCarrierName(): string
+    {
+        return app(CargoCarrierRegistry::class)->name($this->draftCarrierCode);
     }
 
     /**

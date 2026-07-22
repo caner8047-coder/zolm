@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Shipment;
+use App\Services\Cargo\CargoCarrierManager;
 use App\Services\Cargo\CargoShipmentService;
 use App\Services\Cargo\WooCommerceSuratTrackingSyncService;
 use Illuminate\Console\Command;
@@ -17,14 +18,14 @@ class SyncCargoTrackingCommand extends Command
         {--woocommerce-lookback-days=14 : WooCommerce paketlerini Sürat raporunda geriye dönük kaç gün arayacağı}
         {--skip-woocommerce-match : WooCommerce paketlerini Sürat raporundan otomatik eşleştirmeyi atla}';
 
-    protected $description = 'Aktif Sürat Kargo gönderilerini ve WooCommerce otomatik takip eşleşmelerini yeniler.';
+    protected $description = 'Sürücüsü etkin kargo gönderilerini ve WooCommerce Sürat otomatik takip eşleşmelerini yeniler.';
 
     public function handle(
         CargoShipmentService $shipmentService,
+        CargoCarrierManager $carrierManager,
         WooCommerceSuratTrackingSyncService $wooCommerceSuratTrackingSyncService,
-    ): int
-    {
-        if (!Schema::hasTable('shipments')) {
+    ): int {
+        if (! Schema::hasTable('shipments')) {
             $this->warn('shipments tablosu bulunamadı. Önce kargo operasyon migrationlarını çalıştırın.');
 
             return self::SUCCESS;
@@ -35,7 +36,7 @@ class SyncCargoTrackingCommand extends Command
 
         $shipments = Shipment::query()
             ->active()
-            ->where('carrier_code', 'surat')
+            ->whereIn('carrier_code', $carrierManager->connectorCodes())
             ->where(function ($query) {
                 $query->whereNotNull('tracking_number')
                     ->orWhereNotNull('barcode');
@@ -67,9 +68,9 @@ class SyncCargoTrackingCommand extends Command
             }
         }
 
-        $this->info("Sürat takip senkronu tamamlandı. Güncellenen: {$updated}, Hata: {$failed}");
+        $this->info("Kargo takip senkronu tamamlandı. Güncellenen: {$updated}, Hata: {$failed}");
 
-        if (!$this->option('skip-woocommerce-match')) {
+        if (! $this->option('skip-woocommerce-match')) {
             $wooSummary = $wooCommerceSuratTrackingSyncService->sync([
                 'limit' => $limit,
                 'lookback_days' => (int) $this->option('woocommerce-lookback-days'),

@@ -9,7 +9,7 @@
         <div>
             <h1 class="text-xl lg:text-2xl font-bold text-slate-900">Kargo Operasyon Merkezi</h1>
             <p class="mt-1 text-sm lg:text-base text-slate-700">
-                Sürat Kargo gönderilerini, pazaryeri paketlerini, iade/değişim akışlarını, masraf mutabakatını ve eski Excel kontrollerini tek modülde yönetin.
+                Çoklu kargo gönderilerini, pazaryeri paketlerini, iade/değişim akışlarını, masraf mutabakatını ve eski Excel kontrollerini tek modülde yönetin.
             </p>
         </div>
 
@@ -32,7 +32,7 @@
     </div>
 
     <div class="bg-white shadow rounded-lg border border-slate-200 p-2">
-        <nav class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-9 gap-2" aria-label="Kargo operasyon sekmeleri">
+        <nav class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-10 gap-2" aria-label="Kargo operasyon sekmeleri">
             @foreach($tabs as $tabKey => $tab)
                 @php
                     $isActive = $activeTab === $tabKey;
@@ -57,8 +57,8 @@
         @livewire('cargo.shipment-ledger', key('cargo-shipment-ledger'))
     @elseif($activeTab === 'delivery-lookup')
         @livewire('cargo.delivery-lookup', key('cargo-delivery-lookup'))
-    @elseif($activeTab === 'surat')
-        @livewire('cargo.surat-integration-settings', key('cargo-surat-integration'))
+    @elseif($activeTab === 'carriers')
+        @livewire('cargo.carrier-integrations', key('cargo-carrier-integrations'))
     @elseif($activeTab === 'surat-reports')
         @livewire('cargo.surat-report-archive', key('cargo-surat-report-archive'))
     @elseif($activeTab === 'dashboard')

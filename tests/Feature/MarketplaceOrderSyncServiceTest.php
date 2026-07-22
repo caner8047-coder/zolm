@@ -152,6 +152,8 @@ class MarketplaceOrderSyncServiceTest extends TestCase
                 'external_order_id' => '16767',
                 'order_number' => '16767',
                 'order_status' => 'processing',
+                'currency' => 'EUR',
+                'exchange_rate' => 35.25,
                 'ordered_at' => '2026-04-27 10:19:00',
             ],
             'package' => [
@@ -179,7 +181,10 @@ class MarketplaceOrderSyncServiceTest extends TestCase
         ]]);
 
         $item = ChannelOrderItem::query()->where('store_id', $store->id)->firstOrFail();
+        $order = ChannelOrder::query()->where('store_id', $store->id)->firstOrFail();
 
+        $this->assertSame('EUR', $order->currency);
+        $this->assertEquals(35.25, $order->exchange_rate);
         $this->assertSame($listing->id, $item->channel_listing_id);
         $this->assertSame($product->id, $item->mp_product_id);
         $this->assertTrue((bool) $item->is_matched);

@@ -9,13 +9,15 @@ use Livewire\Component;
 /**
  * Kargo operasyon merkezi ana bileşeni.
  *
- * Eski Excel karşılaştırma akışını korur; Sürat entegrasyonu, gönderi
- * defteri ve tazmin takibini aynı operasyon yüzeyinde toplar.
+ * Eski Excel karşılaştırma akışını korur; çoklu taşıyıcı altyapısını,
+ * gönderi defterini ve tazmin takibini aynı operasyon yüzeyinde toplar.
  */
 class CargoReports extends Component
 {
     public string $activeTab = 'shipments';
+
     public ?string $sourceReportDate = null;
+
     public int $checkRunKey = 0;
 
     protected $queryString = [
@@ -24,11 +26,15 @@ class CargoReports extends Component
 
     public function mount(): void
     {
+        if ($this->activeTab === 'surat') {
+            $this->activeTab = 'carriers';
+        }
+
         if ($this->sourceReportDate) {
             $this->activeTab = 'check';
         }
 
-        if (!array_key_exists($this->activeTab, $this->tabs)) {
+        if (! array_key_exists($this->activeTab, $this->tabs)) {
             $this->activeTab = 'dashboard';
         }
     }
@@ -39,17 +45,17 @@ class CargoReports extends Component
             'shipments' => [
                 'label' => 'Gönderi Defteri',
                 'summary' => 'Canlı kargo operasyonu',
-                'description' => 'Pazaryeri, iade/değişim ve tedarik gönderilerini Sürat Kargo hesabıyla tek defterde yönetin.',
+                'description' => 'Pazaryeri, iade/değişim ve tedarik gönderilerini taşıyıcı bazlı tek defterde yönetin.',
             ],
             'delivery-lookup' => [
                 'label' => 'Teslimat Kontrol',
                 'summary' => 'Kargo konu arama',
                 'description' => 'Satıcı anlaşmalı kargo koduyla müşteri, adres, telefon ve Sürat dağıtım sinyalini tek ekranda görün.',
             ],
-            'surat' => [
-                'label' => 'Sürat Entegrasyon',
-                'summary' => 'API hesap ve şifreleri',
-                'description' => 'Sürat eKargo müşteri kodu, gönderim ve sorgulama şifrelerini güvenli biçimde tanımlayın.',
+            'carriers' => [
+                'label' => 'Taşıyıcılar',
+                'summary' => 'API hazırlık ve hesaplar',
+                'description' => 'Kargo firmalarının canlı sürücü, sözleşme ve geliştirici erişimi durumunu tek yüzeyden izleyin.',
             ],
             'surat-reports' => [
                 'label' => 'Sürat Raporları',
@@ -91,7 +97,11 @@ class CargoReports extends Component
 
     public function setTab(string $tab): void
     {
-        if (!array_key_exists($tab, $this->tabs)) {
+        if ($tab === 'surat') {
+            $tab = 'carriers';
+        }
+
+        if (! array_key_exists($tab, $this->tabs)) {
             return;
         }
 
@@ -111,6 +121,12 @@ class CargoReports extends Component
         $this->sourceReportDate = Carbon::parse($reportDate)->toDateString();
         $this->activeTab = 'check';
         $this->checkRunKey++;
+    }
+
+    #[On('cargo-open-tab')]
+    public function openCargoTab(string $tab): void
+    {
+        $this->setTab($tab);
     }
 
     public function openCreateModal(?int $errorItemId = null): void

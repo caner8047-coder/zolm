@@ -3,16 +3,21 @@
 namespace App\Services\Marketplace;
 
 use App\Models\MarketplaceStore;
-use App\Services\Marketplace\Connectors\GenericMarketplaceConnector;
 use App\Services\Marketplace\Connectors\AmazonConnector;
 use App\Services\Marketplace\Connectors\CiceksepetiConnector;
 use App\Services\Marketplace\Connectors\DemoMarketplaceConnector;
+use App\Services\Marketplace\Connectors\GenericMarketplaceConnector;
 use App\Services\Marketplace\Connectors\HepsiburadaConnector;
+use App\Services\Marketplace\Connectors\IdeaSoftConnector;
+use App\Services\Marketplace\Connectors\IkasConnector;
 use App\Services\Marketplace\Connectors\KoctasConnector;
+use App\Services\Marketplace\Connectors\MagentoConnector;
 use App\Services\Marketplace\Connectors\N11Connector;
 use App\Services\Marketplace\Connectors\PazaramaConnector;
 use App\Services\Marketplace\Connectors\ShopifyConnector;
+use App\Services\Marketplace\Connectors\TicimaxConnector;
 use App\Services\Marketplace\Connectors\TrendyolConnector;
+use App\Services\Marketplace\Connectors\TSoftConnector;
 use App\Services\Marketplace\Connectors\WooCommerceConnector;
 use App\Services\Marketplace\Contracts\MarketplaceConnector;
 
@@ -50,6 +55,11 @@ class MarketplaceConnectorManager
             'ciceksepeti' => app(CiceksepetiConnector::class),
             'woocommerce' => app(WooCommerceConnector::class),
             'shopify' => app(ShopifyConnector::class),
+            'ikas' => app(IkasConnector::class),
+            'ideasoft' => app(IdeaSoftConnector::class),
+            'ticimax' => app(TicimaxConnector::class),
+            'tsoft' => app(TSoftConnector::class),
+            'magento' => app(MagentoConnector::class),
             default => new GenericMarketplaceConnector($normalizedProvider, MarketplaceProviderRegistry::get($normalizedProvider)),
         };
     }

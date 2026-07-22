@@ -1132,7 +1132,6 @@
                                             <label class="text-xs sm:text-sm font-medium text-slate-700">Kargo firması</label>
                                             <select wire:model="newCompensation.cargo_company" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
                                                 <option value="Sürat Kargo">Sürat Kargo</option>
-                                                <option value="MNG Kargo">MNG Kargo</option>
                                                 <option value="Yurtiçi Kargo">Yurtiçi Kargo</option>
                                                 <option value="Aras Kargo">Aras Kargo</option>
                                                 <option value="PTT Kargo">PTT Kargo</option>

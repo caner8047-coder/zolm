@@ -1,19 +1,146 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\CompensationDownloadController;
 use App\Http\Controllers\LiveNotificationController;
+use App\Http\Controllers\Marketplace\IdeaSoftOAuthController;
 use App\Http\Controllers\MarketplaceOrderDocumentController;
+use App\Http\Controllers\SupplyLabelController;
 use App\Http\Controllers\TrendyolBoosterCompanionController;
+use App\Http\Middleware\AdminMiddleware;
+use App\Http\Middleware\AdsAccessMiddleware;
+use App\Http\Middleware\EnsureReturnFeatureEnabled;
+use App\Http\Middleware\EnsureWhatsAppFeatureEnabled;
+use App\Livewire\Accounting\AccountingDashboard;
+use App\Livewire\Accounting\Assistant;
+use App\Livewire\Accounting\AuditLogs;
+use App\Livewire\Accounting\CashBank;
+use App\Livewire\Accounting\ChartOfAccounts;
+use App\Livewire\Accounting\CollectionsPayments;
+use App\Livewire\Accounting\EDocuments;
+use App\Livewire\Accounting\Journal;
+use App\Livewire\Accounting\MarketplaceBridge;
+use App\Livewire\Accounting\Parties;
+use App\Livewire\Accounting\PartyLedgerWorkspace;
+use App\Livewire\Accounting\PilotCenter;
+use App\Livewire\Accounting\Pos;
+use App\Livewire\Accounting\Products;
+use App\Livewire\Accounting\Purchases;
+use App\Livewire\Accounting\Reports;
+use App\Livewire\Accounting\Sales;
+use App\Livewire\Accounting\Stock;
+use App\Livewire\Admin\ActivityLogs;
+use App\Livewire\Admin\Dashboard;
+use App\Livewire\Admin\UserManager;
+use App\Livewire\Ads\AdImportCenter;
+use App\Livewire\Ads\AdsDashboard;
+use App\Livewire\Ads\AdsSettings;
+use App\Livewire\Ads\AiActionCenter;
+use App\Livewire\Ads\InfluencerAdsPage;
+use App\Livewire\Ads\ProductAdsCampaignDetail;
+use App\Livewire\Ads\ProductAdsPage;
+use App\Livewire\Ads\ProfitabilityCenter;
+use App\Livewire\Ads\StoreAdsPage;
 use App\Livewire\AIChat;
+use App\Livewire\ApiDev;
+use App\Livewire\BadgePricing;
+use App\Livewire\BasketDiscountCampaign;
+use App\Livewire\CampaignDecisionCenter;
+use App\Livewire\CampaignReports;
+use App\Livewire\CargoReports;
+use App\Livewire\CrmCustomerLedger;
+use App\Livewire\CrmWorkspace;
+use App\Livewire\CustomerCare\AdminCenter;
+use App\Livewire\CustomerCare\AgentWorkspace;
+use App\Livewire\CustomerCare\Analytics;
+use App\Livewire\CustomerCare\Api;
+use App\Livewire\CustomerCare\Certification;
+use App\Livewire\CustomerCare\Commercial;
+use App\Livewire\CustomerCare\Compliance;
+use App\Livewire\CustomerCare\Experiments;
+use App\Livewire\CustomerCare\Governance;
+use App\Livewire\CustomerCare\Home;
+use App\Livewire\CustomerCare\Inbox;
+use App\Livewire\CustomerCare\Integrations;
+use App\Livewire\CustomerCare\KnowledgeSuggestions;
+use App\Livewire\CustomerCare\Launch;
+use App\Livewire\CustomerCare\Onboarding;
+use App\Livewire\CustomerCare\OpsCenter;
+use App\Livewire\CustomerCare\Organization;
+use App\Livewire\CustomerCare\PilotDashboard;
+use App\Livewire\CustomerCare\Production;
+use App\Livewire\CustomerCare\ProductQuestions;
+use App\Livewire\CustomerCare\QualityCenter;
+use App\Livewire\CustomerCare\Reconciliation;
+use App\Livewire\CustomerCare\Releases;
+use App\Livewire\CustomerCare\Reliability;
+use App\Livewire\CustomerCare\Security;
+use App\Livewire\CustomerCare\Settings;
+use App\Livewire\CustomerCare\Success;
 use App\Livewire\CustomMotor;
 use App\Livewire\CustomMotorWizard;
-use App\Livewire\ProductionMotor;
+use App\Livewire\FlashProducts;
+use App\Livewire\Marketplace\BuyboxAnalysis;
+use App\Livewire\Marketplace\CargoInvoiceReconciliation;
+use App\Livewire\Marketplace\ClaimReasonMapping;
+use App\Livewire\Marketplace\TrendyolHealthCenter;
+use App\Livewire\MarketplaceAccounting;
+use App\Livewire\MarketplaceCampaignSimulator;
+use App\Livewire\MarketplaceFinance;
+use App\Livewire\MarketplaceIntegrations;
+use App\Livewire\MarketplaceMatchingCenter;
+use App\Livewire\MarketplaceOrders;
+use App\Livewire\MarketplaceOverview;
+use App\Livewire\MarketplacePricingSimulator;
+use App\Livewire\MarketplaceProfitCenter;
+use App\Livewire\MarketplaceQuestions;
+use App\Livewire\MarketplaceReportDigestSettings;
+use App\Livewire\MarketplaceRiskCenter;
+use App\Livewire\MarketplaceSettings;
+use App\Livewire\MarketplaceSettlementAudit;
+use App\Livewire\MpProductsManager;
+use App\Livewire\OnboardingWizard;
 use App\Livewire\OperationMotor;
+use App\Livewire\PlusCommission;
+use App\Livewire\ProductionMotor;
+use App\Livewire\ProductionPlanner;
+use App\Livewire\ProductionRevenue;
 use App\Livewire\ProfileManager;
 use App\Livewire\ProfileWizard;
-use App\Livewire\ProductionRevenue;
+use App\Livewire\PublicTrendyolProfitCalculator;
+use App\Livewire\RecipeBuilder;
+use App\Livewire\RecipeMaterialsManager;
 use App\Livewire\ReportHistory;
+use App\Livewire\Returns\ReturnWorkspace;
+use App\Livewire\SupplyReports;
+use App\Livewire\TariffOptimizer;
+use App\Livewire\TrendyolBooster;
+use App\Livewire\WhatsApp\WhatsAppAccountSettings;
+use App\Livewire\WhatsApp\WhatsAppAuditLogs;
+use App\Livewire\WhatsApp\WhatsAppAutomationSettings;
+use App\Livewire\WhatsApp\WhatsAppCampaignCreate;
+use App\Livewire\WhatsApp\WhatsAppCampaignDetail;
+use App\Livewire\WhatsApp\WhatsAppCampaigns;
+use App\Livewire\WhatsApp\WhatsAppCustomerProfile;
+use App\Livewire\WhatsApp\WhatsAppInbox;
+use App\Livewire\WhatsApp\WhatsAppOverview;
+use App\Livewire\WhatsApp\WhatsAppSegments;
+use App\Livewire\WhatsApp\WhatsAppShippingSettings;
+use App\Livewire\WhatsApp\WhatsAppTemplateManager;
+use App\Models\IntegrationSyncRun;
+use App\Models\MarketplaceStore;
+use App\Models\ReportFile;
+use App\Models\WaTrackingLink;
+use App\Services\Marketplace\MarketplaceConnectorManager;
+use App\Services\Marketplace\MarketplaceSyncService;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 // Public routes
 Route::get('/', function () {
@@ -23,17 +150,17 @@ Route::get('/', function () {
 Route::view('/privacy/trendyol-booster-companion', 'legal.trendyol-booster-privacy')
     ->name('legal.trendyol-booster-privacy');
 
-Route::get('/tools/trendyol-kar-hesaplama', \App\Livewire\PublicTrendyolProfitCalculator::class)
+Route::get('/tools/trendyol-kar-hesaplama', PublicTrendyolProfitCalculator::class)
     ->name('tools.trendyol-profit-calculator')
     ->middleware('mp.feature:public_trendyol_profit_tool_enabled');
 
 Route::get('/whatsapp/recovery/{token}', function (string $token) {
-    $link = \App\Models\WaTrackingLink::where('token_hash', hash('sha256', $token))->first();
+    $link = WaTrackingLink::where('token_hash', hash('sha256', $token))->first();
 
     abort_if(! $link || $link->isExpired(), 404);
 
     $link->update([
-        'click_count' => \Illuminate\Support\Facades\DB::raw('COALESCE(click_count, 0) + 1'),
+        'click_count' => DB::raw('COALESCE(click_count, 0) + 1'),
         'clicked_at' => $link->clicked_at ?? now(),
     ]);
 
@@ -58,7 +185,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/{notification}/read', [LiveNotificationController::class, 'markRead'])->name('read');
     });
 
-    Route::get('/onboarding', \App\Livewire\OnboardingWizard::class)->name('mp.onboarding');
+    Route::get('/onboarding', OnboardingWizard::class)->name('mp.onboarding');
 
     // Dashboard (redirect to mp.orders by default)
     Route::get('/dashboard', function () {
@@ -100,12 +227,12 @@ Route::middleware('auth')->group(function () {
     // AI Chat
     Route::get('/ai-chat', AIChat::class)->name('ai-chat');
 
-    Route::get('/crm', \App\Livewire\CrmWorkspace::class)
+    Route::get('/crm', CrmWorkspace::class)
         ->name('crm.workspace')
         ->middleware('mp.feature:crm_enabled')
         ->middleware('can:accessCrm');
 
-    Route::get('/crm/customer-ledger', \App\Livewire\CrmCustomerLedger::class)
+    Route::get('/crm/customer-ledger', CrmCustomerLedger::class)
         ->name('crm.customer-ledger')
         ->middleware('mp.feature:crm_enabled')
         ->middleware('can:accessCrm');
@@ -113,172 +240,172 @@ Route::middleware('auth')->group(function () {
     // ============================================
     // COMING SOON - V0.2 Features
     // ============================================
-    Route::get('/cargo-reports', \App\Livewire\CargoReports::class)->name('cargo-reports');
-    Route::get('/supply-reports', \App\Livewire\SupplyReports::class)->name('supply-reports');
+    Route::get('/cargo-reports', CargoReports::class)->name('cargo-reports');
+    Route::get('/supply-reports', SupplyReports::class)->name('supply-reports');
     // Trendyol Kampanya Modülleri
-    Route::get('/campaigns', \App\Livewire\CampaignReports::class)->name('campaigns.index');
+    Route::get('/campaigns', CampaignReports::class)->name('campaigns.index');
     Route::prefix('campaigns')->group(function () {
-        Route::get('/decision-center', \App\Livewire\CampaignDecisionCenter::class)
+        Route::get('/decision-center', CampaignDecisionCenter::class)
             ->name('campaigns.decision-center')
             ->middleware('mp.feature:campaign_decision_center_enabled');
-        Route::get('/simulator', \App\Livewire\MarketplaceCampaignSimulator::class)
+        Route::get('/simulator', MarketplaceCampaignSimulator::class)
             ->name('campaigns.simulator');
-        Route::get('/product-commission', \App\Livewire\TariffOptimizer::class)->name('campaigns.product-commission');
-        Route::get('/plus-commission', \App\Livewire\PlusCommission::class)->name('campaigns.plus-commission');
-        Route::get('/badge-pricing', \App\Livewire\BadgePricing::class)->name('campaigns.badge-pricing');
-        Route::get('/flash-products', \App\Livewire\FlashProducts::class)->name('campaigns.flash-products');
-        Route::get('/basket-discount', \App\Livewire\BasketDiscountCampaign::class)->name('campaigns.basket-discount');
+        Route::get('/product-commission', TariffOptimizer::class)->name('campaigns.product-commission');
+        Route::get('/plus-commission', PlusCommission::class)->name('campaigns.plus-commission');
+        Route::get('/badge-pricing', BadgePricing::class)->name('campaigns.badge-pricing');
+        Route::get('/flash-products', FlashProducts::class)->name('campaigns.flash-products');
+        Route::get('/basket-discount', BasketDiscountCampaign::class)->name('campaigns.basket-discount');
     });
     // Backwards compat alias
-    Route::get('/tariff-optimizer', fn() => redirect()->route('campaigns.product-commission'))->name('tariff-optimizer');
+    Route::get('/tariff-optimizer', fn () => redirect()->route('campaigns.product-commission'))->name('tariff-optimizer');
 
     // Supply Label Download
-    Route::get('/supply-label/{id}', [\App\Http\Controllers\SupplyLabelController::class, 'download'])->name('supply.label');
+    Route::get('/supply-label/{id}', [SupplyLabelController::class, 'download'])->name('supply.label');
 
     // Compensation Downloads
     Route::prefix('compensation')->group(function () {
-        Route::get('/{id}/petition', [\App\Http\Controllers\CompensationDownloadController::class, 'downloadPetition'])->name('compensation.petition');
-        Route::get('/{id}/form', [\App\Http\Controllers\CompensationDownloadController::class, 'downloadForm'])->name('compensation.form');
-        Route::get('/{id}/download-all', [\App\Http\Controllers\CompensationDownloadController::class, 'downloadAll'])->name('compensation.download-all');
+        Route::get('/{id}/petition', [CompensationDownloadController::class, 'downloadPetition'])->name('compensation.petition');
+        Route::get('/{id}/form', [CompensationDownloadController::class, 'downloadForm'])->name('compensation.form');
+        Route::get('/{id}/download-all', [CompensationDownloadController::class, 'downloadAll'])->name('compensation.download-all');
     });
-    Route::get('/marketplace-accounting', \App\Livewire\MarketplaceAccounting::class)
+    Route::get('/marketplace-accounting', MarketplaceAccounting::class)
         ->name('marketplace-accounting')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/party-ledger', \App\Livewire\Accounting\PartyLedgerWorkspace::class)
+    Route::get('/accounting/party-ledger', PartyLedgerWorkspace::class)
         ->name('accounting.party-ledger')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting', \App\Livewire\Accounting\AccountingDashboard::class)
+    Route::get('/accounting', AccountingDashboard::class)
         ->name('accounting.dashboard')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/pilot-center', \App\Livewire\Accounting\PilotCenter::class)
+    Route::get('/accounting/pilot-center', PilotCenter::class)
         ->name('accounting.pilot-center')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/parties', \App\Livewire\Accounting\Parties::class)
+    Route::get('/accounting/parties', Parties::class)
         ->name('accounting.parties')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/chart-of-accounts', \App\Livewire\Accounting\ChartOfAccounts::class)
+    Route::get('/accounting/chart-of-accounts', ChartOfAccounts::class)
         ->name('accounting.chart-of-accounts')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/journal', \App\Livewire\Accounting\Journal::class)
+    Route::get('/accounting/journal', Journal::class)
         ->name('accounting.journal')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/cash-bank', \App\Livewire\Accounting\CashBank::class)
+    Route::get('/accounting/cash-bank', CashBank::class)
         ->name('accounting.cash-bank')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/stock', \App\Livewire\Accounting\Stock::class)
+    Route::get('/accounting/stock', Stock::class)
         ->name('accounting.stock')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/products', \App\Livewire\Accounting\Products::class)
+    Route::get('/accounting/products', Products::class)
         ->name('accounting.products')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/sales', \App\Livewire\Accounting\Sales::class)
+    Route::get('/accounting/sales', Sales::class)
         ->name('accounting.sales')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/purchases', \App\Livewire\Accounting\Purchases::class)
+    Route::get('/accounting/purchases', Purchases::class)
         ->name('accounting.purchases')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/collections-payments', \App\Livewire\Accounting\CollectionsPayments::class)
+    Route::get('/accounting/collections-payments', CollectionsPayments::class)
         ->name('accounting.collections-payments')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/pos', \App\Livewire\Accounting\Pos::class)
+    Route::get('/accounting/pos', Pos::class)
         ->name('accounting.pos')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/e-documents', \App\Livewire\Accounting\EDocuments::class)
+    Route::get('/accounting/e-documents', EDocuments::class)
         ->name('accounting.e-documents')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/reports', \App\Livewire\Accounting\Reports::class)
+    Route::get('/accounting/reports', Reports::class)
         ->name('accounting.reports')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/assistant', \App\Livewire\Accounting\Assistant::class)
+    Route::get('/accounting/assistant', Assistant::class)
         ->name('accounting.assistant')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/marketplace-bridge', \App\Livewire\Accounting\MarketplaceBridge::class)
+    Route::get('/accounting/marketplace-bridge', MarketplaceBridge::class)
         ->name('accounting.marketplace-bridge')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/accounting/audit-logs', \App\Livewire\Accounting\AuditLogs::class)
+    Route::get('/accounting/audit-logs', AuditLogs::class)
         ->name('accounting.audit-logs')
         ->middleware('mp.feature:accounting_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
     // Legacy aliases kept for backward compatibility.
     // Sorular ekranı yeniden aktif; diğer kaldırılan sayfalar siparişlere yönlenir.
-    Route::get('/marketplace-messages', \App\Livewire\MarketplaceQuestions::class)
+    Route::get('/marketplace-messages', MarketplaceQuestions::class)
         ->name('marketplace-messages')
         ->middleware('mp.feature:questions_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
     Route::get('/marketplace-claims', fn () => redirect()->route('returns.workspace', ['tab' => 'pazaryeri']))
         ->name('marketplace-claims')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
     Route::get('/marketplace-performance', fn () => redirect()->route('mp.orders'))
         ->name('marketplace-performance')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
     Route::get('/marketplace-listing-push', fn () => redirect()->route('mp.orders'))
         ->name('marketplace-listing-push')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-orders', \App\Livewire\MarketplaceOrders::class)
+    Route::get('/marketplace-orders', MarketplaceOrders::class)
         ->name('mp.orders')
         ->middleware('mp.feature:orders_v2_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
     Route::get('/marketplace-orders/documents/{documentType}', [MarketplaceOrderDocumentController::class, 'download'])
         ->name('mp.orders.documents.download')
         ->middleware('mp.feature:orders_v2_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-overview', \App\Livewire\MarketplaceOverview::class)
+    Route::get('/marketplace-overview', MarketplaceOverview::class)
         ->name('mp.overview')
         ->middleware('mp.feature:overview_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-profit-center', \App\Livewire\MarketplaceProfitCenter::class)
+    Route::get('/marketplace-profit-center', MarketplaceProfitCenter::class)
         ->name('mp.profit-center')
         ->middleware('mp.feature:profit_center_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-trendyol-booster', \App\Livewire\TrendyolBooster::class)
+    Route::get('/marketplace-trendyol-booster', TrendyolBooster::class)
         ->name('mp.trendyol-booster')
         ->middleware([
             'mp.feature:trendyol_booster_enabled',
-            \App\Http\Middleware\AdminMiddleware::class,
+            AdminMiddleware::class,
             'booster.release',
         ]);
 
@@ -286,7 +413,7 @@ Route::middleware('auth')->group(function () {
         ->name('mp.trendyol-booster.companion.')
         ->middleware([
             'mp.feature:trendyol_booster_enabled',
-            \App\Http\Middleware\AdminMiddleware::class,
+            AdminMiddleware::class,
             'throttle:booster-companion',
             'booster.release',
             'booster.metric',
@@ -312,127 +439,135 @@ Route::middleware('auth')->group(function () {
             Route::post('/order-profit-lookup', [TrendyolBoosterCompanionController::class, 'orderProfitLookup'])->name('order-profit-lookup');
         });
 
-    Route::get('/marketplace-pricing-simulator', \App\Livewire\MarketplacePricingSimulator::class)
+    Route::get('/marketplace-pricing-simulator', MarketplacePricingSimulator::class)
         ->name('mp.pricing-simulator')
         ->middleware('mp.feature:pricing_simulator_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-settlement-audit', \App\Livewire\MarketplaceSettlementAudit::class)
+    Route::get('/marketplace-settlement-audit', MarketplaceSettlementAudit::class)
         ->name('mp.settlement-audit')
         ->middleware('mp.feature:settlement_audit_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-risk-center', \App\Livewire\MarketplaceRiskCenter::class)
+    Route::get('/marketplace-risk-center', MarketplaceRiskCenter::class)
         ->name('mp.risk-center')
         ->middleware('mp.feature:risk_center_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-report-digests', \App\Livewire\MarketplaceReportDigestSettings::class)
+    Route::get('/marketplace-report-digests', MarketplaceReportDigestSettings::class)
         ->name('mp.report-digests')
         ->middleware('mp.feature:report_digest_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-integrations', \App\Livewire\MarketplaceIntegrations::class)
+    Route::get('/marketplace-integrations', MarketplaceIntegrations::class)
         ->name('mp.integrations')
         ->middleware(['auth', 'mp.feature:integrations_enabled']);
 
-    Route::get('/marketplace-products', \App\Livewire\MpProductsManager::class)
+    Route::get('/marketplace-integrations/ideasoft/authorize/{store}', [IdeaSoftOAuthController::class, 'redirect'])
+        ->name('mp.integrations.ideasoft.authorize')
+        ->middleware('mp.feature:integrations_enabled');
+
+    Route::get('/marketplace-integrations/ideasoft/callback', [IdeaSoftOAuthController::class, 'callback'])
+        ->name('mp.integrations.ideasoft.callback')
+        ->middleware('mp.feature:integrations_enabled');
+
+    Route::get('/marketplace-products', MpProductsManager::class)
         ->name('mp.products')
         ->middleware('mp.feature:products_v2_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-matching-center', \App\Livewire\MarketplaceMatchingCenter::class)
+    Route::get('/marketplace-matching-center', MarketplaceMatchingCenter::class)
         ->name('mp.matching')
         ->middleware('mp.feature:matching_center_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-finance', \App\Livewire\MarketplaceFinance::class)
+    Route::get('/marketplace-finance', MarketplaceFinance::class)
         ->name('mp.finance')
         ->middleware('mp.feature:finance_v2_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
-    Route::get('/marketplace-settings', \App\Livewire\MarketplaceSettings::class)
+    Route::get('/marketplace-settings', MarketplaceSettings::class)
         ->name('mp.settings')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
     // Trendyol V2 UI Modules
-    Route::get('/marketplace-trendyol-health', \App\Livewire\Marketplace\TrendyolHealthCenter::class)
+    Route::get('/marketplace-trendyol-health', TrendyolHealthCenter::class)
         ->name('mp.trendyol.health')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
-    Route::get('/marketplace-buybox-analysis', \App\Livewire\Marketplace\BuyboxAnalysis::class)
+        ->middleware(AdminMiddleware::class);
+    Route::get('/marketplace-buybox-analysis', BuyboxAnalysis::class)
         ->name('mp.buybox')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
-    Route::get('/marketplace-claim-mapping', \App\Livewire\Marketplace\ClaimReasonMapping::class)
+        ->middleware(AdminMiddleware::class);
+    Route::get('/marketplace-claim-mapping', ClaimReasonMapping::class)
         ->name('mp.claim.mapping')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
-    Route::get('/marketplace-cargo-invoice', \App\Livewire\Marketplace\CargoInvoiceReconciliation::class)
+        ->middleware(AdminMiddleware::class);
+    Route::get('/marketplace-cargo-invoice', CargoInvoiceReconciliation::class)
         ->name('mp.cargo.invoice')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
     // Reçete Modülü
-    Route::get('/recipe-materials', \App\Livewire\RecipeMaterialsManager::class)
+    Route::get('/recipe-materials', RecipeMaterialsManager::class)
         ->name('recipe.materials')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
-    Route::get('/recipe-builder/{recipeId?}', \App\Livewire\RecipeBuilder::class)
+        ->middleware(AdminMiddleware::class);
+    Route::get('/recipe-builder/{recipeId?}', RecipeBuilder::class)
         ->name('recipe.builder')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
-    Route::get('/production-planner', \App\Livewire\ProductionPlanner::class)
+        ->middleware(AdminMiddleware::class);
+    Route::get('/production-planner', ProductionPlanner::class)
         ->name('production.planner')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware(AdminMiddleware::class);
 
     if (
-        class_exists(\App\Livewire\Returns\ReturnWorkspace::class)
-        && class_exists(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+        class_exists(ReturnWorkspace::class)
+        && class_exists(EnsureReturnFeatureEnabled::class)
     ) {
-        Route::get('/returns', \App\Livewire\Returns\ReturnWorkspace::class)
+        Route::get('/returns', ReturnWorkspace::class)
             ->name('returns.workspace')
-            ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class);
+            ->middleware(EnsureReturnFeatureEnabled::class);
 
         Route::get('/returns/intake', function () {
             return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'kabul']));
         })
             ->name('returns.intake')
-            ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+            ->middleware(EnsureReturnFeatureEnabled::class)
             ->middleware('can:accessReturnsIntake');
 
         Route::get('/returns/center', function () {
             return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'havuz']));
         })
             ->name('returns.center')
-            ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+            ->middleware(EnsureReturnFeatureEnabled::class)
             ->middleware('can:accessReturnsReview');
 
         Route::get('/returns/marketplace-claims', function () {
             return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'pazaryeri']));
         })
             ->name('returns.marketplace-claims')
-            ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+            ->middleware(EnsureReturnFeatureEnabled::class)
             ->middleware('can:accessReturnsReview');
 
         Route::get('/returns/whatsapp-bridge', function () {
             return redirect()->route('returns.workspace', array_merge(request()->query(), ['tab' => 'whatsapp']));
         })
             ->name('returns.whatsapp-bridge')
-            ->middleware(\App\Http\Middleware\EnsureReturnFeatureEnabled::class)
+            ->middleware(EnsureReturnFeatureEnabled::class)
             ->middleware('can:accessReturnsReview');
     }
 
-    Route::get('/api-dev', \App\Livewire\ApiDev::class)->name('api-dev');
+    Route::get('/api-dev', ApiDev::class)->name('api-dev');
 
     if (app()->environment('local')) {
         Route::get('/fix-routes', function () {
-            \Illuminate\Support\Facades\Artisan::call('optimize:clear');
+            Artisan::call('optimize:clear');
 
             return 'Optimize cache temizlendi. <a href="/dashboard">Dashboard\'a dön</a>';
         });
 
         Route::get('/force-migrate', function () {
             try {
-                \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+                Artisan::call('migrate', ['--force' => true]);
 
-                return 'Migrasyon başarıyla tamamlandı: <br><pre>' . \Illuminate\Support\Facades\Artisan::output() . '</pre>';
-            } catch (\Exception $e) {
-                return 'Hata: ' . $e->getMessage();
+                return 'Migrasyon başarıyla tamamlandı: <br><pre>'.Artisan::output().'</pre>';
+            } catch (Exception $e) {
+                return 'Hata: '.$e->getMessage();
             }
         });
     }
@@ -453,24 +588,24 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:accessCustomMotor');
 
     // File downloads - doğrudan binary response
-    Route::get('/download/{reportFile}', function (\App\Models\ReportFile $reportFile) {
+    Route::get('/download/{reportFile}', function (ReportFile $reportFile) {
         $user = auth()->user();
-        if (!$user->isAdmin()) {
-            if (!$reportFile->report || $reportFile->report->user_id !== $user->id) {
+        if (! $user->isAdmin()) {
+            if (! $reportFile->report || $reportFile->report->user_id !== $user->id) {
                 abort(403, 'Bu dosyaya erişim yetkiniz yok.');
             }
         }
 
-        $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($reportFile->file_path);
+        $fullPath = Storage::disk('local')->path($reportFile->file_path);
 
-        if (!file_exists($fullPath)) {
+        if (! file_exists($fullPath)) {
             abort(404, 'Dosya bulunamadı');
         }
 
         // BinaryFileResponse kullan - output buffering sorununu önler
         return response()->download($fullPath, $reportFile->filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => 'attachment; filename="' . $reportFile->filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$reportFile->filename.'"',
             'Cache-Control' => 'no-cache, no-store, must-revalidate',
             'Pragma' => 'no-cache',
             'Expires' => '0',
@@ -483,16 +618,16 @@ Route::middleware('auth')->group(function () {
     // ============================================
     // REKLAM ZEKÂSI MODÜLÜ
     // ============================================
-    Route::prefix('ads')->middleware(\App\Http\Middleware\AdsAccessMiddleware::class)->group(function () {
-        Route::get('/', \App\Livewire\Ads\AdsDashboard::class)->name('ads.dashboard');
-        Route::get('/import', \App\Livewire\Ads\AdImportCenter::class)->name('ads.import');
-        Route::get('/product-ads', \App\Livewire\Ads\ProductAdsPage::class)->name('ads.product-ads');
-        Route::get('/product-ads/{campaignId}', \App\Livewire\Ads\ProductAdsCampaignDetail::class)->name('ads.product-ads.detail');
-        Route::get('/store-ads', \App\Livewire\Ads\StoreAdsPage::class)->name('ads.store-ads');
-        Route::get('/influencer-ads', \App\Livewire\Ads\InfluencerAdsPage::class)->name('ads.influencer-ads');
-        Route::get('/profitability', \App\Livewire\Ads\ProfitabilityCenter::class)->name('ads.profitability');
-        Route::get('/action-center', \App\Livewire\Ads\AiActionCenter::class)->name('ads.action-center');
-        Route::get('/settings', \App\Livewire\Ads\AdsSettings::class)->name('ads.settings');
+    Route::prefix('ads')->middleware(AdsAccessMiddleware::class)->group(function () {
+        Route::get('/', AdsDashboard::class)->name('ads.dashboard');
+        Route::get('/import', AdImportCenter::class)->name('ads.import');
+        Route::get('/product-ads', ProductAdsPage::class)->name('ads.product-ads');
+        Route::get('/product-ads/{campaignId}', ProductAdsCampaignDetail::class)->name('ads.product-ads.detail');
+        Route::get('/store-ads', StoreAdsPage::class)->name('ads.store-ads');
+        Route::get('/influencer-ads', InfluencerAdsPage::class)->name('ads.influencer-ads');
+        Route::get('/profitability', ProfitabilityCenter::class)->name('ads.profitability');
+        Route::get('/action-center', AiActionCenter::class)->name('ads.action-center');
+        Route::get('/settings', AdsSettings::class)->name('ads.settings');
     });
 
     // ============================================
@@ -501,136 +636,136 @@ Route::middleware('auth')->group(function () {
     // ============================================
     // WHATSAPP MODÜLÜ
     // ============================================
-    Route::middleware(\App\Http\Middleware\EnsureWhatsAppFeatureEnabled::class)
+    Route::middleware(EnsureWhatsAppFeatureEnabled::class)
         ->prefix('whatsapp')->name('whatsapp.')->group(function () {
-            Route::get('/', \App\Livewire\WhatsApp\WhatsAppOverview::class)->name('overview');
-            Route::get('/account', \App\Livewire\WhatsApp\WhatsAppAccountSettings::class)->name('account');
-            Route::get('/templates', \App\Livewire\WhatsApp\WhatsAppTemplateManager::class)->name('templates');
-            Route::get('/shipping', \App\Livewire\WhatsApp\WhatsAppShippingSettings::class)->name('shipping');
-            Route::get('/inbox', \App\Livewire\WhatsApp\WhatsAppInbox::class)->name('inbox');
-            Route::get('/campaigns', \App\Livewire\WhatsApp\WhatsAppCampaigns::class)->name('campaigns');
-            Route::get('/campaigns/create', \App\Livewire\WhatsApp\WhatsAppCampaignCreate::class)->name('campaign-create');
-            Route::get('/campaigns/{id}', \App\Livewire\WhatsApp\WhatsAppCampaignDetail::class)->name('campaign-detail');
-            Route::get('/segments', \App\Livewire\WhatsApp\WhatsAppSegments::class)->name('segments');
-            Route::get('/customer/{id?}', \App\Livewire\WhatsApp\WhatsAppCustomerProfile::class)->name('customer-profile');
-            Route::get('/audit-logs', \App\Livewire\WhatsApp\WhatsAppAuditLogs::class)->name('audit-logs');
-            Route::get('/automation', \App\Livewire\WhatsApp\WhatsAppAutomationSettings::class)->name('automation');
+            Route::get('/', WhatsAppOverview::class)->name('overview');
+            Route::get('/account', WhatsAppAccountSettings::class)->name('account');
+            Route::get('/templates', WhatsAppTemplateManager::class)->name('templates');
+            Route::get('/shipping', WhatsAppShippingSettings::class)->name('shipping');
+            Route::get('/inbox', WhatsAppInbox::class)->name('inbox');
+            Route::get('/campaigns', WhatsAppCampaigns::class)->name('campaigns');
+            Route::get('/campaigns/create', WhatsAppCampaignCreate::class)->name('campaign-create');
+            Route::get('/campaigns/{id}', WhatsAppCampaignDetail::class)->name('campaign-detail');
+            Route::get('/segments', WhatsAppSegments::class)->name('segments');
+            Route::get('/customer/{id?}', WhatsAppCustomerProfile::class)->name('customer-profile');
+            Route::get('/audit-logs', WhatsAppAuditLogs::class)->name('audit-logs');
+            Route::get('/automation', WhatsAppAutomationSettings::class)->name('automation');
         });
 
-    Route::middleware(\App\Http\Middleware\AdminMiddleware::class)->prefix('admin')->group(function () {
-        Route::get('/', \App\Livewire\Admin\Dashboard::class)->name('admin.dashboard');
-        Route::get('/users', \App\Livewire\Admin\UserManager::class)->name('admin.users');
-        Route::get('/logs', \App\Livewire\Admin\ActivityLogs::class)->name('admin.logs');
+    Route::middleware(AdminMiddleware::class)->prefix('admin')->group(function () {
+        Route::get('/', Dashboard::class)->name('admin.dashboard');
+        Route::get('/users', UserManager::class)->name('admin.users');
+        Route::get('/logs', ActivityLogs::class)->name('admin.logs');
     });
 
-    Route::get('/customer-care', \App\Livewire\CustomerCare\Home::class)
+    Route::get('/customer-care', Home::class)
         ->name('customer-care.home')
         ->middleware('customer-care.feature:inbox_enabled');
 
-    Route::get('/customer-care/inbox', \App\Livewire\CustomerCare\Inbox::class)
+    Route::get('/customer-care/inbox', Inbox::class)
         ->name('customer-care.inbox')
         ->middleware('customer-care.feature:inbox_enabled');
 
-    Route::get('/customer-care/pilot', \App\Livewire\CustomerCare\PilotDashboard::class)
+    Route::get('/customer-care/pilot', PilotDashboard::class)
         ->name('customer-care.pilot')
         ->middleware('customer-care.feature:pilot_dashboard_enabled');
 
-    Route::get('/customer-care/suggestions', \App\Livewire\CustomerCare\KnowledgeSuggestions::class)
+    Route::get('/customer-care/suggestions', KnowledgeSuggestions::class)
         ->name('customer-care.suggestions')
         ->middleware('customer-care.feature:knowledge_enabled');
 
-    Route::get('/customer-care/product-questions', \App\Livewire\CustomerCare\ProductQuestions::class)
+    Route::get('/customer-care/product-questions', ProductQuestions::class)
         ->name('customer-care.product-questions')
         ->middleware('customer-care.feature:knowledge_enabled');
 
-    Route::get('/customer-care/analytics', \App\Livewire\CustomerCare\Analytics::class)
+    Route::get('/customer-care/analytics', Analytics::class)
         ->name('customer-care.analytics')
         ->middleware('customer-care.feature:analytics_enabled');
 
-    Route::get('/customer-care/settings', \App\Livewire\CustomerCare\Settings::class)
+    Route::get('/customer-care/settings', Settings::class)
         ->name('customer-care.settings')
         ->middleware('customer-care.feature:settings_enabled');
 
-    Route::get('/customer-care/onboarding', \App\Livewire\CustomerCare\Onboarding::class)
+    Route::get('/customer-care/onboarding', Onboarding::class)
         ->name('customer-care.onboarding')
         ->middleware('customer-care.feature:onboarding_enabled');
 
-    Route::get('/customer-care/admin', \App\Livewire\CustomerCare\AdminCenter::class)
+    Route::get('/customer-care/admin', AdminCenter::class)
         ->name('customer-care.admin')
         ->middleware('customer-care.feature:admin_center_enabled');
 
-    Route::get('/customer-care/quality', \App\Livewire\CustomerCare\QualityCenter::class)
+    Route::get('/customer-care/quality', QualityCenter::class)
         ->name('customer-care.quality')
         ->middleware('customer-care.feature:quality_center_enabled');
 
-    Route::get('/customer-care/integrations', \App\Livewire\CustomerCare\Integrations::class)
+    Route::get('/customer-care/integrations', Integrations::class)
         ->name('customer-care.integrations')
         ->middleware('customer-care.feature:integration_hub_enabled');
 
-    Route::get('/customer-care/ops', \App\Livewire\CustomerCare\OpsCenter::class)
+    Route::get('/customer-care/ops', OpsCenter::class)
         ->name('customer-care.ops')
         ->middleware('customer-care.feature:ops_center_enabled');
 
-    Route::get('/customer-care/governance', \App\Livewire\CustomerCare\Governance::class)
+    Route::get('/customer-care/governance', Governance::class)
         ->name('customer-care.governance')
         ->middleware('customer-care.feature:governance_enabled');
 
-    Route::get('/customer-care/compliance', \App\Livewire\CustomerCare\Compliance::class)
+    Route::get('/customer-care/compliance', Compliance::class)
         ->name('customer-care.compliance')
         ->middleware('customer-care.feature:compliance_enabled');
 
-    Route::get('/customer-care/reliability', \App\Livewire\CustomerCare\Reliability::class)
+    Route::get('/customer-care/reliability', Reliability::class)
         ->name('customer-care.reliability')
         ->middleware('customer-care.feature:reliability_enabled');
 
-    Route::get('/customer-care/launch', \App\Livewire\CustomerCare\Launch::class)
+    Route::get('/customer-care/launch', Launch::class)
         ->name('customer-care.launch')
         ->middleware('customer-care.feature:launch_center_enabled');
 
-    Route::get('/customer-care/reconciliation', \App\Livewire\CustomerCare\Reconciliation::class)
+    Route::get('/customer-care/reconciliation', Reconciliation::class)
         ->name('customer-care.reconciliation')
         ->middleware('customer-care.feature:reconciliation_enabled');
 
-    Route::get('/customer-care/releases', \App\Livewire\CustomerCare\Releases::class)
+    Route::get('/customer-care/releases', Releases::class)
         ->name('customer-care.releases')
         ->middleware('customer-care.feature:release_center_enabled');
 
     // Waves AN / AO / AP
-    Route::get('/customer-care/success', \App\Livewire\CustomerCare\Success::class)
+    Route::get('/customer-care/success', Success::class)
         ->name('customer-care.success')
         ->middleware('customer-care.feature:success_center_enabled');
 
-    Route::get('/customer-care/experiments', \App\Livewire\CustomerCare\Experiments::class)
+    Route::get('/customer-care/experiments', Experiments::class)
         ->name('customer-care.experiments')
         ->middleware('customer-care.feature:experiments_enabled');
 
-    Route::get('/customer-care/security', \App\Livewire\CustomerCare\Security::class)
+    Route::get('/customer-care/security', Security::class)
         ->name('customer-care.security')
         ->middleware('customer-care.feature:security_center_enabled');
 
     // Waves AQ / AR / AS
-    Route::get('/customer-care/organization', \App\Livewire\CustomerCare\Organization::class)
+    Route::get('/customer-care/organization', Organization::class)
         ->name('customer-care.organization')
         ->middleware('customer-care.feature:org_center_enabled');
 
-    Route::get('/customer-care/api', \App\Livewire\CustomerCare\Api::class)
+    Route::get('/customer-care/api', Api::class)
         ->name('customer-care.api')
         ->middleware('customer-care.feature:enterprise_api_enabled');
 
-    Route::get('/customer-care/commercial', \App\Livewire\CustomerCare\Commercial::class)
+    Route::get('/customer-care/commercial', Commercial::class)
         ->name('customer-care.commercial')
         ->middleware('customer-care.feature:commercial_center_enabled');
 
     // Waves AT / AU / AV
-    Route::get('/customer-care/agent-workspace', \App\Livewire\CustomerCare\AgentWorkspace::class)
+    Route::get('/customer-care/agent-workspace', AgentWorkspace::class)
         ->name('customer-care.agent-workspace')
         ->middleware('customer-care.feature:agent_workspace_enabled');
 
-    Route::get('/customer-care/certification', \App\Livewire\CustomerCare\Certification::class)
+    Route::get('/customer-care/certification', Certification::class)
         ->name('customer-care.certification')
         ->middleware('customer-care.feature:connector_certification_enabled');
 
-    Route::get('/customer-care/production', \App\Livewire\CustomerCare\Production::class)
+    Route::get('/customer-care/production', Production::class)
         ->name('customer-care.production')
         ->middleware('customer-care.feature:production_center_enabled');
 });
@@ -641,7 +776,7 @@ Route::middleware('auth')->group(function () {
 if (app()->environment('local')) {
     // Excel test route - sorun tespiti için
     Route::get('/test-excel', function () {
-        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Test');
         $sheet->setCellValue('A1', 'Merhaba');
@@ -650,7 +785,7 @@ if (app()->environment('local')) {
         $sheet->setCellValue('B2', '123');
 
         $tempFile = storage_path('app/test-excel.xlsx');
-        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer = new Xlsx($spreadsheet);
         $writer->save($tempFile);
 
         return response()->download($tempFile, 'test-dosya.xlsx', [
@@ -660,19 +795,19 @@ if (app()->environment('local')) {
 
     // Son rapor dosyasını test et
     Route::get('/test-last-file', function () {
-        $lastFile = \App\Models\ReportFile::latest()->first();
-        if (!$lastFile) {
+        $lastFile = ReportFile::latest()->first();
+        if (! $lastFile) {
             return 'Dosya bulunamadı';
         }
 
-        $fullPath = \Illuminate\Support\Facades\Storage::disk('local')->path($lastFile->file_path);
+        $fullPath = Storage::disk('local')->path($lastFile->file_path);
 
-        if (!file_exists($fullPath)) {
-            return 'Dosya mevcut değil: ' . $lastFile->file_path;
+        if (! file_exists($fullPath)) {
+            return 'Dosya mevcut değil: '.$lastFile->file_path;
         }
 
         try {
-            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($fullPath);
+            $spreadsheet = IOFactory::load($fullPath);
             $info = [
                 'path' => $fullPath,
                 'size' => filesize($fullPath),
@@ -691,17 +826,17 @@ if (app()->environment('local')) {
 
             return response()->json($info);
 
-        } catch (\Exception $e) {
-            return 'Hata: ' . $e->getMessage();
+        } catch (Exception $e) {
+            return 'Hata: '.$e->getMessage();
         }
     });
 
     // Kuyrukta bekleyen tüm entegrasyon işlerini anında senkronize et
     Route::get('/force-sync', function () {
-        $runs = \App\Models\IntegrationSyncRun::where('status', 'queued')
-                    ->orderBy('id', 'desc')
-                    ->take(10) // Sadece en yeni 10 işi al, eski takılıları çekme
-                    ->get();
+        $runs = IntegrationSyncRun::where('status', 'queued')
+            ->orderBy('id', 'desc')
+            ->take(10) // Sadece en yeni 10 işi al, eski takılıları çekme
+            ->get();
 
         if ($runs->isEmpty()) {
             return 'Kuyrukta bekleyen (queued) yeni senkronizasyon işi yok.';
@@ -709,46 +844,50 @@ if (app()->environment('local')) {
 
         $count = 0;
         $errors = [];
-        $syncService = app(\App\Services\Marketplace\MarketplaceSyncService::class);
+        $syncService = app(MarketplaceSyncService::class);
 
-        foreach($runs as $run) {
+        foreach ($runs as $run) {
             try {
                 $syncService->run($run->id);
                 $count++;
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 // Eski run'u fail yapıp kurtul
                 $run->status = 'failed';
                 $run->save();
-                $errors[] = "Run #{$run->id}: " . $e->getMessage();
+                $errors[] = "Run #{$run->id}: ".$e->getMessage();
             }
         }
 
         $output = "{$count} adet senkronizasyon kuyruğu başarıyla işlendi! Siparişler ekrana düşmüş olmalı.<br><br>";
-        if (!empty($errors)) {
-            $output .= "<b>Alınan Hatalar (Bu hatalar eski veya geçersiz bağlantılara ait olabilir ve atlanmıştır):</b><br>" . implode('<br>', $errors);
+        if (! empty($errors)) {
+            $output .= '<b>Alınan Hatalar (Bu hatalar eski veya geçersiz bağlantılara ait olabilir ve atlanmıştır):</b><br>'.implode('<br>', $errors);
         }
+
         return $output;
     });
 
     Route::get('/debug-runs', function () {
-        $runs = \App\Models\IntegrationSyncRun::where('status', 'completed')
-                    ->orderBy('id', 'desc')
-                    ->take(5)
-                    ->get();
+        $runs = IntegrationSyncRun::where('status', 'completed')
+            ->orderBy('id', 'desc')
+            ->take(5)
+            ->get();
 
-        $output = "";
-        foreach($runs as $run) {
+        $output = '';
+        foreach ($runs as $run) {
             $notes = json_encode($run->notes_json, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
             $output .= "Run #{$run->id} (Store {$run->store_id} - {$run->sync_type}): <pre>{$notes}</pre><hr>";
         }
+
         return $output;
     });
 
     Route::get('/woo-reset', function () {
-        $storeIds = \App\Models\MarketplaceStore::where('marketplace', 'woocommerce')->pluck('id');
-        if ($storeIds->isEmpty()) return 'WooCommerce mağazası bulunamadı.';
+        $storeIds = MarketplaceStore::where('marketplace', 'woocommerce')->pluck('id');
+        if ($storeIds->isEmpty()) {
+            return 'WooCommerce mağazası bulunamadı.';
+        }
 
-        $runs = \App\Models\IntegrationSyncRun::whereIn('store_id', $storeIds)
+        $runs = IntegrationSyncRun::whereIn('store_id', $storeIds)
             ->where('sync_type', 'orders')
             ->where('status', 'completed')
             ->update(['status' => 'failed', 'notes_json' => []]);
@@ -757,11 +896,13 @@ if (app()->environment('local')) {
     });
 
     Route::get('/woo-test', function () {
-        $store = \App\Models\MarketplaceStore::where('marketplace', 'woocommerce')->orderBy('id', 'desc')->first();
-        if (!$store) return 'Store not found';
+        $store = MarketplaceStore::where('marketplace', 'woocommerce')->orderBy('id', 'desc')->first();
+        if (! $store) {
+            return 'Store not found';
+        }
 
-        $startDate = \Carbon\CarbonImmutable::now()->subDays(7);
-        $connector = app(\App\Services\Marketplace\MarketplaceConnectorManager::class)->resolve('woocommerce');
+        $startDate = CarbonImmutable::now()->subDays(7);
+        $connector = app(MarketplaceConnectorManager::class)->resolve('woocommerce');
 
         try {
             $options = ['start_date' => $startDate->toIso8601String(), 'end_date' => now()->toIso8601String(), 'page_size' => 100];
@@ -783,9 +924,9 @@ if (app()->environment('local')) {
                 'success' => true,
                 'count' => count($items),
                 'top_10' => $results,
-                'meta' => $response['meta'] ?? null
+                'meta' => $response['meta'] ?? null,
             ]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return $e->getMessage();
         }
     });
