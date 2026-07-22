@@ -95,15 +95,35 @@ class WooCommerceConnectorTest extends TestCase
                     'permalink' => 'https://shop.example.com/magaza/zem-koltuk/',
                     'sku' => 'WC-STK-1',
                     'status' => 'publish',
+                    'description' => '<p>Masif gövdeli koltuk.</p>',
+                    'short_description' => 'Masif koltuk',
                     'price' => '1499.90',
                     'regular_price' => '1699.90',
                     'manage_stock' => true,
                     'stock_quantity' => 8,
+                    'stock_status' => 'instock',
+                    'backorders' => 'no',
+                    'weight' => '12.5',
+                    'dimensions' => ['length' => '80', 'width' => '70', 'height' => '90'],
+                    'shipping_class' => 'mobilya',
+                    'tax_status' => 'taxable',
+                    'tax_class' => '',
                     'date_created_gmt' => '2026-03-20T10:00:00',
                     'categories' => [
                         ['name' => 'Mobilya'],
                         ['name' => 'Koltuk'],
                     ],
+                    'tags' => [['id' => 8, 'name' => 'Salon']],
+                    'images' => [[
+                        'id' => 55,
+                        'src' => 'https://shop.example.com/uploads/koltuk.jpg',
+                        'alt' => 'ZEM Koltuk',
+                    ]],
+                    'attributes' => [[
+                        'id' => 2,
+                        'name' => 'Renk',
+                        'options' => ['Krem'],
+                    ]],
                 ],
             ], 200, ['X-WP-TotalPages' => '1']),
         ]);
@@ -117,6 +137,9 @@ class WooCommerceConnectorTest extends TestCase
         $this->assertSame('101', data_get($result, 'items.0.listing.listing_id'));
         $this->assertSame(1499.90, data_get($result, 'items.0.listing.sale_price'));
         $this->assertSame(8, data_get($result, 'items.0.listing.stock_quantity'));
+        $this->assertSame('<p>Masif gövdeli koltuk.</p>', data_get($result, 'items.0.product.description'));
+        $this->assertSame('https://shop.example.com/uploads/koltuk.jpg', data_get($result, 'items.0.product.images.0.url'));
+        $this->assertSame('Renk', data_get($result, 'items.0.product.attributes.0.name'));
         $this->assertSame('https://shop.example.com/magaza/zem-koltuk/', data_get($result, 'items.0.product.raw_payload.permalink'));
 
         Http::assertSent(function ($request) {
@@ -125,10 +148,13 @@ class WooCommerceConnectorTest extends TestCase
             return ($query['per_page'] ?? null) === '25'
                 && filled($query['_fields'] ?? null)
                 && str_contains((string) $query['_fields'], 'permalink')
+                && str_contains((string) $query['_fields'], 'description')
+                && str_contains((string) $query['_fields'], 'images')
+                && str_contains((string) $query['_fields'], 'stock_status')
                 && ($query['orderby'] ?? null) === 'modified'
                 && ($query['dates_are_gmt'] ?? null) === '1'
                 && filled($query['modified_after'] ?? null)
-                && !array_key_exists('after', $query);
+                && ! array_key_exists('after', $query);
         });
     }
 
@@ -167,8 +193,8 @@ class WooCommerceConnectorTest extends TestCase
             return ($query['per_page'] ?? null) === '100'
                 && ($query['orderby'] ?? null) === 'modified'
                 && ($query['dates_are_gmt'] ?? null) === '1'
-                && !array_key_exists('modified_after', $query)
-                && !array_key_exists('after', $query);
+                && ! array_key_exists('modified_after', $query)
+                && ! array_key_exists('after', $query);
         });
     }
 
@@ -264,6 +290,19 @@ class WooCommerceConnectorTest extends TestCase
                     'id' => 901,
                     'number' => '901',
                     'status' => 'processing',
+                    'currency' => 'EUR',
+                    'total' => '1850.00',
+                    'discount_total' => '200.00',
+                    'shipping_total' => '50.00',
+                    'total_tax' => '370.00',
+                    'payment_method' => 'stripe',
+                    'payment_method_title' => 'Kredi Kartı',
+                    'transaction_id' => 'txn_woo_901',
+                    'customer_id' => 77,
+                    'coupon_lines' => [['id' => 41, 'code' => 'YAZ200', 'discount' => '200.00']],
+                    'fee_lines' => [['id' => 51, 'name' => 'Paketleme', 'total' => '25.00']],
+                    'tax_lines' => [['id' => 61, 'rate_id' => 4, 'label' => 'KDV', 'tax_total' => '370.00']],
+                    'refunds' => [],
                     'date_created_gmt' => '2026-03-20T10:00:00',
                     'billing' => [
                         'first_name' => 'Ayse',
@@ -294,6 +333,8 @@ class WooCommerceConnectorTest extends TestCase
                             'quantity' => 2,
                             'subtotal' => '2000.00',
                             'total' => '1800.00',
+                            'subtotal_tax' => '400.00',
+                            'total_tax' => '360.00',
                         ],
                     ],
                 ],
@@ -310,13 +351,24 @@ class WooCommerceConnectorTest extends TestCase
         $this->assertSame('901', data_get($result, 'items.0.order.order_number'));
         $this->assertSame('processing', data_get($result, 'items.0.package.package_status'));
         $this->assertSame('Ayse Demir', data_get($result, 'items.0.order.customer_name'));
+        $this->assertSame('EUR', data_get($result, 'items.0.order.currency'));
         $this->assertSame('WC-STK-1', data_get($result, 'items.0.items.0.stock_code'));
         $this->assertSame(200.00, data_get($result, 'items.0.items.0.discount_amount'));
+        $this->assertSame(20.00, data_get($result, 'items.0.items.0.vat_rate'));
+        $this->assertSame('stripe', data_get($result, 'items.0.order.raw_payload.payment_method'));
+        $this->assertSame('YAZ200', data_get($result, 'items.0.order.raw_payload.coupon_lines.0.code'));
 
         Http::assertSent(function ($request) {
-            return str_contains($request->url(), 'per_page=25')
-                && str_contains($request->url(), '_fields=')
-                && str_contains($request->url(), 'after=');
+            $query = $this->queryForUrl($request->url());
+            $fields = explode(',', (string) ($query['_fields'] ?? ''));
+
+            return ($query['per_page'] ?? null) === '25'
+                && filled($query['after'] ?? null)
+                && in_array('currency', $fields, true)
+                && in_array('payment_method', $fields, true)
+                && in_array('coupon_lines', $fields, true)
+                && in_array('tax_lines', $fields, true)
+                && in_array('refunds', $fields, true);
         });
     }
 

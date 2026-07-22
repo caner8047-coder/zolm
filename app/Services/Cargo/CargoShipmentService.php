@@ -2,6 +2,7 @@
 
 namespace App\Services\Cargo;
 
+use App\Events\ShipmentStatusChanged;
 use App\Models\CargoCarrierAccount;
 use App\Models\CargoInvoiceLine;
 use App\Models\ChannelClaim;
@@ -12,7 +13,6 @@ use App\Models\SupplyOrder;
 use App\Services\Marketplace\MarketplaceProfitSnapshotService;
 use App\Services\ProductCompositionResolver;
 use Illuminate\Support\Carbon;
-use App\Events\ShipmentStatusChanged;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -20,16 +20,16 @@ use Illuminate\Support\Str;
 class CargoShipmentService
 {
     public function __construct(
-        protected SuratCargoConnector $suratConnector,
+        protected CargoCarrierManager $carrierManager,
+        protected CargoCarrierRegistry $carrierRegistry,
         protected ProductCompositionResolver $compositionResolver,
-    ) {
-    }
+    ) {}
 
     public function defaultAccount(?int $userId = null, ?int $legalEntityId = null, string $carrierCode = 'surat'): ?CargoCarrierAccount
     {
         $userId = $userId ?: auth()->id();
 
-        if (!$userId) {
+        if (! $userId) {
             return null;
         }
 
@@ -47,25 +47,31 @@ class CargoShipmentService
             ->first();
     }
 
-    public function createOrUpdateFromPackage(ChannelOrderPackage $package, ?CargoCarrierAccount $account = null): Shipment
-    {
+    public function createOrUpdateFromPackage(
+        ChannelOrderPackage $package,
+        ?CargoCarrierAccount $account = null,
+        ?string $carrierCode = null,
+    ): Shipment {
         $package->loadMissing(['order.items.product.productSet.items.componentProduct', 'order.store', 'items.product.productSet.items.componentProduct']);
         $order = $package->order;
         $store = $package->store ?: $order?->store;
-        $account = $account ?: $this->defaultAccount($store?->user_id, $store?->legal_entity_id);
 
-        if (!$order || !$store) {
+        if (! $order || ! $store) {
             throw new \RuntimeException('Gönderi oluşturmak için pazaryeri sipariş ve mağaza bilgisi gerekli.');
         }
 
-        return DB::transaction(function () use ($package, $order, $store, $account) {
+        $carrierCode = $this->resolveCarrierCode($account, $carrierCode);
+        $account = $account ?: $this->defaultAccount($store->user_id, $store->legal_entity_id, $carrierCode);
+        $carrierName = $this->carrierRegistry->name($carrierCode);
+
+        return DB::transaction(function () use ($package, $order, $store, $account, $carrierCode, $carrierName) {
             $shipment = Shipment::query()->firstOrNew([
                 'channel_order_package_id' => $package->id,
                 'flow_type' => 'order',
-                'carrier_code' => 'surat',
+                'carrier_code' => $carrierCode,
             ]);
 
-            if (!$shipment->exists) {
+            if (! $shipment->exists) {
                 $shipment->shipment_no = $this->nextShipmentNo();
             }
 
@@ -88,7 +94,7 @@ class CargoShipmentService
                 'cargo_carrier_account_id' => $account?->id,
                 'source_type' => 'marketplace_order',
                 'direction' => 'outgoing',
-                'carrier_name' => 'Sürat Kargo',
+                'carrier_name' => $carrierName,
                 'reference_number' => $package->package_number ?: $order->order_number,
                 'order_number' => $order->order_number,
                 'package_number' => $package->package_number,
@@ -131,17 +137,22 @@ class CargoShipmentService
         });
     }
 
-    public function createOrUpdateFromClaim(ChannelClaim $claim, ?CargoCarrierAccount $account = null): Shipment
-    {
+    public function createOrUpdateFromClaim(
+        ChannelClaim $claim,
+        ?CargoCarrierAccount $account = null,
+        ?string $carrierCode = null,
+    ): Shipment {
         $claim->loadMissing(['store', 'items']);
         $store = $claim->store;
-        $account = $account ?: $this->defaultAccount($store?->user_id, $store?->legal_entity_id);
-
-        if (!$store) {
+        if (! $store) {
             throw new \RuntimeException('İade/değişim gönderisi için mağaza bilgisi gerekli.');
         }
 
-        return DB::transaction(function () use ($claim, $store, $account) {
+        $carrierCode = $this->resolveCarrierCode($account, $carrierCode);
+        $account = $account ?: $this->defaultAccount($store->user_id, $store->legal_entity_id, $carrierCode);
+        $carrierName = $this->carrierRegistry->name($carrierCode);
+
+        return DB::transaction(function () use ($claim, $store, $account, $carrierCode, $carrierName) {
             $flowType = $claim->type === 'exchange' ? 'exchange' : 'return';
             $order = filled($claim->order_number)
                 ? ChannelOrder::query()
@@ -153,10 +164,10 @@ class CargoShipmentService
             $shipment = Shipment::query()->firstOrNew([
                 'channel_claim_id' => $claim->id,
                 'flow_type' => $flowType,
-                'carrier_code' => 'surat',
+                'carrier_code' => $carrierCode,
             ]);
 
-            if (!$shipment->exists) {
+            if (! $shipment->exists) {
                 $shipment->shipment_no = $this->nextShipmentNo();
             }
 
@@ -168,7 +179,7 @@ class CargoShipmentService
                 'cargo_carrier_account_id' => $account?->id,
                 'source_type' => 'marketplace_claim',
                 'direction' => 'incoming',
-                'carrier_name' => 'Sürat Kargo',
+                'carrier_name' => $carrierName,
                 'reference_number' => $claim->external_claim_id,
                 'order_number' => $claim->order_number,
                 'tracking_number' => $shipment->tracking_number ?: $claim->cargo_tracking_number,
@@ -214,18 +225,23 @@ class CargoShipmentService
         });
     }
 
-    public function createOrUpdateFromSupplyOrder(SupplyOrder $supplyOrder, ?CargoCarrierAccount $account = null): Shipment
-    {
-        $account = $account ?: $this->defaultAccount(auth()->id());
+    public function createOrUpdateFromSupplyOrder(
+        SupplyOrder $supplyOrder,
+        ?CargoCarrierAccount $account = null,
+        ?string $carrierCode = null,
+    ): Shipment {
+        $carrierCode = $this->resolveCarrierCode($account, $carrierCode);
+        $account = $account ?: $this->defaultAccount(auth()->id(), carrierCode: $carrierCode);
+        $carrierName = $this->carrierRegistry->name($carrierCode);
 
-        return DB::transaction(function () use ($supplyOrder, $account) {
+        return DB::transaction(function () use ($supplyOrder, $account, $carrierCode, $carrierName) {
             $shipment = Shipment::query()->firstOrNew([
                 'supply_order_id' => $supplyOrder->id,
                 'flow_type' => 'supply',
-                'carrier_code' => 'surat',
+                'carrier_code' => $carrierCode,
             ]);
 
-            if (!$shipment->exists) {
+            if (! $shipment->exists) {
                 $shipment->shipment_no = $this->nextShipmentNo();
             }
 
@@ -235,7 +251,7 @@ class CargoShipmentService
                 'cargo_carrier_account_id' => $account?->id,
                 'source_type' => 'supply_order',
                 'direction' => 'outgoing',
-                'carrier_name' => 'Sürat Kargo',
+                'carrier_name' => $carrierName,
                 'reference_number' => $supplyOrder->siparis_no,
                 'order_number' => $supplyOrder->siparis_no,
                 'status' => $shipment->exists ? $shipment->status : 'draft',
@@ -271,14 +287,14 @@ class CargoShipmentService
 
     public function pushToCarrier(Shipment $shipment, ?CargoCarrierAccount $account = null): Shipment
     {
-        $account = $account ?: $shipment->carrierAccount ?: $this->defaultAccount($shipment->user_id, $shipment->legal_entity_id);
+        $account = $this->accountForShipment($shipment, $account);
 
-        if (!$account) {
-            throw new \RuntimeException('Sürat hesap bilgisi bulunamadı. Önce Sürat Entegrasyon sekmesinde hesap tanımlayın.');
+        if (! $account) {
+            throw new \RuntimeException("{$shipment->carrier_name} hesap bilgisi bulunamadı. Önce taşıyıcı hesabını tanımlayın.");
         }
 
         $oldStatus = $shipment->status;
-        $result = $this->suratConnector->createShipment($account, $shipment);
+        $result = $this->carrierManager->forShipment($shipment)->createShipment($account, $shipment);
 
         $shipment->forceFill([
             'cargo_carrier_account_id' => $account->id,
@@ -295,7 +311,7 @@ class CargoShipmentService
 
         if ($shipment->package) {
             $shipment->package->update([
-                'cargo_company' => 'Sürat Kargo',
+                'cargo_company' => $shipment->carrier_name,
                 'cargo_tracking_number' => $shipment->tracking_number ?: $shipment->package->cargo_tracking_number,
                 'cargo_barcode' => $shipment->barcode ?: $shipment->package->cargo_barcode,
                 'package_status' => in_array($shipment->status, ['ready', 'label_created'], true) ? 'LabelCreated' : $shipment->package->package_status,
@@ -322,27 +338,27 @@ class CargoShipmentService
 
     public function refreshTracking(Shipment $shipment, ?CargoCarrierAccount $account = null): Shipment
     {
-        $account = $account ?: $shipment->carrierAccount ?: $this->defaultAccount($shipment->user_id, $shipment->legal_entity_id);
+        $account = $this->accountForShipment($shipment, $account);
 
-        if (!$account) {
-            throw new \RuntimeException('Sürat sorgulama hesabı bulunamadı.');
+        if (! $account) {
+            throw new \RuntimeException("{$shipment->carrier_name} sorgulama hesabı bulunamadı.");
         }
 
-        $result = $this->suratConnector->trackShipment($account, $shipment);
+        $result = $this->carrierManager->forShipment($shipment)->trackShipment($account, $shipment);
 
         return $this->applyTrackingResult($shipment, $result);
     }
 
     public function cancelShipment(Shipment $shipment, ?CargoCarrierAccount $account = null, array $context = []): Shipment
     {
-        $account = $account ?: $shipment->carrierAccount ?: $this->defaultAccount($shipment->user_id, $shipment->legal_entity_id);
+        $account = $this->accountForShipment($shipment, $account);
 
-        if (!$account) {
-            throw new \RuntimeException('Sürat iptal hesabı bulunamadı.');
+        if (! $account) {
+            throw new \RuntimeException("{$shipment->carrier_name} iptal hesabı bulunamadı.");
         }
 
         $oldStatus = $shipment->status;
-        $result = $this->suratConnector->cancelShipment($account, $shipment, $context);
+        $result = $this->carrierManager->forShipment($shipment)->cancelShipment($account, $shipment, $context);
 
         $shipment->forceFill([
             'cargo_carrier_account_id' => $account->id,
@@ -402,7 +418,7 @@ class CargoShipmentService
             $financialUpdates['total_weight'] = max((float) ($shipment->total_weight ?? 0), $actualWeight);
         }
 
-        if (!$shippedAt && $this->isCarrierShippedStatus((string) $status)) {
+        if (! $shippedAt && $this->isCarrierShippedStatus((string) $status)) {
             $shippedAt = $this->parseDate($result['shipped_at'] ?? null)
                 ?: $this->parseDate($result['last_event_at'] ?? null)
                 ?: now();
@@ -443,7 +459,7 @@ class CargoShipmentService
             $packageStatus = $this->packageStatusForCarrierStatus((string) $shipment->status, $shipment->package->package_status);
 
             $shipment->package->update([
-                'cargo_company' => 'Sürat Kargo',
+                'cargo_company' => $shipment->carrier_name,
                 'cargo_tracking_number' => $shipment->tracking_number ?: $shipment->package->cargo_tracking_number,
                 'cargo_barcode' => $shipment->barcode ?: $shipment->package->cargo_barcode,
                 'package_status' => $packageStatus,
@@ -492,7 +508,7 @@ class CargoShipmentService
 
     protected function syncOrderStatusFromShipment(Shipment $shipment): void
     {
-        if (!$shipment->order) {
+        if (! $shipment->order) {
             return;
         }
 
@@ -514,7 +530,7 @@ class CargoShipmentService
             return;
         }
 
-        if (!$this->isCarrierShippedStatus($status) || Str::contains($current, ['delivered', 'completed', 'teslim', 'tamam'])) {
+        if (! $this->isCarrierShippedStatus($status) || Str::contains($current, ['delivered', 'completed', 'teslim', 'tamam'])) {
             return;
         }
 
@@ -532,6 +548,7 @@ class CargoShipmentService
     {
         $shipment = Shipment::query()
             ->where('user_id', $line->user_id)
+            ->where('carrier_code', $line->carrier_code)
             ->where(function ($query) use ($line) {
                 if ($line->tracking_number) {
                     $query->orWhere('tracking_number', $line->tracking_number)
@@ -552,7 +569,7 @@ class CargoShipmentService
             ->latest('id')
             ->first();
 
-        if (!$shipment) {
+        if (! $shipment) {
             $line->forceFill([
                 'is_reconciled' => false,
                 'discrepancy_type' => 'shipment_missing',
@@ -668,9 +685,9 @@ class CargoShipmentService
             ->where('event_at', $eventAt)
             ->exists();
 
-        if (!$exists) {
+        if (! $exists) {
             $shipment->events()->create([
-                'carrier_code' => 'surat',
+                'carrier_code' => $shipment->carrier_code,
                 'event_code' => $event['event_code'] ?? null,
                 'event_status' => $event['event_status'] ?? null,
                 'event_description' => $description,
@@ -721,7 +738,7 @@ class CargoShipmentService
 
     protected function recalculateProfit(Shipment $shipment): void
     {
-        if (!$shipment->store || !$shipment->channel_order_id || !Schema::hasTable('order_profit_snapshots')) {
+        if (! $shipment->store || ! $shipment->channel_order_id || ! Schema::hasTable('order_profit_snapshots')) {
             return;
         }
 
@@ -739,7 +756,7 @@ class CargoShipmentService
 
     protected function parseDate(mixed $value): ?Carbon
     {
-        if (!$value) {
+        if (! $value) {
             return null;
         }
 
@@ -753,9 +770,29 @@ class CargoShipmentService
     protected function nextShipmentNo(): string
     {
         do {
-            $number = 'SHP-' . now()->format('Ymd-His') . '-' . Str::upper(Str::random(5));
+            $number = 'SHP-'.now()->format('Ymd-His').'-'.Str::upper(Str::random(5));
         } while (Shipment::query()->where('shipment_no', $number)->exists());
 
         return $number;
+    }
+
+    protected function resolveCarrierCode(?CargoCarrierAccount $account, ?string $carrierCode = null): string
+    {
+        return $this->carrierRegistry->canonicalCode(
+            $account?->carrier_code ?: $carrierCode ?: (string) config('cargo.default_company', 'surat')
+        );
+    }
+
+    protected function accountForShipment(Shipment $shipment, ?CargoCarrierAccount $account = null): ?CargoCarrierAccount
+    {
+        $account = $account
+            ?: $shipment->carrierAccount
+            ?: $this->defaultAccount($shipment->user_id, $shipment->legal_entity_id, $shipment->carrier_code);
+
+        if ($account && $this->resolveCarrierCode($account) !== $this->resolveCarrierCode(null, $shipment->carrier_code)) {
+            throw new \RuntimeException('Gönderi ile kargo hesabının taşıyıcısı eşleşmiyor.');
+        }
+
+        return $account;
     }
 }

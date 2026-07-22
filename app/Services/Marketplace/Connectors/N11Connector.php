@@ -8,8 +8,9 @@ use App\Models\MarketplaceStore;
 use App\Services\Marketplace\Connectors\Concerns\NormalizesCustomerQuestions;
 use App\Services\Marketplace\Contracts\AnswersCustomerQuestions;
 use App\Services\Marketplace\Contracts\ManagesClaims;
-use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
 use App\Services\Marketplace\Contracts\PullsClaims;
+use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
+use App\Services\Marketplace\Contracts\PullsFinancials;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
 use App\Services\Marketplace\Contracts\PushesPrice;
@@ -21,7 +22,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PullsCustomerQuestions, PullsClaims, ManagesClaims, AnswersCustomerQuestions, PushesPrice, PushesStock, TestsConnection
+class N11Connector extends AbstractMarketplaceConnector implements AnswersCustomerQuestions, ManagesClaims, PullsClaims, PullsCustomerQuestions, PullsFinancials, PullsOrders, PullsProducts, PushesPrice, PushesStock, TestsConnection
 {
     use NormalizesCustomerQuestions;
 
@@ -48,7 +49,7 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
         return [
             'orders' => true,
             'products' => true,
-            'finance' => false,
+            'finance' => true,
             'webhooks' => false,
             'price_push' => true,
             'stock_push' => true,
@@ -769,10 +770,12 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
                             : $this->xmlValue($row);
                         $xml .= '</'.$key.'>';
                     }
+
                     continue;
                 }
 
                 $xml .= '<'.$key.'>'.$this->arrayToXml($value).'</'.$key.'>';
+
                 continue;
             }
 
@@ -792,7 +795,7 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
      */
     protected function parseSoapResponse(string $body, string $operation): array
     {
-        $cleaned = preg_replace('/(<\/?)([A-Za-z0-9_]+):/', '$1', $body) ?: $body;
+        $cleaned = trim(preg_replace('/(<\/?)([A-Za-z0-9_]+):/', '$1', $body) ?: $body);
         $xml = simplexml_load_string($cleaned, 'SimpleXMLElement', LIBXML_NOCDATA);
 
         if ($xml === false) {
@@ -918,12 +921,12 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
         $date = $this->normalizeDate(data_get($payload, 'date') ?: data_get($payload, 'settlementDate'));
         $amount = $this->toDecimal(data_get($payload, 'amount') ?: data_get($payload, 'sellerHakedis'));
         $commission = $this->toDecimal(data_get($payload, 'commission') ?: data_get($payload, 'commissionAmount'));
-        
+
         // Return event instead of mutating items directly
         return [
             'order_number' => $orderNumber,
             'event_source' => 'settlements',
-            'external_event_id' => (string) (data_get($payload, 'id') ?: md5($orderNumber . '|' . ($amount ?? 0))),
+            'external_event_id' => (string) (data_get($payload, 'id') ?: md5($orderNumber.'|'.($amount ?? 0))),
             'event_type' => 'settlement',
             'reference_number' => (string) data_get($payload, 'id'),
             'settlement_date' => $date,
@@ -1072,7 +1075,17 @@ class N11Connector extends AbstractMarketplaceConnector implements PullsOrders, 
             return CarbonImmutable::createFromTimestampUTC($timestamp)->toIso8601String();
         }
 
-        return CarbonImmutable::parse((string) $value)->toIso8601String();
+        $dateValue = trim((string) $value);
+
+        if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $dateValue) === 1) {
+            return CarbonImmutable::createFromFormat('!d/m/Y', $dateValue, 'Europe/Istanbul')->toIso8601String();
+        }
+
+        if (preg_match('/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/', $dateValue) === 1) {
+            return CarbonImmutable::createFromFormat('!d/m/Y H:i:s', $dateValue, 'Europe/Istanbul')->toIso8601String();
+        }
+
+        return CarbonImmutable::parse($dateValue)->toIso8601String();
     }
 
     protected function toDecimal(mixed $value): ?float

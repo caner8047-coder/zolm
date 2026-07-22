@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Support\Arr;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Arr;
 
 class IntegrationSyncProfile extends Model
 {
@@ -29,6 +29,29 @@ class IntegrationSyncProfile extends Model
         'products/delete',
         'inventory_levels/update',
         'refunds/create',
+    ];
+
+    public const IKAS_RECOMMENDED_WEBHOOK_TOPICS = [
+        'store/order/created',
+        'store/order/updated',
+        'store/product/created',
+        'store/product/updated',
+        'store/product/deleted',
+        'store/stock/created',
+        'store/stock/updated',
+    ];
+
+    public const IDEASOFT_RECOMMENDED_WEBHOOK_TOPICS = [
+        'order/create',
+        'order/update',
+        'order/delete',
+        'product/create',
+        'product/update',
+        'product/delete',
+        'payment/create',
+        'payment/update',
+        'order_refund_request/create',
+        'order_refund_request/update',
     ];
 
     protected $fillable = [
@@ -130,6 +153,19 @@ class IntegrationSyncProfile extends Model
                     'webhook_topics' => self::recommendedWebhookTopicsForMarketplace('shopify'),
                 ],
             ]),
+            'ikas' => array_replace($defaults, config('marketplace.ikas.sync_defaults', []), [
+                'extra_settings' => [
+                    'webhook_topics' => self::recommendedWebhookTopicsForMarketplace('ikas'),
+                ],
+            ]),
+            'ideasoft' => array_replace($defaults, config('marketplace.ideasoft.sync_defaults', []), [
+                'extra_settings' => [
+                    'webhook_topics' => self::recommendedWebhookTopicsForMarketplace('ideasoft'),
+                ],
+            ]),
+            'ticimax' => array_replace($defaults, config('marketplace.ticimax.sync_defaults', [])),
+            'tsoft' => array_replace($defaults, config('marketplace.tsoft.sync_defaults', [])),
+            'magento' => array_replace($defaults, config('marketplace.magento.sync_defaults', [])),
             default => $defaults,
         };
     }
@@ -158,6 +194,8 @@ class IntegrationSyncProfile extends Model
         return match (strtolower((string) $marketplace)) {
             'woocommerce' => self::recommendedWooWebhookTopics(),
             'shopify' => self::recommendedShopifyWebhookTopics(),
+            'ikas' => self::IKAS_RECOMMENDED_WEBHOOK_TOPICS,
+            'ideasoft' => self::IDEASOFT_RECOMMENDED_WEBHOOK_TOPICS,
             default => [],
         };
     }

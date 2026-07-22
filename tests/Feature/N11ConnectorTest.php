@@ -22,7 +22,7 @@ class N11ConnectorTest extends TestCase
         $this->assertSame('N11', $connector->displayName());
         $this->assertTrue($connector->capabilities()['orders']);
         $this->assertTrue($connector->capabilities()['products']);
-        $this->assertFalse($connector->capabilities()['finance']);
+        $this->assertTrue($connector->capabilities()['finance']);
         $this->assertTrue($connector->capabilities()['price_push']);
         $this->assertTrue($connector->capabilities()['stock_push']);
     }
@@ -213,6 +213,52 @@ class N11ConnectorTest extends TestCase
 
         Http::assertSent(fn ($request) => data_get($request->data(), 'payload.skus.0.stockCode') === 'N11-SKU-1'
             && (int) data_get($request->data(), 'payload.skus.0.quantity') === 9);
+    }
+
+    public function test_it_pulls_n11_settlements_through_finance_contract(): void
+    {
+        Http::fake([
+            'https://api.n11.com/ws/SettlementService/' => Http::response(<<<'XML'
+                <?xml version="1.0" encoding="UTF-8"?>
+                <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sch="http://www.n11.com/ws/schemas">
+                  <soapenv:Body>
+                    <sch:GetSettlementListResponse>
+                      <settlementList>
+                        <settlement>
+                          <id>SET-1001</id>
+                          <orderNumber>203872347637</orderNumber>
+                          <settlementDate>21/07/2026</settlementDate>
+                          <amount>1250.50</amount>
+                        </settlement>
+                      </settlementList>
+                      <pagingData>
+                        <pageCount>1</pageCount>
+                      </pagingData>
+                    </sch:GetSettlementListResponse>
+                  </soapenv:Body>
+                </soapenv:Envelope>
+            XML, 200, ['Content-Type' => 'text/xml']),
+        ]);
+
+        $result = app(N11Connector::class)->pullFinancialEvents($this->makeStore(), [
+            'start_date' => '2026-07-20T00:00:00+03:00',
+            'end_date' => '2026-07-22T00:00:00+03:00',
+        ]);
+
+        $this->assertCount(1, $result['items']);
+        $this->assertSame('SET-1001', data_get($result, 'items.0.external_event_id'));
+        $this->assertSame('203872347637', data_get($result, 'items.0.order_number'));
+        $this->assertSame(1250.50, data_get($result, 'items.0.amount'));
+        $this->assertSame('credit', data_get($result, 'items.0.direction'));
+
+        Http::assertSent(function ($request) {
+            $body = $request->body();
+
+            return $request->url() === 'https://api.n11.com/ws/SettlementService/'
+                && str_contains($body, '<sch:GetSettlementListRequest>')
+                && str_contains($body, '<startDate>20/07/2026</startDate>')
+                && str_contains($body, '<endDate>22/07/2026</endDate>');
+        });
     }
 
     protected function makeStore(): MarketplaceStore

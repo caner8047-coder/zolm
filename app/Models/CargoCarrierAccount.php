@@ -23,6 +23,7 @@ class CargoCarrierAccount extends Model
         'query_password_encrypted',
         'cod_username',
         'cod_password_encrypted',
+        'credentials_encrypted',
         'api_base_url',
         'query_base_url',
         'branch_code',
@@ -45,6 +46,7 @@ class CargoCarrierAccount extends Model
             'sender_password_encrypted' => 'encrypted',
             'query_password_encrypted' => 'encrypted',
             'cod_password_encrypted' => 'encrypted',
+            'credentials_encrypted' => 'encrypted:array',
             'is_default' => 'boolean',
             'is_active' => 'boolean',
             'last_verified_at' => 'datetime',
@@ -85,7 +87,7 @@ class CargoCarrierAccount extends Model
     public function hasApiEndpoint(string $key): bool
     {
         $endpoint = data_get($this->settings_json, "endpoints.{$key}")
-            ?: data_get(config('cargo.integrations.surat.endpoints', []), $key);
+            ?: data_get(config("cargo.integrations.{$this->carrier_code}.endpoints", []), $key);
 
         return is_string($endpoint) && trim($endpoint) !== '';
     }

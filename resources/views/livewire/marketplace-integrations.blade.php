@@ -148,9 +148,20 @@
                                     <select wire:model.live="storeForm.marketplace" class="{{ $inputClass }}">
                                         <option value="">Seçiniz</option>
                                         @foreach($this->providerOptions as $pKey => $pLabel)
-                                            <option value="{{ $pKey }}">{{ $pLabel }}</option>
+                                            @php
+                                                $providerStatus = data_get($providerCatalog, $pKey . '.status', 'planned');
+                                                $providerSuffix = match ($providerStatus) {
+                                                    'access_required' => ' · Erişim gerekli',
+                                                    'planned' => ' · Planlandı',
+                                                    default => '',
+                                                };
+                                            @endphp
+                                            <option value="{{ $pKey }}">{{ $pLabel }}{{ $providerSuffix }}</option>
                                         @endforeach
                                     </select>
+                                    @if(($this->selectedProviderMeta['status'] ?? null) === 'access_required')
+                                        <p class="mt-1 text-xs text-amber-700">{{ $this->selectedProviderMeta['availability_note'] ?? 'Canlı bağlantı için sağlayıcı erişimi gerekir.' }}</p>
+                                    @endif
                                     @error('storeForm.marketplace') <span class="text-xs text-rose-600">{{ $message }}</span> @enderror
                                 </div>
                                 <div class="col-span-1">
@@ -174,7 +185,7 @@
                                 </div>
                             </div>
                             <div class="flex justify-end pt-4 border-t border-slate-100">
-                                <button type="submit" class="rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-slate-800">Mağazayı Kaydet</button>
+                                <button type="submit" class="w-full rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 sm:w-auto sm:py-2">Mağazayı Kaydet ve API Bilgilerine Geç</button>
                             </div>
                         </form>
                     @endif
@@ -242,6 +253,13 @@
                             </div>
                         @endif
 
+                        @if(session('success'))
+                            <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{{ session('success') }}</div>
+                        @endif
+                        @if(session('error'))
+                            <div class="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{{ session('error') }}</div>
+                        @endif
+
                         @if($saveResult)
                             <div class="mb-4 p-4 rounded-lg @if($saveResult === 'credential_saved' || $saveResult === 'credential_unchanged') bg-emerald-50 border border-emerald-100 text-emerald-800 @else bg-rose-50 border border-rose-100 text-rose-800 @endif text-sm">
                                 @if($saveResult === 'credential_saved')
@@ -274,14 +292,16 @@
                                     <label class="{{ $labelClass }}">Auth Tipi</label>
                                     <input type="text" wire:model.defer="connectionForm.authType" class="{{ $inputClass }}">
                                 </div>
+                                @if($selectedStore->marketplace !== 'ticimax')
                                 <div class="col-span-1">
                                     <label class="{{ $labelClass }}">{{ $this->selectedConnectionGuide['api_key_label'] ?? 'API Anahtarı (Key)' }}</label>
-                                    <input type="text" wire:model.defer="connectionForm.apiKey" class="{{ $inputClass }}" placeholder="Client ID / API Key vb.">
+                                    <input type="text" wire:model.defer="connectionForm.apiKey" class="{{ $inputClass }}" placeholder="{{ $this->selectedConnectionGuide['api_key_placeholder'] ?? 'Client ID / API Key vb.' }}">
                                     @error('connectionForm.apiKey') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                                 </div>
-                                <div class="col-span-1">
+                                @endif
+                                <div class="col-span-1 {{ $selectedStore->marketplace === 'ticimax' ? 'sm:col-span-2' : '' }}">
                                     <label class="{{ $labelClass }}">{{ $this->selectedConnectionGuide['api_secret_label'] ?? 'API Şifresi (Secret)' }}</label>
-                                    <input type="password" wire:model.defer="connectionForm.apiSecret" class="{{ $inputClass }}" placeholder="Parola / Secret / Token vb.">
+                                    <input type="password" wire:model.defer="connectionForm.apiSecret" class="{{ $inputClass }}" placeholder="{{ $this->selectedConnectionGuide['api_secret_placeholder'] ?? 'Parola / Secret / Token vb.' }}">
                                     @error('connectionForm.apiSecret') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                                 </div>
                                 @if($selectedStore->marketplace === 'trendyol')
@@ -300,10 +320,22 @@
                                     @error('connectionForm.extraUser') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                                 </div>
                                 @endif
-                                @if(in_array($selectedStore->marketplace, ['shopify', 'woocommerce']))
+                                @if(in_array($selectedStore->marketplace, ['shopify', 'woocommerce', 'ideasoft', 'ticimax', 'tsoft', 'magento']))
                                 <div class="col-span-1 sm:col-span-2">
-                                    <label class="{{ $labelClass }}">Mağaza URL Adresi</label>
-                                    <input type="url" wire:model.defer="connectionForm.storeUrl" class="{{ $inputClass }}" placeholder="https://magaza.com">
+                                    <label class="{{ $labelClass }}">{{ $this->selectedConnectionGuide['store_url_label'] ?? 'Mağaza URL Adresi' }}</label>
+                                    <input type="url" wire:model.defer="connectionForm.storeUrl" class="{{ $inputClass }}" placeholder="{{ $this->selectedConnectionGuide['store_url_placeholder'] ?? 'https://magaza.com' }}">
+                                </div>
+                                @endif
+                                @if($selectedStore->marketplace === 'ideasoft')
+                                <div class="col-span-1 sm:col-span-2 rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+                                    <label class="{{ $labelClass }}">IdeaSoft Redirect URI</label>
+                                    <input type="text" readonly value="{{ route('mp.integrations.ideasoft.callback') }}" class="{{ $inputClass }} bg-slate-100 font-mono text-xs">
+                                    <p class="mt-2 text-xs leading-5 text-slate-500">Bu adresi IdeaSoft panelindeki API kaydının Redirect URL alanına eksiksiz yapıştırın. Ardından yukarıdaki bilgileri kaydedin.</p>
+                                    @if($selectedStore->connection)
+                                        <a href="{{ route('mp.integrations.ideasoft.authorize', $selectedStore) }}" class="mt-3 inline-flex w-full items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white hover:bg-slate-800 sm:w-auto sm:py-2">
+                                            IdeaSoft’ta Yetkilendir
+                                        </a>
+                                    @endif
                                 </div>
                                 @endif
                                 @if($selectedStore->marketplace === 'woocommerce')

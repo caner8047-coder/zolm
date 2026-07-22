@@ -3,13 +3,14 @@
 namespace App\Services\Marketplace\Connectors;
 
 use App\Models\ChannelListing;
+use App\Models\IntegrationConnection;
 use App\Models\IntegrationPushRun;
 use App\Models\MarketplaceQuestion;
 use App\Models\MarketplaceStore;
 use App\Services\Marketplace\Connectors\Concerns\NormalizesCustomerQuestions;
 use App\Services\Marketplace\Contracts\AnswersCustomerQuestions;
-use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
 use App\Services\Marketplace\Contracts\PullsClaims;
+use App\Services\Marketplace\Contracts\PullsCustomerQuestions;
 use App\Services\Marketplace\Contracts\PullsOrders;
 use App\Services\Marketplace\Contracts\PullsProducts;
 use App\Services\Marketplace\Contracts\PushesPrice;
@@ -21,7 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-class WooCommerceConnector extends AbstractMarketplaceConnector implements PullsOrders, PullsProducts, PullsCustomerQuestions, PullsClaims, AnswersCustomerQuestions, PushesPrice, PushesStock, TestsConnection
+class WooCommerceConnector extends AbstractMarketplaceConnector implements AnswersCustomerQuestions, PullsClaims, PullsCustomerQuestions, PullsOrders, PullsProducts, PushesPrice, PushesStock, TestsConnection
 {
     use NormalizesCustomerQuestions;
 
@@ -85,7 +86,7 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
 
         return [
             'items' => collect($rows)
-                ->map(fn (array $payload) => $this->normalizeOrder($payload))
+                ->map(fn (array $payload) => $this->normalizeOrder($payload, (string) ($store->currency ?: 'TRY')))
                 ->values()
                 ->all(),
             'meta' => [
@@ -106,7 +107,7 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
             '_fields' => $this->resourceFields('product_fields'),
         ];
 
-        if (!$fullCatalogRefresh) {
+        if (! $fullCatalogRefresh) {
             $query['modified_after'] = $startDate->toIso8601String();
         }
 
@@ -120,9 +121,13 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
 
         return [
             'items' => collect($rows)
-                ->map(fn (array $payload) => $this->normalizeProduct($payload))
+                ->map(fn (array $payload) => $this->normalizeProduct($payload, (string) ($store->currency ?: 'TRY')))
                 ->merge(collect($variationRows)->map(
-                    fn (array $row) => $this->normalizeVariation($row['variation'], $row['parent'])
+                    fn (array $row) => $this->normalizeVariation(
+                        $row['variation'],
+                        $row['parent'],
+                        (string) ($store->currency ?: 'TRY'),
+                    )
                 ))
                 ->values()
                 ->all(),
@@ -197,6 +202,7 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
 
             if ($refunds === []) {
                 $items[] = $this->normalizeRefundClaim($orderPayload, []);
+
                 continue;
             }
 
@@ -423,9 +429,9 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
         ];
     }
 
-    public function verifyWebhookSignature(Request $request, ?\App\Models\IntegrationConnection $connection): bool
+    public function verifyWebhookSignature(Request $request, ?IntegrationConnection $connection): bool
     {
-        if (!$connection || blank($connection->webhook_secret)) {
+        if (! $connection || blank($connection->webhook_secret)) {
             return false;
         }
 
@@ -666,7 +672,7 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    protected function normalizeOrder(array $payload): array
+    protected function normalizeOrder(array $payload, string $storeCurrency = 'TRY'): array
     {
         $orderId = (string) data_get($payload, 'id');
         $lineItems = collect(data_get($payload, 'line_items', []))
@@ -681,6 +687,7 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
                 'order_number' => (string) (data_get($payload, 'number') ?: $orderId),
                 'order_status' => (string) (data_get($payload, 'status') ?: 'pending'),
                 'commercial_type' => filled(data_get($billing, 'company')) ? 'commercial' : 'individual',
+                'currency' => strtoupper((string) (data_get($payload, 'currency') ?: $storeCurrency ?: 'TRY')),
                 'customer_name' => trim((string) collect([
                     data_get($shipping, 'first_name') ?: data_get($billing, 'first_name'),
                     data_get($shipping, 'last_name') ?: data_get($billing, 'last_name'),
@@ -757,7 +764,7 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
             'marketplace_discount_amount' => null,
             'billable_amount' => $total,
             'commission_rate' => null,
-            'vat_rate' => null,
+            'vat_rate' => $this->effectiveVatRate($payload),
             'line_status' => 'active',
             'raw_payload' => $payload,
         ];
@@ -767,7 +774,7 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    protected function normalizeProduct(array $payload): array
+    protected function normalizeProduct(array $payload, string $storeCurrency = 'TRY'): array
     {
         $productId = (string) data_get($payload, 'id');
         $stockCode = trim((string) data_get($payload, 'sku'));
@@ -780,6 +787,9 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
                 'stock_code' => $stockCode !== '' ? $stockCode : null,
                 'barcode' => null,
                 'title' => data_get($payload, 'name'),
+                'description' => data_get($payload, 'description') ?: data_get($payload, 'short_description'),
+                'images' => $this->normalizeProductImages(data_get($payload, 'images', [])),
+                'attributes' => $this->normalizeProductAttributes(data_get($payload, 'attributes', [])),
                 'brand' => $this->extractBrand($payload),
                 'category_name' => collect(data_get($payload, 'categories', []))
                     ->filter(fn ($row) => is_array($row))
@@ -796,7 +806,7 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
                 'list_price' => $this->toDecimal(data_get($payload, 'regular_price')),
                 'commission_rate' => 0,
                 'commission_source' => 'marketplace_default',
-                'currency' => data_get($payload, 'currency') ?: 'TRY',
+                'currency' => strtoupper((string) (data_get($payload, 'currency') ?: $storeCurrency ?: 'TRY')),
                 'stock_quantity' => $manageStock ? (int) (data_get($payload, 'stock_quantity') ?: 0) : 0,
                 'published_at' => $this->normalizeDate(data_get($payload, 'date_created_gmt') ?: data_get($payload, 'date_created')),
             ], $this->catalogDeliveryTermData($payload)),
@@ -808,7 +818,7 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
      * @param  array<string, mixed>  $parentPayload
      * @return array<string, mixed>
      */
-    protected function normalizeVariation(array $payload, array $parentPayload): array
+    protected function normalizeVariation(array $payload, array $parentPayload, string $storeCurrency = 'TRY'): array
     {
         $variationId = (string) data_get($payload, 'id');
         $parentId = (string) data_get($parentPayload, 'id');
@@ -827,7 +837,14 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
                 'external_parent_id' => $parentId,
                 'stock_code' => $stockCode !== '' ? $stockCode : null,
                 'barcode' => null,
-                'title' => trim($parentTitle . ($variantLabel !== '' ? ' - ' . $variantLabel : '')),
+                'title' => trim($parentTitle.($variantLabel !== '' ? ' - '.$variantLabel : '')),
+                'description' => data_get($payload, 'description') ?: data_get($parentPayload, 'description') ?: data_get($parentPayload, 'short_description'),
+                'images' => $this->normalizeProductImages(
+                    filled(data_get($payload, 'image'))
+                        ? [data_get($payload, 'image')]
+                        : data_get($parentPayload, 'images', [])
+                ),
+                'attributes' => $this->normalizeProductAttributes(data_get($payload, 'attributes', [])),
                 'brand' => $this->extractBrand($parentPayload),
                 'category_name' => collect(data_get($parentPayload, 'categories', []))
                     ->filter(fn ($row) => is_array($row))
@@ -847,7 +864,7 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
                 'list_price' => $this->toDecimal(data_get($payload, 'regular_price') ?: data_get($parentPayload, 'regular_price')),
                 'commission_rate' => 0,
                 'commission_source' => 'marketplace_default',
-                'currency' => data_get($parentPayload, 'currency') ?: 'TRY',
+                'currency' => strtoupper((string) (data_get($parentPayload, 'currency') ?: $storeCurrency ?: 'TRY')),
                 'stock_quantity' => $manageStock ? (int) (data_get($payload, 'stock_quantity') ?? data_get($parentPayload, 'stock_quantity') ?? 0) : 0,
                 'published_at' => $this->normalizeDate(
                     data_get($payload, 'date_created_gmt')
@@ -969,6 +986,71 @@ class WooCommerceConnector extends AbstractMarketplaceConnector implements Pulls
         }
 
         return round((float) $value, 2);
+    }
+
+    /**
+     * WooCommerce satır tutarı ve ayrı dönen indirim sonrası vergi tutarı üzerinden
+     * etkin oran hesaplanır. Birden fazla/compound vergi varsa bu tekil sınıf oranı değildir.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    protected function effectiveVatRate(array $payload): ?float
+    {
+        $taxAmount = $this->toDecimal(data_get($payload, 'total_tax'));
+        $taxBase = $this->toDecimal(data_get($payload, 'total'));
+
+        if ($taxAmount === null || $taxBase === null) {
+            return null;
+        }
+
+        if ($taxAmount === 0.0) {
+            return 0.0;
+        }
+
+        if ($taxBase <= 0.0) {
+            return null;
+        }
+
+        return round(($taxAmount / $taxBase) * 100, 2);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>|null
+     */
+    protected function normalizeProductImages(mixed $images): ?array
+    {
+        $normalized = collect(is_array($images) ? $images : [])
+            ->filter(fn ($image) => is_array($image) || is_string($image))
+            ->map(function (array|string $image): array {
+                if (is_string($image)) {
+                    return ['url' => $image];
+                }
+
+                return array_filter([
+                    'id' => $image['id'] ?? null,
+                    'url' => $image['src'] ?? $image['url'] ?? null,
+                    'name' => $image['name'] ?? null,
+                    'alt' => $image['alt'] ?? null,
+                ], fn ($value) => $value !== null && $value !== '');
+            })
+            ->filter(fn (array $image) => filled($image['url'] ?? null))
+            ->values()
+            ->all();
+
+        return $normalized !== [] ? $normalized : null;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>|null
+     */
+    protected function normalizeProductAttributes(mixed $attributes): ?array
+    {
+        $normalized = collect(is_array($attributes) ? $attributes : [])
+            ->filter(fn ($attribute) => is_array($attribute))
+            ->values()
+            ->all();
+
+        return $normalized !== [] ? $normalized : null;
     }
 
     /**

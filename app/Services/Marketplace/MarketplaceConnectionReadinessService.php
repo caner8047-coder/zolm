@@ -53,6 +53,11 @@ class MarketplaceConnectionReadinessService
             'ciceksepeti' => $this->inspectCiceksepeti($store, $credentials),
             'woocommerce' => $this->inspectWooCommerce($store, $credentials),
             'shopify' => $this->inspectShopify($store, $credentials),
+            'ikas' => $this->inspectIkas($store, $credentials),
+            'ideasoft' => $this->inspectIdeaSoft($store, $credentials),
+            'ticimax' => $this->inspectTicimax($store, $credentials),
+            'tsoft' => $this->inspectTSoft($store, $credentials),
+            'magento' => $this->inspectMagento($store, $credentials),
             default => $this->inspectGeneric($store, $credentials),
         };
 
@@ -144,7 +149,7 @@ class MarketplaceConnectionReadinessService
             ? $store->getRelation('syncProfile')
             : ($store->exists ? $store->syncProfile : null);
 
-        if (!$profile) {
+        if (! $profile) {
             return [];
         }
 
@@ -166,8 +171,8 @@ class MarketplaceConnectionReadinessService
             $enabled = (bool) $profile->{$profileKey};
             $supported = (bool) ($supports[$definition['capability']] ?? false);
 
-            if ($enabled && !$supported) {
-                $warnings[] = $definition['label'] . ' açık görünüyor ancak ' . $providerLabel . ' kanalında bu capability pasif.';
+            if ($enabled && ! $supported) {
+                $warnings[] = $definition['label'].' açık görünüyor ancak '.$providerLabel.' kanalında bu capability pasif.';
             }
         }
 
@@ -195,15 +200,15 @@ class MarketplaceConnectionReadinessService
             $this->optionalCheck('StoreFrontCode', $storeFrontCodePresent, $storeFrontCodePresent ? 'StoreFrontCode mevcut.' : 'StoreFrontCode boş. Türkiye mağazalarında çoğu test için zorunlu değildir.'),
         ];
 
-        if (!$sellerIdPresent) {
+        if (! $sellerIdPresent) {
             $failures[] = 'Trendyol seller ID eksik.';
         }
 
-        if (!$apiKeyPresent) {
+        if (! $apiKeyPresent) {
             $failures[] = 'Trendyol API key eksik.';
         }
 
-        if (!$apiSecretPresent) {
+        if (! $apiSecretPresent) {
             $failures[] = 'Trendyol API secret eksik.';
         }
 
@@ -244,19 +249,19 @@ class MarketplaceConnectionReadinessService
             $this->check('Yapılandırma Durumu', $hasNewAuth || $hasLegacyAuth, ($hasNewAuth || $hasLegacyAuth) ? 'Hazır (configured_not_verified)' : 'Eksik'),
         ];
 
-        if (!$merchantIdPresent) {
+        if (! $merchantIdPresent) {
             $failures[] = 'Hepsiburada merchantId eksik.';
         }
 
-        if (!$hasNewAuth && !$hasLegacyAuth) {
+        if (! $hasNewAuth && ! $hasLegacyAuth) {
             $failures[] = 'Hepsiburada için service key veya legacy kullanıcı/şifre bulunmuyor.';
         }
 
-        if ($serviceKeyPresent && !$userAgentPresent) {
+        if ($serviceKeyPresent && ! $userAgentPresent) {
             $warnings[] = 'Service key var ama extraUser boş. Hepsiburada Basic Auth yanında User-Agent bekleyebilir.';
         }
 
-        if (!$hasNewAuth && $hasLegacyAuth) {
+        if (! $hasNewAuth && $hasLegacyAuth) {
             $warnings[] = 'Legacy auth fallback kullanılacak. Yeni akışta merchantId + serviceKey tercih edilmeli.';
         }
 
@@ -302,9 +307,9 @@ class MarketplaceConnectionReadinessService
             ? 'Webhook-first akış aktif.'
             : 'Webhook kapalı. WooCommerce için yükü azaltmak adına webhook-first akış önerilir.';
 
-        $topicSetHealthy = !$webhookEnabled || $topicAudit['matches_recommended'];
+        $topicSetHealthy = ! $webhookEnabled || $topicAudit['matches_recommended'];
         $topicSetMessage = match (true) {
-            !$webhookEnabled => 'Webhook kapalı olduğu için topic seti şu an devre dışı.',
+            ! $webhookEnabled => 'Webhook kapalı olduğu için topic seti şu an devre dışı.',
             $topicAudit['is_empty'] => 'Webhook açık ama topic seçimi boş. Gelen eventler filtrelenip ignored durumuna düşer.',
             $topicAudit['extra'] !== [] => 'Webhook topic setinde önerilmeyen başlıklar var: '.implode(', ', $topicAudit['extra']),
             $topicAudit['missing'] !== [] => 'Önerilen topiclerin bir kısmı kapalı: '.implode(', ', $topicAudit['missing']),
@@ -314,9 +319,9 @@ class MarketplaceConnectionReadinessService
         $checks = [
             $this->check(
                 'Mağaza / API URL',
-                $baseUrlPresent && !$placeholderUrl,
+                $baseUrlPresent && ! $placeholderUrl,
                 match (true) {
-                    !$baseUrlPresent => 'WooCommerce mağaza URL eksik.',
+                    ! $baseUrlPresent => 'WooCommerce mağaza URL eksik.',
                     $placeholderUrl => 'WooCommerce mağaza URL örnek / placeholder görünüyor.',
                     default => 'WooCommerce mağaza URL tanımlı.',
                 }
@@ -328,7 +333,7 @@ class MarketplaceConnectionReadinessService
             $this->check('Webhook topic seti', $topicSetHealthy, $topicSetMessage),
         ];
 
-        if (!$baseUrlPresent) {
+        if (! $baseUrlPresent) {
             $failures[] = 'WooCommerce mağaza URL veya API base URL eksik.';
         }
 
@@ -336,19 +341,19 @@ class MarketplaceConnectionReadinessService
             $failures[] = 'WooCommerce mağaza URL örnek / placeholder görünüyor. Gerçek site URL girilmelidir.';
         }
 
-        if (!$consumerKeyPresent) {
+        if (! $consumerKeyPresent) {
             $failures[] = 'WooCommerce consumer key eksik.';
         }
 
-        if (!$consumerSecretPresent) {
+        if (! $consumerSecretPresent) {
             $failures[] = 'WooCommerce consumer secret eksik.';
         }
 
-        if (!$webhookSecretPresent) {
+        if (! $webhookSecretPresent) {
             $warnings[] = 'Webhook secret boş. WooCommerce webhook imza doğrulaması için doldurulmalıdır.';
         }
 
-        if (!$webhookEnabled) {
+        if (! $webhookEnabled) {
             $warnings[] = 'Webhook kapalı. WooCommerce mağazasını yormamak için webhook-first, polling-fallback akışı önerilir.';
         }
 
@@ -388,19 +393,19 @@ class MarketplaceConnectionReadinessService
             $this->check('API base URL', $baseUrlPresent, $baseUrlPresent ? 'API base URL tanımlı.' : 'API base URL boş. Resmi endpoint doğrulanınca doldurulmalı.'),
         ];
 
-        if (!$apiKeyPresent) {
+        if (! $apiKeyPresent) {
             $failures[] = 'N11 API key eksik.';
         }
 
-        if (!$apiSecretPresent) {
+        if (! $apiSecretPresent) {
             $failures[] = 'N11 API secret eksik.';
         }
 
-        if (!$sellerIdPresent) {
+        if (! $sellerIdPresent) {
             $warnings[] = 'N11 mağaza / satıcı kodu boş. Sipariş eşleme sırasında gerekli olabilir.';
         }
 
-        if (!$baseUrlPresent) {
+        if (! $baseUrlPresent) {
             $failures[] = 'N11 API base URL eksik.';
         }
 
@@ -440,11 +445,11 @@ class MarketplaceConnectionReadinessService
             $this->check('API base URL', $baseUrlPresent, $baseUrlPresent ? 'API base URL tanımlı.' : 'API base URL boş. Resmi endpoint doğrulanınca doldurulmalı.'),
         ];
 
-        if (!$apiKeyPresent) {
+        if (! $apiKeyPresent) {
             $failures[] = 'Koçtaş API key eksik.';
         }
 
-        if (!$baseUrlPresent) {
+        if (! $baseUrlPresent) {
             $failures[] = 'Koçtaş API base URL eksik.';
         }
 
@@ -472,19 +477,19 @@ class MarketplaceConnectionReadinessService
             $this->check('API base URL', $baseUrlPresent, $baseUrlPresent ? 'Pazarama API URL tanımlı.' : 'Pazarama API URL eksik.'),
         ];
 
-        if (!$apiKeyPresent) {
+        if (! $apiKeyPresent) {
             $failures[] = 'Pazarama client ID / API key eksik.';
         }
 
-        if (!$apiSecretPresent) {
+        if (! $apiSecretPresent) {
             $failures[] = 'Pazarama client secret / API secret eksik.';
         }
 
-        if (!$sellerIdPresent) {
+        if (! $sellerIdPresent) {
             $warnings[] = 'Pazarama mağaza / satıcı kodu boş. Sipariş eşleme ve operasyon loglarında görünür bir anahtar olması önerilir.';
         }
 
-        if (!$baseUrlPresent) {
+        if (! $baseUrlPresent) {
             $failures[] = 'Pazarama API base URL eksik.';
         }
 
@@ -512,23 +517,23 @@ class MarketplaceConnectionReadinessService
             $this->check('API base URL', $baseUrlPresent, $baseUrlPresent ? 'API base URL tanımlı.' : 'API base URL boş. Region ve endpoint doğrulanınca doldurulmalı.'),
         ];
 
-        if (!$apiKeyPresent) {
+        if (! $apiKeyPresent) {
             $failures[] = 'Amazon erişim anahtarı eksik.';
         }
 
-        if (!$apiSecretPresent) {
+        if (! $apiSecretPresent) {
             $failures[] = 'Amazon API secret eksik.';
         }
 
-        if (!$sellerIdPresent) {
+        if (! $sellerIdPresent) {
             $warnings[] = 'Amazon seller / merchant kodu boş. Sipariş ve stok akışlarında gerekli olabilir.';
         }
 
-        if (!$baseUrlPresent) {
+        if (! $baseUrlPresent) {
             $warnings[] = 'Amazon API base URL boş. Region ve resmi endpoint bilgisi onaylandığında doldurulmalıdır.';
         }
 
-        $warnings[] = 'Amazon bağlayıcısı şimdilik güvenli skeleton aşamasında. SP-API region, rol ve credential modeli netleşmeden smoke test ile veri çekimi açılmayacaktır.';
+        $failures[] = 'Amazon SP-API canlı bağlayıcısı henüz hazır değil. LWA yetkilendirmesi, AWS rolü, region endpoint ve gerçek bağlantı testi tamamlanmalıdır.';
 
         return [$checks, $warnings, $failures];
     }
@@ -560,15 +565,15 @@ class MarketplaceConnectionReadinessService
             $this->check('API base URL', $baseUrlPresent, $baseUrlPresent ? 'Çiçeksepeti API URL tanımlı.' : 'Çiçeksepeti API URL eksik.'),
         ];
 
-        if (!$apiKeyPresent) {
+        if (! $apiKeyPresent) {
             $failures[] = 'Çiçeksepeti API key eksik.';
         }
 
-        if (!$sellerIdPresent) {
+        if (! $sellerIdPresent) {
             $failures[] = 'Çiçeksepeti satıcı / mağaza kodu eksik.';
         }
 
-        if (!$baseUrlPresent) {
+        if (! $baseUrlPresent) {
             $failures[] = 'Çiçeksepeti API base URL eksik.';
         }
 
@@ -603,9 +608,9 @@ class MarketplaceConnectionReadinessService
             ? 'Webhook-first akış aktif.'
             : 'Webhook kapalı. Shopify için yükü azaltmak adına webhook-first akış önerilir.';
 
-        $topicSetHealthy = !$webhookEnabled || $topicAudit['matches_recommended'];
+        $topicSetHealthy = ! $webhookEnabled || $topicAudit['matches_recommended'];
         $topicSetMessage = match (true) {
-            !$webhookEnabled => 'Webhook kapalı olduğu için topic seti şu an devre dışı.',
+            ! $webhookEnabled => 'Webhook kapalı olduğu için topic seti şu an devre dışı.',
             $topicAudit['is_empty'] => 'Webhook açık ama topic seçimi boş. Gelen eventler filtrelenip ignored durumuna düşer.',
             $topicAudit['extra'] !== [] => 'Webhook topic setinde önerilmeyen başlıklar var: '.implode(', ', $topicAudit['extra']),
             $topicAudit['missing'] !== [] => 'Önerilen topiclerin bir kısmı kapalı: '.implode(', ', $topicAudit['missing']),
@@ -621,23 +626,23 @@ class MarketplaceConnectionReadinessService
             $this->check('Webhook topic seti', $topicSetHealthy, $topicSetMessage),
         ];
 
-        if (!$storeUrlPresent) {
+        if (! $storeUrlPresent) {
             $failures[] = 'Shopify mağaza URL veya API base URL eksik.';
         }
 
-        if (!$apiKeyPresent) {
+        if (! $apiKeyPresent) {
             $failures[] = 'Shopify Admin API access token eksik.';
         }
 
-        if (!$apiSecretPresent) {
+        if (! $apiSecretPresent) {
             $warnings[] = 'Shopify app secret key boş. Webhook HMAC doğrulaması için doldurulmalıdır.';
         }
 
-        if (!$webhookSecretPresent && $apiSecretPresent) {
+        if (! $webhookSecretPresent && $apiSecretPresent) {
             $warnings[] = 'Webhook secret boş. Shopify için webhook secret alanına app secret key ile aynı değer girilmesi önerilir.';
         }
 
-        if (!$webhookEnabled) {
+        if (! $webhookEnabled) {
             $warnings[] = 'Webhook kapalı. Shopify mağazasını yormamak için webhook-first, polling-fallback akışı önerilir.';
         }
 
@@ -652,6 +657,219 @@ class MarketplaceConnectionReadinessService
         if ($webhookEnabled && $topicAudit['extra'] !== []) {
             $warnings[] = 'Önerilen set dışında Shopify webhook topic tanımlı: '.implode(', ', $topicAudit['extra']);
         }
+
+        return [$checks, $warnings, $failures];
+    }
+
+    /**
+     * @param  array<string, mixed>  $credentials
+     * @return array{0: array<int, array{label: string, state: string, message: string}>, 1: array<int, string>, 2: array<int, string>}
+     */
+    protected function inspectIkas(MarketplaceStore $store, array $credentials): array
+    {
+        $warnings = [];
+        $failures = [];
+        $clientIdPresent = filled($credentials['client_id'] ?? null) || filled($credentials['api_key'] ?? null);
+        $clientSecretPresent = filled($credentials['client_secret'] ?? null) || filled($credentials['api_secret'] ?? null);
+        $baseUrlPresent = filled($store->connection?->api_base_url);
+        $webhookSecretPresent = $clientSecretPresent || filled($store->connection?->webhook_secret);
+
+        $checks = [
+            $this->check('Client ID', $clientIdPresent, $clientIdPresent ? 'ikas özel uygulama Client ID tanımlı.' : 'ikas Client ID eksik.'),
+            $this->check('Client Secret', $clientSecretPresent, $clientSecretPresent ? 'ikas özel uygulama Client Secret tanımlı.' : 'ikas Client Secret eksik.'),
+            $this->check('Admin GraphQL URL', $baseUrlPresent, $baseUrlPresent ? 'ikas Admin GraphQL URL tanımlı.' : 'ikas Admin GraphQL URL eksik.'),
+            $this->optionalCheck('Webhook HMAC anahtarı', $webhookSecretPresent, $webhookSecretPresent ? 'Webhook imzası Client Secret ile doğrulanabilir.' : 'Webhook HMAC doğrulaması için Client Secret gereklidir.'),
+        ];
+
+        if (! $clientIdPresent) {
+            $failures[] = 'ikas özel uygulama Client ID eksik.';
+        }
+
+        if (! $clientSecretPresent) {
+            $failures[] = 'ikas özel uygulama Client Secret eksik.';
+        }
+
+        if (! $baseUrlPresent) {
+            $failures[] = 'ikas Admin GraphQL API URL eksik.';
+        }
+
+        if (! $webhookSecretPresent) {
+            $warnings[] = 'ikas webhook HMAC doğrulaması için Client Secret veya açık bir webhook secret gereklidir.';
+        }
+
+        $warnings[] = 'Canlı bağlantı testinde uygulamanın Orders, Products ve Inventories okuma kapsamları ayrıca doğrulanmalıdır.';
+
+        return [$checks, $warnings, $failures];
+    }
+
+    /**
+     * @param  array<string, mixed>  $credentials
+     * @return array{0: array<int, array{label: string, state: string, message: string}>, 1: array<int, string>, 2: array<int, string>}
+     */
+    protected function inspectIdeaSoft(MarketplaceStore $store, array $credentials): array
+    {
+        $warnings = [];
+        $failures = [];
+        $clientIdPresent = filled($credentials['api_key'] ?? null);
+        $clientSecretPresent = filled($credentials['api_secret'] ?? null);
+        $storeUrlPresent = filled($store->connection?->api_base_url) || filled($credentials['store_url'] ?? null);
+        $refreshTokenPresent = filled($credentials['refresh_token'] ?? null);
+        $accessTokenPresent = filled($credentials['access_token'] ?? null);
+
+        $checks = [
+            $this->check('Client ID', $clientIdPresent, $clientIdPresent ? 'IdeaSoft Client ID tanımlı.' : 'IdeaSoft Client ID eksik.'),
+            $this->check('Client Secret', $clientSecretPresent, $clientSecretPresent ? 'IdeaSoft Client Secret tanımlı.' : 'IdeaSoft Client Secret eksik.'),
+            $this->check('Mağaza URL', $storeUrlPresent, $storeUrlPresent ? 'IdeaSoft mağaza URL tanımlı.' : 'IdeaSoft mağaza URL eksik.'),
+            $this->check('OAuth yetkilendirmesi', $refreshTokenPresent && $accessTokenPresent, $refreshTokenPresent && $accessTokenPresent
+                ? 'Access Token ve yenilenebilir Refresh Token hazır.'
+                : 'Mağaza yöneticisi “IdeaSoft’ta Yetkilendir” adımını henüz tamamlamadı.'),
+        ];
+
+        if (! $clientIdPresent) {
+            $failures[] = 'IdeaSoft Client ID eksik.';
+        }
+
+        if (! $clientSecretPresent) {
+            $failures[] = 'IdeaSoft Client Secret eksik.';
+        }
+
+        if (! $storeUrlPresent) {
+            $failures[] = 'IdeaSoft mağaza URL eksik.';
+        }
+
+        if (! $refreshTokenPresent || ! $accessTokenPresent) {
+            $failures[] = 'IdeaSoft OAuth yetkilendirmesi tamamlanmadı.';
+        }
+
+        if ($refreshTokenPresent) {
+            $warnings[] = 'Canlı kabul testinde order_read, product_read, payment_read ve order_refund_request_read izinleri ayrıca doğrulanmalıdır.';
+        }
+
+        return [$checks, $warnings, $failures];
+    }
+
+    /**
+     * @param  array<string, mixed>  $credentials
+     * @return array{0: array<int, array{label: string, state: string, message: string}>, 1: array<int, string>, 2: array<int, string>}
+     */
+    protected function inspectTicimax(MarketplaceStore $store, array $credentials): array
+    {
+        $warnings = [];
+        $failures = [];
+        $membershipCodePresent = filled($credentials['api_secret'] ?? null) || filled($credentials['api_key'] ?? null);
+        $storeUrl = (string) ($store->connection?->api_base_url ?: ($credentials['store_url'] ?? ''));
+        $storeUrlPresent = filled($storeUrl) && parse_url($storeUrl, PHP_URL_SCHEME) === 'https' && filled(parse_url($storeUrl, PHP_URL_HOST));
+        $soapAvailable = class_exists(\SoapClient::class);
+
+        $checks = [
+            $this->check('Üye Kodu', $membershipCodePresent, $membershipCodePresent ? 'Ticimax Üye Kodu / Web Servis Şifresi tanımlı.' : 'Ticimax Üye Kodu / Web Servis Şifresi eksik.'),
+            $this->check('Mağaza URL', $storeUrlPresent, $storeUrlPresent ? 'Ticimax mağaza HTTPS adresi tanımlı.' : 'Ticimax mağaza HTTPS adresi eksik veya geçersiz.'),
+            $this->check('PHP SOAP', $soapAvailable, $soapAvailable ? 'PHP SOAP eklentisi hazır.' : 'PHP SOAP eklentisi etkin değil.'),
+        ];
+
+        if (! $membershipCodePresent) {
+            $failures[] = 'Ticimax Üye Kodu / Web Servis Şifresi eksik.';
+        }
+
+        if (! $storeUrlPresent) {
+            $failures[] = 'Ticimax mağaza HTTPS adresi eksik veya geçersiz.';
+        }
+
+        if (! $soapAvailable) {
+            $failures[] = 'Ticimax bağlantısı için PHP SOAP eklentisi etkin olmalıdır.';
+        }
+
+        $warnings[] = 'Ticimax Detaylı Web Servis paketinin mağazada etkin olduğu canlı bağlantı testiyle doğrulanmalıdır.';
+        $warnings[] = 'Sipariş ödeme özeti okunabilir; fiyat ve stok yazmaları kullanıcı açana kadar kapalıdır.';
+
+        return [$checks, $warnings, $failures];
+    }
+
+    /**
+     * @param  array<string, mixed>  $credentials
+     * @return array{0: array<int, array{label: string, state: string, message: string}>, 1: array<int, string>, 2: array<int, string>}
+     */
+    protected function inspectTSoft(MarketplaceStore $store, array $credentials): array
+    {
+        $warnings = [];
+        $failures = [];
+        $usernamePresent = filled($credentials['api_key'] ?? null);
+        $passwordPresent = filled($credentials['api_secret'] ?? null);
+        $storeUrl = (string) ($store->connection?->api_base_url ?: ($credentials['store_url'] ?? ''));
+        $storeUrlPresent = filled($storeUrl) && parse_url($storeUrl, PHP_URL_SCHEME) === 'https' && filled(parse_url($storeUrl, PHP_URL_HOST));
+
+        $checks = [
+            $this->check('Web Servis kullanıcısı', $usernamePresent, $usernamePresent ? 'T-Soft Web Servis kullanıcı adı tanımlı.' : 'T-Soft Web Servis kullanıcı adı eksik.'),
+            $this->check('Web Servis parolası', $passwordPresent, $passwordPresent ? 'T-Soft Web Servis parolası tanımlı.' : 'T-Soft Web Servis parolası eksik.'),
+            $this->check('Mağaza URL', $storeUrlPresent, $storeUrlPresent ? 'T-Soft mağaza HTTPS adresi tanımlı.' : 'T-Soft mağaza HTTPS adresi eksik veya geçersiz.'),
+        ];
+
+        if (! $usernamePresent) {
+            $failures[] = 'T-Soft Web Servis kullanıcı adı eksik.';
+        }
+
+        if (! $passwordPresent) {
+            $failures[] = 'T-Soft Web Servis parolası eksik.';
+        }
+
+        if (! $storeUrlPresent) {
+            $failures[] = 'T-Soft mağaza HTTPS adresi eksik veya geçersiz.';
+        }
+
+        $warnings[] = 'T-Soft REST1 / Gelişmiş Web Servis lisansı, IP kısıtı ve yöntem bazlı kullanıcı yetkileri canlı bağlantı testiyle doğrulanmalıdır.';
+        $warnings[] = 'Finans yalnız sipariş ödeme özetidir; fiyat/stok yazmaları ve alt ürün yazması kullanıcı açana kadar kapalı tutulur.';
+
+        return [$checks, $warnings, $failures];
+    }
+
+    /**
+     * @param  array<string, mixed>  $credentials
+     * @return array{0: array<int, array{label: string, state: string, message: string}>, 1: array<int, string>, 2: array<int, string>}
+     */
+    protected function inspectMagento(MarketplaceStore $store, array $credentials): array
+    {
+        $warnings = [];
+        $failures = [];
+        $accessTokenPresent = filled($credentials['api_secret'] ?? null) || filled($credentials['api_key'] ?? null);
+        $storeUrl = (string) ($store->connection?->api_base_url ?: ($credentials['store_url'] ?? ''));
+        $host = strtolower((string) parse_url($storeUrl, PHP_URL_HOST));
+        $storeUrlPresent = filled($storeUrl) && parse_url($storeUrl, PHP_URL_SCHEME) === 'https' && filled($host);
+        $isSaas = str_ends_with($host, '.api.commerce.adobe.com') || $host === 'api.commerce.adobe.com';
+        $storeViewCode = trim((string) ($credentials['store_front_code'] ?? 'all'));
+        $sourceCode = trim((string) ($credentials['extra_user'] ?? 'default'));
+        $storeViewValid = $storeViewCode === '' || preg_match('/^[A-Za-z0-9_-]+$/', $storeViewCode) === 1;
+        $sourceCodeValid = $sourceCode === '' || preg_match('/^[A-Za-z0-9_-]+$/', $sourceCode) === 1;
+
+        $checks = [
+            $this->check('Integration Access Token', $accessTokenPresent, $accessTokenPresent ? 'Magento Integration Access Token tanımlı.' : 'Magento Integration Access Token eksik.'),
+            $this->check('Mağaza URL', $storeUrlPresent, $storeUrlPresent ? 'Magento mağaza HTTPS adresi tanımlı.' : 'Magento mağaza HTTPS adresi eksik veya geçersiz.'),
+            $this->check('Platform türü', ! $isSaas, $isSaas ? 'Adobe Commerce as a Cloud Service IMS adaptörü bu bağlantı kapsamında değil.' : 'Magento Open Source / Adobe Commerce PaaS-on-prem REST yapısı seçildi.'),
+            $this->check('Store view kodu', $storeViewValid, $storeViewValid ? 'Store view kodu geçerli.' : 'Store view kodu geçersiz karakter içeriyor.'),
+            $this->check('Stok kaynak kodu', $sourceCodeValid, $sourceCodeValid ? 'Stok kaynak kodu geçerli.' : 'Stok kaynak kodu geçersiz karakter içeriyor.'),
+        ];
+
+        if (! $accessTokenPresent) {
+            $failures[] = 'Magento Integration Access Token eksik.';
+        }
+
+        if (! $storeUrlPresent) {
+            $failures[] = 'Magento mağaza HTTPS adresi eksik veya geçersiz.';
+        }
+
+        if ($isSaas) {
+            $failures[] = 'Adobe Commerce as a Cloud Service için IMS server-to-server adaptörü gerekir; bu bağlantı PaaS/on-prem ve Magento Open Source içindir.';
+        }
+
+        if (! $storeViewValid) {
+            $failures[] = 'Magento store view kodu geçersiz.';
+        }
+
+        if (! $sourceCodeValid) {
+            $failures[] = 'Magento stok kaynak kodu geçersiz.';
+        }
+
+        $warnings[] = 'Integration rolünde Sales, Catalog, Inventory ve Credit Memo kaynak izinleri mağaza yöneticisi tarafından ayrıca verilmelidir.';
+        $warnings[] = 'Finans yalnız fatura özetidir; fiyat ve MSI source-item stok yazmaları kullanıcı açana kadar kapalıdır.';
 
         return [$checks, $warnings, $failures];
     }
@@ -675,7 +893,7 @@ class MarketplaceConnectionReadinessService
             $this->check('API secret', $apiSecretPresent, $apiSecretPresent ? 'API secret tanımlı.' : 'API secret boş.'),
         ];
 
-        if (!$apiKeyPresent && !$apiSecretPresent) {
+        if (! $apiKeyPresent && ! $apiSecretPresent) {
             $warnings[] = 'Bu sağlayıcı için credential modeli henüz net değil; smoke test öncesi sağlayıcı dokümanı ile alanları doğrulayın.';
         }
 
@@ -707,7 +925,7 @@ class MarketplaceConnectionReadinessService
     {
         $connection = $store->connection;
 
-        if (!$connection) {
+        if (! $connection) {
             return [[], [], []];
         }
 

@@ -8,6 +8,7 @@ use App\Models\ChannelOrderPackage;
 use App\Models\IntegrationOrderActionRun;
 use App\Models\IntegrationSyncRun;
 use App\Models\Shipment;
+use App\Services\Cargo\CargoCarrierRegistry;
 use App\Services\Cargo\CargoShipmentService;
 use App\Services\Marketplace\Connectors\DemoMarketplaceConnector;
 use App\Services\Marketplace\Contracts\ManagesCommonLabels;
@@ -32,6 +33,8 @@ class MarketplaceOrderActionService
         'package_common_label_create' => 'Ortak barkod talep et',
         'package_common_label_get' => 'Ortak barkod getir',
         'package_invoice_link' => 'Fatura linki gönder',
+        'cargo_create_shipment' => 'Kargo gönderisi oluştur',
+        'cargo_refresh_tracking' => 'Kargo takibini yenile',
         'cargo_create_surat_shipment' => 'Sürat gönderisi oluştur',
         'cargo_refresh_surat_tracking' => 'Sürat takibini yenile',
     ];
@@ -41,8 +44,8 @@ class MarketplaceOrderActionService
         protected MarketplaceProfitSnapshotService $profitSnapshotService,
         protected MarketplaceSyncService $syncService,
         protected CargoShipmentService $cargoShipmentService,
-    ) {
-    }
+        protected CargoCarrierRegistry $cargoCarrierRegistry,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $context
@@ -63,8 +66,8 @@ class MarketplaceOrderActionService
         ?int $triggeredBy = null,
         ?ChannelOrderPackage $package = null,
     ): array {
-        if (!array_key_exists($actionType, self::ACTION_LABELS)) {
-            throw new \RuntimeException('Desteklenmeyen sipariş aksiyonu: ' . $actionType);
+        if (! array_key_exists($actionType, self::ACTION_LABELS)) {
+            throw new \RuntimeException('Desteklenmeyen sipariş aksiyonu: '.$actionType);
         }
 
         $debounceSeconds = $this->debounceWindow();
@@ -156,8 +159,8 @@ class MarketplaceOrderActionService
         ?int $triggeredBy = null,
         ?ChannelOrderPackage $package = null,
     ): IntegrationOrderActionRun {
-        if (!array_key_exists($actionType, self::ACTION_LABELS)) {
-            throw new \RuntimeException('Desteklenmeyen sipariş aksiyonu: ' . $actionType);
+        if (! array_key_exists($actionType, self::ACTION_LABELS)) {
+            throw new \RuntimeException('Desteklenmeyen sipariş aksiyonu: '.$actionType);
         }
 
         $actionRun = $this->createActionRun($order, $actionType, $context, $triggeredBy, $package);
@@ -241,9 +244,11 @@ class MarketplaceOrderActionService
                 'package_common_label_create' => $this->createCommonLabel($actionRun),
                 'package_common_label_get' => $this->getCommonLabel($actionRun),
                 'package_invoice_link' => $this->sendInvoiceLink($actionRun),
-                'cargo_create_surat_shipment' => $this->createSuratShipment($actionRun),
-                'cargo_refresh_surat_tracking' => $this->refreshSuratTracking($actionRun),
-                default => throw new \RuntimeException('Desteklenmeyen sipariş aksiyonu: ' . $actionRun->action_type),
+                'cargo_create_shipment' => $this->createCarrierShipment($actionRun),
+                'cargo_refresh_tracking' => $this->refreshCarrierTracking($actionRun),
+                'cargo_create_surat_shipment' => $this->createCarrierShipment($actionRun, 'surat'),
+                'cargo_refresh_surat_tracking' => $this->refreshCarrierTracking($actionRun, 'surat'),
+                default => throw new \RuntimeException('Desteklenmeyen sipariş aksiyonu: '.$actionRun->action_type),
             };
 
             $actionRun->update([
@@ -338,7 +343,7 @@ class MarketplaceOrderActionService
         $package = $this->ensurePackage($actionRun);
         $connector = $this->connectorManager->resolveForStore($actionRun->store);
 
-        if (!$connector instanceof UpdatesPackageStatus || !$this->connectorSupportsAction($connector->capabilities(), 'package_picking')) {
+        if (! $connector instanceof UpdatesPackageStatus || ! $this->connectorSupportsAction($connector->capabilities(), 'package_picking')) {
             throw new \RuntimeException('Bu kanal paket statü güncellemesini desteklemiyor.');
         }
 
@@ -365,7 +370,7 @@ class MarketplaceOrderActionService
             throw new \RuntimeException('Fatura kesildi bildirimi için fatura numarası zorunludur.');
         }
 
-        if (!$connector instanceof UpdatesPackageStatus || !$this->connectorSupportsAction($connector->capabilities(), 'package_invoiced')) {
+        if (! $connector instanceof UpdatesPackageStatus || ! $this->connectorSupportsAction($connector->capabilities(), 'package_invoiced')) {
             throw new \RuntimeException('Bu kanal paket statü güncellemesini desteklemiyor.');
         }
 
@@ -387,7 +392,7 @@ class MarketplaceOrderActionService
         $package = $this->ensurePackage($actionRun);
         $connector = $this->connectorManager->resolveForStore($actionRun->store);
 
-        if (!$connector instanceof ManagesCommonLabels || !$this->connectorSupportsAction($connector->capabilities(), 'package_common_label_create')) {
+        if (! $connector instanceof ManagesCommonLabels || ! $this->connectorSupportsAction($connector->capabilities(), 'package_common_label_create')) {
             throw new \RuntimeException('Bu kanal ortak barkod servisini desteklemiyor.');
         }
 
@@ -402,7 +407,7 @@ class MarketplaceOrderActionService
         $package = $this->ensurePackage($actionRun);
         $connector = $this->connectorManager->resolveForStore($actionRun->store);
 
-        if (!$connector instanceof ManagesCommonLabels || !$this->connectorSupportsAction($connector->capabilities(), 'package_common_label_get')) {
+        if (! $connector instanceof ManagesCommonLabels || ! $this->connectorSupportsAction($connector->capabilities(), 'package_common_label_get')) {
             throw new \RuntimeException('Bu kanal ortak barkod servisini desteklemiyor.');
         }
 
@@ -423,7 +428,7 @@ class MarketplaceOrderActionService
             throw new \RuntimeException('Fatura linki gönderimi için link zorunludur.');
         }
 
-        if (!$connector instanceof SendsInvoiceLinks || !$this->connectorSupportsAction($connector->capabilities(), 'package_invoice_link')) {
+        if (! $connector instanceof SendsInvoiceLinks || ! $this->connectorSupportsAction($connector->capabilities(), 'package_invoice_link')) {
             throw new \RuntimeException('Bu kanal fatura linki gönderimini desteklemiyor.');
         }
 
@@ -433,10 +438,11 @@ class MarketplaceOrderActionService
     /**
      * @return array<string, mixed>
      */
-    protected function createSuratShipment(IntegrationOrderActionRun $actionRun): array
+    protected function createCarrierShipment(IntegrationOrderActionRun $actionRun, ?string $forcedCarrierCode = null): array
     {
         $package = $this->ensurePackage($actionRun);
         $connector = $this->connectorManager->resolveForStore($actionRun->store);
+        $carrierCode = $this->carrierCodeForAction($actionRun, $forcedCarrierCode);
 
         if ($connector instanceof DemoMarketplaceConnector) {
             return $connector->simulateAction('create_shipment', [
@@ -445,22 +451,26 @@ class MarketplaceOrderActionService
             ]);
         }
 
-        $shipment = $this->cargoShipmentService->createOrUpdateFromPackage($package);
+        $shipment = $this->cargoShipmentService->createOrUpdateFromPackage($package, carrierCode: $carrierCode);
         $shipment = $this->cargoShipmentService->pushToCarrier($shipment);
 
         return $this->shipmentActionResponse($shipment, [
             'external_action_id' => $shipment->external_shipment_id ?: $shipment->tracking_number ?: $shipment->barcode,
             'action' => 'create_shipment',
+            'carrier_code' => $shipment->carrier_code,
+            'carrier_name' => $shipment->carrier_name,
         ]);
     }
 
     /**
      * @return array<string, mixed>
      */
-    protected function refreshSuratTracking(IntegrationOrderActionRun $actionRun): array
+    protected function refreshCarrierTracking(IntegrationOrderActionRun $actionRun, ?string $forcedCarrierCode = null): array
     {
         $package = $this->ensurePackage($actionRun);
         $connector = $this->connectorManager->resolveForStore($actionRun->store);
+        $carrierCode = $this->carrierCodeForAction($actionRun, $forcedCarrierCode);
+        $carrierName = $this->cargoCarrierRegistry->name($carrierCode);
 
         if ($connector instanceof DemoMarketplaceConnector) {
             return array_merge($connector->simulateAction('refresh_tracking', [
@@ -473,19 +483,21 @@ class MarketplaceOrderActionService
 
         $shipment = Shipment::query()
             ->where('channel_order_package_id', $package->id)
-            ->where('carrier_code', 'surat')
+            ->where('carrier_code', $carrierCode)
             ->latest('id')
             ->first();
 
-        if (!$shipment) {
-            $shipment = $this->cargoShipmentService->createOrUpdateFromPackage($package);
+        if (! $shipment) {
+            $shipment = $this->cargoShipmentService->createOrUpdateFromPackage($package, carrierCode: $carrierCode);
         }
 
         if (blank($shipment->tracking_number) && blank($shipment->barcode) && blank($shipment->external_shipment_id)) {
             return $this->shipmentActionResponse($shipment, [
                 'action' => 'refresh_tracking',
                 'tracking_ready' => false,
-                'message' => 'Bu paket için takip numarası oluşmadı. Önce Sürat gönderisi oluşturun.',
+                'message' => "Bu paket için takip numarası oluşmadı. Önce {$carrierName} gönderisi oluşturun.",
+                'carrier_code' => $carrierCode,
+                'carrier_name' => $carrierName,
             ]);
         }
 
@@ -495,6 +507,8 @@ class MarketplaceOrderActionService
             'external_action_id' => $shipment->tracking_number ?: $shipment->barcode ?: $shipment->external_shipment_id,
             'action' => 'refresh_tracking',
             'tracking_ready' => true,
+            'carrier_code' => $shipment->carrier_code,
+            'carrier_name' => $shipment->carrier_name,
         ]);
     }
 
@@ -519,6 +533,14 @@ class MarketplaceOrderActionService
             'last_tracked_at' => optional($shipment->last_tracked_at)?->toIso8601String(),
             'delivered_at' => optional($shipment->delivered_at)?->toIso8601String(),
         ], $extra);
+    }
+
+    protected function carrierCodeForAction(IntegrationOrderActionRun $actionRun, ?string $forcedCarrierCode = null): string
+    {
+        $requestedCarrier = $forcedCarrierCode
+            ?: (string) data_get($actionRun->request_context_json, 'carrier', config('cargo.default_company', 'surat'));
+
+        return $this->cargoCarrierRegistry->canonicalCode($requestedCarrier);
     }
 
     /**
@@ -674,7 +696,7 @@ class MarketplaceOrderActionService
 
     protected function ensurePackage(IntegrationOrderActionRun $actionRun): ChannelOrderPackage
     {
-        if (!$actionRun->package) {
+        if (! $actionRun->package) {
             throw new \RuntimeException('Bu aksiyon için paket kaydı zorunludur.');
         }
 

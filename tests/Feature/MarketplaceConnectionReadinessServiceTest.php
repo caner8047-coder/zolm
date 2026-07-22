@@ -119,6 +119,33 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         $this->assertEmpty($result['failures']);
     }
 
+    public function test_it_requires_ideasoft_oauth_tokens_after_client_credentials_are_saved(): void
+    {
+        $draft = $this->makeStore('ideasoft', null, [
+            'api_key' => 'idea-client-id',
+            'api_secret' => 'idea-client-secret',
+            'store_url' => 'https://zem.myideasoft.com',
+        ], 'https://zem.myideasoft.com');
+        $draftResult = app(MarketplaceConnectionReadinessService::class)->inspect($draft);
+
+        $this->assertFalse($draftResult['is_ready']);
+        $this->assertTrue(collect($draftResult['failures'])->contains(
+            fn (string $failure) => str_contains($failure, 'OAuth')
+        ));
+
+        $ready = $this->makeStore('ideasoft', null, [
+            'api_key' => 'idea-client-id',
+            'api_secret' => 'idea-client-secret',
+            'access_token' => 'access-token',
+            'refresh_token' => 'refresh-token',
+            'store_url' => 'https://zem.myideasoft.com',
+        ], 'https://zem.myideasoft.com');
+        $readyResult = app(MarketplaceConnectionReadinessService::class)->inspect($ready);
+
+        $this->assertTrue($readyResult['is_ready']);
+        $this->assertEmpty($readyResult['failures']);
+    }
+
     public function test_it_marks_woocommerce_ready_when_store_url_is_only_in_credentials(): void
     {
         $store = $this->makeStore('woocommerce', 'woo-test', [
@@ -309,7 +336,7 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         $this->assertSame('ready', $summary['rows'][0]['state']);
     }
 
-    public function test_it_marks_amazon_as_ready_with_warnings_in_skeleton_mode_when_api_credentials_exist(): void
+    public function test_it_keeps_amazon_not_ready_until_sp_api_connector_is_implemented(): void
     {
         $store = $this->makeStore('amazon', 'amazon-test', [
             'api_key' => 'amazon_key',
@@ -319,11 +346,11 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
         $summary = app(MarketplaceConnectionReadinessService::class)->inspectCollection([$store]);
 
-        $this->assertTrue($result['is_ready']);
-        $this->assertNotEmpty($result['warnings']);
-        $this->assertTrue(collect($result['warnings'])->contains(fn (string $warning) => str_contains(mb_strtolower($warning), 'skeleton')));
-        $this->assertSame(1, $summary['totals']['warning']);
-        $this->assertSame('warning', $summary['rows'][0]['state']);
+        $this->assertFalse($result['is_ready']);
+        $this->assertNotEmpty($result['failures']);
+        $this->assertTrue(collect($result['failures'])->contains(fn (string $failure) => str_contains(mb_strtolower($failure), 'sp-api')));
+        $this->assertSame(1, $summary['totals']['missing']);
+        $this->assertSame('missing', $summary['rows'][0]['state']);
     }
 
     public function test_it_marks_ciceksepeti_as_ready_when_api_key_and_seller_id_exist(): void
@@ -340,6 +367,109 @@ class MarketplaceConnectionReadinessServiceTest extends TestCase
         $this->assertEmpty($result['warnings']);
         $this->assertSame(1, $summary['totals']['ready']);
         $this->assertSame('ready', $summary['rows'][0]['state']);
+    }
+
+    public function test_it_marks_ikas_ready_with_client_credentials_and_warns_about_live_scopes(): void
+    {
+        $store = $this->makeStore('ikas', null, [
+            'api_key' => 'ikas-client-id',
+            'api_secret' => 'ikas-client-secret',
+        ], 'https://api.myikas.com/api/v2/admin/graphql');
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+        $summary = app(MarketplaceConnectionReadinessService::class)->inspectCollection([$store]);
+
+        $this->assertTrue($result['is_ready']);
+        $this->assertEmpty($result['failures']);
+        $this->assertTrue(collect($result['warnings'])->contains(fn (string $warning) => str_contains($warning, 'Orders, Products')));
+        $this->assertSame(1, $summary['totals']['warning']);
+        $this->assertSame('warning', $summary['rows'][0]['state']);
+    }
+
+    public function test_it_marks_ticimax_ready_with_store_url_and_membership_code(): void
+    {
+        $store = $this->makeStore('ticimax', null, [
+            'api_secret' => 'ticimax-member-code',
+            'store_url' => 'https://magaza.example',
+        ], 'https://magaza.example');
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+        $summary = app(MarketplaceConnectionReadinessService::class)->inspectCollection([$store]);
+
+        $this->assertTrue($result['is_ready']);
+        $this->assertEmpty($result['failures']);
+        $this->assertTrue(collect($result['warnings'])->contains(fn (string $warning) => str_contains($warning, 'Detaylı Web Servis')));
+        $this->assertSame('warning', $summary['rows'][0]['state']);
+    }
+
+    public function test_it_rejects_ticimax_without_membership_code_or_https_store_url(): void
+    {
+        $store = $this->makeStore('ticimax', null, [], 'http://magaza.example');
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+
+        $this->assertFalse($result['is_ready']);
+        $this->assertTrue(collect($result['failures'])->contains(fn (string $failure) => str_contains($failure, 'Üye Kodu')));
+        $this->assertTrue(collect($result['failures'])->contains(fn (string $failure) => str_contains($failure, 'HTTPS')));
+    }
+
+    public function test_it_marks_tsoft_ready_with_store_url_and_service_user(): void
+    {
+        $store = $this->makeStore('tsoft', null, [
+            'api_key' => 'zolm-service',
+            'api_secret' => 'service-password',
+            'store_url' => 'https://magaza.example',
+        ], 'https://magaza.example');
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+        $summary = app(MarketplaceConnectionReadinessService::class)->inspectCollection([$store]);
+
+        $this->assertTrue($result['is_ready']);
+        $this->assertEmpty($result['failures']);
+        $this->assertTrue(collect($result['warnings'])->contains(fn (string $warning) => str_contains($warning, 'REST1')));
+        $this->assertSame('warning', $summary['rows'][0]['state']);
+    }
+
+    public function test_it_rejects_tsoft_without_service_password_or_https_store_url(): void
+    {
+        $store = $this->makeStore('tsoft', null, ['api_key' => 'zolm-service'], 'http://magaza.example');
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+
+        $this->assertFalse($result['is_ready']);
+        $this->assertTrue(collect($result['failures'])->contains(fn (string $failure) => str_contains($failure, 'parolası')));
+        $this->assertTrue(collect($result['failures'])->contains(fn (string $failure) => str_contains($failure, 'HTTPS')));
+    }
+
+    public function test_it_marks_magento_paas_ready_with_store_url_and_access_token(): void
+    {
+        $store = $this->makeStore('magento', null, [
+            'api_secret' => 'integration-access-token',
+            'store_url' => 'https://magento.example',
+            'store_front_code' => 'all',
+            'extra_user' => 'default',
+        ], 'https://magento.example');
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+        $summary = app(MarketplaceConnectionReadinessService::class)->inspectCollection([$store]);
+
+        $this->assertTrue($result['is_ready']);
+        $this->assertEmpty($result['failures']);
+        $this->assertTrue(collect($result['warnings'])->contains(fn (string $warning) => str_contains($warning, 'Credit Memo')));
+        $this->assertSame('warning', $summary['rows'][0]['state']);
+    }
+
+    public function test_it_rejects_magento_saas_or_missing_access_token(): void
+    {
+        $store = $this->makeStore('magento', null, [
+            'store_front_code' => 'all',
+        ], 'https://server.api.commerce.adobe.com');
+
+        $result = app(MarketplaceConnectionReadinessService::class)->inspect($store);
+
+        $this->assertFalse($result['is_ready']);
+        $this->assertTrue(collect($result['failures'])->contains(fn (string $failure) => str_contains($failure, 'Access Token')));
+        $this->assertTrue(collect($result['failures'])->contains(fn (string $failure) => str_contains($failure, 'IMS')));
     }
 
     public function test_it_summarizes_store_readiness_states(): void

@@ -2,17 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Livewire\MarketplaceOrders;
+use App\Models\ChannelListing;
 use App\Models\ChannelOrder;
 use App\Models\ChannelOrderItem;
 use App\Models\ChannelOrderPackage;
-use App\Models\ChannelListing;
 use App\Models\ChannelProduct;
 use App\Models\IntegrationSyncProfile;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
 use App\Models\MpProduct;
 use App\Models\User;
-use App\Livewire\MarketplaceOrders;
 use App\Services\Marketplace\MarketplaceOrderSyncService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -89,7 +89,7 @@ class MarketplaceOrderSyncServiceTest extends TestCase
         $this->assertSame('2026-04-24T19:00:00+03:00', data_get($package->raw_payload, 'estimatedShippingDate'));
         $this->assertSame(
             '2026-04-24 19:00:00',
-            (new MarketplaceOrders())->packageShipmentAt($package, 'pazarama')?->format('Y-m-d H:i:s')
+            (new MarketplaceOrders)->packageShipmentAt($package, 'pazarama')?->format('Y-m-d H:i:s')
         );
     }
 
@@ -152,6 +152,8 @@ class MarketplaceOrderSyncServiceTest extends TestCase
                 'external_order_id' => '16767',
                 'order_number' => '16767',
                 'order_status' => 'processing',
+                'currency' => 'EUR',
+                'exchange_rate' => 35.25,
                 'ordered_at' => '2026-04-27 10:19:00',
             ],
             'package' => [
@@ -179,7 +181,10 @@ class MarketplaceOrderSyncServiceTest extends TestCase
         ]]);
 
         $item = ChannelOrderItem::query()->where('store_id', $store->id)->firstOrFail();
+        $order = ChannelOrder::query()->where('store_id', $store->id)->firstOrFail();
 
+        $this->assertSame('EUR', $order->currency);
+        $this->assertEquals(35.25, $order->exchange_rate);
         $this->assertSame($listing->id, $item->channel_listing_id);
         $this->assertSame($product->id, $item->mp_product_id);
         $this->assertTrue((bool) $item->is_matched);
@@ -189,12 +194,12 @@ class MarketplaceOrderSyncServiceTest extends TestCase
     protected function createPazaramaStore(string $suffix = '1'): MarketplaceStore
     {
         $user = User::factory()->create();
-        $token = $suffix . '-' . random_int(100000, 999999);
+        $token = $suffix.'-'.random_int(100000, 999999);
 
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
-            'name' => 'Pazarama Test Entity ' . $token,
-            'tax_number' => '99' . str_pad(preg_replace('/\D+/', '', $token), 8, '0', STR_PAD_LEFT),
+            'name' => 'Pazarama Test Entity '.$token,
+            'tax_number' => '99'.str_pad(preg_replace('/\D+/', '', $token), 8, '0', STR_PAD_LEFT),
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -204,9 +209,9 @@ class MarketplaceOrderSyncServiceTest extends TestCase
             'user_id' => $user->id,
             'legal_entity_id' => $entity->id,
             'marketplace' => 'pazarama',
-            'store_name' => 'Pazarama Test Store ' . $token,
-            'store_code' => 'PZR-' . $token,
-            'seller_id' => 'PZR-SELLER-' . $token,
+            'store_name' => 'Pazarama Test Store '.$token,
+            'store_code' => 'PZR-'.$token,
+            'seller_id' => 'PZR-SELLER-'.$token,
             'status' => 'connected',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -224,8 +229,8 @@ class MarketplaceOrderSyncServiceTest extends TestCase
 
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
-            'name' => 'Woo Test Entity ' . $suffix,
-            'tax_number' => '88' . str_pad($suffix, 8, '0', STR_PAD_LEFT),
+            'name' => 'Woo Test Entity '.$suffix,
+            'tax_number' => '88'.str_pad($suffix, 8, '0', STR_PAD_LEFT),
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -236,8 +241,8 @@ class MarketplaceOrderSyncServiceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'woocommerce',
             'store_name' => 'Woo Test Store',
-            'store_code' => 'WOO-' . $suffix,
-            'seller_id' => 'WOO-' . $suffix,
+            'store_code' => 'WOO-'.$suffix,
+            'seller_id' => 'WOO-'.$suffix,
             'status' => 'connected',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -253,7 +258,7 @@ class MarketplaceOrderSyncServiceTest extends TestCase
             'user_id' => $user->id,
             'product_name' => 'Jarvis Bohem Sandıklı Orta Sehpa Puf, Kırık Beyaz',
             'stock_code' => '1PUFZEM00607',
-            'barcode' => '869' . $suffix,
+            'barcode' => '869'.$suffix,
             'sale_price' => 1819.90,
             'cogs' => 600,
             'packaging_cost' => 40,

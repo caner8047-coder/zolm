@@ -2,34 +2,42 @@
 
 namespace App\Livewire;
 
+use App\Models\ActivityLog;
+use App\Models\HepsiburadaReadinessAudit;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationSyncProfile;
-use App\Models\IntegrationSyncRun;
-use App\Models\IntegrationWebhookEvent;
 use App\Models\LegalEntity;
 use App\Models\LegalEntitySetting;
 use App\Models\MarketplaceStore;
-use App\Services\MpSettingsService;
+use App\Services\ExcelService;
 use App\Services\Marketplace\Contracts\TestsConnection;
-use App\Services\Marketplace\LegacyFinancialProjectionService;
 use App\Services\Marketplace\LegacyFinancialProjectionInsightsService;
+use App\Services\Marketplace\LegacyFinancialProjectionService;
 use App\Services\Marketplace\MarketplaceConnectionReadinessService;
 use App\Services\Marketplace\MarketplaceConnectorManager;
 use App\Services\Marketplace\MarketplaceDiagnosticsGuidanceService;
 use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Services\Marketplace\MarketplaceRiskSignalService;
+use App\Services\Marketplace\MarketplaceStoreAccessResolver;
+use App\Services\Marketplace\MarketplaceTenantContext;
+use App\Services\MpSettingsService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 
 class MarketplaceIntegrations extends Component
 {
     public ?int $selectedStoreId = null;
+
     public ?string $saveResult = null;
+
     public ?string $saveCorrelationId = null;
 
     public array $entityForm = [];
@@ -57,7 +65,7 @@ class MarketplaceIntegrations extends Component
         $this->resetSyncForm();
 
         $requestedStoreId = (int) request()->integer('store');
-        $resolver = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class);
+        $resolver = app(MarketplaceStoreAccessResolver::class);
         $accessible = $resolver->accessibleStores(Auth::user());
 
         if ($requestedStoreId > 0 && (clone $accessible)->whereKey($requestedStoreId)->exists()) {
@@ -161,7 +169,7 @@ class MarketplaceIntegrations extends Component
             if ($store) {
                 $isUpdate = true;
             } else {
-                $store = new MarketplaceStore();
+                $store = new MarketplaceStore;
                 $store->user_id = $user->id;
             }
 
@@ -213,10 +221,10 @@ class MarketplaceIntegrations extends Component
     public function selectStore(int $storeId): void
     {
         try {
-            app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), $storeId);
+            app(MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), $storeId);
             $this->selectedStoreId = $storeId;
             $this->loadSelectedStore();
-        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+        } catch (AuthorizationException $e) {
             $this->saveResult = 'authorization_denied';
             $this->notify($e->getMessage(), 'error');
         }
@@ -224,23 +232,25 @@ class MarketplaceIntegrations extends Component
 
     public function deleteSelectedStore(): void
     {
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             $this->saveResult = 'session_expired';
+
             return;
         }
 
         try {
-            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
-        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            $store = app(MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+        } catch (AuthorizationException $e) {
             $this->saveResult = 'authorization_denied';
             $this->notify($e->getMessage(), 'error');
+
             return;
         }
 
         $storeName = $store->store_name;
 
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($store) {
+            DB::transaction(function () use ($store) {
                 $store->connection()->delete();
                 $store->syncProfile()->delete();
                 $store->syncRuns()->delete();
@@ -260,14 +270,15 @@ class MarketplaceIntegrations extends Component
 
             $this->notify("{$storeName} mağazası, bağlı sipariş/ürün kayıtları ve bağlantı ayarları başarıyla silindi.");
         } catch (\Throwable $exception) {
-            $this->notify('Mağaza silinirken bir hata oluştu: ' . $exception->getMessage(), 'error');
+            $this->notify('Mağaza silinirken bir hata oluştu: '.$exception->getMessage(), 'error');
         }
     }
 
     public function saveConnection(): void
     {
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             $this->saveResult = 'session_expired';
+
             return;
         }
 
@@ -279,7 +290,8 @@ class MarketplaceIntegrations extends Component
         $dbDriver = 'unknown';
         try {
             $dbDriver = DB::connection()->getDriverName();
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+        }
 
         $dbName = config('database.connections.'.config('database.default').'.database');
         $dbHost = config('database.connections.'.config('database.default').'.host');
@@ -298,7 +310,7 @@ class MarketplaceIntegrations extends Component
             'runtime_id' => $runtimeId,
             'acting_user_id' => $actingUser?->id,
             'store_id' => $storeId,
-            'tenant_context_active' => \App\Services\Marketplace\MarketplaceTenantContext::hasActiveContext(),
+            'tenant_context_active' => MarketplaceTenantContext::hasActiveContext(),
             'save_started' => true,
             'timestamp' => now()->toIso8601String(),
         ];
@@ -306,16 +318,16 @@ class MarketplaceIntegrations extends Component
         // 1. Authorization check
         $store = null;
         try {
-            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForCredentialManagement(
+            $store = app(MarketplaceStoreAccessResolver::class)->resolveForCredentialManagement(
                 $actingUser,
                 $storeId
             );
-        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+        } catch (AuthorizationException $e) {
             $this->saveResult = 'authorization_denied';
             $auditMeta['authorization_passed'] = false;
             $auditMeta['save_result'] = 'authorization_denied';
             $auditMeta['exception_class'] = get_class($e);
-            \App\Models\ActivityLog::log(
+            ActivityLog::log(
                 'save_connection_audit',
                 "Credential save trace failed (Auth Denied). Correlation ID: {$correlationId}",
                 'MarketplaceStore',
@@ -323,6 +335,7 @@ class MarketplaceIntegrations extends Component
                 $auditMeta
             );
             $this->notify($e->getMessage(), 'error');
+
             return;
         }
 
@@ -343,12 +356,12 @@ class MarketplaceIntegrations extends Component
                 'connectionForm.extraPassword' => ['nullable', 'string', 'max:255'],
                 'connectionForm.storeUrl' => ['nullable', 'url', 'max:255'],
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             $this->saveResult = 'validation_failed';
             $auditMeta['validation_passed'] = false;
             $auditMeta['save_result'] = 'validation_failed';
             $auditMeta['exception_class'] = get_class($e);
-            \App\Models\ActivityLog::log(
+            ActivityLog::log(
                 'save_connection_audit',
                 "Credential save trace failed (Validation Error). Correlation ID: {$correlationId}",
                 'MarketplaceStore',
@@ -369,13 +382,14 @@ class MarketplaceIntegrations extends Component
                 $this->addError('connectionForm.apiKey', 'Geçerli production API bilgileri girilmelidir.');
                 $this->saveResult = 'validation_failed';
                 $auditMeta['save_result'] = 'validation_failed';
-                \App\Models\ActivityLog::log(
+                ActivityLog::log(
                     'save_connection_audit',
                     "Credential save trace failed (Placeholder in Production). Correlation ID: {$correlationId}",
                     'MarketplaceStore',
                     $store->id,
                     $auditMeta
                 );
+
                 return;
             }
         }
@@ -404,7 +418,23 @@ class MarketplaceIntegrations extends Component
             ? $providedExtraPassword
             : ($existingCredentials['extra_password'] ?? null);
 
-        $credentials = [
+        $managedCredentials = Arr::only($existingCredentials, [
+            'access_token',
+            'refresh_token',
+            'token_expires_at',
+            'oauth_scope',
+        ]);
+        $ideaSoftIdentityChanged = $store->marketplace === 'ideasoft' && (
+            ($providedApiKey && $providedApiKey !== '********' && $providedApiKey !== ($existingCredentials['api_key'] ?? null))
+            || ($providedSecret && $providedSecret !== '********' && $providedSecret !== ($existingCredentials['api_secret'] ?? null))
+            || (($validated['connectionForm']['storeUrl'] ?? null) && $validated['connectionForm']['storeUrl'] !== ($existingCredentials['store_url'] ?? null))
+        );
+
+        if ($ideaSoftIdentityChanged) {
+            $managedCredentials = [];
+        }
+
+        $credentials = array_merge($managedCredentials, [
             'api_key' => $apiKey,
             'api_secret' => $apiSecret,
             'zolm_booster_api_key' => $store->marketplace === 'woocommerce' ? $zolmBoosterApiKey : null,
@@ -412,7 +442,7 @@ class MarketplaceIntegrations extends Component
             'extra_user' => $validated['connectionForm']['extraUser'] ?: null,
             'extra_password' => $extraPassword,
             'store_url' => $validated['connectionForm']['storeUrl'] ?: null,
-        ];
+        ]);
 
         $credentialsProvided = false;
         if (($providedApiKey && $providedApiKey !== '********' && $providedApiKey !== ($existingCredentials['api_key'] ?? null)) ||
@@ -472,12 +502,12 @@ class MarketplaceIntegrations extends Component
         $store->refresh();
         $newConnection = $store->connection;
 
-        if (!$newConnection || (int) $newConnection->store_id !== (int) $store->id) {
+        if (! $newConnection || (int) $newConnection->store_id !== (int) $store->id) {
             $this->saveResult = 'credential_save_failed';
             $auditMeta['save_result'] = 'credential_save_failed';
             $auditMeta['after_updated_at'] = null;
             $auditMeta['fingerprint_changed'] = false;
-            \App\Models\ActivityLog::log(
+            ActivityLog::log(
                 'save_connection_audit',
                 "Credential save trace failed (Mismatch store relation). Correlation ID: {$correlationId}",
                 'MarketplaceStore',
@@ -485,13 +515,14 @@ class MarketplaceIntegrations extends Component
                 $auditMeta
             );
             $this->notify('Bağlantı bilgileri doğrulanırken hata oluştu.', 'error');
+
             return;
         }
 
         $newCredentials = $newConnection->credentials_encrypted ?? [];
         $newFingerprint = hash('sha256', json_encode($newCredentials));
 
-        $updatedAtChanged = !$preUpdateUpdatedAt || $newConnection->updated_at->gt($preUpdateUpdatedAt);
+        $updatedAtChanged = ! $preUpdateUpdatedAt || $newConnection->updated_at->gt($preUpdateUpdatedAt);
         $fingerprintChanged = $preUpdateFingerprint !== $newFingerprint;
 
         $auditMeta['after_updated_at'] = $newConnection->updated_at->toIso8601String();
@@ -504,7 +535,7 @@ class MarketplaceIntegrations extends Component
         if ($hasPlaceholder) {
             $this->saveResult = 'credential_save_failed';
             $auditMeta['save_result'] = 'credential_save_failed';
-            \App\Models\ActivityLog::log(
+            ActivityLog::log(
                 'save_connection_audit',
                 "Credential save trace failed (Placeholder check after save). Correlation ID: {$correlationId}",
                 'MarketplaceStore',
@@ -512,6 +543,7 @@ class MarketplaceIntegrations extends Component
                 $auditMeta
             );
             $this->notify('Geçerli production API bilgileri girilmelidir.', 'error');
+
             return;
         }
 
@@ -521,7 +553,7 @@ class MarketplaceIntegrations extends Component
                 $auditMeta['save_result'] = 'credential_saved';
 
                 if ($isCrossTenant) {
-                    \App\Models\ActivityLog::log(
+                    ActivityLog::log(
                         'update_connection_credentials',
                         "Updated store connection credentials via tenant context. Acting user: {$actingUser->id}, Target tenant: {$targetTenantUserId}, Target store: {$store->id}, Reason: credential maintenance",
                         'MarketplaceStore',
@@ -544,7 +576,7 @@ class MarketplaceIntegrations extends Component
             $auditMeta['save_result'] = 'credential_unchanged';
         }
 
-        \App\Models\ActivityLog::log(
+        ActivityLog::log(
             'save_connection_audit',
             "Credential save trace execution finished. Correlation ID: {$correlationId}, Save Result: {$this->saveResult}",
             'MarketplaceStore',
@@ -557,20 +589,20 @@ class MarketplaceIntegrations extends Component
         if ($readiness['is_ready']) {
             if (($readiness['warnings'] ?? []) !== []) {
                 $this->notify(
-                    'Bağlantı bilgileri kaydedildi ancak mağaza uyarılı durumda: '
-                    . ($readiness['warnings'][0] ?? 'Ek uyarılar var.'),
-                    'warning',
+                    'Bağlantı bilgileri kaydedildi ve mağaza kullanıma hazır. Kontrol notu: '
+                    .($readiness['warnings'][0] ?? 'Ek uyarılar var.'),
                 );
 
                 return;
             }
 
             $this->notify('Bağlantı bilgileri kaydedildi. Gizli alanları boş bırakırsanız mevcut değer korunur.');
+
             return;
         }
 
         $this->notify(
-            'Bağlantı bilgileri kaydedildi ancak mağaza henüz hazır değil: ' . ($readiness['failures'][0] ?? 'Eksik zorunlu alanlar var.'),
+            'Bağlantı bilgileri kaydedildi ancak mağaza henüz hazır değil: '.($readiness['failures'][0] ?? 'Eksik zorunlu alanlar var.'),
             'error',
         );
     }
@@ -593,7 +625,7 @@ class MarketplaceIntegrations extends Component
             return $explicitApiBaseUrl;
         }
 
-        if (in_array($normalizedMarketplace, ['woocommerce', 'shopify'], true) && $storeUrl !== null) {
+        if (in_array($normalizedMarketplace, ['woocommerce', 'shopify', 'ideasoft', 'ticimax', 'tsoft', 'magento'], true) && $storeUrl !== null) {
             return $storeUrl;
         }
 
@@ -602,17 +634,19 @@ class MarketplaceIntegrations extends Component
 
     public function saveSyncProfile(): void
     {
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             $this->saveResult = 'session_expired';
+
             return;
         }
 
         try {
-            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $store = app(MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
             $this->selectedStore = $store;
-        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+        } catch (AuthorizationException $e) {
             $this->saveResult = 'authorization_denied';
             $this->notify($e->getMessage(), 'error');
+
             return;
         }
 
@@ -716,7 +750,7 @@ class MarketplaceIntegrations extends Component
 
         if ($forcedOffSettings !== []) {
             $this->notify(
-                'Senkron profili kaydedildi. Desteklenmeyen ayarlar pasife alındı: ' . implode(', ', $forcedOffSettings) . '.',
+                'Senkron profili kaydedildi. Desteklenmeyen ayarlar pasife alındı: '.implode(', ', $forcedOffSettings).'.',
                 'warning',
             );
 
@@ -834,32 +868,34 @@ class MarketplaceIntegrations extends Component
 
     public function runSync(string $syncType): void
     {
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             $this->saveResult = 'session_expired';
+
             return;
         }
 
         try {
-            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $store = app(MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
             $this->selectedStore = $store;
-        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+        } catch (AuthorizationException $e) {
             $this->saveResult = 'authorization_denied';
             $this->notify($e->getMessage(), 'error');
+
             return;
         }
 
         $readiness = $this->selectedConnectionReadiness;
 
-        if (!$this->selectedStore->connection || !($readiness['is_ready'] ?? false)) {
+        if (! $this->selectedStore->connection || ! ($readiness['is_ready'] ?? false)) {
             $message = $readiness['failures'][0] ?? 'Önce bağlantı bilgilerini kaydedin. Taslak mağaza ile senkron başlatılamaz.';
-            $this->notify('Senkron başlatılamadı: ' . $message, 'error');
+            $this->notify('Senkron başlatılamadı: '.$message, 'error');
 
             return;
         }
 
         $allowedSyncTypes = ['orders', 'products', 'finance', 'questions', 'claims'];
 
-        if (!in_array($syncType, $allowedSyncTypes, true)) {
+        if (! in_array($syncType, $allowedSyncTypes, true)) {
             $this->notify('Geçersiz senkron tipi seçildi.', 'error');
 
             return;
@@ -895,23 +931,25 @@ class MarketplaceIntegrations extends Component
 
             $this->notify($feedback['message'], $feedback['tone']);
         } catch (\Throwable $exception) {
-            $this->notify('Senkron kuyruğa alınamadı: ' . $exception->getMessage(), 'error');
+            $this->notify('Senkron kuyruğa alınamadı: '.$exception->getMessage(), 'error');
         }
     }
 
     public function regenerateWebhookSecret(): void
     {
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             $this->saveResult = 'session_expired';
+
             return;
         }
 
         try {
-            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $store = app(MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
             $this->selectedStore = $store;
-        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+        } catch (AuthorizationException $e) {
             $this->saveResult = 'authorization_denied';
             $this->notify($e->getMessage(), 'error');
+
             return;
         }
 
@@ -921,19 +959,20 @@ class MarketplaceIntegrations extends Component
     public function verifyConnection(
         MarketplaceConnectorManager $connectorManager,
         MarketplaceConnectionReadinessService $connectionReadinessService,
-    ): void
-    {
-        if (!Auth::check()) {
+    ): void {
+        if (! Auth::check()) {
             $this->saveResult = 'session_expired';
+
             return;
         }
 
         try {
-            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $store = app(MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
             $this->selectedStore = $store;
-        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+        } catch (AuthorizationException $e) {
             $this->saveResult = 'authorization_denied';
             $this->notify($e->getMessage(), 'error');
+
             return;
         }
 
@@ -943,7 +982,7 @@ class MarketplaceIntegrations extends Component
             $isDemo = $connection?->isDemo() ?? false;
             $connector = $connectorManager->resolveForStore($this->selectedStore);
 
-            if (!$connector instanceof TestsConnection) {
+            if (! $connector instanceof TestsConnection) {
                 $this->notify('Bu kanal için bağlantı doğrulama henüz desteklenmiyor.', 'error');
 
                 return;
@@ -951,7 +990,7 @@ class MarketplaceIntegrations extends Component
 
             $result = $connector->testConnection($this->selectedStore);
 
-            if (!(bool) ($result['ok'] ?? false)) {
+            if (! (bool) ($result['ok'] ?? false)) {
                 $connection?->forceFill([
                     'status' => $isDemo ? IntegrationConnection::STATUS_DEMO : 'draft',
                     'last_error' => $result['message'] ?? 'Bağlantı doğrulanamadı.',
@@ -973,7 +1012,7 @@ class MarketplaceIntegrations extends Component
 
             $readiness = $connectionReadinessService->inspect($this->selectedStore->fresh(['connection', 'syncProfile']));
 
-            if (!(bool) ($readiness['is_ready'] ?? false)) {
+            if (! (bool) ($readiness['is_ready'] ?? false)) {
                 $connection?->forceFill([
                     'status' => $isDemo ? IntegrationConnection::STATUS_DEMO : 'draft',
                     'last_verified_at' => $isDemo ? $connection->last_verified_at : $verifiedAt,
@@ -982,7 +1021,7 @@ class MarketplaceIntegrations extends Component
 
                 $this->notify(
                     'API bağlantısı doğrulandı ancak mağaza henüz sync için hazır değil: '
-                    . ($readiness['failures'][0] ?? 'Eksik zorunlu alanlar var.'),
+                    .($readiness['failures'][0] ?? 'Eksik zorunlu alanlar var.'),
                     'warning'
                 );
                 $this->loadSelectedStore();
@@ -999,8 +1038,8 @@ class MarketplaceIntegrations extends Component
             if (($readiness['warnings'] ?? []) !== []) {
                 $this->notify(
                     ($result['message'] ?? 'Bağlantı doğrulandı.')
-                    . ' Ancak mağaza uyarılı durumda: '
-                    . ($readiness['warnings'][0] ?? 'Ek uyarılar var.'),
+                    .' Ancak mağaza uyarılı durumda: '
+                    .($readiness['warnings'][0] ?? 'Ek uyarılar var.'),
                     'warning'
                 );
                 $this->loadSelectedStore();
@@ -1043,7 +1082,7 @@ class MarketplaceIntegrations extends Component
 
     public function exportReadinessCsv()
     {
-        $stores = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+        $stores = app(MarketplaceStoreAccessResolver::class)
             ->accessibleStores(Auth::user())
             ->with(['legalEntity', 'connection', 'syncProfile'])
             ->orderBy('store_name')
@@ -1053,11 +1092,11 @@ class MarketplaceIntegrations extends Component
             ->keyBy('store_id');
         $guidanceRows = collect($this->storeGuidanceMap);
 
-        $filename = 'pazaryeri_hazirlik_raporu_' . now()->format('Ymd_His') . '.csv';
+        $filename = 'pazaryeri_hazirlik_raporu_'.now()->format('Ymd_His').'.csv';
 
         return response()->stream(function () use ($stores, $readinessRows, $guidanceRows) {
             $file = fopen('php://output', 'w');
-            fputs($file, "\xEF\xBB\xBF");
+            fwrite($file, "\xEF\xBB\xBF");
 
             $legacyRows = collect($this->legacyProjectionStoreMap);
 
@@ -1101,8 +1140,8 @@ class MarketplaceIntegrations extends Component
                     $this->cleanExportString(data_get($topItem, 'route') ? $this->guidanceRouteLabel((string) data_get($topItem, 'route')) : ''),
                     (int) data_get($legacy, 'pending_rows', 0),
                     (int) data_get($legacy, 'confirmed_orders', 0),
-                    $this->cleanExportString(data_get($legacy, 'last_projected_at') ? \Illuminate\Support\Carbon::parse((string) data_get($legacy, 'last_projected_at'))->format('d.m.Y H:i:s') : ''),
-                    $this->cleanExportString('php artisan marketplace:smoke-test ' . $store->id . ' --type=all --hours=24 --preview=2 --persist'),
+                    $this->cleanExportString(data_get($legacy, 'last_projected_at') ? Carbon::parse((string) data_get($legacy, 'last_projected_at'))->format('d.m.Y H:i:s') : ''),
+                    $this->cleanExportString('php artisan marketplace:smoke-test '.$store->id.' --type=all --hours=24 --preview=2 --persist'),
                 ], ';');
             }
 
@@ -1123,11 +1162,11 @@ class MarketplaceIntegrations extends Component
             ->latest('created_at')
             ->get();
 
-        $filename = 'pazaryeri_smoke_gecmisi_' . $this->selectedStore->id . '_' . now()->format('Ymd_His') . '.csv';
+        $filename = 'pazaryeri_smoke_gecmisi_'.$this->selectedStore->id.'_'.now()->format('Ymd_His').'.csv';
 
         return response()->stream(function () use ($rows) {
             $file = fopen('php://output', 'w');
-            fputs($file, "\xEF\xBB\xBF");
+            fwrite($file, "\xEF\xBB\xBF");
 
             fputcsv($file, [
                 'Mağaza',
@@ -1230,20 +1269,21 @@ class MarketplaceIntegrations extends Component
             'impacted_orders' => count($result['impacted_order_ids'] ?? []),
         ];
         $this->notify('Eski veri yansıtması tamamlandı. '
-            . number_format((int) ($result['created'] ?? 0), 0, ',', '.') . ' yeni, '
-            . number_format((int) ($result['updated'] ?? 0), 0, ',', '.') . ' güncelleme işlendi.');
+            .number_format((int) ($result['created'] ?? 0), 0, ',', '.').' yeni, '
+            .number_format((int) ($result['updated'] ?? 0), 0, ',', '.').' güncelleme işlendi.');
     }
 
     public function getSelectedStoreProperty(): ?MarketplaceStore
     {
-        if (!$this->selectedStoreId) {
+        if (! $this->selectedStoreId) {
             return null;
         }
 
         try {
-            $store = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+            $store = app(MarketplaceStoreAccessResolver::class)->resolveForView(Auth::user(), (int) $this->selectedStoreId);
+
             return $store->load(['legalEntity', 'connection', 'syncProfile']);
-        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+        } catch (AuthorizationException $e) {
             return null;
         }
     }
@@ -1255,7 +1295,7 @@ class MarketplaceIntegrations extends Component
     {
         $marketplace = $this->selectedStore?->marketplace;
 
-        if (!in_array($marketplace, ['trendyol', 'hepsiburada', 'woocommerce', 'shopify'], true)) {
+        if (! in_array($marketplace, ['trendyol', 'hepsiburada', 'woocommerce', 'shopify'], true)) {
             return null;
         }
 
@@ -1298,7 +1338,7 @@ class MarketplaceIntegrations extends Component
             'mismatches' => $mismatches,
             'summary' => $mismatches === []
                 ? "Form güvenli {$label} profili ile uyumlu."
-                : count($mismatches) . " alanda güvenli {$label} profilinden sapma var.",
+                : count($mismatches)." alanda güvenli {$label} profilinden sapma var.",
         ];
     }
 
@@ -1395,7 +1435,7 @@ class MarketplaceIntegrations extends Component
 
     public function getWebhookUrlPreviewProperty(): ?string
     {
-        if (!$this->selectedStore) {
+        if (! $this->selectedStore) {
             return null;
         }
 
@@ -1404,11 +1444,11 @@ class MarketplaceIntegrations extends Component
 
     public function getSmokeTestCommandProperty(): ?string
     {
-        if (!$this->selectedStore) {
+        if (! $this->selectedStore) {
             return null;
         }
 
-        return 'php artisan marketplace:smoke-test ' . $this->selectedStore->id . ' --type=all --hours=24 --preview=2 --persist';
+        return 'php artisan marketplace:smoke-test '.$this->selectedStore->id.' --type=all --hours=24 --preview=2 --persist';
     }
 
     /**
@@ -1416,7 +1456,7 @@ class MarketplaceIntegrations extends Component
      */
     public function getSelectedConnectionReadinessProperty(): ?array
     {
-        if (!$this->selectedStore) {
+        if (! $this->selectedStore) {
             return null;
         }
 
@@ -1431,7 +1471,7 @@ class MarketplaceIntegrations extends Component
      */
     public function getReadinessSummaryProperty(): ?array
     {
-        $stores = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+        $stores = app(MarketplaceStoreAccessResolver::class)
             ->accessibleStores(Auth::user())
             ->with(['connection'])
             ->orderBy('store_name')
@@ -1495,7 +1535,7 @@ class MarketplaceIntegrations extends Component
     {
         $service = app(LegacyFinancialProjectionInsightsService::class);
 
-        return app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+        return app(MarketplaceStoreAccessResolver::class)
             ->accessibleStores(Auth::user())
             ->with('legalEntity:id,name')
             ->orderBy('store_name')
@@ -1525,7 +1565,7 @@ class MarketplaceIntegrations extends Component
      */
     public function getSelectedStoreLegacyProjectionProperty(): ?array
     {
-        if (!$this->selectedStore) {
+        if (! $this->selectedStore) {
             return null;
         }
 
@@ -1534,24 +1574,24 @@ class MarketplaceIntegrations extends Component
 
     public function getSelectedStoreLegacyProjectionDryRunCommandProperty(): ?string
     {
-        if (!$this->selectedStore) {
+        if (! $this->selectedStore) {
             return null;
         }
 
         return 'php artisan marketplace:project-legacy-financials '
-            . $this->selectedStore->id
-            . ' --only-unprojected --dry-run';
+            .$this->selectedStore->id
+            .' --only-unprojected --dry-run';
     }
 
     public function getSelectedStoreLegacyProjectionRunCommandProperty(): ?string
     {
-        if (!$this->selectedStore) {
+        if (! $this->selectedStore) {
             return null;
         }
 
         return 'php artisan marketplace:project-legacy-financials '
-            . $this->selectedStore->id
-            . ' --only-unprojected';
+            .$this->selectedStore->id
+            .' --only-unprojected';
     }
 
     /**
@@ -1559,11 +1599,11 @@ class MarketplaceIntegrations extends Component
      */
     public function getSelectedStoreGuidanceItemsProperty(): array
     {
-        if (!$this->selectedStore) {
+        if (! $this->selectedStore) {
             return [];
         }
 
-        return data_get($this->storeGuidanceMap, $this->selectedStore->id . '.items', []);
+        return data_get($this->storeGuidanceMap, $this->selectedStore->id.'.items', []);
     }
 
     /**
@@ -1806,8 +1846,158 @@ class MarketplaceIntegrations extends Component
                     'Shopify için API anahtarı alanına Admin API erişim anahtarı, API gizli anahtarı alanına uygulama gizli anahtarı girilir.',
                     'API URL alanına mağaza kök URL’si yazılabilir; sistem bunu sürümlü GraphQL Admin uç noktasına tamamlar.',
                     'Webhook HMAC doğrulaması için webhook secret alanına app secret key ile aynı değer girilmesi önerilir.',
-                    'Bu iterasyonda bağlantı doğrulama, webhook doğrulama, sipariş, ürün, finans ve fiyat/stok gönderimi hazırdır.',
+                    'Sipariş, ürün, finans, iade ve fiyat/stok akışları için sırasıyla read_orders, read_all_orders (60 günden eski siparişler), read_products, read_returns, read_inventory ve write_products/write_inventory kapsamlarını uygulamaya verin.',
+                    'İade senkronu read_returns kapsamı olmadan çalışmaz; ZOLM yetki hatasını senkron çalıştırmasında açık biçimde raporlar.',
+                    'Bu iterasyonda bağlantı doğrulama, webhook doğrulama, sipariş, ürün, finans, iade ve fiyat/stok gönderimi hazırdır.',
                     'Shopify finans akışı ödeme ve gateway işlem kayıtlarını çeker; pazaryeri tipi hakediş mutabakatı beklenmemelidir.',
+                ],
+            ],
+            'ikas' => [
+                'default_auth_type' => 'client_credentials',
+                'seller_id_label' => 'ikas mağaza / merchant kimliği',
+                'seller_id_placeholder' => 'Bağlantı testinden sonra doğrulanır (opsiyonel)',
+                'seller_id_help' => 'Client credentials akışında merchant kimliği API üzerinden doğrulanır; bu alanı boş bırakabilirsiniz.',
+                'seller_id_empty_label' => 'Merchant ID otomatik doğrulanır',
+                'api_base_url_label' => 'ikas Admin GraphQL URL',
+                'api_base_url_placeholder' => 'https://api.myikas.com/api/v2/admin/graphql',
+                'api_key_label' => 'Client ID',
+                'api_key_placeholder' => 'ikas özel uygulama Client ID',
+                'api_secret_label' => 'Client Secret',
+                'api_secret_placeholder' => 'ikas özel uygulama Client Secret',
+                'store_front_code_label' => 'Stok lokasyonu (opsiyonel)',
+                'store_front_code_placeholder' => 'Ürün senkronundan otomatik alınır',
+                'extra_user_label' => 'Ek mağaza bilgisi',
+                'extra_user_placeholder' => 'Opsiyonel',
+                'extra_password_label' => 'Ek erişim anahtarı',
+                'extra_password_placeholder' => 'Opsiyonel',
+                'store_url_label' => 'ikas mağaza URL',
+                'store_url_placeholder' => 'https://magazaadi.myikas.com',
+                'hints' => [
+                    'ikas panelinde Uygulamalar > Uygulamalarım > Özel Uygulama alanından Standart Uygulama oluşturun.',
+                    'API anahtarı alanına Client ID, gizli anahtar alanına yalnız bir kez gösterilen Client Secret değerini girin.',
+                    'Sipariş ve ürün okumak için Read Orders, Read Products, Read Customers ve Read Inventories kapsamlarını verin.',
+                    'Fiyat/stok gönderecekseniz Write Products ve Write Inventories kapsamlarını ayrıca açın; ZOLM tarafında gönderimler varsayılan kapalıdır.',
+                    'Webhook HMAC doğrulaması özel uygulama Client Secret değeriyle otomatik yapılır; ayrı webhook secret yalnız özel bir anahtar verilmişse gerekir.',
+                    'Finans akışı varsayılan olarak sipariş ödeme işlemlerini çeker; ikas ödeme kuruluşu hakediş/mutabakat raporu değildir.',
+                ],
+            ],
+            'ideasoft' => [
+                'default_auth_type' => 'authorization_code',
+                'seller_id_label' => 'IdeaSoft mağaza kimliği',
+                'seller_id_placeholder' => 'Opsiyonel iç mağaza kodu',
+                'seller_id_help' => 'IdeaSoft bağlantısında asıl kimlik mağaza URL ve OAuth uygulamasıdır; bu alan boş kalabilir.',
+                'seller_id_empty_label' => 'Mağaza URL ile doğrulanır',
+                'api_base_url_label' => 'IdeaSoft mağaza URL',
+                'api_base_url_placeholder' => 'https://magaza-adiniz.myideasoft.com',
+                'api_key_label' => 'Client ID',
+                'api_key_placeholder' => 'Entegrasyonlar > API ekranındaki Client ID',
+                'api_secret_label' => 'Client Secret',
+                'api_secret_placeholder' => 'IdeaSoft Client Secret',
+                'store_front_code_label' => 'Ek mağaza kodu',
+                'store_front_code_placeholder' => 'Opsiyonel',
+                'extra_user_label' => 'OAuth Redirect URI',
+                'extra_user_placeholder' => 'ZOLM tarafından otomatik gösterilir',
+                'extra_password_label' => 'Refresh Token',
+                'extra_password_placeholder' => 'OAuth sonrası otomatik saklanır',
+                'store_url_label' => 'IdeaSoft mağaza URL',
+                'store_url_placeholder' => 'https://magaza-adiniz.myideasoft.com',
+                'hints' => [
+                    'IdeaSoft panelinde Entegrasyonlar > API > Ekle yolundan bir uygulama oluşturun ve ZOLM’de gösterilen Redirect URI değerini aynen kaydedin.',
+                    'Client ID, Client Secret ve mağaza URL bilgisini kaydettikten sonra “IdeaSoft’ta Yetkilendir” butonuna basın; mağaza yöneticisi OAuth izinlerini yalnız bir kez onaylar.',
+                    'Önerilen okuma izinleri: order_read, product_read, payment_read ve order_refund_request_read. Fiyat/stok gönderimi için product_update ayrıca gerekir.',
+                    'Access Token 24 saatliktir; ZOLM iki aylık Refresh Token ile otomatik yeniler ve IdeaSoft’un döndürdüğü yeni Refresh Token değerini güvenli biçimde saklar.',
+                    'Webhook imzası X-Ideashop-Hmac-Sha256 başlığından, uygulamanın Client Secret değeriyle Base64 HMAC-SHA256 olarak doğrulanır.',
+                    'Finans akışı varsayılan olarak ödeme kayıtlarını çeker; banka hakediş/mutabakat raporu olarak değerlendirilmemelidir.',
+                ],
+            ],
+            'ticimax' => [
+                'default_auth_type' => 'membership_code',
+                'seller_id_label' => 'Ticimax mağaza kimliği',
+                'seller_id_placeholder' => 'Opsiyonel iç mağaza kodu',
+                'seller_id_help' => 'Ticimax bağlantısı mağaza URL ve Üye Kodu ile doğrulanır; bu alanı boş bırakabilirsiniz.',
+                'seller_id_empty_label' => 'Mağaza URL ile doğrulanır',
+                'api_base_url_label' => 'Ticimax mağaza URL',
+                'api_base_url_placeholder' => 'https://magazaniz.com',
+                'api_key_label' => 'Kullanılmıyor',
+                'api_key_placeholder' => 'Ticimax için boş bırakın',
+                'api_secret_label' => 'Üye Kodu / Web Servis Şifresi',
+                'api_secret_placeholder' => 'Ticimax tarafından verilen Üye Kodu',
+                'store_front_code_label' => 'Mağaza kodu',
+                'store_front_code_placeholder' => 'Opsiyonel',
+                'extra_user_label' => 'Ek servis kullanıcısı',
+                'extra_user_placeholder' => 'Kullanılmıyor',
+                'extra_password_label' => 'Ek servis şifresi',
+                'extra_password_placeholder' => 'Kullanılmıyor',
+                'store_url_label' => 'Ticimax mağaza URL',
+                'store_url_placeholder' => 'https://magazaniz.com',
+                'hints' => [
+                    'Ticimax panelinizde Detaylı Web Servis kullanımının paket/lisans kapsamında etkin olduğundan emin olun.',
+                    'Mağaza URL alanına sitenizin HTTPS kök adresini, Üye Kodu alanına Ticimax tarafından verilen Web Servis şifresini girin.',
+                    'ZOLM siparişler için /Servis/SiparisServis.svc, ürün/stok/fiyat için /Servis/UrunServis.svc WSDL sözleşmesini kullanır.',
+                    'Sipariş, ödeme, ürün, varyasyon, kargo/adres ve sipariş durumundan türetilen iade kayıtları okunur; sağlayıcıya özgü geniş alanlar raw payload içinde korunur.',
+                    'Resmî dokümanda doğrulanmış webhook veya müşteri sorusu sözleşmesi olmadığı için bu özellikler kapalıdır.',
+                    'Sipariş ödeme özeti varsayılan olarak okunur; fiyat/stok gönderimleri veri değiştirdiği için kullanıcı açana kadar kapalıdır.',
+                ],
+            ],
+            'tsoft' => [
+                'default_auth_type' => 'username_password',
+                'seller_id_label' => 'T-Soft mağaza kimliği',
+                'seller_id_placeholder' => 'Opsiyonel iç mağaza kodu',
+                'seller_id_help' => 'T-Soft bağlantısı mağaza URL ve Web Servis kullanıcısıyla doğrulanır; bu alanı boş bırakabilirsiniz.',
+                'seller_id_empty_label' => 'Mağaza URL ile doğrulanır',
+                'api_base_url_label' => 'T-Soft mağaza URL',
+                'api_base_url_placeholder' => 'https://magazaniz.com',
+                'api_key_label' => 'Web Servis kullanıcı adı',
+                'api_key_placeholder' => 'Ayarlar > Kullanıcılar bölümündeki servis kullanıcısı',
+                'api_secret_label' => 'Web Servis parolası',
+                'api_secret_placeholder' => 'T-Soft Web Servis kullanıcısı parolası',
+                'store_front_code_label' => 'Mağaza / şube kodu',
+                'store_front_code_placeholder' => 'Opsiyonel',
+                'extra_user_label' => 'İzin verilen sunucu IP',
+                'extra_user_placeholder' => 'T-Soft panelinde tanımlanır',
+                'extra_password_label' => 'Ek servis şifresi',
+                'extra_password_placeholder' => 'Kullanılmıyor',
+                'store_url_label' => 'T-Soft mağaza URL',
+                'store_url_placeholder' => 'https://magazaniz.com',
+                'hints' => [
+                    'T-Soft panelinde REST1 / Gelişmiş Web Servis lisansının etkin olduğundan emin olun.',
+                    'Ayarlar > Kullanıcılar > Web Servis Kullanıcıları bölümünde ZOLM için ayrı, sınırlı bir kullanıcı oluşturun.',
+                    'Kullanıcıya auth, order, product ve subProduct okuma yöntemlerini; fiyat/stok gönderilecekse product/updateProducts yöntemini ayrıca açın.',
+                    'Varsa IP kısıtına ZOLM sunucusunun sabit çıkış IP adresini ekleyin; her yöntem ayrı yetkilendirilebilir.',
+                    'ZOLM /rest1/auth/login ile süreli token alır; /rest1/order/get, /rest1/product/get ve /rest1/subProduct/getSubProducts verilerini kayıpsız işler.',
+                    'Finans sipariş ödeme özetidir; bağımsız hakediş değildir. Webhook ve müşteri soru-cevap sözleşmesi doğrulanmadığı için bu özellikler kapalıdır.',
+                    'Fiyat/stok ve özellikle alt ürün yazmaları veri değiştirdiği için kullanıcı açana kadar kapalıdır.',
+                ],
+            ],
+            'magento' => [
+                'default_auth_type' => 'access_token',
+                'seller_id_label' => 'Magento mağaza kimliği',
+                'seller_id_placeholder' => 'Opsiyonel iç mağaza kodu',
+                'seller_id_help' => 'Magento bağlantısı mağaza URL ve Integration Access Token ile doğrulanır; bu alanı boş bırakabilirsiniz.',
+                'seller_id_empty_label' => 'Mağaza URL ile doğrulanır',
+                'api_base_url_label' => 'Magento mağaza URL',
+                'api_base_url_placeholder' => 'https://magazaniz.com veya tam /rest/all/V1 URL',
+                'api_key_label' => 'Consumer Key (opsiyonel)',
+                'api_key_placeholder' => 'OAuth 1.0a kullanılmıyorsa boş bırakın',
+                'api_secret_label' => 'Integration Access Token',
+                'api_secret_placeholder' => 'Magento Admin > System > Extensions > Integrations',
+                'store_front_code_label' => 'Store view kodu',
+                'store_front_code_placeholder' => 'all veya default',
+                'extra_user_label' => 'MSI stok kaynak kodu',
+                'extra_user_placeholder' => 'default',
+                'extra_password_label' => 'Access Token Secret',
+                'extra_password_placeholder' => 'Bearer token bağlantısında kullanılmıyor',
+                'store_url_label' => 'Magento mağaza URL',
+                'store_url_placeholder' => 'https://magazaniz.com',
+                'hints' => [
+                    'Bu bağlantı Magento Open Source ve Adobe Commerce PaaS/on-prem REST API içindir; Adobe Commerce as a Cloud Service farklı IMS adaptörü gerektirir.',
+                    'Magento Admin > System > Extensions > Integrations alanında ZOLM için ayrı bir entegrasyon oluşturup etkinleştirin.',
+                    'Integration rolüne Sales > Orders/Invoices/Credit Memos, Catalog > Products ve Inventory kaynak okuma izinlerini verin.',
+                    'API gizli anahtarı alanına Integration Access Token değerini girin; Consumer Key bu bearer-token bağlantısında zorunlu değildir.',
+                    'Store view kodu boşsa all, MSI stok kaynak kodu boşsa default kullanılır. Çoklu stokta doğru source_code mutlaka mağaza yöneticisiyle doğrulanmalıdır.',
+                    'ZOLM /rest/{storeView}/V1/orders, products, invoices ve creditmemos verilerini searchCriteria ile sayfalı çeker.',
+                    'Fiyat products/base-prices, stok inventory/source-items üzerinden yazılır; veri değiştiren bu işlemler kullanıcı açana kadar kapalıdır.',
+                    'Finans fatura özeti olarak varsayılan açık gelir; ödeme kuruluşu hakedişi değildir. Genel webhook ve müşteri soru-cevap kabiliyetleri desteklenmez.',
                 ],
             ],
             default => [
@@ -1845,7 +2035,7 @@ class MarketplaceIntegrations extends Component
             ->orderBy('name')
             ->get();
 
-        $stores = app(\App\Services\Marketplace\MarketplaceStoreAccessResolver::class)
+        $stores = app(MarketplaceStoreAccessResolver::class)
             ->accessibleStores($user)
             ->with(['legalEntity', 'connection', 'syncProfile'])
             ->latest('updated_at')
@@ -1894,7 +2084,7 @@ class MarketplaceIntegrations extends Component
         $store = $this->selectedStore;
         $this->legacyProjectionPreview = [];
 
-        if (!$store) {
+        if (! $store) {
             $this->resetStoreForm();
             $this->resetConnectionForm();
             $this->resetSyncForm();
@@ -2032,28 +2222,28 @@ class MarketplaceIntegrations extends Component
     public function getSelectedStoreHepsiburadaReadinessMetadataProperty(): array
     {
         $store = $this->selectedStore;
-        if (!$store || $store->marketplace !== 'hepsiburada') {
+        if (! $store || $store->marketplace !== 'hepsiburada') {
             return [];
         }
 
         $connection = $store->connection;
         $credentials = $connection?->credentials_encrypted ?? [];
 
-        $hasCreds = $connection && !empty($credentials);
+        $hasCreds = $connection && ! empty($credentials);
         $hasMerchantId = filled($store->seller_id) || filled($credentials['merchant_id'] ?? null);
 
         // Fetch latest audit log
-        $latestAudit = \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)
+        $latestAudit = HepsiburadaReadinessAudit::where('store_id', $store->id)
             ->latest('id')
             ->first();
 
         // Calculate validation status label/tag
         // Tags: not_configured, configured_not_verified, live_read_verified, authentication_failed, permission_blocked, rate_limited, provider_unavailable
         $status = 'not_configured';
-        if (!$hasCreds) {
+        if (! $hasCreds) {
             $status = 'not_configured';
         } else {
-            if (!$latestAudit || !$latestAudit->http_attempted) {
+            if (! $latestAudit || ! $latestAudit->http_attempted) {
                 $status = 'configured_not_verified';
             } else {
                 $status = match ($latestAudit->decision) {
@@ -2079,13 +2269,13 @@ class MarketplaceIntegrations extends Component
             'reference_gate' => (bool) config('marketplace.hepsiburada.p0_reference_sync_enabled', false),
             'catalog_gate' => (bool) config('marketplace.hepsiburada.p0_catalog_sync_enabled', false),
             'batch_gate' => (bool) config('marketplace.hepsiburada.p0_batch_status_sync_enabled', false),
-            'last_categories_smoke' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('operation', 'categories')->latest('id')->value('decision'),
-            'last_catalog_smoke' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('operation', 'catalog')->latest('id')->value('decision'),
+            'last_categories_smoke' => HepsiburadaReadinessAudit::where('store_id', $store->id)->where('operation', 'categories')->latest('id')->value('decision'),
+            'last_catalog_smoke' => HepsiburadaReadinessAudit::where('store_id', $store->id)->where('operation', 'catalog')->latest('id')->value('decision'),
             'last_correlation_id' => $latestAudit?->correlation_id,
             'last_acting_user_id' => $latestAudit?->acting_user_id,
             'last_reason' => $latestAudit?->reason,
             'last_mutation_count' => $latestAudit?->db_mutation_count ?? 0,
-            'live_verified' => \App\Models\HepsiburadaReadinessAudit::where('store_id', $store->id)->where('confirm_read', true)->where('http_attempted', true)->exists(),
+            'live_verified' => HepsiburadaReadinessAudit::where('store_id', $store->id)->where('confirm_read', true)->where('http_attempted', true)->exists(),
             'configuration_ready' => $hasCreds && $hasMerchantId,
             'status' => $status,
         ];
@@ -2098,7 +2288,7 @@ class MarketplaceIntegrations extends Component
     protected function inspectConnectionDraft(MarketplaceStore $store, array $credentials, ?string $apiBaseUrl): array
     {
         $draftStore = clone $store;
-        $draftConnection = $store->connection ? clone $store->connection : new IntegrationConnection();
+        $draftConnection = $store->connection ? clone $store->connection : new IntegrationConnection;
 
         $draftConnection->provider = $store->marketplace;
         $draftConnection->auth_type = $this->connectionForm['authType'] ?? ($store->connection?->auth_type ?? 'api_key_secret');
@@ -2176,7 +2366,7 @@ class MarketplaceIntegrations extends Component
 
             $normalized[$formKey] = $enabled && $supported;
 
-            if ($enabled && !$supported) {
+            if ($enabled && ! $supported) {
                 $forcedOff[] = $definition['label'];
             }
         }
@@ -2242,7 +2432,7 @@ class MarketplaceIntegrations extends Component
      */
     public function selectedStoreRecommendedWebhookTopics(): array
     {
-        if (!$this->selectedStore) {
+        if (! $this->selectedStore) {
             return [];
         }
 
@@ -2306,7 +2496,7 @@ class MarketplaceIntegrations extends Component
     {
         $topItem = $this->selectedStoreGuidanceItems[0] ?? null;
 
-        if (!$topItem) {
+        if (! $topItem) {
             return 'Aksiyon yok';
         }
 
@@ -2335,7 +2525,7 @@ class MarketplaceIntegrations extends Component
     {
         $topItem = $this->selectedStoreGuidanceItems[0] ?? null;
 
-        if (!$topItem) {
+        if (! $topItem) {
             $this->notify('Seçili mağaza için odaklanacak bir tanı kaydı bulunamadı.', 'warning');
 
             return null;
@@ -2349,7 +2539,7 @@ class MarketplaceIntegrations extends Component
         $topItem = $this->selectedStoreGuidanceItems[0] ?? null;
         $store = $this->selectedStore;
 
-        if (!$topItem || !$store) {
+        if (! $topItem || ! $store) {
             $this->notify('Seçili mağaza için senkron başlatacak bir tanı kaydı bulunamadı.', 'warning');
 
             return;
@@ -2359,9 +2549,9 @@ class MarketplaceIntegrations extends Component
 
         $readiness = $this->selectedConnectionReadiness;
 
-        if (!$store->connection || !($readiness['is_ready'] ?? false)) {
+        if (! $store->connection || ! ($readiness['is_ready'] ?? false)) {
             $this->notify(
-                'Önce seçili mağazanın bağlantı bilgilerini tamamlayın: ' . ($readiness['failures'][0] ?? 'Eksik zorunlu alanlar var.'),
+                'Önce seçili mağazanın bağlantı bilgilerini tamamlayın: '.($readiness['failures'][0] ?? 'Eksik zorunlu alanlar var.'),
                 'warning',
             );
 
@@ -2392,13 +2582,13 @@ class MarketplaceIntegrations extends Component
 
             $this->notify($feedback['message'], $feedback['tone']);
         } catch (\Throwable $exception) {
-            $this->notify('Senkron kuyruğa alınamadı: ' . $exception->getMessage(), 'error');
+            $this->notify('Senkron kuyruğa alınamadı: '.$exception->getMessage(), 'error');
         }
     }
 
     protected function cleanExportString(mixed $value): mixed
     {
-        return app(\App\Services\ExcelService::class)->cleanString($value);
+        return app(ExcelService::class)->cleanString($value);
     }
 
     /**

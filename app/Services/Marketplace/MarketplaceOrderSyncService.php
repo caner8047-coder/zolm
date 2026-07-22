@@ -2,6 +2,7 @@
 
 namespace App\Services\Marketplace;
 
+use App\Events\OrderStatusChanged;
 use App\Models\ChannelListing;
 use App\Models\ChannelOrder;
 use App\Models\ChannelOrderItem;
@@ -10,14 +11,14 @@ use App\Models\MarketplaceStore;
 use App\Services\NotificationCenterService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 class MarketplaceOrderSyncService
 {
     public function __construct(
         protected MarketplaceProductMatcher $matcher,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<int, array<string, mixed>>  $packages
@@ -56,7 +57,7 @@ class MarketplaceOrderSyncService
                 'external_order_id' => $externalOrderId,
             ]);
 
-            $orderDirty = !$order->exists;
+            $orderDirty = ! $order->exists;
             $previousOrderStatus = $order->exists ? (string) $order->order_status : null;
 
             $order->fill([
@@ -64,6 +65,8 @@ class MarketplaceOrderSyncService
                 'order_number' => (string) ($orderData['order_number'] ?? $externalOrderId),
                 'order_status' => $orderData['order_status'] ?? 'new',
                 'commercial_type' => $orderData['commercial_type'] ?? null,
+                'currency' => strtoupper((string) (($orderData['currency'] ?? $order->currency) ?: $store->currency ?: 'TRY')),
+                'exchange_rate' => ($orderData['exchange_rate'] ?? $order->exchange_rate) ?: 1,
                 'customer_name' => $orderData['customer_name'] ?? null,
                 'customer_email' => $orderData['customer_email'] ?? null,
                 'customer_phone' => $orderData['customer_phone'] ?? null,
@@ -89,7 +92,7 @@ class MarketplaceOrderSyncService
                 'external_package_id' => $externalPackageId,
             ]);
 
-            $packageDirty = !$package->exists;
+            $packageDirty = ! $package->exists;
 
             $package->fill([
                 'store_id' => $store->id,
@@ -123,7 +126,7 @@ class MarketplaceOrderSyncService
                     'external_line_id' => $externalLineId,
                 ]);
 
-                $itemDirty = !$item->exists;
+                $itemDirty = ! $item->exists;
 
                 $item->fill([
                     'channel_order_id' => $order->id,
@@ -264,21 +267,21 @@ class MarketplaceOrderSyncService
         $firstEstimatedShippingDate = $this->firstFilled($itemEstimatedShippingDates);
 
         if ($firstItemStatusName !== null) {
-            if (!filled(data_get($packagePayload, 'orderItemStatusName'))) {
+            if (! filled(data_get($packagePayload, 'orderItemStatusName'))) {
                 $packagePayload['orderItemStatusName'] = $firstItemStatusName;
             }
 
-            if (!filled(data_get($orderPayload, 'orderItemStatusName'))) {
+            if (! filled(data_get($orderPayload, 'orderItemStatusName'))) {
                 $orderPayload['orderItemStatusName'] = $firstItemStatusName;
             }
         }
 
         if ($firstEstimatedShippingDate !== null) {
-            if (!filled(data_get($packagePayload, 'estimatedShippingDate'))) {
+            if (! filled(data_get($packagePayload, 'estimatedShippingDate'))) {
                 $packagePayload['estimatedShippingDate'] = $firstEstimatedShippingDate;
             }
 
-            if (!filled(data_get($orderPayload, 'estimatedShippingDate'))) {
+            if (! filled(data_get($orderPayload, 'estimatedShippingDate'))) {
                 $orderPayload['estimatedShippingDate'] = $firstEstimatedShippingDate;
             }
         }
@@ -354,7 +357,7 @@ class MarketplaceOrderSyncService
             $statusCode = data_get($payload, 'orderStatus');
         }
 
-        if ((int) $statusCode === 3 && blank($trackingNumber) && !filled($deliveredAt)) {
+        if ((int) $statusCode === 3 && blank($trackingNumber) && ! filled($deliveredAt)) {
             return 'approved';
         }
 
@@ -365,7 +368,7 @@ class MarketplaceOrderSyncService
     {
         $commissionRate = $this->normalizeCommissionRate($item->commission_rate);
 
-        if ($commissionRate === null || !$item->channel_listing_id) {
+        if ($commissionRate === null || ! $item->channel_listing_id) {
             return;
         }
 
@@ -392,7 +395,7 @@ class MarketplaceOrderSyncService
         $previousStatus = $this->canonicalizeStatusLabel($previousOrderStatus) ?: $this->normalizeStatusText($previousOrderStatus);
         $notificationCenter = app(NotificationCenterService::class);
 
-        if ($orderDirty && !in_array($currentStatus, ['cancelled', 'returned'], true) && $this->shouldNotifyFreshOrder($order, $context)) {
+        if ($orderDirty && ! in_array($currentStatus, ['cancelled', 'returned'], true) && $this->shouldNotifyFreshOrder($order, $context)) {
             $notificationCenter->notifyOrder($store, $order, 'created', $context);
         }
 
@@ -406,7 +409,7 @@ class MarketplaceOrderSyncService
 
         // WhatsApp sipariş onayı için domain event
         if ($order->isDirty('order_status') && $previousOrderStatus !== null && $previousOrderStatus !== $order->order_status) {
-            \App\Events\OrderStatusChanged::dispatch(
+            OrderStatusChanged::dispatch(
                 $order,
                 $previousOrderStatus,
                 $order->order_status,
@@ -436,7 +439,7 @@ class MarketplaceOrderSyncService
             return true;
         }
 
-        if (!$orderDirty) {
+        if (! $orderDirty) {
             return true;
         }
 
@@ -453,14 +456,14 @@ class MarketplaceOrderSyncService
 
     protected function isRecentOperationalDate(mixed $value): bool
     {
-        if (!$value) {
+        if (! $value) {
             return false;
         }
 
         try {
             $date = $value instanceof CarbonInterface
                 ? $value
-                : \Illuminate\Support\Carbon::parse($value);
+                : Carbon::parse($value);
         } catch (\Throwable) {
             return false;
         }
@@ -561,7 +564,7 @@ class MarketplaceOrderSyncService
         array $packagePayload,
         array $itemRows,
     ): bool {
-        if (!in_array($packageStatus, ['approved', 'packing', 'new'], true)) {
+        if (! in_array($packageStatus, ['approved', 'packing', 'new'], true)) {
             return false;
         }
 
@@ -580,7 +583,7 @@ class MarketplaceOrderSyncService
             $actualShippingDate = data_get($payload, 'shippedDate') ?: data_get($payload, 'shippingDate');
             $payloadTrackingNumber = data_get($payload, 'trackingNumber') ?: data_get($payload, 'cargoTrackingNumber');
 
-            if (filled($estimatedShippingDate) && !filled($actualShippingDate) && !filled($payloadTrackingNumber)) {
+            if (filled($estimatedShippingDate) && ! filled($actualShippingDate) && ! filled($payloadTrackingNumber)) {
                 return true;
             }
         }
@@ -594,7 +597,7 @@ class MarketplaceOrderSyncService
     protected function firstFilled(array $values): ?string
     {
         foreach ($values as $value) {
-            if (!filled($value)) {
+            if (! filled($value)) {
                 continue;
             }
 

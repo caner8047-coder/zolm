@@ -1,6 +1,8 @@
 @php
     $stats = $this->stats;
     $shipments = $this->shipments;
+    $carrierOptions = $this->carrierOptions;
+    $selectedCarrier = $carrierOptions[$draftCarrierCode] ?? null;
     $formatCount = fn ($value) => number_format((float) $value, 0, ',', '.');
     $formatMoney = fn ($value) => '₺' . number_format((float) $value, 2, ',', '.');
     $formatSignedMoney = fn ($value) => (($value > 0) ? '+₺' : (($value < 0) ? '-₺' : '₺')) . number_format(abs((float) $value), 2, ',', '.');
@@ -24,12 +26,19 @@
         'supply' => 'Tedarik',
         'part' => 'Parça',
     ];
+    $integrationStatusLabels = [
+        'active' => 'Canlı sürücü hazır',
+        'contract_required' => 'API sözleşmesi gerekli',
+        'developer_access_required' => 'Geliştirici erişimi gerekli',
+        'marketplace_managed' => 'Pazaryeri yönetimli',
+        'tracking_only' => 'Takip bağlantısı',
+    ];
 @endphp
 
 <div class="space-y-4 lg:space-y-6">
     @if(!$this->tableReady)
         <div class="rounded-[10px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            Gönderi defteri tabloları henüz oluşturulmamış. Migration çalıştıktan sonra Sürat gönderi kayıtları burada görünecek.
+            Gönderi defteri tabloları henüz oluşturulmamış. Migration çalıştıktan sonra kargo gönderi kayıtları burada görünecek.
         </div>
     @endif
 
@@ -67,9 +76,17 @@
             <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 lg:gap-4">
                 <div>
                     <h2 class="text-lg font-semibold text-slate-900">Gönderi defteri</h2>
-                    <p class="mt-1 text-sm text-slate-500">Sipariş, iade, değişim ve tedarik gönderilerini Sürat takip ve maliyet bilgisiyle yönetin.</p>
+                    <p class="mt-1 text-sm text-slate-500">Sipariş, iade, değişim ve tedarik gönderilerini tek defterden, taşıyıcı bazlı takip ve maliyet bilgisiyle yönetin.</p>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+                    <label class="min-w-0">
+                        <span class="sr-only">Taslak taşıyıcı</span>
+                        <select wire:model.live="draftCarrierCode" class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 sm:text-sm">
+                            @foreach($carrierOptions as $code => $carrier)
+                                <option value="{{ $code }}">{{ $carrier['name'] }}</option>
+                            @endforeach
+                        </select>
+                    </label>
                     <button
                         type="button"
                         wire:click="createDraftsFromMarketplacePackages"
@@ -100,7 +117,14 @@
                 </div>
             </div>
 
-            <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 lg:gap-4">
+            @if($selectedCarrier)
+                <div class="mt-3 flex min-w-0 flex-col gap-1 rounded-[8px] border {{ ($selectedCarrier['integration_status'] ?? null) === 'active' ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800' : 'border-amber-200 bg-amber-50/70 text-amber-800' }} px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                    <span class="truncate font-medium">Taslak taşıyıcı: {{ $selectedCarrier['name'] }}</span>
+                    <span>{{ $integrationStatusLabels[$selectedCarrier['integration_status'] ?? 'tracking_only'] ?? 'Entegrasyon durumu bilinmiyor' }}</span>
+                </div>
+            @endif
+
+            <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3 lg:gap-4">
                 <input
                     type="search"
                     wire:model.live.debounce.350ms="search"
@@ -111,6 +135,12 @@
                     <option value="">Tüm durumlar</option>
                     @foreach($statusLabels as $key => $label)
                         <option value="{{ $key }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+                <select wire:model.live="carrierFilter" class="rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 sm:text-sm">
+                    <option value="">Tüm kargolar</option>
+                    @foreach($carrierOptions as $code => $carrier)
+                        <option value="{{ $code }}">{{ $carrier['name'] }}</option>
                     @endforeach
                 </select>
                 <select wire:model.live="flowFilter" class="rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 sm:text-sm">
@@ -188,6 +218,7 @@
                         </div>
                         <p class="mt-3 text-sm text-slate-700">{{ $shipment->customer_name ?: 'Müşteri yok' }}</p>
                         <p class="mt-1 text-xs text-slate-500">{{ $shipment->destination_city ?: '-' }}{{ $shipment->destination_district ? ' / ' . $shipment->destination_district : '' }}</p>
+                        <p class="mt-1 text-xs font-medium text-slate-600">{{ $shipment->carrier_name }}</p>
                         <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
                             <div class="rounded-[6px] border border-slate-200 bg-white px-3 py-2">
                                 <span class="block text-slate-500">Takip</span>
@@ -199,10 +230,10 @@
                             </div>
                         </div>
                         <div class="mt-3 flex flex-col sm:flex-row gap-2">
-                            <button type="button" wire:click="pushShipment({{ $shipment->id }})" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] bg-slate-900 px-3 py-2 text-sm font-medium text-white">Sürat'e Gönder</button>
+                            <button type="button" wire:click="pushShipment({{ $shipment->id }})" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] bg-slate-900 px-3 py-2 text-sm font-medium text-white">Kargoya Gönder</button>
                             <button type="button" wire:click="refreshTracking({{ $shipment->id }})" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">Takip Yenile</button>
                             @unless($shipment->is_terminal)
-                                <button type="button" wire:click="cancelShipment({{ $shipment->id }})" wire:confirm="Bu Sürat gönderisini iptal etmek istediğinize emin misiniz?" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-700">İptal</button>
+                                <button type="button" wire:click="cancelShipment({{ $shipment->id }})" wire:confirm="Bu kargo gönderisini iptal etmek istediğinize emin misiniz?" class="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[6px] border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-700">İptal</button>
                             @endunless
                         </div>
                     </article>
@@ -264,10 +295,10 @@
                                 @if(in_array('actions', $visibleColumns, true))
                                     <td class="px-3 py-3 align-top text-right">
                                         <div class="flex flex-col gap-2">
-                                            <button type="button" wire:click="pushShipment({{ $shipment->id }})" wire:loading.attr="disabled" wire:target="pushShipment({{ $shipment->id }})" class="inline-flex min-h-[36px] items-center justify-center rounded-[6px] bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-800 disabled:opacity-60">Sürat'e Gönder</button>
+                                            <button type="button" wire:click="pushShipment({{ $shipment->id }})" wire:loading.attr="disabled" wire:target="pushShipment({{ $shipment->id }})" class="inline-flex min-h-[36px] items-center justify-center rounded-[6px] bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-800 disabled:opacity-60">Kargoya Gönder</button>
                                             <button type="button" wire:click="refreshTracking({{ $shipment->id }})" wire:loading.attr="disabled" wire:target="refreshTracking({{ $shipment->id }})" class="inline-flex min-h-[36px] items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">Takip Yenile</button>
                                             @unless($shipment->is_terminal)
-                                                <button type="button" wire:click="cancelShipment({{ $shipment->id }})" wire:confirm="Bu Sürat gönderisini iptal etmek istediğinize emin misiniz?" wire:loading.attr="disabled" wire:target="cancelShipment({{ $shipment->id }})" class="inline-flex min-h-[36px] items-center justify-center rounded-[6px] border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60">İptal</button>
+                                                <button type="button" wire:click="cancelShipment({{ $shipment->id }})" wire:confirm="Bu kargo gönderisini iptal etmek istediğinize emin misiniz?" wire:loading.attr="disabled" wire:target="cancelShipment({{ $shipment->id }})" class="inline-flex min-h-[36px] items-center justify-center rounded-[6px] border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60">İptal</button>
                                             @endunless
                                         </div>
                                     </td>
