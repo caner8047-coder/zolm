@@ -16,6 +16,18 @@ use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
+trait MarketplaceSmokeTestsConnectionFake
+{
+    public function testConnection(MarketplaceStore $store): array
+    {
+        return [
+            'ok' => true,
+            'message' => 'Bağlantı başarılı.',
+            'meta' => ['provider' => $store->marketplace],
+        ];
+    }
+}
+
 class MarketplaceSmokeTestCommandTest extends TestCase
 {
     use DatabaseTransactions;
@@ -81,6 +93,8 @@ class MarketplaceSmokeTestCommandTest extends TestCase
             {
                 return new class implements MarketplaceConnector, PullsOrders, TestsConnection
                 {
+                    use MarketplaceSmokeTestsConnectionFake;
+
                     public function providerKey(): string
                     {
                         return 'trendyol';
@@ -105,15 +119,6 @@ class MarketplaceSmokeTestCommandTest extends TestCase
                             'webhooks' => false,
                             'price_push' => false,
                             'stock_push' => false,
-                        ];
-                    }
-
-                    public function testConnection(MarketplaceStore $store): array
-                    {
-                        return [
-                            'ok' => true,
-                            'message' => 'Bağlantı başarılı.',
-                            'meta' => ['provider' => $store->marketplace],
                         ];
                     }
 
@@ -207,6 +212,8 @@ class MarketplaceSmokeTestCommandTest extends TestCase
             {
                 return new class implements MarketplaceConnector, PullsOrders, PullsProducts, TestsConnection
                 {
+                    use MarketplaceSmokeTestsConnectionFake;
+
                     public function providerKey(): string
                     {
                         return 'woocommerce';
@@ -231,15 +238,6 @@ class MarketplaceSmokeTestCommandTest extends TestCase
                             'webhooks' => true,
                             'price_push' => true,
                             'stock_push' => true,
-                        ];
-                    }
-
-                    public function test_connection(MarketplaceStore $store): array
-                    {
-                        return [
-                            'ok' => true,
-                            'message' => 'Bağlantı başarılı.',
-                            'meta' => ['provider' => $store->marketplace],
                         ];
                     }
 

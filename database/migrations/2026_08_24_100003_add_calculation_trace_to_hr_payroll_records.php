@@ -26,7 +26,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('hr_payroll_records', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('salary_record_id');
+            $table->dropColumn('salary_record_id');
             $table->dropColumn([
                 'rule_snapshot', 'calculation_trace', 'gross_pay_encrypted',
                 'employee_deductions_encrypted', 'employer_contributions_encrypted',
