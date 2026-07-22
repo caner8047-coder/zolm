@@ -312,6 +312,19 @@ class TrendyolBoosterRetentionReportService
                     'trendyol_booster_activity_logs' => ['user_id', 'recorded_at'],
                 ],
             ],
+            [
+                'key' => 'operation_metrics',
+                'label' => 'Companion operasyon metrikleri',
+                'table' => 'trendyol_booster_operation_metrics',
+                'alias' => 'operation_metrics',
+                'date_column' => 'occurred_at',
+                'user_column' => 'operation_metrics.user_id',
+                'retention_key' => 'operation_metrics_days',
+                'default_days' => 30,
+                'required_columns' => [
+                    'trendyol_booster_operation_metrics' => ['user_id', 'occurred_at'],
+                ],
+            ],
         ];
     }
 }

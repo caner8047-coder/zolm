@@ -7,11 +7,13 @@ use App\Modules\Hr\Core\Services\HrAuditService;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Payroll\Models\HrPayrollPeriod;
 use App\Modules\Hr\Payroll\Models\HrPayrollAdjustment;
+use App\Modules\Hr\Payroll\Models\HrPayrollEmployeeProfile;
 use App\Modules\Hr\Payroll\Models\HrPayrollRule;
 use App\Modules\Hr\Payroll\Models\HrPayrollTaxLedger;
 use App\Modules\Hr\Payroll\Models\HrPayrollTaxOpening;
 use App\Modules\Hr\Payroll\Services\PayrollCalculationEngine;
 use App\Modules\Hr\Payroll\Services\PayrollRuleConfiguration;
+use App\Modules\Hr\Payroll\Services\PayrollVarianceAnalysisService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -21,6 +23,7 @@ class CalculatePayrollPeriodAction
         private HrAuditService $audit,
         private PayrollRuleConfiguration $configuration,
         private PayrollCalculationEngine $engine,
+        private PayrollVarianceAnalysisService $varianceAnalysis,
     ) {}
 
     public function execute(HrPayrollPeriod $period): HrPayrollPeriod
@@ -29,6 +32,7 @@ class CalculatePayrollPeriodAction
         $tenant = app(TenantContext::class)->getId();
         abort_unless($period->legal_entity_id === $tenant, 404);
         abort_unless($period->status === 'prepared' && $period->records()->exists(), 422, 'Yalnız hazırlanmış bordro paketi hesaplanabilir.');
+        abort_if($period->source_status === 'stale', 422, 'Bordro kaynağı değişti. Hesaplamadan önce hazırlık paketini yenileyin.');
 
         $period->loadMissing(['timesheetPeriod', 'records']);
         $rule = $this->resolveRule($period);
@@ -48,6 +52,7 @@ class CalculatePayrollPeriodAction
 
         $salaries = [];
         $openings = [];
+        $profiles = [];
         $adjustments = HrPayrollAdjustment::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant)->where('payroll_period_id', $period->id)->get()->groupBy('employee_id');
         foreach ($period->records as $record) {
             $salary = HrSalaryRecord::withoutGlobalScope('tenant')
@@ -61,6 +66,13 @@ class CalculatePayrollPeriodAction
                 continue;
             }
             $salaries[$record->employee_id] = $salary;
+
+            $profile = $this->resolveEmployeeProfile($period, $record->employee_id);
+            if (! $profile && ($rules['require_employee_payroll_profile'] ?? false)) {
+                $findings[] = ['code' => 'payroll_profile_missing', 'severity' => 'blocking', 'employee_id' => $record->employee_id, 'message' => 'Çalışanın dönem için onaylı bordro profili yok.'];
+                continue;
+            }
+            $profiles[$record->employee_id] = $profile;
 
             $opening = $this->resolveOpeningTaxBase($period, $record->employee_id);
             if ($opening === null) {
@@ -79,17 +91,23 @@ class CalculatePayrollPeriodAction
             abort(422, 'Bordro hesap ön kontrolleri başarısız. Bulguları giderip yeniden deneyin.');
         }
 
-        $period = DB::transaction(function () use ($period, $rule, $rules, $salaries, $openings, $adjustments, $tenant) {
+        $period = DB::transaction(function () use ($period, $rule, $rules, $salaries, $openings, $profiles, $adjustments, $tenant) {
             $period = HrPayrollPeriod::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant)->lockForUpdate()->findOrFail($period->id);
             abort_unless($period->status === 'prepared', 422, 'Bordro paketi başka bir işlem tarafından değiştirilmiş.');
             $period->load(['records', 'timesheetPeriod']);
             $recordHashes = [];
             foreach ($period->records as $record) {
                 $salary = $salaries[$record->employee_id];
+                $usesClassifiedOvertime = (int) data_get($record->source_snapshot, 'classification_version', 1) >= 2;
                 $input = [
                     'scheduled_minutes' => $record->scheduled_minutes,
                     'missing_minutes' => $record->missing_minutes,
                     'approved_overtime_minutes' => $record->approved_overtime_minutes,
+                    'approved_regular_overtime_minutes' => $usesClassifiedOvertime
+                        ? $record->approved_regular_overtime_minutes
+                        : $record->approved_overtime_minutes,
+                    'approved_holiday_work_minutes' => $usesClassifiedOvertime ? $record->approved_holiday_work_minutes : 0,
+                    'approved_weekly_rest_work_minutes' => $usesClassifiedOvertime ? $record->approved_weekly_rest_work_minutes : 0,
                 ];
                 $recordAdjustments = ($adjustments[$record->employee_id] ?? collect())->map(fn ($adjustment) => [
                     'id' => $adjustment->id, 'code' => $adjustment->code, 'type' => $adjustment->type,
@@ -106,13 +124,16 @@ class CalculatePayrollPeriodAction
                 $trace['adjustments'] = $recordAdjustments;
                 $trace['currency'] = $salary->currency;
                 $trace['salary_version'] = $salary->version;
+                $trace['payroll_profile_version'] = $profiles[$record->employee_id]?->version;
                 $trace['rule_version'] = $rule->version;
-                $trace['algorithm_version'] = 1;
+                $trace['algorithm_version'] = 2;
                 $hash = $this->configuration->hash($trace);
 
                 $record->update([
                     'salary_record_id' => $salary->id,
+                    'payroll_profile_id' => $profiles[$record->employee_id]?->id,
                     'rule_snapshot' => ['id' => $rule->id, 'code' => $rule->code, 'version' => $rule->version, 'configuration_hash' => $rule->configuration_hash],
+                    'payroll_profile_snapshot' => $this->profileSnapshot($profiles[$record->employee_id]),
                     'calculation_trace' => $trace,
                     'gross_pay_encrypted' => $this->decimal($trace['gross_pay_cents']),
                     'employee_deductions_encrypted' => $this->decimal($trace['employee_deductions_cents']),
@@ -157,7 +178,13 @@ class CalculatePayrollPeriodAction
             return $period->fresh(['records', 'timesheetPeriod']);
         });
 
-        $this->audit->log('payroll_period_calculated', $period, null, ['calculation_hash' => $period->calculation_hash, 'record_count' => $period->records->count()]);
+        $period = $this->varianceAnalysis->analyze($period);
+        $this->audit->log('payroll_period_calculated', $period, null, [
+            'calculation_hash' => $period->calculation_hash,
+            'record_count' => $period->records->count(),
+            'variance_status' => $period->variance_status,
+        ]);
+
         return $period;
     }
 
@@ -191,6 +218,42 @@ class CalculatePayrollPeriodAction
             return $opening->openingTaxBaseCents();
         }
         return $period->timesheetPeriod->starts_on->month === 1 ? 0 : null;
+    }
+
+    private function resolveEmployeeProfile(HrPayrollPeriod $period, int $employeeId): ?HrPayrollEmployeeProfile
+    {
+        return HrPayrollEmployeeProfile::withoutGlobalScope('tenant')
+            ->where('legal_entity_id', $period->legal_entity_id)
+            ->where('employee_id', $employeeId)
+            ->whereIn('status', ['approved', 'superseded'])
+            ->whereDate('effective_from', '<=', $period->timesheetPeriod->ends_on)
+            ->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>=', $period->timesheetPeriod->starts_on))
+            ->orderByDesc('effective_from')
+            ->orderByDesc('version')
+            ->first();
+    }
+
+    private function profileSnapshot(?HrPayrollEmployeeProfile $profile): ?array
+    {
+        if (! $profile) {
+            return null;
+        }
+
+        return [
+            'id' => $profile->id,
+            'version' => $profile->version,
+            'payment_method' => $profile->payment_method,
+            'iban_hash' => $profile->iban_hash,
+            'iban_last_four' => $profile->iban_last_four,
+            'social_security_status' => $profile->social_security_status,
+            'insurance_branch_code' => $profile->insurance_branch_code,
+            'incentive_law_code' => $profile->incentive_law_code,
+            'missing_day_default_code' => $profile->missing_day_default_code,
+            'disability_degree' => $profile->disability_degree,
+            'is_retired' => $profile->is_retired,
+            'is_rd_employee' => $profile->is_rd_employee,
+            'is_technopark_employee' => $profile->is_technopark_employee,
+        ];
     }
 
     private function decimal(int $cents): string

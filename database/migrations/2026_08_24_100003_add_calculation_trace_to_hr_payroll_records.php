@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('hr_payroll_records', function (Blueprint $table) {
-            $table->foreignId('salary_record_id')->nullable()->after('employee_id')->constrained('hr_salary_records')->restrictOnDelete();
+            $table->unsignedBigInteger('salary_record_id')->nullable()->after('employee_id');
             $table->json('rule_snapshot')->nullable()->after('source_hash');
             $table->text('calculation_trace')->nullable()->after('rule_snapshot');
             $table->text('gross_pay_encrypted')->nullable()->after('calculation_trace');

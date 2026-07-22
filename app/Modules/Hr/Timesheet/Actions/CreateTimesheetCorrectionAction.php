@@ -7,12 +7,13 @@ use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Timesheet\Enums\TimesheetStatus;
 use App\Modules\Hr\Timesheet\Models\HrTimesheet;
 use App\Modules\Hr\Timesheet\Models\HrTimesheetCorrection;
+use App\Modules\Hr\Payroll\Services\PayrollSourceStalenessService;
 use Illuminate\Support\Facades\DB;
 
 class CreateTimesheetCorrectionAction
 {
     private const FIELDS = ['worked_minutes', 'break_minutes', 'leave_minutes', 'overtime_minutes', 'missing_minutes'];
-    public function __construct(private HrAuditService $audit) {}
+    public function __construct(private HrAuditService $audit, private PayrollSourceStalenessService $staleness) {}
     public function execute(HrTimesheet $timesheet, array $newValues, string $reason): HrTimesheetCorrection
     {
         abort_unless(auth()->user()?->hasHrPermission('hr.timesheet.correct'), 403);
@@ -28,6 +29,13 @@ class CreateTimesheetCorrectionAction
             $old = collect(self::FIELDS)->mapWithKeys(fn ($field) => [$field => (int) $locked->effective($field)])->all();
             return HrTimesheetCorrection::create(['legal_entity_id' => $locked->legal_entity_id, 'timesheet_id' => $locked->id, 'revision_number' => $revision, 'old_values' => $old, 'new_values' => $values, 'reason' => trim($reason), 'created_by' => auth()->id()]);
         });
+        $this->staleness->markForTimesheetPeriod(
+            $timesheet->legal_entity_id,
+            $timesheet->timesheet_period_id,
+            'timesheet_corrected',
+            'Bordro kaynağındaki puantaj satırı düzeltildi.',
+            $timesheet->employee_id,
+        );
         $this->audit->log('timesheet_correction_created', $correction, null, ['timesheet_id' => $timesheet->id, 'revision' => $correction->revision_number]);
         return $correction;
     }

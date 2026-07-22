@@ -9,6 +9,7 @@ use App\Models\MpProfitActionItem;
 use App\Services\ExcelService;
 use App\Services\CampaignDecisionCenterQueryService;
 use App\Services\Marketplace\MarketplaceProfitActionService;
+use App\Services\Marketplace\MarketplaceCapitalOptimizerService;
 use App\Services\Marketplace\MarketplaceProfitCenterQueryService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Services\Marketplace\MarketplaceRiskSignalService;
@@ -630,6 +631,12 @@ class MarketplaceProfitCenter extends Component
     public function productProfitability(): array
     {
         return $this->profitCenter()->productProfitability($this->userId(), $this->filters());
+    }
+
+    #[Computed]
+    public function capitalOptimization(): array
+    {
+        return app(MarketplaceCapitalOptimizerService::class)->analyze($this->userId(), $this->filters());
     }
 
     #[Computed]
@@ -1927,6 +1934,7 @@ class MarketplaceProfitCenter extends Component
             'orderDecisionQueue' => $this->orderDecisionQueue,
             'orderDecisionInsights' => $this->orderDecisionInsights,
             'productProfitability' => $this->productProfitability,
+            'capitalOptimization' => $this->capitalOptimization,
             'productReadinessInsights' => $this->productReadinessInsights,
             'hasConfiguredStores' => $this->hasConfiguredStores,
             'activeFilters' => $this->activeFilters(),

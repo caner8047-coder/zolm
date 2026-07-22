@@ -185,7 +185,53 @@ class TrendyolBoosterTrendKeywordService
             'source_store_count' => (clone $sourceItems)->distinct('trendyol_booster_store_watch_id')->count('trendyol_booster_store_watch_id'),
             'last_scanned_at' => (clone $base)->max('imported_at'),
             'rows' => $rows,
+            'opportunity_playbook' => $this->opportunityPlaybook($rows),
         ];
+    }
+
+    /**
+     * @param Collection<int, TrendyolBoosterTrendKeyword> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    public function opportunityPlaybook(Collection $rows): array
+    {
+        return $rows
+            ->filter(fn (TrendyolBoosterTrendKeyword $row): bool => (int) $row->signal_score >= 20)
+            ->map(function (TrendyolBoosterTrendKeyword $row): array {
+                $competition = (string) $row->competition_level;
+                $direction = (string) $row->trend_direction;
+                $score = (int) $row->signal_score;
+                $opportunity = max(0, min(100, (int) round(
+                    ($score * 0.7)
+                    + (['low' => 25, 'medium' => 12, 'high' => 0][$competition] ?? 5)
+                    + (['rising' => 10, 'new' => 6, 'stable' => 2, 'falling' => -8][$direction] ?? 0)
+                )));
+                $action = match (true) {
+                    $competition === 'low' && in_array($direction, ['rising', 'new'], true) => 'Başlık + reklam testi',
+                    $competition === 'low' => 'Başlıkta konumlandır',
+                    $competition === 'medium' && $score >= 45 => 'Uzun kuyruk varyantı dene',
+                    default => 'Sıra takibine al',
+                };
+
+                return [
+                    'id' => $row->id,
+                    'keyword' => (string) $row->keyword,
+                    'category' => (string) ($row->category_name ?: 'Kategori belirtilmedi'),
+                    'opportunity_score' => $opportunity,
+                    'signal_score' => $score,
+                    'competition' => $competition,
+                    'trend_direction' => $direction,
+                    'action' => $action,
+                    'reason' => $competition === 'low'
+                        ? 'Rakip başlıklarında talep sinyali var, ürün kapsaması görece düşük.'
+                        : 'Talep sinyali güçlü; doğrudan geniş kelime yerine daha özgül varyantla test edin.',
+                    'title_fragment' => Str::title((string) $row->keyword),
+                ];
+            })
+            ->sortByDesc('opportunity_score')
+            ->take(6)
+            ->values()
+            ->all();
     }
 
     /**

@@ -23,12 +23,14 @@ class TrendyolBoosterReadinessService
     {
         $checks = collect([
             $this->featureFlagCheck(),
+            $this->releaseRingCheck(),
             $this->routeCheck(),
             $this->schemaCheck(),
             $this->schedulerCheck($userId),
             $this->queueCheck(),
             $this->cacheCheck(),
             $this->extensionVersionCheck(),
+            $this->companionSecurityCheck(),
             $this->syncLimitCheck(),
             $this->notificationCheck(),
             $this->retentionCheck(),
@@ -71,6 +73,28 @@ class TrendyolBoosterReadinessService
             'Trendyol Booster feature flag',
             $enabled ? 'Booster erişime açık.' : 'Booster feature flag kapalı.',
             'Canlıya geçişte MARKETPLACE_TRENDYOL_BOOSTER_ENABLED=true olmalı.',
+        );
+    }
+
+    /** @return array<string, string> */
+    protected function releaseRingCheck(): array
+    {
+        $ring = strtolower((string) config('marketplace.trendyol_booster.release.ring', 'ga'));
+        $valid = in_array($ring, ['off', 'beta', 'ga'], true);
+        $betaIds = collect(config('marketplace.trendyol_booster.release.beta_user_ids', []))->filter();
+        $status = ! $valid || $ring === 'off' ? 'fail' : ($ring === 'beta' && $betaIds->isEmpty() ? 'warning' : 'pass');
+
+        return $this->check(
+            'release_ring',
+            'Yayın kontrolü',
+            $status,
+            'Beta / GA yayın halkası',
+            match ($status) {
+                'fail' => 'Yayın halkası kapalı veya geçersiz: '.$ring.'.',
+                'warning' => 'Beta halkası açık; yalnız yöneticiler erişebilir, kullanıcı izin listesi boş.',
+                default => strtoupper($ring).' halkası yapılandırıldı.',
+            },
+            'Ring değerini off, beta veya ga olarak ayarla; beta için pilot kullanıcı ID listesi tanımla.',
         );
     }
 
@@ -237,6 +261,33 @@ class TrendyolBoosterReadinessService
         );
     }
 
+    /** @return array<string, string> */
+    protected function companionSecurityCheck(): array
+    {
+        $route = Route::getRoutes()->getByName('mp.trendyol-booster.companion.product-analysis');
+        $middleware = $route?->gatherMiddleware() ?? [];
+        $secured = collect($middleware)->contains(fn (string $item): bool => str_contains($item, 'AdminMiddleware'))
+            && in_array('throttle:booster-companion', $middleware, true)
+            && in_array('mp.feature:trendyol_booster_enabled', $middleware, true)
+            && in_array('booster.release', $middleware, true)
+            && in_array('booster.metric', $middleware, true);
+        $packageScript = base_path('scripts/package-trendyol-booster-extension.mjs');
+        $packagePolicy = is_file($packageScript)
+            && str_contains((string) file_get_contents($packageScript), 'https://m.zolm.com.tr')
+            && str_contains((string) file_get_contents($packageScript), 'productionManifest');
+
+        return $this->check(
+            'companion_security',
+            'Güvenlik',
+            $secured && $packagePolicy ? 'pass' : 'fail',
+            'Companion erişim ve mağaza manifesti',
+            $secured && $packagePolicy
+                ? 'Kimlik, feature flag, hız sınırı ve production-origin paket politikası hazır.'
+                : 'Companion route veya production manifest bariyeri eksik.',
+            'Admin/feature/throttle middleware zincirini ve production paket dönüşümünü doğrula.',
+        );
+    }
+
     /**
      * @return array<string, string>
      */
@@ -387,6 +438,11 @@ class TrendyolBoosterReadinessService
             'trendyol_booster_keyword_observations',
             'trendyol_booster_store_item_histories',
             'trendyol_booster_store_watch_snapshots',
+            'trendyol_booster_action_states',
+            'trendyol_booster_action_audits',
+            'trendyol_booster_collections',
+            'trendyol_booster_collection_items',
+            'trendyol_booster_operation_metrics',
             'trendyol_bestseller_reports',
             'trendyol_bestseller_report_runs',
             'trendyol_bestseller_report_items',

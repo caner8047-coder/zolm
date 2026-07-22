@@ -1,9 +1,12 @@
-const DEFAULT_BASE_URL = 'http://localhost';
+const DEFAULT_BASE_URL = 'https://m.zolm.com.tr';
 const COMPANION_PATH = '/marketplace-trendyol-booster/companion';
 const ZOLM_REQUEST_TIMEOUT_MS = 12000;
+const DECISION_QUEUE_STORAGE_KEY = 'zolmDecisionQueue';
+const DECISION_QUEUE_ALARM = 'zolm-booster-decision-queue';
 const STORE_DETAIL_ENRICH_LIMIT = 24;
 const STORE_DETAIL_ENRICH_WORKERS = 3;
 const ZOLM_BRIDGE_TAB_PATTERNS = [
+  'https://m.zolm.com.tr/*',
   'http://localhost/*',
   'https://localhost/*',
   'http://127.0.0.1/*',
@@ -71,9 +74,156 @@ async function handleMessage(message) {
     return { ok: true, mode: 'extension_ready', version: chrome.runtime.getManifest().version };
   }
 
+  if (message.type === 'ZOLM_BOOSTER_DOWNLOAD_MEDIA') {
+    return await downloadProductMedia(message.media_url || '', message.filename || 'trendyol-urun');
+  }
+
   if (message.type === 'ZOLM_BOOSTER_WAKE_ZOLM_TABS') {
     const count = await wakeZolmTabs();
     return { ok: true, mode: 'zolm_tabs_woken', count };
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_OPEN_DASHBOARD') {
+    return await openBoosterDashboard(message.module || 'analysis', message.keyword || '');
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_CAPTURE_LISTING') {
+    const capture = await companionPost('bestseller_capture', message.payload || {});
+    const dashboard = await openBoosterDashboard(
+      'bestseller',
+      message.payload?.query || '',
+      {
+        reportId: capture.report_id,
+        reportMode: 'reports',
+      },
+    );
+
+    return {
+      ...capture,
+      dashboard_url: dashboard.url,
+    };
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_SCAN_LISTING_OPPORTUNITIES') {
+    const payload = message.payload || {};
+    const items = Array.isArray(payload.items) ? payload.items.slice(0, 40) : [];
+    if (items.length < 2) {
+      throw new Error('Fırsat taraması için en az iki görünür ürün gerekir.');
+    }
+
+    const scanPayload = { ...payload, items };
+    const [capture, opportunity] = await Promise.all([
+      companionPost('bestseller_capture', scanPayload),
+      companionPost('opportunity_scan', { items }),
+    ]);
+
+    return {
+      ok: true,
+      mode: 'listing_opportunity_scan',
+      report_id: capture.report_id,
+      run_id: capture.run_id,
+      scan: opportunity.scan || {},
+      message: opportunity.message || `${items.length} ürün fırsat sinyalleriyle sıralandı.`,
+    };
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_START_DECISION_QUEUE') {
+    return await startDecisionQueue(message.urls || []);
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_DECISION_QUEUE_STATUS') {
+    return await decisionQueueStatus();
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_RETRY_DECISION_QUEUE') {
+    return await retryDecisionQueue();
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_CLEAR_DECISION_QUEUE') {
+    await chrome.alarms.clear(DECISION_QUEUE_ALARM);
+    await chrome.storage.local.remove(DECISION_QUEUE_STORAGE_KEY);
+    return { ok: true, mode: 'decision_queue_cleared', message: 'Karar kuyruğu temizlendi.' };
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_COMPARE_LISTING') {
+    const urls = normalizeListingProductUrls(message.urls);
+
+    if (urls.length < 2) {
+      throw new Error('Karşılaştırma için en az iki Trendyol ürünü seçin.');
+    }
+
+    return await openBoosterDashboard('comparison', '', { comparisonUrls: urls });
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_DECIDE_LISTING_PRODUCT') {
+    const [sourceUrl] = normalizeListingProductUrls([message.source_url], 1);
+
+    if (!sourceUrl) {
+      throw new Error('Karar merkezi için geçerli bir Trendyol ürünü seçin.');
+    }
+
+    const analysis = await productAnalysisFromUrl(sourceUrl);
+    const trackedProductId = Number(analysis?.analysis?.tracked_product_id || 0);
+
+    if (!Number.isInteger(trackedProductId) || trackedProductId <= 0) {
+      throw new Error('Canlı analiz kaydedildi ancak ZOLM ürün kaydı doğrulanamadı.');
+    }
+
+    const dashboard = await openBoosterDashboard('sell_decision', '', { decisionTrackedProductId: trackedProductId });
+
+    return {
+      ok: true,
+      mode: 'listing_sell_decision',
+      tracked_product_id: trackedProductId,
+      summary: {
+        decision: analysis?.analysis?.decision || {},
+        current: analysis?.analysis?.current || {},
+        evidence: analysis?.analysis?.evidence || {},
+      },
+      message: 'Canlı ürün analizi kaydedildi; Sat veya Satma karar merkezi açıldı.',
+      dashboard_url: dashboard.url,
+    };
+  }
+
+  if (message.type === 'ZOLM_BOOSTER_TRACK_LISTING_SELECTION') {
+    const urls = normalizeListingProductUrls(message.urls);
+
+    if (urls.length === 0) {
+      throw new Error('Takip için en az bir Trendyol ürünü seçin.');
+    }
+
+    const tracked = [];
+    const failures = [];
+
+    for (const url of urls) {
+      try {
+        tracked.push(await trackProductFromUrl(url));
+      } catch (error) {
+        failures.push({
+          source_url: url,
+          message: error instanceof Error ? error.message : 'Ürün takibe alınamadı.',
+        });
+      }
+    }
+
+    if (tracked.length === 0) {
+      throw new Error(failures[0]?.message || 'Seçilen ürünler Booster Radar takibine alınamadı.');
+    }
+
+    const dashboard = await openBoosterDashboard('tracking');
+
+    return {
+      ok: true,
+      mode: 'listing_bulk_track',
+      tracked_count: tracked.length,
+      failed_count: failures.length,
+      tracked_product_ids: tracked.map((result) => result.tracked_product_id).filter(Boolean),
+      failures,
+      message: failures.length > 0
+        ? `${tracked.length} ürün takibe alındı; ${failures.length} ürün okunamadı.`
+        : `${tracked.length} ürün Booster Radar takibine alındı.`,
+      dashboard_url: dashboard.url,
+    };
   }
 
   if (message.type === 'ZOLM_BOOSTER_STOCK_FROM_URL') {
@@ -242,6 +392,143 @@ async function productAnalysisFromUrl(sourceUrl) {
     payload,
     source: 'browser_bridge',
   };
+}
+
+async function startDecisionQueue(values) {
+  const urls = normalizeListingProductUrls(values, 40);
+  if (urls.length === 0) {
+    throw new Error('Karar kuyruğu için en az bir Trendyol ürünü gerekir.');
+  }
+
+  const queue = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    status: 'queued',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    total: urls.length,
+    items: urls.map((sourceUrl, index) => ({
+      index,
+      source_url: sourceUrl,
+      status: 'pending',
+      attempts: 0,
+      tracked_product_id: null,
+      title: '',
+      message: '',
+    })),
+  };
+  await chrome.storage.local.set({ [DECISION_QUEUE_STORAGE_KEY]: queue });
+  await chrome.alarms.clear(DECISION_QUEUE_ALARM);
+  chrome.alarms.create(DECISION_QUEUE_ALARM, { when: Date.now() + 250 });
+
+  return queueResponse(queue, 'Karar kuyruğu başlatıldı.');
+}
+
+async function decisionQueueStatus() {
+  const stored = await chrome.storage.local.get({ [DECISION_QUEUE_STORAGE_KEY]: null });
+  const queue = stored[DECISION_QUEUE_STORAGE_KEY];
+
+  return queue ? queueResponse(queue) : {
+    ok: true,
+    mode: 'decision_queue',
+    queue: null,
+    message: 'Aktif karar kuyruğu yok.',
+  };
+}
+
+async function retryDecisionQueue() {
+  const stored = await chrome.storage.local.get({ [DECISION_QUEUE_STORAGE_KEY]: null });
+  const queue = stored[DECISION_QUEUE_STORAGE_KEY];
+  if (!queue || !Array.isArray(queue.items)) {
+    throw new Error('Yeniden denenecek karar kuyruğu bulunamadı.');
+  }
+
+  queue.items = queue.items.map((item) => item.status === 'failed'
+    ? { ...item, status: 'pending', attempts: 0, message: '' }
+    : item);
+  queue.status = 'queued';
+  queue.updated_at = new Date().toISOString();
+  await chrome.storage.local.set({ [DECISION_QUEUE_STORAGE_KEY]: queue });
+  chrome.alarms.create(DECISION_QUEUE_ALARM, { when: Date.now() + 250 });
+
+  return queueResponse(queue, 'Başarısız ürünler yeniden kuyruğa alındı.');
+}
+
+function queueResponse(queue, message = '') {
+  const items = Array.isArray(queue?.items) ? queue.items : [];
+  const completed = items.filter((item) => item.status === 'completed').length;
+  const failed = items.filter((item) => item.status === 'failed').length;
+  const processing = items.filter((item) => item.status === 'processing').length;
+
+  return {
+    ok: true,
+    mode: 'decision_queue',
+    queue: {
+      ...queue,
+      completed,
+      failed,
+      processing,
+      pending: Math.max(0, items.length - completed - failed - processing),
+      progress_percent: items.length > 0 ? Math.round(((completed + failed) / items.length) * 100) : 0,
+    },
+    message,
+  };
+}
+
+let decisionQueueRunning = false;
+
+async function processDecisionQueue() {
+  if (decisionQueueRunning) return;
+  decisionQueueRunning = true;
+
+  try {
+    const stored = await chrome.storage.local.get({ [DECISION_QUEUE_STORAGE_KEY]: null });
+    const queue = stored[DECISION_QUEUE_STORAGE_KEY];
+    if (!queue || !Array.isArray(queue.items)) return;
+    const batch = queue.items.filter((item) => item.status === 'pending').slice(0, 2);
+    if (batch.length === 0) {
+      queue.status = queue.items.some((item) => item.status === 'processing') ? 'running' : 'completed';
+      queue.updated_at = new Date().toISOString();
+      await chrome.storage.local.set({ [DECISION_QUEUE_STORAGE_KEY]: queue });
+      return;
+    }
+
+    queue.status = 'running';
+    for (const item of batch) {
+      item.status = 'processing';
+      item.attempts = Number(item.attempts || 0) + 1;
+    }
+    queue.updated_at = new Date().toISOString();
+    await chrome.storage.local.set({ [DECISION_QUEUE_STORAGE_KEY]: queue });
+
+    const results = await Promise.allSettled(batch.map((item) => productAnalysisFromUrl(item.source_url)));
+    results.forEach((result, index) => {
+      const item = batch[index];
+      if (result.status === 'fulfilled' && result.value?.analysis?.tracked_product_id) {
+        item.status = 'completed';
+        item.tracked_product_id = Number(result.value.analysis.tracked_product_id);
+        item.title = String(result.value.analysis.title || 'Ürün').slice(0, 180);
+        item.summary = {
+          decision: result.value.analysis.decision || {},
+          current: result.value.analysis.current || {},
+          evidence: result.value.analysis.evidence || {},
+        };
+        item.message = 'Canlı analiz kaydedildi.';
+      } else {
+        item.status = Number(item.attempts || 0) < 2 ? 'pending' : 'failed';
+        item.message = result.status === 'rejected'
+          ? String(result.reason?.message || 'Ürün okunamadı.').slice(0, 240)
+          : 'Ürün analizi doğrulanamadı.';
+      }
+    });
+
+    const hasPending = queue.items.some((item) => item.status === 'pending');
+    queue.status = hasPending ? 'running' : 'completed';
+    queue.updated_at = new Date().toISOString();
+    await chrome.storage.local.set({ [DECISION_QUEUE_STORAGE_KEY]: queue });
+    if (hasPending) chrome.alarms.create(DECISION_QUEUE_ALARM, { when: Date.now() + 1000 });
+  } finally {
+    decisionQueueRunning = false;
+  }
 }
 
 async function trackProductFromUrl(sourceUrl) {
@@ -3264,7 +3551,7 @@ async function companionSession() {
   const json = await readJson(response);
 
   if (response.status === 401) {
-    throw new Error('ZOLM oturumu eklenti tarafından doğrulanamadı. http://localhost üzerinden giriş yapıp popup içinden Oturumu test et düğmesine basın.');
+    throw new Error('ZOLM oturumu doğrulanamadı. Yapılandırılan ZOLM adresinde giriş yapıp popup içinden Oturumu test et düğmesine basın.');
   }
 
   if (!response.ok || !json.ok) {
@@ -3357,6 +3644,7 @@ function actionPath(action) {
     review_scan_ingest: 'review-scan/ingest',
     review_scan_status: 'review-scan/status',
     review_scan_verify: 'review-scan/verify',
+    bestseller_capture: 'bestseller-capture',
   }[action] || action;
 }
 
@@ -3409,7 +3697,7 @@ async function readJson(response) {
     return text ? JSON.parse(text) : {};
   } catch (error) {
     if (response.status === 401 || response.redirected || /<form|<!doctype html|<html/i.test(text)) {
-      throw new Error('ZOLM oturumu eklenti tarafından doğrulanamadı. http://localhost üzerinden giriş yapıp popup içinden Oturumu test et düğmesine basın.');
+      throw new Error('ZOLM oturumu doğrulanamadı. Yapılandırılan ZOLM adresinde giriş yapıp popup içinden Oturumu test et düğmesine basın.');
     }
 
     throw new Error(`ZOLM JSON yanıtı alınamadı (${response.status}).`);
@@ -3451,6 +3739,139 @@ async function getBaseUrl() {
   return baseUrl || DEFAULT_BASE_URL;
 }
 
+function normalizeListingProductUrls(values, maxProducts = 4) {
+  if (!Array.isArray(values)) return [];
+
+  return Array.from(new Set(values.map((value) => {
+    try {
+      const productUrl = new URL(String(value || ''));
+      if (!/^https:\/\/([^/]+\.)?trendyol\.com\//i.test(productUrl.href) || !/-p-\d+/i.test(productUrl.pathname)) {
+        return '';
+      }
+
+      productUrl.search = '';
+      productUrl.hash = '';
+      return productUrl.href;
+    } catch (error) {
+      return '';
+    }
+  }).filter(Boolean))).slice(0, maxProducts);
+}
+
+async function downloadProductMedia(value, requestedFilename) {
+  let url;
+  try {
+    url = new URL(String(value || ''));
+  } catch (error) {
+    throw new Error('Geçerli bir Trendyol medya bağlantısı gerekir.');
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  const allowedHost = hostname === 'trendyol.com'
+    || hostname.endsWith('.trendyol.com')
+    || hostname === 'dsmcdn.com'
+    || hostname.endsWith('.dsmcdn.com');
+  if (url.protocol !== 'https:' || !allowedHost) {
+    throw new Error('Yalnız Trendyol ürün medyası indirilebilir.');
+  }
+
+  const response = await fetch(url.href, { credentials: 'omit', redirect: 'follow' });
+  if (!response.ok) {
+    throw new Error(`Ürün görseli indirilemedi (${response.status}).`);
+  }
+
+  const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const extensions = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/avif': 'avif',
+    'image/gif': 'gif',
+  };
+  const extension = extensions[contentType];
+  if (!extension) {
+    throw new Error('Bu medya türü güvenli görsel indirme listesinde değil.');
+  }
+
+  const declaredSize = Number(response.headers.get('content-length') || 0);
+  if (declaredSize > 15 * 1024 * 1024) {
+    throw new Error('Görsel 15 MB indirme sınırını aşıyor.');
+  }
+
+  const buffer = await response.arrayBuffer();
+  if (buffer.byteLength === 0 || buffer.byteLength > 15 * 1024 * 1024) {
+    throw new Error('Görsel boş veya 15 MB sınırından büyük.');
+  }
+
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  const safeName = String(requestedFilename || 'trendyol-urun')
+    .normalize('NFKD')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'trendyol-urun';
+
+  return {
+    ok: true,
+    mode: 'media_download',
+    filename: `${safeName}.${extension}`,
+    data_url: `data:${contentType};base64,${btoa(binary)}`,
+    byte_size: buffer.byteLength,
+  };
+}
+
+async function openBoosterDashboard(module = 'analysis', keyword = '', options = {}) {
+  const allowedModules = new Set([
+    'analysis',
+    'tracking',
+    'bestseller',
+    'comparison',
+    'sell_decision',
+    'profit_loss',
+  ]);
+  const safeModule = allowedModules.has(String(module)) ? String(module) : 'analysis';
+  const baseUrl = await getBaseUrl();
+  const url = new URL('/marketplace-trendyol-booster', `${baseUrl}/`);
+  url.searchParams.set('booster', safeModule);
+
+  if (safeModule === 'bestseller' && String(keyword || '').trim()) {
+    url.searchParams.set('bestseller_q', String(keyword).trim().slice(0, 120));
+  }
+  if (safeModule === 'bestseller' && options.reportMode === 'reports') {
+    url.searchParams.set('bestseller_mode', 'reports');
+  }
+  if (safeModule === 'bestseller' && Number.isInteger(Number(options.reportId)) && Number(options.reportId) > 0) {
+    url.searchParams.set('bestseller_report', String(Number(options.reportId)));
+  }
+  if (safeModule === 'comparison' && Array.isArray(options.comparisonUrls)) {
+    options.comparisonUrls.slice(0, 4).forEach((productUrl, index) => {
+      url.searchParams.set(`compare[${index}]`, String(productUrl));
+    });
+    if (options.comparisonUrls.length >= 2) {
+      url.searchParams.set('compare_now', '1');
+    }
+  }
+  if (safeModule === 'sell_decision' && Number.isInteger(Number(options.decisionTrackedProductId)) && Number(options.decisionTrackedProductId) > 0) {
+    url.searchParams.set('decision_product', String(Number(options.decisionTrackedProductId)));
+  }
+
+  const tab = await chrome.tabs.create({ url: url.href });
+
+  if (!tab?.id) {
+    throw new Error('ZOLM Booster sekmesi açılamadı. Eklenti ayarlarındaki ZOLM adresini kontrol edin.');
+  }
+
+  return {
+    ok: true,
+    mode: 'dashboard_opened',
+    module: safeModule,
+    url: url.href,
+  };
+}
+
 // ─── BACKGROUND AUTOMATION (Cron / Alarms) ─────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create('zolm-booster-auto-scan', { periodInMinutes: 15 });
@@ -3459,6 +3880,8 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'zolm-booster-auto-scan') {
     await runPendingJobs();
+  } else if (alarm.name === DECISION_QUEUE_ALARM) {
+    await processDecisionQueue();
   }
 });
 

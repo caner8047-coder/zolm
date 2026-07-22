@@ -41,7 +41,22 @@ class LeaveApprovalInbox extends Component
     public function render()
     {
         $tenantId = app(TenantContext::class)->getId();
-        $steps = HrLeaveApprovalStep::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('status', LeaveApprovalStatus::Pending->value)->where(function ($q) { $q->whereNull('approver_user_id')->orWhere('approver_user_id', auth()->id()); })->with('leaveRequest.employee', 'leaveRequest.leaveType')->orderBy('created_at')->paginate(15);
+        $steps = HrLeaveApprovalStep::withoutGlobalScope('tenant')
+            ->where('legal_entity_id', $tenantId)
+            ->where('status', LeaveApprovalStatus::Pending->value)
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('hr_leave_approval_steps as earlier_step')
+                    ->whereColumn('earlier_step.leave_request_id', 'hr_leave_approval_steps.leave_request_id')
+                    ->where('earlier_step.status', LeaveApprovalStatus::Pending->value)
+                    ->whereColumn('earlier_step.step_order', '<', 'hr_leave_approval_steps.step_order');
+            })
+            ->where(function ($query) {
+                $query->whereNull('approver_user_id')->orWhere('approver_user_id', auth()->id());
+            })
+            ->with('leaveRequest.employee', 'leaveRequest.leaveType')
+            ->orderBy('created_at')
+            ->paginate(15);
         return view('livewire.hr.leave.leave-approval-inbox', ['steps' => $steps])->layout('layouts.app');
     }
 }

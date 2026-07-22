@@ -781,15 +781,112 @@
                 @endif
 
                 @if(auth()->user()?->hasHrPermission('hr.dashboard.view'))
-                    <a href="{{ route('hr.dashboard') }}"
-                       @click="sidebarOpen = false"
-                       class="flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors
-                              {{ request()->routeIs('hr.*') ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100' }}">
-                        <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM5 21a7 7 0 0114 0M18 8h4m-2-2v4"/>
-                        </svg>
-                        İnsan Kaynakları
-                    </a>
+                    @php
+                        $hrTenantContext = app(\App\Modules\Hr\Core\Services\TenantContext::class);
+                        $hrTenant = $hrTenantContext->isSet()
+                            ? $hrTenantContext->get()
+                            : auth()->user()->legalEntities()->active()->first();
+
+                        if (! $hrTenant) {
+                            $hrEmployeeTenantId = \App\Modules\Hr\Personnel\Models\HrEmployee::withoutGlobalScope('tenant')
+                                ->where('user_id', auth()->id())
+                                ->where('status', 'active')
+                                ->value('legal_entity_id');
+                            $hrTenant = $hrEmployeeTenantId
+                                ? \App\Models\LegalEntity::active()->find($hrEmployeeTenantId)
+                                : null;
+                        }
+
+                        $hrLicensedModules = $hrTenant
+                            ? $hrTenant->hrLicenses()
+                                ->where('is_active', true)
+                                ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+                                ->pluck('module_key')
+                                ->all()
+                            : [];
+
+                        $hrMenuGroups = [
+                            'İnsan ve organizasyon' => [
+                                ['label' => 'İK Merkezi', 'route' => 'hr.dashboard', 'active' => 'hr.dashboard', 'permission' => 'hr.dashboard.view'],
+                                ['label' => 'Personel', 'route' => 'hr.personnel', 'active' => 'hr.personnel*', 'permission' => 'hr.employees.view', 'module' => 'personel'],
+                                ['label' => 'Belgeler', 'route' => 'hr.documents', 'active' => 'hr.documents*', 'permission' => 'hr.documents.view', 'module' => 'personel'],
+                                ['label' => 'Organizasyon', 'route' => 'hr.settings.organization', 'active' => 'hr.settings.organization', 'permission' => 'hr.org_structure.view'],
+                                ['label' => 'İşe giriş / çıkış', 'route' => 'hr.lifecycle', 'active' => 'hr.lifecycle', 'permission' => 'hr.lifecycle.view', 'module' => 'personel'],
+                            ],
+                            'Zaman ve devam' => [
+                                ['label' => 'İzin yönetimi', 'route' => 'hr.leaves', 'active' => 'hr.leaves*', 'permission' => 'hr.leaves.view', 'module' => 'izin'],
+                                ['label' => 'Vardiya planı', 'route' => 'hr.shifts', 'active' => 'hr.shifts*', 'permission' => 'hr.shifts.view', 'module' => 'vardiya'],
+                                ['label' => 'PDKS olayları', 'route' => 'hr.attendance', 'active' => 'hr.attendance*', 'permission' => 'hr.attendance.view', 'module' => 'pdks'],
+                                ['label' => 'Puantaj', 'route' => 'hr.timesheets', 'active' => 'hr.timesheets*', 'permission' => 'hr.timesheet.view', 'module' => 'puantaj'],
+                                ['label' => 'Fazla mesai', 'route' => 'hr.overtime', 'active' => 'hr.overtime', 'permission' => 'hr.timesheet.view', 'module' => 'puantaj'],
+                            ],
+                            'Ücret ve operasyon' => [
+                                ['label' => 'Bordro', 'route' => 'hr.payroll', 'active' => 'hr.payroll*', 'permission' => 'hr.payroll.view', 'module' => 'bordro'],
+                                ['label' => 'Ücret ve yan haklar', 'route' => 'hr.compensation', 'active' => 'hr.compensation', 'permission' => 'hr.salary.view', 'module' => 'ucret'],
+                                ['label' => 'Masraflar', 'route' => 'hr.expenses', 'active' => 'hr.expenses*', 'permission' => 'hr.expenses.view', 'module' => 'masraf'],
+                                ['label' => 'Avanslar', 'route' => 'hr.advances', 'active' => 'hr.advances', 'permission' => 'hr.advances.view', 'module' => 'avans'],
+                                ['label' => 'Zimmetler', 'route' => 'hr.assets', 'active' => 'hr.assets', 'permission' => 'hr.assets.view', 'module' => 'zimmet'],
+                            ],
+                            'Yetenek ve gelişim' => [
+                                ['label' => 'Performans', 'route' => 'hr.performance', 'active' => 'hr.performance*', 'permission' => 'hr.performance.view', 'module' => 'performans'],
+                                ['label' => 'Eğitim', 'route' => 'hr.training', 'active' => 'hr.training', 'permission' => 'hr.training.view', 'module' => 'egitim'],
+                                ['label' => 'Çalışan bağlılığı', 'route' => 'hr.engagement', 'active' => 'hr.engagement', 'permission' => 'hr.engagement.view', 'module' => 'baglilik'],
+                                ['label' => 'Aday takip', 'route' => 'hr.recruitment', 'active' => 'hr.recruitment', 'permission' => 'hr.recruitment.view', 'module' => 'aday_takip'],
+                            ],
+                            'Analiz ve destek' => [
+                                ['label' => 'İK analitiği', 'route' => 'hr.analytics', 'active' => 'hr.analytics', 'permission' => 'hr.analytics.view', 'module' => 'analitik'],
+                                ['label' => 'Kadro planlama', 'route' => 'hr.workforce-planning', 'active' => 'hr.workforce-planning', 'permission' => 'hr.workforce.view', 'module' => 'analitik'],
+                                ['label' => 'İSG ve uyum', 'route' => 'hr.isg', 'active' => 'hr.isg', 'permission' => 'hr.isg.view', 'module' => 'isg'],
+                                ['label' => 'Çalışan destek', 'route' => 'hr.support', 'active' => 'hr.support', 'permission' => 'hr.support.view'],
+                                ['label' => 'Entegrasyon sağlığı', 'route' => 'hr.integrations', 'active' => 'hr.integrations', 'permission' => 'hr.integrations.view'],
+                                ['label' => 'İK Asistanı', 'route' => 'hr.assistant', 'active' => 'hr.assistant', 'permission' => 'hr.assistant.query'],
+                            ],
+                        ];
+
+                        $hrVisibleGroups = collect($hrMenuGroups)
+                            ->map(fn ($items) => collect($items)->filter(function ($item) use ($hrLicensedModules) {
+                                $hasPermission = auth()->user()?->hasHrPermission($item['permission']);
+                                $hasLicense = ! isset($item['module']) || in_array($item['module'], $hrLicensedModules, true);
+
+                                return $hasPermission && $hasLicense && Route::has($item['route']);
+                            })->values())
+                            ->filter->isNotEmpty();
+                    @endphp
+
+                    <div x-data="{ hrOpen: {{ request()->routeIs('hr.*') ? 'true' : 'false' }} }" data-testid="hr-sidebar-menu">
+                        <button @click="hrOpen = !hrOpen"
+                            class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors
+                                   {{ request()->routeIs('hr.*') ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100' }}">
+                            <span class="flex items-center min-w-0">
+                                <svg class="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM5 21a7 7 0 0114 0M18 8h4m-2-2v4"/>
+                                </svg>
+                                <span class="truncate">İnsan Kaynakları</span>
+                            </span>
+                            <svg :class="hrOpen ? 'rotate-180' : ''" class="w-4 h-4 flex-shrink-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+
+                        <div x-cloak x-show="hrOpen" x-collapse class="ml-5 mt-1 space-y-2 border-l border-gray-200 pl-3">
+                            @foreach($hrVisibleGroups as $groupLabel => $items)
+                                <div class="space-y-1" data-testid="hr-sidebar-group-{{ \Illuminate\Support\Str::slug($groupLabel) }}">
+                                    <div class="px-3 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                        {{ $groupLabel }}
+                                    </div>
+                                    @foreach($items as $item)
+                                        <a href="{{ route($item['route']) }}"
+                                           @click="sidebarOpen = false"
+                                           data-testid="hr-sidebar-link-{{ \Illuminate\Support\Str::slug($item['label']) }}"
+                                           class="block rounded-lg px-3 py-2 text-sm transition-colors
+                                                  {{ request()->routeIs($item['active']) ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100' }}">
+                                            {{ $item['label'] }}
+                                        </a>
+                                    @endforeach
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
                 @endif
 
                 <!-- Divider -->

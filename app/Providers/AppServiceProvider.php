@@ -55,6 +55,9 @@ class AppServiceProvider extends ServiceProvider
             $tokenFingerprint = hash('sha256', (string) $request->bearerToken());
             return Limit::perMinute(120)->by($tokenFingerprint . '|' . $request->ip());
         });
+        RateLimiter::for('booster-companion', function (Request $request) {
+            return Limit::perMinute(120)->by('booster:'.($request->user()?->id ?: $request->ip()));
+        });
 
         \Illuminate\Support\Facades\Gate::policy(
             \App\Models\SupportConversation::class,

@@ -13,6 +13,9 @@ class PayrollRuleConfiguration
         $validator = validator($configuration, [
             'standard_monthly_minutes' => ['required', 'integer', 'min:1'],
             'overtime_multiplier_basis_points' => ['required', 'integer', 'min:0', 'max:100000'],
+            'holiday_work_multiplier_basis_points' => ['sometimes', 'integer', 'min:0', 'max:100000'],
+            'weekly_rest_work_multiplier_basis_points' => ['sometimes', 'integer', 'min:0', 'max:100000'],
+            'require_employee_payroll_profile' => ['sometimes', 'boolean'],
             'employee_social_security_basis_points' => ['required', 'integer', 'min:0', 'max:10000'],
             'employee_unemployment_basis_points' => ['required', 'integer', 'min:0', 'max:10000'],
             'employer_social_security_basis_points' => ['required', 'integer', 'min:0', 'max:10000'],

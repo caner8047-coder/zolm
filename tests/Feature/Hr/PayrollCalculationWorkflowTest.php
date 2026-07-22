@@ -11,6 +11,8 @@ use App\Modules\Hr\Payroll\Actions\ApprovePayrollPeriodAction;
 use App\Modules\Hr\Payroll\Actions\ApprovePayrollRuleAction;
 use App\Modules\Hr\Payroll\Actions\CalculatePayrollPeriodAction;
 use App\Modules\Hr\Payroll\Actions\ExportPayrollControlOutputAction;
+use App\Modules\Hr\Payroll\Actions\ExportPayrollOperationsPackageAction;
+use App\Modules\Hr\Payroll\Actions\ManagePayrollEmployeeProfileAction;
 use App\Modules\Hr\Payroll\Actions\ManagePayrollAdjustmentAction;
 use App\Modules\Hr\Payroll\Actions\PreparePayrollPeriodAction;
 use App\Modules\Hr\Payroll\Models\HrPayrollRule;
@@ -80,6 +82,15 @@ class PayrollCalculationWorkflowTest extends TestCase
             'version' => 1, 'configuration' => $rules, 'configuration_hash' => app(\App\Modules\Hr\Payroll\Services\PayrollRuleConfiguration::class)->hash($rules),
             'effective_from' => '2026-01-01', 'is_active' => false, 'status' => 'pending_approval', 'created_by' => $maker->id,
         ]);
+        $payrollProfile = app(ManagePayrollEmployeeProfileAction::class)->propose($employee, [
+            'effective_from' => '2026-01-01',
+            'payment_method' => 'bank',
+            'iban' => 'TR330006100519786457841326',
+            'bank_name' => 'Test Bankası',
+            'bank_account_holder' => '=Hesap Test',
+            'social_security_status' => 'standard',
+            'change_reason' => 'İlk bordro ödeme profili',
+        ]);
 
         try {
             app(ApprovePayrollRuleAction::class)->execute($rule);
@@ -89,6 +100,7 @@ class PayrollCalculationWorkflowTest extends TestCase
         }
 
         $this->actingAs($ruleApprover);
+        app(ManagePayrollEmployeeProfileAction::class)->approve($payrollProfile);
         app(ManageSalaryRecordAction::class)->approve($salary);
         app(ApprovePayrollRuleAction::class)->execute($rule->fresh());
         $prepared = app(PreparePayrollPeriodAction::class)->execute($timesheetPeriod);
@@ -140,6 +152,18 @@ class PayrollCalculationWorkflowTest extends TestCase
         $this->assertSame('RESMÎ BEYAN DEĞİLDİR; onay ve aktarım öncesi yetkili uzman kontrolü gerekir.', $workbook->getSheet(1)->getCell('B2')->getValue());
         $this->assertDatabaseHas('hr_payroll_exports', ['payroll_period_id' => $approved->id, 'classification' => 'control_output']);
         @unlink($fullPath);
+
+        $operationsPath = storage_path('app/private/'.app(ExportPayrollOperationsPackageAction::class)->execute($approved->fresh()));
+        $this->assertFileExists($operationsPath);
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($operationsPath) === true);
+        $this->assertNotFalse($zip->locateName('Bordro_Icmal.xlsx'));
+        $this->assertNotFalse($zip->locateName('Banka_Odeme_Listesi.xlsx'));
+        $this->assertNotFalse($zip->locateName('Ucret_Pusulalari/CALC1.pdf'));
+        $this->assertStringContainsString('resmî beyan dosyası değildir', $zip->getFromName('README.txt'));
+        $zip->close();
+        $this->assertDatabaseHas('hr_payroll_exports', ['payroll_period_id' => $approved->id, 'classification' => 'operations_package', 'format' => 'zip']);
+        @unlink($operationsPath);
 
         DB::table('hr_payroll_records')->where('id', $record->id)->update(['calculation_hash' => str_repeat('0', 64)]);
         try {

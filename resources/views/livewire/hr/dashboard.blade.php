@@ -102,6 +102,9 @@
         </div>
     </section>
 
+    <!-- Statutory Compliance Widget -->
+    <livewire:hr.core.hr-compliance-widget />
+
     <div class="grid grid-cols-1 gap-3 lg:gap-4 xl:grid-cols-12">
         <section class="overflow-hidden rounded-[10px] border border-slate-200 bg-white shadow-sm xl:col-span-8">
             <div class="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -169,10 +172,10 @@
             <div class="hidden overflow-x-auto md:block">
                 <table class="w-full table-fixed">
                     <thead class="bg-slate-50/60 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th class="w-2/5 px-4 py-3">Çalışan</th><th class="w-1/5 px-4 py-3">Sicil</th><th class="w-1/5 px-4 py-3">Pozisyon</th><th class="w-1/5 px-4 py-3">Durum</th></tr></thead>
-                    <tbody class="divide-y divide-slate-100">@foreach($recentEmployees as $employee)<tr class="hover:bg-slate-50/60"><td class="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">{{ $employee->full_name }}</td><td class="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-sm font-mono text-slate-600">{{ $employee->employee_number }}</td><td class="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-sm text-slate-600">{{ $employee->activeEmployment?->position?->name ?? '—' }}</td><td class="px-4 py-3"><span class="rounded bg-emerald-50 px-2 py-0.5 text-xs font-mono text-emerald-700">{{ $employee->status->label() }}</span></td></tr>@endforeach</tbody>
+                    <tbody class="divide-y divide-slate-100">@foreach($recentEmployees as $employee)<tr class="hover:bg-slate-50/60"><td class="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">{{ $employee->full_name }}</td><td class="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-sm font-mono text-slate-600">{{ $employee->employee_number }}</td><td class="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-sm text-slate-600">{{ $employee->activeEmployment?->position?->title ?? '—' }}</td><td class="px-4 py-3"><span class="rounded bg-emerald-50 px-2 py-0.5 text-xs font-mono text-emerald-700">{{ $employee->status->label() }}</span></td></tr>@endforeach</tbody>
                 </table>
             </div>
-            <div class="divide-y divide-slate-100 md:hidden">@foreach($recentEmployees as $employee)<a href="{{ route('hr.personnel.show', $employee) }}" class="flex items-center justify-between gap-3 p-4"><div class="min-w-0"><p class="truncate text-sm font-medium text-slate-900">{{ $employee->full_name }}</p><p class="mt-1 truncate text-xs text-slate-500">{{ $employee->employee_number }} · {{ $employee->activeEmployment?->position?->name ?? 'Pozisyon yok' }}</p></div><span class="text-slate-300">→</span></a>@endforeach</div>
+            <div class="divide-y divide-slate-100 md:hidden">@foreach($recentEmployees as $employee)<a href="{{ route('hr.personnel.show', $employee) }}" class="flex items-center justify-between gap-3 p-4"><div class="min-w-0"><p class="truncate text-sm font-medium text-slate-900">{{ $employee->full_name }}</p><p class="mt-1 truncate text-xs text-slate-500">{{ $employee->employee_number }} · {{ $employee->activeEmployment?->position?->title ?? 'Pozisyon yok' }}</p></div><span class="text-slate-300">→</span></a>@endforeach</div>
         @else
             <div class="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between lg:p-8">
                 <div class="min-w-0"><h3 class="text-sm font-semibold text-slate-900">İK çalışma alanınız hazır</h3><p class="mt-1 max-w-2xl text-sm leading-6 text-slate-500">İlk çalışanı eklediğinizde personel, izin, vardiya, PDKS ve bordro akışları bu panelde gerçek verilerle dolmaya başlayacak.</p></div>

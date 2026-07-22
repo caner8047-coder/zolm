@@ -9,12 +9,24 @@ class PayrollCalculationEngine
         $standardMinutes = $rules['standard_monthly_minutes'];
         $payableMinutes = max(0, min($standardMinutes, $input['scheduled_minutes'] - $input['missing_minutes']));
         $baseGross = $this->divideRounded($monthlyGrossCents * $payableMinutes, $standardMinutes);
-        $overtimeGross = $this->divideRounded(
-            $monthlyGrossCents * $input['approved_overtime_minutes'] * $rules['overtime_multiplier_basis_points'],
+        $regularOvertimeMinutes = (int) ($input['approved_regular_overtime_minutes'] ?? $input['approved_overtime_minutes'] ?? 0);
+        $holidayWorkMinutes = (int) ($input['approved_holiday_work_minutes'] ?? 0);
+        $weeklyRestWorkMinutes = (int) ($input['approved_weekly_rest_work_minutes'] ?? 0);
+        $regularOvertimeGross = $this->divideRounded(
+            $monthlyGrossCents * $regularOvertimeMinutes * $rules['overtime_multiplier_basis_points'],
             $standardMinutes * 10000
         );
+        $holidayWorkGross = $this->divideRounded(
+            $monthlyGrossCents * $holidayWorkMinutes * ($rules['holiday_work_multiplier_basis_points'] ?? $rules['overtime_multiplier_basis_points']),
+            $standardMinutes * 10000
+        );
+        $weeklyRestWorkGross = $this->divideRounded(
+            $monthlyGrossCents * $weeklyRestWorkMinutes * ($rules['weekly_rest_work_multiplier_basis_points'] ?? $rules['overtime_multiplier_basis_points']),
+            $standardMinutes * 10000
+        );
+        $overtimeGross = $regularOvertimeGross + $holidayWorkGross + $weeklyRestWorkGross;
         $earning = 0; $socialSecurityExemptEarning = 0; $incomeTaxExemptEarning = 0;
-        $preTaxDeduction = 0; $postTaxDeduction = 0; $employerIncentive = 0;
+        $preTaxDeduction = 0; $postTaxDeduction = 0; $employerIncentive = 0; $employerBenefit = 0;
         foreach ($adjustments as $adjustment) {
             $amount = (int) $adjustment['amount_cents'];
             if ($adjustment['type'] === 'earning') {
@@ -25,6 +37,8 @@ class PayrollCalculationEngine
                 if ($adjustment['pre_tax_deduction'] ?? false) $preTaxDeduction += $amount; else $postTaxDeduction += $amount;
             } elseif ($adjustment['type'] === 'employer_incentive') {
                 $employerIncentive += $amount;
+            } elseif ($adjustment['type'] === 'employer_benefit') {
+                $employerBenefit += $amount;
             }
         }
         $gross = $baseGross + $overtimeGross + $earning;
@@ -48,6 +62,9 @@ class PayrollCalculationEngine
 
         return [
             'base_gross_cents' => $baseGross,
+            'regular_overtime_gross_cents' => $regularOvertimeGross,
+            'holiday_work_gross_cents' => $holidayWorkGross,
+            'weekly_rest_work_gross_cents' => $weeklyRestWorkGross,
             'overtime_gross_cents' => $overtimeGross,
             'gross_pay_cents' => $gross,
             'additional_earning_cents' => $earning,
@@ -72,10 +89,14 @@ class PayrollCalculationEngine
             'post_tax_deduction_cents' => $postTaxDeduction,
             'gross_employer_contributions_cents' => $grossEmployerContributions,
             'employer_incentive_cents' => $appliedEmployerIncentive,
+            'employer_benefit_cents' => $employerBenefit,
             'employer_contributions_cents' => $employerContributions,
             'net_pay_cents' => max(0, $gross - $employeeDeductions),
-            'employer_total_cost_cents' => $gross + $employerContributions,
+            'employer_total_cost_cents' => $gross + $employerContributions + $employerBenefit,
             'payable_minutes' => $payableMinutes,
+            'approved_regular_overtime_minutes' => $regularOvertimeMinutes,
+            'approved_holiday_work_minutes' => $holidayWorkMinutes,
+            'approved_weekly_rest_work_minutes' => $weeklyRestWorkMinutes,
         ];
     }
 

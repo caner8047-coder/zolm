@@ -70,6 +70,8 @@ return [
         'risk_center_enabled' => (bool) env('MARKETPLACE_RISK_CENTER_ENABLED', false),
         'report_digest_enabled' => (bool) env('MARKETPLACE_REPORT_DIGEST_ENABLED', false),
         'products_v2_enabled' => (bool) env('MARKETPLACE_PRODUCTS_V2_ENABLED', true),
+        'product_ai_studio_enabled' => (bool) env('MARKETPLACE_PRODUCT_AI_STUDIO_ENABLED', false),
+        'product_ai_video_enabled' => (bool) env('MARKETPLACE_PRODUCT_AI_VIDEO_ENABLED', false),
         'matching_center_enabled' => (bool) env('MARKETPLACE_MATCHING_CENTER_ENABLED', true),
         'finance_v2_enabled' => (bool) env('MARKETPLACE_FINANCE_V2_ENABLED', true),
         'questions_enabled' => (bool) env('MARKETPLACE_QUESTIONS_ENABLED', true),
@@ -92,6 +94,18 @@ return [
     ],
 
     'trendyol_booster' => [
+        'release' => [
+            'ring' => strtolower((string) env('MARKETPLACE_TRENDYOL_BOOSTER_RELEASE_RING', 'ga')),
+            'beta_user_ids' => array_values(array_filter(array_map(
+                static fn (string $id): int => (int) trim($id),
+                explode(',', (string) env('MARKETPLACE_TRENDYOL_BOOSTER_BETA_USER_IDS', '')),
+            ))),
+        ],
+        'observability' => [
+            'enabled' => (bool) env('MARKETPLACE_TRENDYOL_BOOSTER_OBSERVABILITY_ENABLED', true),
+            'dashboard_minutes' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_OBSERVABILITY_MINUTES', 60),
+            'error_rate_warning_percent' => (float) env('MARKETPLACE_TRENDYOL_BOOSTER_ERROR_RATE_WARNING_PERCENT', 5),
+        ],
         'email_digest_enabled' => (bool) env('MARKETPLACE_TRENDYOL_BOOSTER_EMAIL_DIGEST_ENABLED', false),
         'email_digest_max_notifications' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_EMAIL_DIGEST_MAX_NOTIFICATIONS', 100),
         'request_timeout' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_REQUEST_TIMEOUT', 12),
@@ -162,6 +176,7 @@ return [
             'bestseller_runs_days' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_RETENTION_BESTSELLER_RUNS_DAYS', 365),
             'bestseller_items_days' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_RETENTION_BESTSELLER_ITEMS_DAYS', 365),
             'activity_logs_days' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_RETENTION_ACTIVITY_LOGS_DAYS', 90),
+            'operation_metrics_days' => (int) env('MARKETPLACE_TRENDYOL_BOOSTER_RETENTION_OPERATION_METRICS_DAYS', 30),
         ],
     ],
 

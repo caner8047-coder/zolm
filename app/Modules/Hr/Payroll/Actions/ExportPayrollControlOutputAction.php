@@ -28,7 +28,7 @@ class ExportPayrollControlOutputAction
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Bordro Kontrol');
-        $headers = ['Sicil No', 'Çalışan', 'Dönem', 'Para Birimi', 'Brüt', 'Çalışan SGK', 'Çalışan İşsizlik', 'Gelir Vergisi', 'Damga Vergisi', 'Toplam Kesinti', 'Net', 'İşveren Katkısı', 'İşveren Toplam Maliyet', 'Hesap İzi'];
+        $headers = ['Sicil No', 'Çalışan', 'Dönem', 'Para Birimi', 'Brüt', 'Çalışan SGK', 'Çalışan İşsizlik', 'Gelir Vergisi', 'Damga Vergisi', 'Toplam Kesinti', 'Net', 'İşveren Katkısı', 'İşveren Toplam Maliyet', 'Hesap İzi', 'Normal Fazla Mesai', 'Resmî Tatil Çalışması', 'Hafta Tatili Çalışması', 'İşveren Teşviki'];
         $this->writeHeaders($sheet, $headers);
         $rowNumber = 2;
         foreach ($period->records->sortBy(fn ($record) => $record->employee?->employee_number) as $record) {
@@ -40,15 +40,23 @@ class ExportPayrollControlOutputAction
                 $trace['stamp_tax_cents'] / 100, $trace['employee_deductions_cents'] / 100,
                 $trace['net_pay_cents'] / 100, $trace['employer_contributions_cents'] / 100,
                 $trace['employer_total_cost_cents'] / 100, $record->calculation_hash,
+                ($trace['regular_overtime_gross_cents'] ?? $trace['overtime_gross_cents'] ?? 0) / 100,
+                ($trace['holiday_work_gross_cents'] ?? 0) / 100,
+                ($trace['weekly_rest_work_gross_cents'] ?? 0) / 100,
+                ($trace['employer_incentive_cents'] ?? 0) / 100,
             ];
             $this->writeRow($sheet, $rowNumber++, $values);
         }
         $sheet->freezePane('A2');
-        $sheet->setAutoFilter('A1:N'.max(2, $rowNumber - 1));
+        $lastColumn = Coordinate::stringFromColumnIndex(count($headers));
+        $sheet->setAutoFilter("A1:{$lastColumn}".max(2, $rowNumber - 1));
         foreach (range(1, count($headers)) as $column) {
             $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($column))->setAutoSize(true);
         }
         foreach (range('E', 'M') as $column) {
+            $sheet->getStyle("{$column}2:{$column}".max(2, $rowNumber - 1))->getNumberFormat()->setFormatCode('#,##0.00');
+        }
+        foreach (range('O', 'R') as $column) {
             $sheet->getStyle("{$column}2:{$column}".max(2, $rowNumber - 1))->getNumberFormat()->setFormatCode('#,##0.00');
         }
 

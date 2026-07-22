@@ -3,6 +3,7 @@
 return [
     'hr.dashboard.view',
     'hr.settings.manage',
+    'hr.self_service.view',
 
     'hr.employees.view',
     'hr.employees.create',
@@ -53,6 +54,7 @@ return [
     'hr.payroll.calculate',
     'hr.payroll.approve',
     'hr.payroll.manage_rules',
+    'hr.payroll.manage_profiles',
     'hr.payroll.export',
 
     'hr.salary.view',
@@ -64,6 +66,7 @@ return [
     'hr.performance.calibrate',
     'hr.performance.manage_goals',
     'hr.performance.manage_templates',
+    'hr.performance.export',
 
     'hr.recruitment.view',
     'hr.recruitment.create_posting',

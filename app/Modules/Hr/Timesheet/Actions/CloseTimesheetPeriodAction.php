@@ -20,6 +20,7 @@ class CloseTimesheetPeriodAction
         abort_unless($period->legal_entity_id === $tenantId, 404);
         abort_unless($period->status === TimesheetPeriodStatus::Calculated, 422, 'Yalnız hesaplanmış dönem kapatılabilir.');
         abort_if(!$period->timesheets()->exists(), 422, 'Boş puantaj dönemi kapatılamaz.');
+        abort_if($period->timesheets()->where('calculation_version', '<', 2)->exists(), 422, 'Eski hesap sürümündeki satırlar yeniden hesaplanmadan dönem kapatılamaz.');
         abort_if($period->timesheets()->where('status', TimesheetStatus::Draft->value)->exists(), 422, 'Tüm puantaj satırları onaylanmadan dönem kapatılamaz.');
         abort_if(HrAttendanceAnomaly::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('status', 'open')->whereBetween('work_date', [$period->starts_on, $period->ends_on])->exists(), 422, 'Açık PDKS anomalileri çözülmeden dönem kapatılamaz.');
 

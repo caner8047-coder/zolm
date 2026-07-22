@@ -8,11 +8,12 @@ use App\Modules\Hr\Overtime\Enums\OvertimeRequestStatus;
 use App\Modules\Hr\Overtime\Models\HrOvertimeRequest;
 use App\Modules\Hr\Overtime\Models\HrOvertimeType;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
+use App\Modules\Hr\Payroll\Services\PayrollSourceStalenessService;
 use Carbon\Carbon;
 
 class CreateOvertimeRequestAction
 {
-    public function __construct(private HrAuditService $audit) {}
+    public function __construct(private HrAuditService $audit, private PayrollSourceStalenessService $staleness) {}
 
     public function execute(HrEmployee $employee, HrOvertimeType $type, string $workDate, string $startsAt, string $endsAt, string $reason, ?string $projectReference = null, ?string $productionOrderReference = null): HrOvertimeRequest
     {
@@ -36,6 +37,9 @@ class CreateOvertimeRequestAction
         }
         $status = $type->requires_approval ? OvertimeRequestStatus::PendingManager : OvertimeRequestStatus::Approved;
         $request = HrOvertimeRequest::create(['legal_entity_id' => $tenantId, 'employee_id' => $employee->id, 'overtime_type_id' => $type->id, 'work_date' => $workDate, 'starts_at' => $startsAt, 'ends_at' => $endsAt, 'requested_minutes' => $minutes, 'approved_minutes' => $status === OvertimeRequestStatus::Approved ? $minutes : null, 'status' => $status, 'reason' => trim($reason), 'project_reference' => $projectReference ?: null, 'production_order_reference' => $productionOrderReference ?: null, 'requested_by' => auth()->id(), 'decided_by' => $status === OvertimeRequestStatus::Approved ? auth()->id() : null, 'decided_at' => $status === OvertimeRequestStatus::Approved ? now() : null]);
+        if ($status === OvertimeRequestStatus::Approved) {
+            $this->staleness->markForWorkDate($tenantId, $workDate, 'overtime_approved', 'Bordro dönemine doğrudan onaylı fazla mesai eklendi.', $employee->id);
+        }
         $this->audit->log('overtime_requested', $request, null, ['minutes' => $minutes, 'status' => $status->value]);
         return $request;
     }

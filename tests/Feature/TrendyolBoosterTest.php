@@ -3839,6 +3839,35 @@ class TrendyolBoosterTest extends TestCase
         $this->assertSame($updatedAt->toISOString(), $tracked->fresh()->updated_at->toISOString());
     }
 
+    public function test_analysis_can_move_a_tracked_product_to_finance_or_sell_decision_without_losing_its_context(): void
+    {
+        [$user, $product, $listing] = $this->createBoosterGraph();
+        $this->actingAs($user);
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/karar-akisi-p-774418',
+            'mp_product_id' => $product->id,
+            'channel_listing_id' => $listing->id,
+            'title' => 'Karar Akışı Ürünü',
+            'sale_price' => 1500,
+            'cogs' => 550,
+            'target_margin_percent' => 20,
+            'watch_price' => true,
+        ]);
+
+        Livewire::test(TrendyolBooster::class)
+            ->call('openTrackedProductFinance', $tracked->id)
+            ->assertSet('activeModule', 'profit_loss')
+            ->assertSet('selectedAnalysisProductId', $tracked->id)
+            ->assertSet('salePrice', 1500.0)
+            ->call('openTrackedProductSellDecision', $tracked->id)
+            ->assertSet('activeModule', 'sell_decision')
+            ->assertSet('selectedAnalysisProductId', $tracked->id)
+            ->assertSet('cogs', 550.0)
+            ->assertSet('sellDecisionResult', []);
+    }
+
     public function test_tracking_health_cache_is_cleared_when_tracking_changes(): void
     {
         [$user, $product, $listing] = $this->createBoosterGraph();
@@ -4746,6 +4775,50 @@ class TrendyolBoosterTest extends TestCase
         $this->assertLessThan(60, (int) data_get($snapshot->metrics_json, 'sales_estimate.confidence'));
         $this->assertGreaterThan(50, (int) $snapshot->confidence_score);
         $this->assertSame('active', $first['product']->tracking_status);
+    }
+
+    public function test_product_analysis_exposes_a_clear_evidence_boundary_for_observed_and_estimated_data(): void
+    {
+        [$user] = $this->createBoosterGraph();
+
+        $payload = $this->productAnalysisPayload();
+        $payload['page']['total_stock'] = 80;
+        $payload['page']['data_sources'] = ['trendyol_page', 'browser_companion'];
+        $result = app(TrendyolBoosterProductAnalysisService::class)->store($user->id, $payload, 'browser_companion');
+
+        $evidence = $result['analysis']['evidence'];
+
+        $this->assertSame('Tarayıcıdan canlı okundu', $evidence['source_label']);
+        $this->assertSame('success', $evidence['source_tone']);
+        $this->assertGreaterThanOrEqual(1, $evidence['observed_metric_count']);
+        $this->assertContains('trendyol_page', $evidence['data_sources']);
+        $this->assertStringContainsString('kesin sipariş verisi değildir', $evidence['derived_note']);
+    }
+
+    public function test_booster_dashboard_exposes_a_nested_decision_journey(): void
+    {
+        [$user] = $this->createBoosterGraph();
+
+        $tracked = app(TrendyolBoosterAnalysisService::class)->store($user->id, [
+            'user_id' => $user->id,
+            'source_url' => 'https://www.trendyol.com/zolm/huni-urunu-p-880024099',
+            'sale_price' => 1500,
+            'cogs' => 500,
+            'commission_rate' => 18,
+        ]);
+        $tracked->forceFill([
+            'tracking_status' => 'active',
+            'data_quality_score' => 80,
+            'estimated_daily_sales' => 4.5,
+        ])->save();
+
+        $journey = app(TrendyolBoosterAnalysisService::class)->dashboard($user->id)['decision_journey'];
+
+        $this->assertSame(1, data_get($journey, 'stages.0.count'));
+        $this->assertSame(1, data_get($journey, 'stages.1.count'));
+        $this->assertSame(1, data_get($journey, 'stages.2.count'));
+        $this->assertSame(1, data_get($journey, 'stages.3.count'));
+        $this->assertSame(100.0, $journey['conversion_percent']);
     }
 
     public function test_booster_intelligence_uses_a_rolling_24_hour_stock_window_for_sales_and_stock_end(): void

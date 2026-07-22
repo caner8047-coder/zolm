@@ -12,11 +12,17 @@
                         </h3>
                         {{-- Sekmeler --}}
                         <div class="flex gap-1 -mb-px overflow-x-auto">
-                            @foreach(['basic' => 'Temel', 'pricing' => 'Fiyat & Maliyet', 'logistics' => 'Stok & Lojistik', 'set' => 'Set İçeriği', 'images' => 'Görseller'] as $key => $label)
+                            @php
+                                $editTabs = ['basic' => 'Temel', 'pricing' => 'Fiyat & Maliyet', 'logistics' => 'Stok & Lojistik', 'set' => 'Set İçeriği', 'images' => 'Görseller'];
+                                if ($editingId) {
+                                    $editTabs['listing_quality'] = 'Listing Kalitesi';
+                                }
+                            @endphp
+                            @foreach($editTabs as $key => $label)
                                 <button type="button"
                                     wire:click="setEditTab('{{ $key }}')"
                                     class="px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors
-                                    {{ $editTab === $key ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300' }}">
+                                    {{ $editTab === $key ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300' }}">
                                     {{ $label }}
                                 </button>
                             @endforeach
@@ -480,6 +486,10 @@
                         {{-- TAB: Görseller --}}
                         @if($editTab === 'images')
                         <div class="space-y-5">
+                            @if($editingId)
+                                @include('livewire.partials.mp-products-ai-studio')
+                            @endif
+
                             <div class="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
                                 <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                     <div class="min-w-0">
@@ -620,6 +630,11 @@
                             </div>
                         </div>
                         @endif
+
+                        {{-- TAB: Listing Kalitesi --}}
+                        @if($editTab === 'listing_quality' && $editingId)
+                            @include('livewire.partials.mp-products-listing-quality')
+                        @endif
                     </div>
 
                     {{-- Modal Footer --}}
@@ -628,7 +643,7 @@
                                 wire:loading.attr="disabled"
                                 wire:loading.class="cursor-wait opacity-60"
                                 wire:target="saveProduct"
-                                class="w-full sm:w-auto px-4 py-3 sm:py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 shadow-sm sm:ml-3 transition-colors disabled:cursor-not-allowed">
+                                class="w-full sm:w-auto px-4 py-3 sm:py-2 text-sm font-semibold text-white bg-slate-900 rounded-[6px] hover:bg-slate-800 shadow-sm sm:ml-3 transition-colors disabled:cursor-not-allowed">
                             {{ $editingId ? 'Güncelle' : 'Kaydet' }}
                         </button>
                         <button type="button"

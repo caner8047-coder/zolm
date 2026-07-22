@@ -331,6 +331,17 @@ class TrendyolBoosterStoreWatchService
             $item->setAttribute('store_sales_signal', $this->storeSalesSignal($item));
         });
 
+        $portfolioItems = $watch->items()->with('histories')->get();
+        $portfolioItems->each(function (TrendyolBoosterStoreWatchItem $item): void {
+            $item->setAttribute('brand', $this->normalizeItemBrand((string) $item->brand, (string) $item->title));
+
+            if (trim((string) $item->category_name) === '') {
+                $item->setAttribute('category_name', $this->inferCategoryName((string) $item->title));
+            }
+
+            $item->setAttribute('store_sales_signal', $this->storeSalesSignal($item));
+        });
+
         $categoryDistribution = (array) ($watch->category_distribution ?? []);
         if ($categoryDistribution === []) {
             $categoryDistribution = $this->distributionFromStoreItems($items, 'category_name');
@@ -354,6 +365,7 @@ class TrendyolBoosterStoreWatchService
                 ? $this->distributionFromStoreItems($items, 'brand')
                 : ($watch->brand_distribution ?: $this->distributionFromStoreItems($items, 'brand')),
             'category_distribution' => $categoryDistribution,
+            'portfolio' => app(TrendyolBoosterStorePortfolioService::class)->analyze($portfolioItems),
         ];
     }
 

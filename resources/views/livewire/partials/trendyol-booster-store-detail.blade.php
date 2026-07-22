@@ -8,6 +8,8 @@
     $latestSnapshot = $detail['latest_snapshot'] ?? null;
     $latestOkSnapshot = $detail['latest_ok_snapshot'] ?? null;
     $changeSummary = (array) ($latestSnapshot?->change_summary ?? []);
+    $portfolio = (array) ($detail['portfolio'] ?? []);
+    $portfolioCategories = array_slice((array) ($portfolio['categories'] ?? []), 0, 6);
     $showingPreservedCatalog = $latestSnapshot?->status === 'failed' && $latestOkSnapshot;
 @endphp
 
@@ -39,6 +41,80 @@
             Son deneme mağaza kataloğunu güvenli okuyamadı. Aşağıdaki liste, #{{ $latestOkSnapshot->scan_number }} numaralı son başarılı taramadan korunan veridir; yeni tarama başarılı olunca otomatik güncellenir.
         </div>
     @endif
+
+    <section class="rounded-[10px] border border-slate-200 bg-white shadow-sm">
+        <div class="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-start lg:justify-between lg:p-6">
+            <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase text-slate-500">Mağaza ve kategori 360</p>
+                <h3 class="mt-1 text-lg font-semibold text-slate-900">Katalog yapısı, momentum ve kategori gücü</h3>
+                <p class="mt-1 text-sm text-slate-500">Tüm katalog üzerinden hesaplanır; aşağıdaki ürün filtresinden etkilenmez.</p>
+            </div>
+            <div class="shrink-0 rounded-[8px] border border-slate-200 bg-slate-50/70 px-4 py-3 text-left lg:text-right">
+                <p class="text-xs text-slate-500">Katalog momentum skoru</p>
+                <p class="mt-1 text-xl font-semibold text-slate-900">{{ (int) ($portfolio['score'] ?? 0) }}/100</p>
+                <p class="text-xs font-medium text-slate-600">{{ $portfolio['score_label'] ?? 'Sınırlı sinyal' }}</p>
+            </div>
+        </div>
+
+        <div class="space-y-4 p-4 lg:p-6">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:gap-4">
+                @foreach([
+                    ['Aktif / yeni', number_format((int) ($portfolio['active_product_count'] ?? 0), 0, '', '.').' / +'.number_format((int) ($portfolio['new_product_count'] ?? 0), 0, '', '.'), 'Gözlenen katalog'],
+                    ['Medyan fiyat', ($portfolio['median_price'] ?? null) !== null ? $this->formatMoney($portfolio['median_price']) : 'Veri yok', (($portfolio['minimum_price'] ?? null) !== null && ($portfolio['maximum_price'] ?? null) !== null) ? $this->formatMoney($portfolio['minimum_price']).' – '.$this->formatMoney($portfolio['maximum_price']) : 'Fiyat aralığı yok'],
+                    ['Kampanya payı', '%'.number_format((float) ($portfolio['campaign_share_percent'] ?? 0), 1, ',', '.'), number_format((int) ($portfolio['campaign_count'] ?? 0), 0, '', '.').' kampanyalı ürün'],
+                    ['Tahmini satış sinyali', ($portfolio['estimated_daily_sales'] ?? null) !== null ? '~'.number_format((float) $portfolio['estimated_daily_sales'], 1, ',', '.').' / gün' : 'Veri birikiyor', 'Kesin sipariş verisi değildir'],
+                ] as [$label, $value, $note])
+                    <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
+                        <p class="text-xs text-slate-500">{{ $label }}</p>
+                        <p class="mt-1 truncate text-base font-semibold text-slate-900">{{ $value }}</p>
+                        <p class="mt-1 truncate text-xs text-slate-500">{{ $note }}</p>
+                    </div>
+                @endforeach
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 xl:grid-cols-12">
+                <div class="min-w-0 rounded-[8px] border border-slate-200 bg-white p-4 xl:col-span-4">
+                    <p class="text-xs font-semibold uppercase text-slate-500">Portföy odağı</p>
+                    <p class="mt-2 text-base font-semibold text-slate-900">{{ $portfolio['dominant_category'] ?? 'Kategori verisi yok' }}</p>
+                    <p class="mt-1 text-sm text-slate-500">
+                        {{ $portfolio['concentration_label'] ?? 'Dağılım hesaplanamadı' }}
+                        @if(($portfolio['dominant_category_share_percent'] ?? null) !== null)
+                            · %{{ number_format((float) $portfolio['dominant_category_share_percent'], 1, ',', '.') }} pay
+                        @endif
+                    </p>
+                    <div class="mt-4 grid grid-cols-2 gap-2 text-xs">
+                        <div class="rounded-[6px] border border-slate-200 bg-slate-50/60 p-3"><span class="text-slate-500">1. satıcı payı</span><strong class="mt-1 block text-slate-900">%{{ number_format((float) ($portfolio['top_seller_share_percent'] ?? 0), 1, ',', '.') }}</strong></div>
+                        <div class="rounded-[6px] border border-slate-200 bg-slate-50/60 p-3"><span class="text-slate-500">Kaldırılan</span><strong class="mt-1 block text-slate-900">{{ number_format((int) ($portfolio['removed_product_count'] ?? 0), 0, '', '.') }}</strong></div>
+                    </div>
+                </div>
+
+                <div class="min-w-0 overflow-hidden rounded-[8px] border border-slate-200 bg-white xl:col-span-8">
+                    <div class="border-b border-slate-200 px-4 py-3"><h4 class="text-sm font-semibold text-slate-900">Kategori performans özeti</h4></div>
+                    <div class="hidden overflow-x-auto md:block">
+                        <table class="w-full table-fixed text-left text-xs">
+                            <thead class="bg-slate-50/70 text-slate-500"><tr><th class="w-[32%] px-3 py-2 font-medium">Kategori</th><th class="px-3 py-2 font-medium">Ürün / pay</th><th class="px-3 py-2 font-medium">Ort. fiyat</th><th class="px-3 py-2 font-medium">Yorum</th><th class="px-3 py-2 font-medium">Satış sinyali</th></tr></thead>
+                            <tbody class="divide-y divide-slate-100">
+                                @forelse($portfolioCategories as $category)
+                                    <tr><td class="truncate px-3 py-2 font-medium text-slate-900" title="{{ $category['category'] }}">{{ $category['category'] }}</td><td class="px-3 py-2 text-slate-600">{{ $category['product_count'] }} · %{{ number_format((float) $category['share_percent'], 1, ',', '.') }}</td><td class="px-3 py-2 text-slate-600">{{ $category['average_price'] !== null ? $this->formatMoney($category['average_price']) : '-' }}</td><td class="px-3 py-2 text-slate-600">{{ number_format((int) $category['review_count'], 0, '', '.') }}</td><td class="px-3 py-2 font-medium text-slate-900">{{ (float) $category['estimated_daily_sales'] > 0 ? '~'.number_format((float) $category['estimated_daily_sales'], 1, ',', '.').' / gün' : '-' }}</td></tr>
+                                @empty
+                                    <tr><td colspan="5" class="px-3 py-4 text-slate-500">Kategori sinyali bulunamadı.</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="grid grid-cols-1 gap-2 p-3 md:hidden">
+                        @forelse($portfolioCategories as $category)
+                            <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3"><div class="flex items-start justify-between gap-3"><p class="min-w-0 truncate text-sm font-medium text-slate-900">{{ $category['category'] }}</p><span class="shrink-0 text-xs text-slate-500">%{{ number_format((float) $category['share_percent'], 1, ',', '.') }}</span></div><p class="mt-1 text-xs text-slate-500">{{ $category['product_count'] }} ürün · {{ $category['average_price'] !== null ? $this->formatMoney($category['average_price']) : 'Fiyat yok' }} · {{ number_format((int) $category['review_count'], 0, '', '.') }} yorum</p></div>
+                        @empty
+                            <p class="text-sm text-slate-500">Kategori sinyali bulunamadı.</p>
+                        @endforelse
+                    </div>
+                </div>
+            </div>
+
+            <p class="rounded-[8px] border border-slate-200 bg-slate-50/60 px-3 py-2 text-xs text-slate-500">{{ $portfolio['evidence_note'] ?? 'Mağaza verisi gözlem ve tahmin sınırlarıyla birlikte sunulur.' }}</p>
+        </div>
+    </section>
 
     <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm">
         <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">

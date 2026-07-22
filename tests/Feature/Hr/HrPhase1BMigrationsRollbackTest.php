@@ -89,8 +89,9 @@ class HrPhase1BMigrationsRollbackTest extends TestCase
 
         $this->assertTrue(Schema::hasTable('hr_employee_document_versions'));
 
-        // Faz 1B belge migration'larının tamamı 5 migration'dır.
-        Artisan::call('migrate:rollback', ['--step' => 5]);
+        // Faz 1B sınırında kalan altı uyumluluk migration'ı ile beş belge
+        // migration'ını birlikte geri alırız.
+        Artisan::call('migrate:rollback', ['--step' => 11]);
 
         $this->assertFalse(Schema::hasTable('hr_employee_document_versions'));
         $this->assertFalse(Schema::hasTable('hr_document_requests'));

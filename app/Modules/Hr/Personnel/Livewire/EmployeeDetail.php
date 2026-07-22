@@ -97,6 +97,8 @@ class EmployeeDetail extends Component
         $leaveRequests = HrLeaveRequest::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $this->employee->id)->with('leaveType')->latest()->get();
         $leaveBalances = HrLeaveBalance::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->where('employee_id', $this->employee->id)->where('period_year', now()->year)->with('leaveType')->get();
 
+        $fileChecklist = app(\App\Modules\Hr\Document\Services\HrPersonnelFileChecklistService::class)->analyzeEmployeeFile($tenantId, $this->employee->id);
+
         return view('livewire.hr.personnel.employee-detail', [
             'employee' => $this->employee,
             'documents' => $documents,
@@ -111,6 +113,7 @@ class EmployeeDetail extends Component
             'canViewHealth' => $canViewHealth,
             'leaveRequests' => $leaveRequests,
             'leaveBalances' => $leaveBalances,
+            'fileChecklist' => $fileChecklist,
         ])->layout('layouts.app');
     }
 

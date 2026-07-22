@@ -6,11 +6,12 @@ use App\Modules\Hr\Core\Services\HrAuditService;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Payroll\Models\HrPayrollRule;
 use App\Modules\Hr\Payroll\Services\PayrollRuleConfiguration;
+use App\Modules\Hr\Payroll\Services\PayrollSourceStalenessService;
 use Illuminate\Support\Facades\DB;
 
 class ApprovePayrollRuleAction
 {
-    public function __construct(private HrAuditService $audit, private PayrollRuleConfiguration $configuration) {}
+    public function __construct(private HrAuditService $audit, private PayrollRuleConfiguration $configuration, private PayrollSourceStalenessService $staleness) {}
 
     public function execute(HrPayrollRule $rule): HrPayrollRule
     {
@@ -38,6 +39,7 @@ class ApprovePayrollRuleAction
                 'approved_by' => auth()->id(),
                 'approved_at' => now(),
             ]);
+            $this->staleness->markForRule($rule);
             $this->audit->log('payroll_rule_version_approved', $rule, null, [
                 'code' => $rule->code,
                 'version' => $rule->version,

@@ -5,6 +5,8 @@ namespace App\Modules\Hr\Personnel\Actions;
 use App\Modules\Hr\Core\Services\HrAuditService;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -34,7 +36,7 @@ class ExportEmployeesAction
         $sheet = $spreadsheet->getActiveSheet();
 
         // Başlıklar
-        $headers = ['#', 'Çalışan No', 'Ad', 'Soyad', 'TC Kimlik', 'Cinsiyet', 'Telefon', 'E-posta',
+        $headers = ['#', 'Çalışan No', 'Ad', 'Soyad', 'TC Kimlik (Maskeli)', 'Cinsiyet', 'Telefon', 'E-posta',
             'Pozisyon', 'Departman', 'Şube', 'İşe Giriş', 'Kıdem', 'Durum'];
 
         if ($viewIdentity) {
@@ -46,7 +48,7 @@ class ExportEmployeesAction
         }
 
         foreach ($headers as $col => $header) {
-            $sheet->setCellValueByColumnAndRow($col + 1, 1, $header);
+            $sheet->setCellValueExplicit(Coordinate::stringFromColumnIndex($col + 1).'1', $this->cleanString($header), DataType::TYPE_STRING);
         }
 
         // Stil
@@ -58,27 +60,33 @@ class ExportEmployeesAction
         // Veriler
         $row = 2;
         foreach ($employees as $employee) {
-            $sheet->setCellValueByColumnAndRow(1, $row, $employee->id);
-            $sheet->setCellValueByColumnAndRow(2, $row, $employee->employee_number);
-            $sheet->setCellValueByColumnAndRow(3, $row, $employee->first_name);
-            $sheet->setCellValueByColumnAndRow(4, $row, $employee->last_name);
-            $sheet->setCellValueByColumnAndRow(5, $row, $viewIdentity ? $employee->national_id_encrypted : '***' . $employee->national_id_last_four);
-            $sheet->setCellValueByColumnAndRow(6, $row, $employee->gender ? ucfirst($employee->gender) : '');
-            $sheet->setCellValueByColumnAndRow(7, $row, $employee->phone ?? '');
-            $sheet->setCellValueByColumnAndRow(8, $row, $employee->personal_email ?? '');
-            $sheet->setCellValueByColumnAndRow(9, $row, $employee->activeEmployment?->position?->title ?? '');
-            $sheet->setCellValueByColumnAndRow(10, $row, $employee->activeEmployment?->department?->name ?? '');
-            $sheet->setCellValueByColumnAndRow(11, $row, $employee->activeEmployment?->branch?->name ?? '');
-            $sheet->setCellValueByColumnAndRow(12, $row, $employee->activeEmployment?->start_date?->format('d.m.Y') ?? '');
-            $sheet->setCellValueByColumnAndRow(13, $row, $employee->tenure ?? '');
-            $sheet->setCellValueByColumnAndRow(14, $row, $employee->status->label());
+            $values = [
+                (string) $employee->id,
+                $employee->employee_number,
+                $employee->first_name,
+                $employee->last_name,
+                '***'.$employee->national_id_last_four,
+                $employee->gender ? ucfirst((string) $employee->gender) : '',
+                $employee->phone ?? '',
+                $employee->personal_email ?? '',
+                $employee->activeEmployment?->position?->title ?? '',
+                $employee->activeEmployment?->department?->name ?? '',
+                $employee->activeEmployment?->branch?->name ?? '',
+                $employee->activeEmployment?->start_date?->format('d.m.Y') ?? '',
+                $employee->tenure ?? '',
+                $employee->status->label(),
+            ];
+
+            foreach ($values as $index => $value) {
+                $this->writeString($sheet, $index + 1, $row, $value);
+            }
 
             $col = 15;
             if ($viewIdentity) {
-                $sheet->setCellValueByColumnAndRow($col++, $row, $employee->national_id_encrypted);
+                $this->writeString($sheet, $col++, $row, $employee->national_id_encrypted);
             }
             if ($viewBank) {
-                $sheet->setCellValueByColumnAndRow($col, $row, ''); // IBAN henüz yok
+                $this->writeString($sheet, $col, $row, ''); // IBAN henüz yok
             }
 
             $row++;
@@ -86,7 +94,7 @@ class ExportEmployeesAction
 
         // Sütun genişlikleri
         foreach (range(1, count($headers)) as $col) {
-            $sheet->getColumnDimension(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromCharacter($col + 96))->setAutoSize(true);
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($col))->setAutoSize(true);
         }
 
         // Dosyayı kaydet
@@ -110,5 +118,24 @@ class ExportEmployeesAction
         ]);
 
         return $path;
+    }
+
+    private function writeString($sheet, int $column, int $row, mixed $value): void
+    {
+        $sheet->setCellValueExplicit(
+            Coordinate::stringFromColumnIndex($column).$row,
+            $this->cleanString($value),
+            DataType::TYPE_STRING
+        );
+    }
+
+    private function cleanString(mixed $value): string
+    {
+        $value = (string) $value;
+        if (! mb_check_encoding($value, 'UTF-8')) {
+            $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        }
+        $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $value) ?? '';
+        return $value !== '' && preg_match('/^[=+\-@\t\r]/', $value) ? "'".$value : $value;
     }
 }

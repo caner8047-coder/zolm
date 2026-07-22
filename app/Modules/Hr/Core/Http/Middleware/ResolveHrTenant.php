@@ -4,6 +4,7 @@ namespace App\Modules\Hr\Core\Http\Middleware;
 
 use App\Models\LegalEntity;
 use App\Modules\Hr\Core\Services\TenantContext;
+use App\Modules\Hr\Personnel\Models\HrEmployee;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,6 +22,17 @@ class ResolveHrTenant
         $tenant = LegalEntity::where('is_active', true)
             ->where('user_id', $user->id)
             ->first();
+
+        if (! $tenant) {
+            $employeeTenantId = HrEmployee::withoutGlobalScope('tenant')
+                ->where('user_id', $user->id)
+                ->where('status', 'active')
+                ->value('legal_entity_id');
+
+            $tenant = $employeeTenantId
+                ? LegalEntity::whereKey($employeeTenantId)->where('is_active', true)->first()
+                : null;
+        }
 
         if (!$tenant) {
             abort(403, 'Aktif tüzel kişilik bulunamadı.');

@@ -160,6 +160,29 @@ class TrendyolBoosterProductAnalysisService
             'is_favorite' => (bool) $product->is_favorite,
             'tracking_status' => (string) ($product->tracking_status ?: 'candidate'),
             'tracking_started_at' => $product->tracking_started_at?->toIso8601String(),
+            'decision' => [
+                'status' => (float) $product->cogs > 0 && (float) $product->commission_rate > 0
+                    ? (string) $product->decision_status
+                    : 'needs_cost',
+                'label' => (float) $product->cogs <= 0
+                    ? 'Maliyet gerekli'
+                    : ((float) $product->commission_rate <= 0 ? 'Komisyon gerekli' : match ((string) $product->decision_status) {
+                        'go' => 'Satışa uygun',
+                        'watch' => 'İzle ve doğrula',
+                        'risk' => 'Riskli',
+                        'loss' => 'Zarar riski',
+                        default => 'Veri topla',
+                    }),
+                'score' => (int) $product->opportunity_score,
+                'finance_ready' => (float) $product->cogs > 0 && (float) $product->commission_rate > 0,
+                'net_profit' => (float) $product->cogs > 0 && (float) $product->commission_rate > 0
+                    ? (float) $product->net_profit
+                    : null,
+                'profit_margin_percent' => (float) $product->cogs > 0 && (float) $product->commission_rate > 0
+                    ? (float) $product->profit_margin_percent
+                    : null,
+                'reasons' => array_values((array) $product->decision_reasons),
+            ],
             'product_scores' => [
                 'interest' => (int) $product->interest_score,
                 'competition' => (int) $product->competition_score,
@@ -168,7 +191,66 @@ class TrendyolBoosterProductAnalysisService
             ],
             'current' => $this->snapshotData($snapshot),
             'previous' => $previous ? $this->snapshotData($previous) : null,
+            'evidence' => $this->evidence($snapshot),
             'recent_reviews' => array_values((array) $snapshot->recent_reviews),
+        ];
+    }
+
+    /**
+     * Kullanıcıya gözlenen veri ile ZOLM'un hesapladığı sinyalleri açıkça ayıran
+     * kanıt özeti. Tahminleri kesin veri gibi göstermemek Booster'ın temel güven
+     * prensibidir.
+     *
+     * @return array<string, mixed>
+     */
+    protected function evidence(TrendyolBoosterSnapshot $snapshot): array
+    {
+        $observedMetricCount = collect([
+            $snapshot->sale_price,
+            $snapshot->stock_quantity,
+            $snapshot->evaluation_count,
+            $snapshot->review_count,
+            $snapshot->average_rating,
+            $snapshot->favorite_count,
+            $snapshot->basket_count,
+            $snapshot->view_count_24h,
+            $snapshot->question_count,
+            $snapshot->category_rank,
+        ])->filter(fn ($value): bool => $value !== null)->count();
+
+        $salesEstimate = (array) data_get($snapshot->metrics_json, 'sales_estimate', []);
+        $salesStatus = (string) ($salesEstimate['status'] ?? 'unavailable');
+        $confidence = max(0, min(100, (int) $snapshot->confidence_score));
+        $quality = max(0, min(100, (int) $snapshot->data_quality_score));
+
+        return [
+            'source_label' => match ((string) $snapshot->analysis_source) {
+                'browser_companion' => 'Tarayıcıdan canlı okundu',
+                'manual_refresh' => 'Kullanıcı yenilemesi',
+                'scheduled_refresh' => 'Zamanlanmış kontrol',
+                default => 'Kaydedilmiş kontrol',
+            },
+            'source_tone' => (string) $snapshot->analysis_source === 'browser_companion' ? 'success' : 'info',
+            'checked_at' => $snapshot->checked_at?->toIso8601String(),
+            'data_sources' => array_values(array_filter((array) $snapshot->data_sources)),
+            'observed_metric_count' => $observedMetricCount,
+            'confidence_score' => $confidence,
+            'confidence_label' => $confidence >= 75 ? 'Yüksek güven' : ($confidence >= 50 ? 'Yeterli güven' : 'Sınırlı güven'),
+            'confidence_tone' => $confidence >= 75 ? 'success' : ($confidence >= 50 ? 'warning' : 'danger'),
+            'data_quality_score' => $quality,
+            'sales_status' => $salesStatus,
+            'sales_label' => match ($salesStatus) {
+                'observed' => 'Stok hareketinden hesaplandı',
+                'proxy' => 'İlgi sinyallerinden tahmin edildi',
+                default => 'Satış tahmini hazır değil',
+            },
+            'sales_tone' => match ($salesStatus) {
+                'observed' => 'success',
+                'proxy' => 'warning',
+                default => 'default',
+            },
+            'direct_note' => 'Fiyat, görünür stok ve etkileşim metrikleri Trendyol sayfasından gözlenir.',
+            'derived_note' => 'Satış hızı, stok günü, risk ve fırsat skorları ZOLM modelinin hesapladığı karar sinyalleridir; kesin sipariş verisi değildir.',
         ];
     }
 
@@ -207,6 +289,8 @@ class TrendyolBoosterProductAnalysisService
             'data_quality_score' => (int) $snapshot->data_quality_score,
             'sales_estimate' => (array) data_get($snapshot->metrics_json, 'sales_estimate', []),
             'metrics' => (array) $snapshot->metrics_json,
+            'analysis_source' => (string) $snapshot->analysis_source,
+            'data_sources' => (array) $snapshot->data_sources,
             'checked_at' => $snapshot->checked_at?->toIso8601String(),
         ];
     }

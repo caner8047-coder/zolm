@@ -14,12 +14,15 @@ use App\Models\ProductSet;
 use App\Models\ProductSetItem;
 use App\Models\ProductMatchIssue;
 use App\Models\Recipe;
+use App\Models\TrendyolBoosterReview;
 use App\Services\Marketplace\MarketplaceDiagnosticsGuidanceService;
+use App\Services\Marketplace\MarketplaceListingQualityService;
 use App\Services\Marketplace\MarketplaceManualMatchService;
 use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceListingPushService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Services\Marketplace\MarketplaceRiskSignalService;
+use App\Services\Marketplace\ProductCreativeStudioService;
 use App\Services\MpProductChangeLogger;
 use App\Services\MpProductImportService;
 use App\Services\MpSettingsService;
@@ -153,7 +156,20 @@ class MpProductsManager extends Component
     public string $f_description = '';
     public string $f_image_url = '';
     public array $f_image_urls = [];
+    public array $f_video_urls = [];
     public array $f_image_uploads = [];
+    public array $listingQualityAnalysis = [];
+    public string $listingQualityDraftTitle = '';
+    public string $listingQualityDraftDescription = '';
+    public string $listingQualityFeedback = '';
+    public string $creativeStudioInstruction = '';
+    public string $creativeStudioAspectRatio = '1:1';
+    public array $creativeStudioImage = [];
+    public string $creativeStudioFeedback = '';
+    public string $creativeStudioVideoInstruction = '';
+    public string $creativeStudioVideoAspectRatio = '9:16';
+    public array $creativeStudioVideo = [];
+    public string $creativeStudioVideoFeedback = '';
     public string $setSearch = '';
     public $setComponentProductId = null;
     public $setComponentQuantity = 1;
@@ -245,6 +261,7 @@ class MpProductsManager extends Component
             'f_status' => 'required|in:active,out_of_stock,pending,suspended',
             'f_image_url' => 'nullable|string|max:2048',
             'f_image_urls.*' => 'nullable|string|max:2048',
+            'f_video_urls.*' => 'nullable|string|max:2048',
             'f_image_uploads.*' => 'nullable|image|max:5120',
         ];
     }
@@ -1270,6 +1287,9 @@ class MpProductsManager extends Component
     {
         $product = MpProduct::where('user_id', $this->userId())->findOrFail($id);
 
+        $this->clearListingQualityAnalysis();
+        $this->clearCreativeStudioImage();
+        $this->clearCreativeStudioVideo();
         $this->editingId = $product->id;
         $this->f_barcode = $product->barcode ?? '';
         $this->f_stock_code = $product->stock_code ?? '';
@@ -1308,6 +1328,10 @@ class MpProductsManager extends Component
             $galleryImages->prepend($this->f_image_url);
         }
         $this->f_image_urls = $galleryImages->all();
+        $this->f_video_urls = collect($product->video_urls ?? [])
+            ->filter(fn ($url) => is_string($url) && trim($url) !== '')
+            ->values()
+            ->all();
         $this->f_image_uploads = [];
         $this->loadSetState($product);
         $this->setEditTab('basic');
@@ -1317,7 +1341,11 @@ class MpProductsManager extends Component
 
     public function setEditTab(string $tab): void
     {
-        if (!in_array($tab, ['basic', 'pricing', 'logistics', 'set', 'images'], true)) {
+        if (!in_array($tab, ['basic', 'pricing', 'logistics', 'set', 'images', 'listing_quality'], true)) {
+            return;
+        }
+
+        if ($tab === 'listing_quality' && ! $this->editingId) {
             return;
         }
 
@@ -1329,6 +1357,85 @@ class MpProductsManager extends Component
     {
         $this->editProduct($id);
         $this->setEditTab($tab);
+    }
+
+    public function runListingQualityAnalysis(): void
+    {
+        if (! $this->editingId) {
+            session()->flash('warning', 'Listing analizi için önce kayıtlı bir ürün seçin.');
+
+            return;
+        }
+
+        $product = MpProduct::query()
+            ->where('user_id', $this->userId())
+            ->with([
+                'channelListings.store:id,user_id,marketplace,store_name,is_active',
+                'channelListings.channelProduct:id,store_id,title,brand,category_name,raw_payload',
+            ])
+            ->findOrFail($this->editingId);
+
+        $reviews = Schema::hasTable('trendyol_booster_reviews')
+            ? TrendyolBoosterReview::query()
+                ->where('user_id', $this->userId())
+                ->where('mp_product_id', $product->id)
+                ->whereIn('status', ['approved', 'pending'])
+                ->where('is_spam', false)
+                ->whereNotNull('comment')
+                ->latest('reviewed_at')
+                ->limit(300)
+                ->get()
+            : collect();
+
+        $this->listingQualityAnalysis = app(MarketplaceListingQualityService::class)->analyze(
+            $product,
+            $reviews,
+            [
+                'barcode' => $this->f_barcode,
+                'stock_code' => $this->f_stock_code,
+                'product_name' => $this->f_product_name,
+                'model_code' => $this->f_model_code,
+                'brand' => $this->f_brand,
+                'category_name' => $this->f_category_name,
+                'color' => $this->f_color,
+                'size' => $this->f_size,
+                'variant' => $this->f_variant,
+                'description' => $this->f_description,
+                'image_url' => $this->f_image_url,
+                'image_urls' => $this->f_image_urls,
+            ]
+        );
+        $this->listingQualityDraftTitle = (string) data_get($this->listingQualityAnalysis, 'draft.title', '');
+        $this->listingQualityDraftDescription = (string) data_get($this->listingQualityAnalysis, 'draft.description', '');
+        $this->listingQualityFeedback = 'Analiz güncellendi. Taslaklar henüz ürün kartına uygulanmadı.';
+    }
+
+    public function applyListingQualityTitleDraft(): void
+    {
+        if (trim($this->listingQualityDraftTitle) === '') {
+            return;
+        }
+
+        $this->f_product_name = trim($this->listingQualityDraftTitle);
+        $this->listingQualityFeedback = 'Başlık taslağı forma uygulandı. Kalıcı olması için ürünü güncelleyin.';
+    }
+
+    public function applyListingQualityDescriptionDraft(): void
+    {
+        if (trim($this->listingQualityDraftDescription) === '') {
+            return;
+        }
+
+        $this->f_description = trim($this->listingQualityDraftDescription);
+        $this->listingQualityFeedback = 'Açıklama taslağı forma uygulandı. Kalıcı olması için ürünü güncelleyin.';
+    }
+
+    public function clearListingQualityAnalysis(): void
+    {
+        $this->listingQualityAnalysis = [];
+        $this->listingQualityDraftTitle = '';
+        $this->listingQualityDraftDescription = '';
+        $this->listingQualityFeedback = '';
     }
 
     public function addImageUrlField(): void
@@ -1371,6 +1478,125 @@ class MpProductsManager extends Component
 
         unset($this->f_image_uploads[$index]);
         $this->f_image_uploads = array_values($this->f_image_uploads);
+    }
+
+    public function generateProductCreativeImage(): void
+    {
+        if (! $this->editingId) {
+            $this->creativeStudioFeedback = 'Görsel üretmek için önce kayıtlı bir ürün seçin.';
+
+            return;
+        }
+
+        $this->validate([
+            'creativeStudioInstruction' => ['nullable', 'string', 'max:600'],
+            'creativeStudioAspectRatio' => ['required', 'in:1:1,3:4,4:3,9:16,16:9'],
+        ]);
+
+        $product = MpProduct::query()
+            ->where('user_id', $this->userId())
+            ->findOrFail($this->editingId);
+
+        try {
+            $this->creativeStudioImage = app(ProductCreativeStudioService::class)->generateImage(
+                $product,
+                $this->creativeStudioInstruction,
+                $this->creativeStudioAspectRatio,
+            );
+            $this->creativeStudioFeedback = 'Görsel üretildi. Önizleyin; ana görsele uygulamak için ayrıca onay verin.';
+        } catch (\Throwable $exception) {
+            report($exception);
+            $this->creativeStudioImage = [];
+            $this->creativeStudioFeedback = $exception->getMessage();
+        }
+    }
+
+    public function applyCreativeStudioImage(): void
+    {
+        $url = trim((string) data_get($this->creativeStudioImage, 'url', ''));
+        if ($url === '') {
+            return;
+        }
+
+        $this->f_image_url = $url;
+        $this->f_image_urls = collect($this->f_image_urls)
+            ->prepend($url)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $this->creativeStudioFeedback = 'Üretilen görsel forma ana görsel olarak uygulandı. Kalıcı olması için ürünü güncelleyin.';
+    }
+
+    public function clearCreativeStudioImage(): void
+    {
+        $this->creativeStudioImage = [];
+        $this->creativeStudioFeedback = '';
+    }
+
+    public function generateProductCreativeVideo(): void
+    {
+        if (! $this->editingId) {
+            $this->creativeStudioVideoFeedback = 'Video üretmek için önce kayıtlı bir ürün seçin.';
+
+            return;
+        }
+
+        $this->validate([
+            'creativeStudioVideoInstruction' => ['nullable', 'string', 'max:600'],
+            'creativeStudioVideoAspectRatio' => ['required', 'in:9:16,16:9'],
+        ]);
+        $product = MpProduct::query()
+            ->where('user_id', $this->userId())
+            ->findOrFail($this->editingId);
+
+        try {
+            $this->creativeStudioVideo = app(ProductCreativeStudioService::class)->generateVideo(
+                $product,
+                $this->creativeStudioVideoInstruction,
+                $this->creativeStudioVideoAspectRatio,
+                data_get($this->creativeStudioImage, 'path'),
+            );
+            $this->creativeStudioVideoFeedback = data_get($this->creativeStudioVideo, 'used_reference_image')
+                ? 'Video, üretilen ürün görseli referans alınarak hazırlandı. Kaydetmek için videoyu ürüne uygulayın.'
+                : 'Video ürün bilgileriyle hazırlandı. Kaydetmek için videoyu ürüne uygulayın.';
+        } catch (\Throwable $exception) {
+            report($exception);
+            $this->creativeStudioVideo = [];
+            $this->creativeStudioVideoFeedback = $exception->getMessage();
+        }
+    }
+
+    public function applyCreativeStudioVideo(): void
+    {
+        $url = trim((string) data_get($this->creativeStudioVideo, 'url', ''));
+        if ($url === '') {
+            return;
+        }
+
+        $this->f_video_urls = collect($this->f_video_urls)
+            ->prepend($url)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $this->creativeStudioVideoFeedback = 'Video ürün formuna eklendi. Kalıcı olması için ürünü güncelleyin.';
+    }
+
+    public function clearCreativeStudioVideo(): void
+    {
+        $this->creativeStudioVideo = [];
+        $this->creativeStudioVideoFeedback = '';
+    }
+
+    public function removeProductVideoUrl(int $index): void
+    {
+        if (! array_key_exists($index, $this->f_video_urls)) {
+            return;
+        }
+
+        unset($this->f_video_urls[$index]);
+        $this->f_video_urls = array_values($this->f_video_urls);
     }
 
     public function saveProduct(): void
@@ -1435,6 +1661,7 @@ class MpProductsManager extends Component
             'description' => $this->f_description ?: null,
             'image_url' => $primaryImage !== '' ? $primaryImage : null,
             'image_urls' => $galleryImages->isNotEmpty() ? $galleryImages->all() : null,
+            'video_urls' => collect($this->f_video_urls)->map(fn ($url) => trim((string) $url))->filter()->unique()->values()->all() ?: null,
             'import_source' => 'manual_form',
         ];
 
@@ -4631,7 +4858,15 @@ class MpProductsManager extends Component
         $this->f_description = '';
         $this->f_image_url = '';
         $this->f_image_urls = [];
+        $this->f_video_urls = [];
         $this->f_image_uploads = [];
+        $this->clearListingQualityAnalysis();
+        $this->creativeStudioInstruction = '';
+        $this->creativeStudioAspectRatio = '1:1';
+        $this->clearCreativeStudioImage();
+        $this->creativeStudioVideoInstruction = '';
+        $this->creativeStudioVideoAspectRatio = '9:16';
+        $this->clearCreativeStudioVideo();
         $this->setSearch = '';
         $this->setCostMode = ProductSet::MODE_SUM_COMPONENTS;
         $this->setLogisticsMode = ProductSet::MODE_SUM_COMPONENTS;

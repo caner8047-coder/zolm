@@ -99,6 +99,11 @@ class HrEmployee extends Model
         return $this->hasMany(\App\Modules\Hr\Overtime\Models\HrOvertimeRequest::class, 'employee_id');
     }
 
+    public function payrollProfiles(): HasMany
+    {
+        return $this->hasMany(\App\Modules\Hr\Payroll\Models\HrPayrollEmployeeProfile::class, 'employee_id');
+    }
+
     public function expenses(): HasMany
     {
         return $this->hasMany(\App\Modules\Hr\Expense\Models\HrExpense::class, 'employee_id');

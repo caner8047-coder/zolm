@@ -176,7 +176,77 @@ class TrendyolBoosterAnalysisService
             'risk_count' => (clone $base)->whereIn('decision_status', ['risk', 'loss'])->count(),
             'average_score' => round((float) ((clone $base)->avg('opportunity_score') ?? 0), 1),
             'last_checked_at' => $products->max('last_checked_at'),
+            'decision_journey' => $this->decisionJourney($base),
             'products' => $products,
+        ];
+    }
+
+    /**
+     * Analizden doğrulanmış satış kararına ilerlemeyi, birbirini kapsayan
+     * aşamalar halinde sunar. Böylece sayıların huni mantığı bozulmaz.
+     *
+     * @return array<string, mixed>
+     */
+    protected function decisionJourney(Builder $base): array
+    {
+        $total = (clone $base)->count();
+        $trackingReady = Schema::hasColumn('trendyol_booster_products', 'tracking_status');
+        $qualityReady = Schema::hasColumn('trendyol_booster_products', 'data_quality_score');
+        $salesReady = Schema::hasColumn('trendyol_booster_products', 'estimated_daily_sales');
+
+        $trackedQuery = clone $base;
+        if ($trackingReady) {
+            $trackedQuery->where('tracking_status', 'active');
+        }
+        $tracked = $trackedQuery->count();
+
+        $evidenceQuery = clone $trackedQuery;
+        if ($qualityReady) {
+            $evidenceQuery->where('data_quality_score', '>=', 50);
+        } else {
+            $evidenceQuery->whereRaw('1 = 0');
+        }
+        $evidenceReady = $evidenceQuery->count();
+
+        $financeQuery = (clone $evidenceQuery)
+            ->where('cogs', '>', 0)
+            ->where('commission_rate', '>', 0);
+        $financeReady = $financeQuery->count();
+
+        $decisionQuery = clone $financeQuery;
+        if ($salesReady) {
+            $decisionQuery->whereNotNull('estimated_daily_sales');
+        } else {
+            $decisionQuery->whereRaw('1 = 0');
+        }
+        $decisionReady = $decisionQuery->count();
+
+        $stages = [
+            ['key' => 'analyzed', 'label' => 'Analiz edildi', 'count' => $total, 'hint' => 'Canlı ürün kaydı oluştu'],
+            ['key' => 'tracked', 'label' => 'Takibe geçti', 'count' => $tracked, 'hint' => 'Zaman serisi başladı'],
+            ['key' => 'evidence', 'label' => 'Kanıt yeterli', 'count' => $evidenceReady, 'hint' => 'Veri kalitesi en az %50'],
+            ['key' => 'decision', 'label' => 'Karara hazır', 'count' => $decisionReady, 'hint' => 'Maliyet ve satış sinyali hazır'],
+        ];
+
+        $gaps = collect($stages)
+            ->sliding(2)
+            ->map(function ($pair): array {
+                $from = $pair->first();
+                $to = $pair->last();
+
+                return [
+                    'from' => $from['label'],
+                    'to' => $to['label'],
+                    'count' => max(0, (int) $from['count'] - (int) $to['count']),
+                ];
+            });
+        $bottleneck = $gaps->sortByDesc('count')->first();
+
+        return [
+            'stages' => $stages,
+            'finance_ready_count' => $financeReady,
+            'conversion_percent' => $total > 0 ? round(($decisionReady / $total) * 100, 1) : 0.0,
+            'bottleneck' => $bottleneck,
         ];
     }
 

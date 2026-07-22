@@ -2684,6 +2684,21 @@
                                                 </button>
                                                 <button type="button"
                                                         @click="actionMenuOpen = false"
+                                                        wire:click="openEditProductTab({{ $product->id }}, 'listing_quality')"
+                                                        wire:loading.attr="disabled"
+                                                        wire:loading.class="cursor-wait opacity-60"
+                                                        wire:target="openEditProductTab({{ $product->id }}, 'listing_quality')"
+                                                        title="Ürün kartı, kanal ilanı ve yorum sinyallerini birlikte analiz et"
+                                                        class="flex w-full items-center gap-2.5 rounded-[6px] px-3 py-2 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed">
+                                                    <span class="text-slate-400">
+                                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                                        </svg>
+                                                    </span>
+                                                    <span class="min-w-0 truncate text-xs font-medium text-slate-700">Listing kalitesini analiz et</span>
+                                                </button>
+                                                <button type="button"
+                                                        @click="actionMenuOpen = false"
                                                         wire:click="openEditProductTab({{ $product->id }}, 'pricing')"
                                                         wire:loading.attr="disabled"
                                                         wire:loading.class="cursor-wait opacity-60"

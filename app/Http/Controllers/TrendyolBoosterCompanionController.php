@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\TrendyolBoosterProduct;
 use App\Models\TrendyolBoosterReviewSync;
+use App\Services\Marketplace\TrendyolBestsellerReportService;
 use App\Services\Marketplace\TrendyolBoosterAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterProductAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterReviewService;
@@ -27,6 +28,7 @@ class TrendyolBoosterCompanionController extends Controller
         protected TrendyolBoosterSupplierResearchService $supplierResearchService,
         protected TrendyolBoosterReviewService $reviewService,
         protected TrendyolProductPageReader $reader,
+        protected TrendyolBestsellerReportService $bestsellerReportService,
     ) {}
 
     public function session(): JsonResponse
@@ -50,6 +52,8 @@ class TrendyolBoosterCompanionController extends Controller
                 'stock_check' => route('mp.trendyol-booster.companion.stock-check'),
                 'store_scan' => route('mp.trendyol-booster.companion.store-scan'),
                 'market_research' => route('mp.trendyol-booster.companion.market-research'),
+                'bestseller_capture' => route('mp.trendyol-booster.companion.bestseller-capture'),
+                'opportunity_scan' => route('mp.trendyol-booster.companion.opportunity-scan'),
                 'pending_jobs' => route('mp.trendyol-booster.companion.pending-jobs'),
                 'pricing_cost_lookup' => route('mp.trendyol-booster.companion.pricing-cost-lookup'),
                 'update_product_cost' => route('mp.trendyol-booster.companion.update-product-cost'),
@@ -114,6 +118,98 @@ class TrendyolBoosterCompanionController extends Controller
                 'keywords' => $dueKeywords,
                 'stores' => $dueStores,
             ],
+        ]);
+    }
+
+    public function bestsellerCapture(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'query' => ['required', 'string', 'min:2', 'max:180'],
+            'matched_label' => ['nullable', 'string', 'max:180'],
+            'source_url' => ['required', 'string', 'max:1000', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (! $this->isValidTrendyolUrl((string) $value)) {
+                    $fail('Geçerli bir Trendyol liste linki gerekir.');
+                }
+            }],
+            'items' => ['required', 'array', 'min:1', 'max:72'],
+            'items.*.trendyol_product_id' => ['required', 'regex:/^\d{1,30}$/'],
+            'items.*.source_url' => ['required', 'url:http,https', 'max:1000'],
+            'items.*.title' => ['required', 'string', 'max:500'],
+            'items.*.brand' => ['nullable', 'string', 'max:120'],
+            'items.*.image_url' => ['nullable', 'url:http,https', 'max:1000'],
+            'items.*.sale_price' => ['nullable', 'numeric', 'min:0'],
+            'items.*.rating' => ['nullable', 'numeric', 'min:0', 'max:5'],
+            'items.*.review_count' => ['nullable', 'integer', 'min:0'],
+            'items.*.favorite_count' => ['nullable', 'integer', 'min:0'],
+            'items.*.seller_name' => ['nullable', 'string', 'max:180'],
+            'items.*.campaign_badges' => ['nullable', 'array', 'max:12'],
+            'items.*.campaign_badges.*' => ['string', 'max:180'],
+        ]);
+
+        $items = collect($validated['items'])
+            ->values()
+            ->map(function (array $item, int $index): array {
+                return $item + [
+                    'rank' => $index + 1,
+                    'price' => $item['sale_price'] ?? null,
+                    'rating_count' => $item['review_count'] ?? 0,
+                    'campaigns' => $item['campaign_badges'] ?? [],
+                    'campaign_count' => count((array) ($item['campaign_badges'] ?? [])),
+                ];
+            })
+            ->all();
+
+        $result = $this->bestsellerReportService->storeRun($this->userId(), [
+            'query' => trim((string) $validated['query']),
+            'matched_label' => trim((string) ($validated['matched_label'] ?? $validated['query'])),
+            'source_url' => $this->normalizeUrl((string) $validated['source_url']),
+            'source' => 'browser_companion',
+        ], $items);
+
+        $report = $result['report'];
+        $run = $result['run'];
+
+        return response()->json([
+            'ok' => true,
+            'mode' => 'bestseller_capture',
+            'message' => $result['created']
+                ? "{$run->item_count} görünür ürünle ilk pazar ölçümü kaydedildi."
+                : "{$run->item_count} görünür ürünle yeni pazar ölçümü kaydedildi.",
+            'report_id' => $report->id,
+            'run_id' => $run->id,
+            'item_count' => (int) $run->item_count,
+            'priced_item_count' => (int) $run->priced_item_count,
+            'created' => (bool) $result['created'],
+            'dashboard_url' => route('mp.trendyol-booster', [
+                'booster' => 'bestseller',
+                'bestseller_q' => $report->query,
+                'bestseller_mode' => 'reports',
+                'bestseller_report' => $report->id,
+            ]),
+        ]);
+    }
+
+    public function opportunityScan(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'items' => ['required', 'array', 'min:2', 'max:40'],
+            'items.*.trendyol_product_id' => ['required', 'regex:/^\d{1,30}$/'],
+            'items.*.source_url' => ['required', 'url:http,https', 'max:1000'],
+            'items.*.title' => ['required', 'string', 'max:500'],
+            'items.*.brand' => ['nullable', 'string', 'max:120'],
+            'items.*.sale_price' => ['nullable', 'numeric', 'min:0'],
+            'items.*.rating' => ['nullable', 'numeric', 'min:0', 'max:5'],
+            'items.*.review_count' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $scan = app(\App\Services\Marketplace\TrendyolBoosterOpportunityScannerService::class)
+            ->scan((array) $validated['items']);
+
+        return response()->json([
+            'ok' => true,
+            'mode' => 'opportunity_scan',
+            'message' => $scan['scanned_count'].' görünür ürün fırsat sinyalleriyle sıralandı.',
+            'scan' => $scan,
         ]);
     }
 

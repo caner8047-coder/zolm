@@ -8,6 +8,8 @@ use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Document\Enums\DocumentCategory;
 use App\Modules\Hr\Document\Enums\DocumentSensitivity;
 use App\Modules\Hr\Document\Models\HrEmployeeDocument;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -44,10 +46,10 @@ class ExportDocumentsAction
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
-        $headers = ['#', 'Calisan No', 'Ad Soyad', 'Belge Turu', 'Kategori', 'Durum', 'Dogrulama', 'Yukleme', 'Son Kullanma', 'Kalan Gun', 'Versiyon'];
+        $headers = ['#', 'Çalışan No', 'Ad Soyad', 'Belge Türü', 'Kategori', 'Durum', 'Doğrulama', 'Yükleme', 'Son Kullanma', 'Kalan Gün', 'Versiyon'];
         foreach ($headers as $col => $header) {
-            $cell = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 1) . '1';
-            $sheet->setCellValue($cell, $header);
+            $cell = Coordinate::stringFromColumnIndex($col + 1).'1';
+            $sheet->setCellValueExplicit($cell, $this->sanitizeCell($header), DataType::TYPE_STRING);
         }
 
         $row = 2;
@@ -65,17 +67,23 @@ class ExportDocumentsAction
             $daysLeft = $doc->days_until_expiry;
 
             // CSV/XLSX formula enjeksiyonuna karşı kullanıcı kaynaklı metin hücreleri sanitize edilir.
-            $sheet->setCellValue('A' . $row, $doc->id);
-            $sheet->setCellValue('B' . $row, $this->sanitizeCell($doc->employee?->employee_number ?? ''));
-            $sheet->setCellValue('C' . $row, $this->sanitizeCell($doc->employee?->full_name ?? ''));
-            $sheet->setCellValue('D' . $row, $this->sanitizeCell($type?->name ?? ''));
-            $sheet->setCellValue('E' . $row, $this->sanitizeCell($type?->category?->label() ?? ''));
-            $sheet->setCellValue('F' . $row, $this->sanitizeCell($doc->status->label()));
-            $sheet->setCellValue('G' . $row, $this->sanitizeCell($doc->verification_status->label()));
-            $sheet->setCellValue('H' . $row, $doc->created_at?->format('d.m.Y') ?? '');
-            $sheet->setCellValue('I' . $row, $doc->expiry_date?->format('d.m.Y') ?? '');
-            $sheet->setCellValue('J' . $row, $daysLeft !== null ? (string) $daysLeft : '');
-            $sheet->setCellValue('K' . $row, (string) $doc->version_number);
+            $values = [
+                (string) $doc->id,
+                $doc->employee?->employee_number ?? '',
+                $doc->employee?->full_name ?? '',
+                $type?->name ?? '',
+                $type?->category?->label() ?? '',
+                $doc->status->label(),
+                $doc->verification_status->label(),
+                $doc->created_at?->format('d.m.Y') ?? '',
+                $doc->expiry_date?->format('d.m.Y') ?? '',
+                $daysLeft !== null ? (string) $daysLeft : '',
+                (string) $doc->version_number,
+            ];
+            foreach ($values as $index => $value) {
+                $cell = Coordinate::stringFromColumnIndex($index + 1).$row;
+                $sheet->setCellValueExplicit($cell, $this->sanitizeCell($value), DataType::TYPE_STRING);
+            }
 
             $row++;
         }
@@ -92,7 +100,7 @@ class ExportDocumentsAction
 
         $this->auditService->logEvent('documents_exported', 'Belge listesi disa aktarildi', [
             'format' => 'xlsx',
-            'count' => $documents->count(),
+            'count' => $row - 2,
             'legal_entity_id' => $tenantId,
         ]);
 
@@ -103,12 +111,13 @@ class ExportDocumentsAction
      * CSV/XLSX formula enjeksiyonunu önler: =, +, -, @, tab, CR ile başlayan
      * kullanıcı kaynaklı değerlerin başına tek tırnak ekler.
      */
-    private function sanitizeCell(mixed $value): mixed
+    private function sanitizeCell(mixed $value): string
     {
-        if (!is_string($value)) {
-            return $value;
+        $value = (string) $value;
+        if (! mb_check_encoding($value, 'UTF-8')) {
+            $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
         }
-
+        $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $value) ?? '';
         $value = trim($value);
 
         if ($value !== '' && preg_match('/^[=+\-@\t\r]/', $value)) {

@@ -203,6 +203,34 @@
                 <div class="bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 text-sm">{{ session('document_success') }}</div>
             @endif
 
+            <!-- 4857 SK m.75 Özlük Dosyası İndeksi -->
+            @if(isset($fileChecklist))
+                <div class="rounded-[10px] border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-900">4857 SK m.75 Özlük Dosyası Standart Belge İndeksi</h3>
+                            <p class="text-xs text-slate-500">Yasal zorunlu 8 özlük evrakının doluluk ve eksiklik kontrolü</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-semibold text-slate-700">%{{ $fileChecklist['completion_rate'] }} Tamamlandı</span>
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-mono font-medium {{ $fileChecklist['is_complete'] ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }}">
+                                {{ $fileChecklist['is_complete'] ? 'Tam Özlük Dosyası' : $fileChecklist['missing_count'] . ' Eksik Evrak' }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                        @foreach($fileChecklist['checklist'] as $item)
+                            <div class="rounded-[6px] border p-2.5 text-xs flex items-center justify-between {{ $item['is_present'] ? 'border-emerald-200 bg-emerald-50/50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-500' }}">
+                                <span class="truncate font-medium">{{ $item['name'] }}</span>
+                                <span class="font-mono text-[11px] px-1.5 py-0.5 rounded {{ $item['is_present'] ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600' }}">
+                                    {{ $item['is_present'] ? 'Mevcut' : 'Eksik' }}
+                                </span>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
             <!-- Belge Özeti -->
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div class="bg-white rounded-lg border border-gray-200 p-4">

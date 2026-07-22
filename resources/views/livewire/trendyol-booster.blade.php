@@ -133,6 +133,53 @@
         </div>
     </section>
 
+    @if(in_array($activeModule, ['analysis', 'tracking'], true))
+        @php
+            $decisionJourney = (array) ($dashboard['decision_journey'] ?? []);
+        @endphp
+        <section data-testid="booster-decision-journey" class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-5">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Karar hunisi</p>
+                    <h2 class="mt-1 text-base font-semibold text-slate-900">Araştırmadan satış kararına ilerleme</h2>
+                    <p class="mt-1 text-sm text-slate-500">Ürünlerin hangi aşamada kaldığını ve karar darboğazını görün.</p>
+                </div>
+                <span class="w-fit rounded-[6px] border border-slate-200 bg-slate-50/70 px-2.5 py-1 font-mono text-xs text-slate-700">
+                    Karara dönüşüm %{{ number_format((float) ($decisionJourney['conversion_percent'] ?? 0), 1, ',', '.') }}
+                </span>
+            </div>
+
+            <div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+                @foreach(($decisionJourney['stages'] ?? []) as $index => $stage)
+                    @php
+                        $stageCount = (int) ($stage['count'] ?? 0);
+                        $previousCount = $index === 0 ? max(1, $stageCount) : max(1, (int) data_get($decisionJourney, 'stages.'.($index - 1).'.count', 0));
+                        $stagePercent = $index === 0 ? ($stageCount > 0 ? 100 : 0) : min(100, round(($stageCount / $previousCount) * 100));
+                    @endphp
+                    <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-[6px] border border-slate-200 bg-white font-mono text-[11px] font-semibold text-slate-600">{{ $index + 1 }}</span>
+                            <span class="font-mono text-[11px] text-slate-500">%{{ $stagePercent }}</span>
+                        </div>
+                        <p class="mt-2 truncate text-sm font-semibold text-slate-900">{{ $stage['label'] }}</p>
+                        <p class="mt-1 text-xl font-semibold text-slate-900">{{ $stageCount }}</p>
+                        <div class="mt-2 h-1.5 overflow-hidden rounded-[4px] bg-slate-200">
+                            <div class="h-full rounded-[4px] bg-slate-900" style="width: {{ $stagePercent }}%"></div>
+                        </div>
+                        <p class="mt-2 text-xs leading-4 text-slate-500">{{ $stage['hint'] }}</p>
+                    </div>
+                @endforeach
+            </div>
+
+            @if(!empty($decisionJourney['bottleneck']) && (int) data_get($decisionJourney, 'bottleneck.count', 0) > 0)
+                <div class="mt-3 flex flex-col gap-2 rounded-[8px] border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+                    <span><strong>Darboğaz:</strong> {{ data_get($decisionJourney, 'bottleneck.from') }} → {{ data_get($decisionJourney, 'bottleneck.to') }}</span>
+                    <span class="font-mono text-xs">{{ (int) data_get($decisionJourney, 'bottleneck.count') }} ürün bekliyor</span>
+                </div>
+            @endif
+        </section>
+    @endif
+
     <section
         class="rounded-[10px] border border-slate-200 bg-white p-3 shadow-sm lg:p-4"
         x-data="{
@@ -1892,6 +1939,24 @@
                     <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3"><p class="text-xs text-slate-500">Yükselen</p><p class="mt-1 text-lg font-semibold text-emerald-700">{{ $trendDashboard['rising_count'] }}</p></div>
                     <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3"><p class="text-xs text-slate-500">Düşük rekabet fırsatı</p><p class="mt-1 text-lg font-semibold text-sky-700">{{ $trendDashboard['opportunity_count'] }}</p></div>
                     <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3"><p class="text-xs text-slate-500">Taranan rakip ürün</p><p class="mt-1 text-lg font-semibold text-amber-700">{{ $trendDashboard['source_product_count'] }}</p></div>
+                </div>
+
+                <div class="rounded-[10px] border border-slate-200 bg-slate-50/60 p-3 lg:p-4" data-testid="booster-keyword-opportunity-playbook">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div class="min-w-0"><p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Anahtar kelime fırsat motoru</p><h3 class="mt-1 text-base font-semibold text-slate-900">Sinyalden uygulanabilir teste</h3><p class="mt-1 text-xs text-slate-500">Fırsat skoru; rakip sinyali, rekabet seviyesi ve trend yönünü birlikte değerlendirir.</p></div>
+                        <span class="w-fit rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 font-mono text-xs text-slate-600">{{ count($trendDashboard['opportunity_playbook'] ?? []) }} öncelik</span>
+                    </div>
+                    <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        @forelse(($trendDashboard['opportunity_playbook'] ?? []) as $play)
+                            <article class="min-w-0 rounded-[8px] border border-slate-200 bg-white p-3">
+                                <div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="truncate text-sm font-semibold text-slate-900">{{ $play['keyword'] }}</p><p class="mt-0.5 truncate text-xs text-slate-500">{{ $play['category'] }}</p></div><span class="shrink-0 rounded-[6px] border border-emerald-200 bg-emerald-50 px-2 py-1 font-mono text-xs font-semibold text-emerald-700">{{ $play['opportunity_score'] }}/100</span></div>
+                                <p class="mt-3 text-xs font-semibold text-slate-800">{{ $play['action'] }}</p><p class="mt-1 text-xs leading-5 text-slate-500">{{ $play['reason'] }}</p>
+                                <div class="mt-3 flex items-center justify-between gap-2"><code class="min-w-0 truncate rounded-[6px] bg-slate-50 px-2 py-1 text-[11px] text-slate-600">{{ $play['title_fragment'] }}</code><button type="button" wire:click="trackTrendKeyword({{ $play['id'] }})" @disabled(!$trendTargetProductId) class="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-[6px] bg-slate-900 px-3 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-40">Takibe al</button></div>
+                            </article>
+                        @empty
+                            <div class="rounded-[8px] border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500 sm:col-span-2 xl:col-span-3">Fırsat reçetesi için rakip mağaza taramasından kelime sinyali bekleniyor.</div>
+                        @endforelse
+                    </div>
                 </div>
 
                 <div data-testid="booster-trend-mobile-ledger" class="space-y-3 md:hidden">

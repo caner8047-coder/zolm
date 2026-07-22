@@ -17,26 +17,34 @@ use App\Models\TrendyolBoosterReviewSource;
 use App\Models\TrendyolBoosterReviewSync;
 use App\Models\TrendyolBoosterStoreWatchItem;
 use App\Models\TrendyolBoosterTrendKeyword;
+use App\Models\User;
 use App\Services\Marketplace\TrendyolBestsellerReader;
 use App\Services\Marketplace\TrendyolBestsellerReportService;
 use App\Services\Marketplace\TrendyolBoosterActivityLogger;
+use App\Services\Marketplace\TrendyolBoosterActionCenterService;
 use App\Services\Marketplace\TrendyolBoosterAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterCampaignScenarioService;
 use App\Services\Marketplace\TrendyolBoosterCommissionRateService;
+use App\Services\Marketplace\TrendyolBoosterCollectionService;
 use App\Services\Marketplace\TrendyolBoosterCompetitorService;
 use App\Services\Marketplace\TrendyolBoosterCostPresetService;
 use App\Services\Marketplace\TrendyolBoosterCostRecommendationService;
+use App\Services\Marketplace\TrendyolBoosterDecisionAssistantService;
 use App\Services\Marketplace\TrendyolBoosterEmailDigestService;
 use App\Services\Marketplace\TrendyolBoosterKeywordLookupService;
 use App\Services\Marketplace\TrendyolBoosterKeywordService;
 use App\Services\Marketplace\TrendyolBoosterModuleConfig;
 use App\Services\Marketplace\TrendyolBoosterModuleInsightService;
+use App\Services\Marketplace\TrendyolBoosterMobileDiscoveryService;
 use App\Services\Marketplace\TrendyolBoosterMonitorService;
 use App\Services\Marketplace\TrendyolBoosterOperationalAlertService;
+use App\Services\Marketplace\TrendyolBoosterObservabilityService;
 use App\Services\Marketplace\TrendyolBoosterPriorityActionService;
 use App\Services\Marketplace\TrendyolBoosterProductAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterResearchService;
+use App\Services\Marketplace\TrendyolBoosterReportService;
 use App\Services\Marketplace\TrendyolBoosterRetentionReportService;
+use App\Services\Marketplace\TrendyolBoosterReviewInsightService;
 use App\Services\Marketplace\TrendyolBoosterReviewMatchEngine;
 use App\Services\Marketplace\TrendyolBoosterReviewPushService;
 use App\Services\Marketplace\TrendyolBoosterReviewService;
@@ -45,6 +53,7 @@ use App\Services\Marketplace\TrendyolBoosterSellDecisionService;
 use App\Services\Marketplace\TrendyolBoosterStockService;
 use App\Services\Marketplace\TrendyolBoosterStoreWatchService;
 use App\Services\Marketplace\TrendyolBoosterSupplierResearchService;
+use App\Services\Marketplace\TrendyolBoosterSupplierMarginService;
 use App\Services\Marketplace\TrendyolBoosterSyncHealthService;
 use App\Services\Marketplace\TrendyolBoosterTrendKeywordService;
 use App\Services\Marketplace\TrendyolCategoryDictionary;
@@ -133,6 +142,18 @@ class TrendyolBooster extends Component
 
     public string $productUrl = '';
 
+    public string $mobileDiscoveryQuery = '';
+
+    public string $newCollectionName = '';
+
+    public ?int $selectedCollectionId = null;
+
+    public ?int $collectionProductId = null;
+
+    public string $assistantQuestion = '';
+
+    public array $assistantResponse = [];
+
     public ?int $selectedAnalysisProductId = null;
 
     public string $productSearch = '';
@@ -199,6 +220,10 @@ class TrendyolBooster extends Component
 
     /** @var array<int, string> */
     public array $comparisonUrls = ['', '', '', ''];
+
+    public bool $comparisonAutoStart = false;
+
+    public ?int $decisionTrackedProductId = null;
 
     /** @var array<int, array<string, mixed>> */
     public array $comparisonResults = [];
@@ -318,6 +343,14 @@ class TrendyolBooster extends Component
 
     public string $supplierOfferDirection = 'asc';
 
+    public $supplierCommissionRate = 20;
+
+    public $supplierShippingCost = 60;
+
+    public $supplierPackagingCost = 10;
+
+    public $supplierTargetMargin = 15;
+
     public string $trendSearch = '';
 
     public string $trendCompetition = 'all';
@@ -399,6 +432,13 @@ class TrendyolBooster extends Component
 
     public string $reviewSortBy = 'reviewed_at_desc';
 
+    public string $reviewWorkspaceTab = 'reviews';
+
+    public string $reviewInsightProductId = '';
+
+    /** @var array<string, mixed> */
+    public array $reviewInsights = [];
+
     public ?int $activeReviewSyncRunId = null;
 
     public ?int $reviewSyncProgress = null;
@@ -418,6 +458,12 @@ class TrendyolBooster extends Component
         'activeModule' => ['except' => 'analysis', 'as' => 'booster'],
         'favoritesOnly' => ['except' => false, 'as' => 'favorites'],
         'productSearch' => ['except' => '', 'as' => 'q'],
+        'bestsellerSearch' => ['except' => '', 'as' => 'bestseller_q'],
+        'bestsellerMode' => ['except' => 'live', 'as' => 'bestseller_mode'],
+        'selectedBestsellerReportId' => ['except' => null, 'as' => 'bestseller_report'],
+        'comparisonUrls' => ['except' => ['', '', '', ''], 'as' => 'compare'],
+        'comparisonAutoStart' => ['except' => false, 'as' => 'compare_now'],
+        'decisionTrackedProductId' => ['except' => null, 'as' => 'decision_product'],
         'selectedProductId' => ['except' => null, 'as' => 'product'],
     ];
 
@@ -429,6 +475,16 @@ class TrendyolBooster extends Component
         if ($this->activeModule !== 'tracking') {
             $this->favoritesOnly = false;
         }
+        if (! in_array($this->bestsellerMode, ['live', 'reports'], true)) {
+            $this->bestsellerMode = 'live';
+        }
+        $comparisonUrls = collect($this->comparisonUrls)
+            ->map(fn ($url): string => trim((string) $url))
+            ->filter(fn (string $url): bool => $this->isValidTrendyolUrl($url))
+            ->take(4)
+            ->values()
+            ->all();
+        $this->comparisonUrls = array_pad($comparisonUrls, 4, '');
 
         $settings = new MpSettingsService($this->userId());
         $this->vatEnabled = $settings->isKdvEnabled();
@@ -438,7 +494,22 @@ class TrendyolBooster extends Component
         $this->costVatRate = $this->vatRate;
         $this->expenseVatRate = $this->percentValue($settings->getExpenseVatRate()) ?: 20;
 
-        if ($this->selectedProductId) {
+        if ($this->activeModule === 'sell_decision' && $this->decisionTrackedProductId) {
+            $tracked = TrendyolBoosterProduct::query()
+                ->where('user_id', $this->userId())
+                ->find($this->decisionTrackedProductId);
+
+            if ($tracked) {
+                $this->loadTrackedProduct($tracked->id);
+                $this->refreshCostRecommendation([], $tracked);
+                $this->message = (float) $this->cogs > 0
+                    ? 'Canlı liste ürünü karar merkezine alındı. Maliyetleri doğrulayıp kararı üretin.'
+                    : 'Canlı liste ürünü karar merkezine alındı. Karar üretmeden önce alış maliyetini girin.';
+                $this->messageType = (float) $this->cogs > 0 ? 'success' : 'warning';
+            } else {
+                $this->decisionTrackedProductId = null;
+            }
+        } elseif ($this->selectedProductId) {
             $this->loadProduct($this->selectedProductId);
         }
 
@@ -712,6 +783,17 @@ class TrendyolBooster extends Component
                 'risk_count' => 0,
                 'average_score' => 0.0,
                 'last_checked_at' => null,
+                'decision_journey' => [
+                    'stages' => [
+                        ['key' => 'analyzed', 'label' => 'Analiz edildi', 'count' => 0, 'hint' => 'Canlı ürün kaydı oluştu'],
+                        ['key' => 'tracked', 'label' => 'Takibe geçti', 'count' => 0, 'hint' => 'Zaman serisi başladı'],
+                        ['key' => 'evidence', 'label' => 'Kanıt yeterli', 'count' => 0, 'hint' => 'Veri kalitesi en az %50'],
+                        ['key' => 'decision', 'label' => 'Karara hazır', 'count' => 0, 'hint' => 'Maliyet ve satış sinyali hazır'],
+                    ],
+                    'finance_ready_count' => 0,
+                    'conversion_percent' => 0.0,
+                    'bottleneck' => null,
+                ],
                 'products' => collect(),
             ];
         }
@@ -752,6 +834,77 @@ class TrendyolBooster extends Component
             $this->analysisSort,
             $this->trackingStatus,
         );
+    }
+
+    #[Computed]
+    public function collectionDashboard(): array
+    {
+        return app(TrendyolBoosterCollectionService::class)->dashboard($this->userId(), $this->selectedCollectionId);
+    }
+
+    public function createCollection(): void
+    {
+        $validated = $this->validate(['newCollectionName' => ['required', 'string', 'min:2', 'max:80']]);
+        $collection = app(TrendyolBoosterCollectionService::class)->create($this->userId(), $validated['newCollectionName']);
+        $this->selectedCollectionId = $collection->id;
+        $this->newCollectionName = '';
+        unset($this->collectionDashboard);
+        $this->message = 'Karar koleksiyonu hazır.';
+        $this->messageType = 'success';
+    }
+
+    public function toggleCollectionProduct(?int $productId = null): void
+    {
+        $validated = validator([
+            'collectionId' => $this->selectedCollectionId,
+            'productId' => $productId ?: $this->collectionProductId,
+        ], [
+            'collectionId' => ['required', 'integer', 'min:1'],
+            'productId' => ['required', 'integer', 'min:1'],
+        ])->validate();
+        $attached = app(TrendyolBoosterCollectionService::class)->toggleProduct(
+            $this->userId(),
+            (int) $validated['collectionId'],
+            (int) $validated['productId'],
+        );
+        unset($this->collectionDashboard);
+        $this->message = $attached ? 'Ürün koleksiyona eklendi.' : 'Ürün koleksiyondan çıkarıldı.';
+        $this->messageType = 'success';
+    }
+
+    public function exportBoosterExcel(): mixed
+    {
+        return app(TrendyolBoosterReportService::class)->excel($this->userId());
+    }
+
+    public function exportBoosterPdf(): mixed
+    {
+        return app(TrendyolBoosterReportService::class)->pdf($this->userId());
+    }
+
+    public function askBoosterAssistant(): void
+    {
+        $validated = $this->validate(['assistantQuestion' => ['required', 'string', 'min:3', 'max:400']]);
+        $this->assistantResponse = app(TrendyolBoosterDecisionAssistantService::class)->answer(
+            $this->userId(),
+            $validated['assistantQuestion'],
+        );
+        $this->logActivity(
+            'decision_assistant',
+            'Karar Asistanı',
+            Str::limit($validated['assistantQuestion'], 120, ''),
+            'Yanıt '.count((array) ($this->assistantResponse['sources'] ?? [])).' kanıt kaydıyla üretildi.',
+            'kanıt',
+            count((array) ($this->assistantResponse['sources'] ?? [])),
+        );
+        unset($this->activityDashboard);
+    }
+
+    #[Computed]
+    public function forecastCalibration(): array
+    {
+        return app(\App\Services\Marketplace\TrendyolBoosterForecastCalibrationService::class)
+            ->dashboard($this->userId());
     }
 
     #[Computed]
@@ -919,6 +1072,22 @@ class TrendyolBooster extends Component
     }
 
     #[Computed]
+    public function supplierMarginDashboard(): array
+    {
+        $research = $this->supplierResearchDashboard;
+        $latest = $research['latest'] ?? null;
+
+        return app(TrendyolBoosterSupplierMarginService::class)->scenarios(
+            $research['offers'] ?? [],
+            (float) ($latest?->source_price ?? 0),
+            (float) $this->supplierCommissionRate,
+            (float) $this->supplierShippingCost,
+            (float) $this->supplierPackagingCost,
+            (float) $this->supplierTargetMargin,
+        );
+    }
+
+    #[Computed]
     public function trendDashboard(): array
     {
         if (! $this->boosterTrendKeywordTablesReady()) {
@@ -930,6 +1099,7 @@ class TrendyolBooster extends Component
                 'source_store_count' => 0,
                 'last_scanned_at' => null,
                 'rows' => collect(),
+                'opportunity_playbook' => [],
             ];
         }
 
@@ -1093,6 +1263,9 @@ class TrendyolBooster extends Component
 
         $this->activeModule = $module;
         $this->favoritesOnly = false;
+        if ($module !== 'sell_decision') {
+            $this->decisionTrackedProductId = null;
+        }
         $this->dispatchBoosterModuleChanged($module);
     }
 
@@ -2432,6 +2605,28 @@ class TrendyolBooster extends Component
         unset($this->productAnalysis, $this->dashboard, $this->trackingDashboard);
     }
 
+    public function resolveMobileDiscovery(?string $scannedValue = null): void
+    {
+        $query = trim((string) ($scannedValue ?: $this->mobileDiscoveryQuery));
+        $validated = validator(['query' => $query], [
+            'query' => ['required', 'string', 'min:2', 'max:80'],
+        ])->validate();
+        $this->mobileDiscoveryQuery = $validated['query'];
+        $result = app(TrendyolBoosterMobileDiscoveryService::class)->resolve($validated['query']);
+
+        if (! $result['ok']) {
+            $this->message = $result['message'];
+            $this->messageType = 'error';
+
+            return;
+        }
+
+        $this->productUrl = $result['source_url'];
+        $this->message = $result['message'];
+        $this->messageType = 'success';
+        $this->analyzeResearchProduct();
+    }
+
     public function runProductComparison(): void
     {
         $this->runResearchComparison('comparison');
@@ -2590,6 +2785,32 @@ class TrendyolBooster extends Component
         unset($this->productAnalysis, $this->dashboard, $this->trackingDashboard);
     }
 
+    public function openTrackedProductSellDecision(int $trackedProductId): void
+    {
+        $this->loadTrackedProduct($trackedProductId);
+        $this->activeModule = 'sell_decision';
+        $this->decisionTrackedProductId = $trackedProductId;
+        $this->favoritesOnly = false;
+        $this->sellDecisionResult = [];
+        $this->message = (float) $this->cogs > 0
+            ? 'Canlı ürün verisi yüklendi. Maliyetleri doğrulayıp Sat veya Satma kararını üretin.'
+            : 'Canlı ürün verisi yüklendi. Karar üretmeden önce alış maliyetini girin.';
+        $this->messageType = (float) $this->cogs > 0 ? 'success' : 'warning';
+        $this->dispatchBoosterModuleChanged('sell_decision');
+        unset($this->preview, $this->productAnalysis, $this->financeDashboard, $this->dashboard, $this->trackingDashboard);
+    }
+
+    public function openTrackedProductFinance(int $trackedProductId): void
+    {
+        $this->loadTrackedProduct($trackedProductId);
+        $this->activeModule = 'profit_loss';
+        $this->favoritesOnly = false;
+        $this->message = 'Ürün ve kayıtlı maliyetleri Kâr-Zarar hesabına taşındı.';
+        $this->messageType = 'success';
+        $this->dispatchBoosterModuleChanged('profit_loss');
+        unset($this->preview, $this->financeDashboard, $this->productAnalysis, $this->dashboard, $this->trackingDashboard);
+    }
+
     public function refreshProductAnalysisNow(int $trackedProductId): void
     {
         if (! $this->analysisRefreshReady()) {
@@ -2728,6 +2949,93 @@ class TrendyolBooster extends Component
             'priority-actions',
             fn (): array => app(TrendyolBoosterPriorityActionService::class)->dashboard($this->userId()),
         );
+    }
+
+    #[Computed]
+    public function trackingActionCenter(): array
+    {
+        return app(TrendyolBoosterActionCenterService::class)->dashboard(
+            $this->userId(),
+            $this->trackingOperationalAlertState,
+            $this->trackingPriorityActionState,
+        );
+    }
+
+    #[Computed]
+    public function companionHealth(): array
+    {
+        return app(TrendyolBoosterObservabilityService::class)->dashboard(
+            $this->userId(),
+            (int) config('marketplace.trendyol_booster.observability.dashboard_minutes', 60),
+        );
+    }
+
+    #[Computed]
+    public function boosterTeamOptions(): Collection
+    {
+        $actor = Auth::user();
+
+        if (! $actor instanceof User) {
+            return collect();
+        }
+
+        if (! $actor->isManager()) {
+            return collect([$actor]);
+        }
+
+        return User::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->limit(50)
+            ->get(['id', 'name', 'email']);
+    }
+
+    public function updateTrackingAction(string $fingerprint, string $status, int $snoozeHours = 24): void
+    {
+        $validated = validator([
+            'fingerprint' => $fingerprint,
+            'status' => $status,
+            'snoozeHours' => $snoozeHours,
+        ], [
+            'fingerprint' => ['required', 'string', 'max:191', 'regex:/^(operational|product):[A-Za-z0-9:_-]+$/'],
+            'status' => ['required', 'in:open,acknowledged,snoozed'],
+            'snoozeHours' => ['required', 'integer', 'min:1', 'max:168'],
+        ])->validate();
+
+        app(TrendyolBoosterActionCenterService::class)->setStatus(
+            $this->userId(),
+            $validated['fingerprint'],
+            $validated['status'],
+            (int) $validated['snoozeHours'],
+            $this->userId(),
+        );
+
+        unset($this->trackingActionCenter);
+        $this->message = match ($validated['status']) {
+            'acknowledged' => 'Aksiyon kabul edildi ve işlem geçmişine kaydedildi.',
+            'snoozed' => 'Aksiyon '.(int) $validated['snoozeHours'].' saat ertelendi.',
+            default => 'Aksiyon yeniden açıldı.',
+        };
+        $this->messageType = 'success';
+    }
+
+    public function assignTrackingAction(string $fingerprint, mixed $assignedUserId): void
+    {
+        $validated = validator(['fingerprint' => $fingerprint, 'assignedUserId' => $assignedUserId], [
+            'fingerprint' => ['required', 'string', 'max:191', 'regex:/^(operational|product):[A-Za-z0-9:_-]+$/'],
+            'assignedUserId' => ['required', 'integer', 'min:1'],
+        ])->validate();
+        $allowed = $this->boosterTeamOptions->contains('id', (int) $validated['assignedUserId']);
+        abort_unless($allowed, 403);
+        app(TrendyolBoosterActionCenterService::class)->assign(
+            $this->userId(),
+            $validated['fingerprint'],
+            (int) $validated['assignedUserId'],
+            $this->userId(),
+        );
+        unset($this->trackingActionCenter);
+        $this->message = 'Aksiyon sorumlusu güncellendi ve denetim izine kaydedildi.';
+        $this->messageType = 'success';
     }
 
     protected function trackingRetentionReport(): array
@@ -4700,6 +5008,71 @@ class TrendyolBooster extends Component
         })->values()->all();
     }
 
+    #[Computed]
+    public function reviewInsightProducts(): array
+    {
+        if ($this->activeModule !== 'reviews') {
+            return [];
+        }
+
+        return TrendyolBoosterReview::query()
+            ->where('user_id', $this->userId())
+            ->when($this->reviewSourceId !== null, fn (Builder $query) => $query->where('review_source_id', $this->reviewSourceId))
+            ->whereIn('status', ['approved', 'pending'])
+            ->where('is_spam', false)
+            ->selectRaw('trendyol_product_id, MAX(product_title) as product_title, MAX(product_image_url) as product_image_url, COUNT(*) as review_count')
+            ->groupBy('trendyol_product_id')
+            ->orderByDesc('review_count')
+            ->limit(100)
+            ->get()
+            ->map(fn ($row): array => [
+                'trendyol_product_id' => (string) $row->trendyol_product_id,
+                'product_title' => (string) ($row->product_title ?: 'Trendyol ürünü'),
+                'product_image_url' => (string) ($row->product_image_url ?: ''),
+                'review_count' => (int) $row->review_count,
+            ])
+            ->all();
+    }
+
+    public function setReviewWorkspaceTab(string $tab): void
+    {
+        if (! in_array($tab, ['reviews', 'insights'], true)) {
+            return;
+        }
+
+        $this->reviewWorkspaceTab = $tab;
+    }
+
+    public function runReviewInsights(?string $trendyolProductId = null): void
+    {
+        $productId = trim((string) ($trendyolProductId ?? $this->reviewInsightProductId));
+        $this->reviewInsightProductId = $productId;
+        $this->reviewWorkspaceTab = 'insights';
+
+        try {
+            $this->reviewInsights = app(TrendyolBoosterReviewInsightService::class)->analyze(
+                $this->userId(),
+                $this->reviewSourceId,
+                $productId !== '' ? $productId : null,
+            );
+            $this->message = ($this->reviewInsights['sample_count'] ?? 0) > 0
+                ? 'Yorum içgörüsü güncellendi. Bulgular yalnız gösterilen kanıt örneklerine dayanır.'
+                : 'Analiz için uygun yorum bulunamadı.';
+            $this->messageType = ($this->reviewInsights['sample_count'] ?? 0) > 0 ? 'success' : 'warning';
+        } catch (\Throwable $exception) {
+            report($exception);
+            $this->reviewInsights = [];
+            $this->message = 'Yorum içgörüsü üretilemedi. Yorum kaynağını ve AI yapılandırmasını kontrol edin.';
+            $this->messageType = 'error';
+        }
+    }
+
+    public function clearReviewInsights(): void
+    {
+        $this->reviewInsights = [];
+        unset($this->reviewInsightProducts);
+    }
+
     public function selectReviewSource(mixed $sourceId): void
     {
         $source = TrendyolBoosterReviewSource::query()
@@ -4712,6 +5085,8 @@ class TrendyolBooster extends Component
             $this->reviewSourceUrl = '';
             $this->reviewSourceMerchantId = '';
             $this->reviewSourcePreview = [];
+            $this->reviewInsightProductId = '';
+            $this->clearReviewInsights();
 
             return;
         }
@@ -4727,6 +5102,8 @@ class TrendyolBooster extends Component
             'verified_at' => $source->verified_at?->format('d.m.Y H:i'),
             'sample_products' => (array) data_get($source->meta, 'sample_products', []),
         ];
+        $this->reviewInsightProductId = '';
+        $this->clearReviewInsights();
         unset($this->reviewStats, $this->reviewGroups);
     }
 
@@ -4837,6 +5214,8 @@ class TrendyolBooster extends Component
         ];
         $this->message = "{$source->store_name} doğrulandı: {$productCount} ürün taramaya hazır.";
         $this->messageType = 'success';
+        $this->reviewInsightProductId = '';
+        $this->clearReviewInsights();
         unset($this->reviewSources, $this->reviewStats, $this->reviewGroups);
     }
 
@@ -4884,6 +5263,8 @@ class TrendyolBooster extends Component
 
             unset($this->reviewStats);
             unset($this->reviewGroups);
+            unset($this->reviewInsightProducts);
+            $this->clearReviewInsights();
         }
     }
 
@@ -4962,6 +5343,8 @@ class TrendyolBooster extends Component
 
         $this->reviewSourceId = null;
         $this->reviewSourcePreview = [];
+        $this->reviewInsightProductId = '';
+        $this->clearReviewInsights();
         unset($this->reviewStats, $this->reviewGroups);
     }
 
@@ -4987,6 +5370,7 @@ class TrendyolBooster extends Component
         $review->update(['status' => 'approved']);
         $this->message = 'Yorum onaylandı.';
         $this->messageType = 'success';
+        $this->clearReviewInsights();
         unset($this->reviewStats, $this->reviewGroups);
     }
 
@@ -5001,6 +5385,7 @@ class TrendyolBooster extends Component
         $review->update(['status' => 'rejected']);
         $this->message = 'Yorum reddedildi.';
         $this->messageType = 'success';
+        $this->clearReviewInsights();
         unset($this->reviewStats, $this->reviewGroups);
     }
 
@@ -5014,6 +5399,7 @@ class TrendyolBooster extends Component
         $review->markDeleted('manual');
         $this->message = 'Yorum silindi (geri alınabilir).';
         $this->messageType = 'success';
+        $this->clearReviewInsights();
         unset($this->reviewStats, $this->reviewGroups);
     }
 
@@ -5028,6 +5414,7 @@ class TrendyolBooster extends Component
         if ($review->restoreReview()) {
             $this->message = 'Yorum geri alındı (pending durumunda).';
             $this->messageType = 'success';
+            $this->clearReviewInsights();
             unset($this->reviewStats, $this->reviewGroups);
         } else {
             $this->message = 'Yorum geri alınamadı (silinmiş değil).';

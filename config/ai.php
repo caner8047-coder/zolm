@@ -58,6 +58,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Product AI Studio
+    |--------------------------------------------------------------------------
+    | Medya üretimi metin sağlayıcısından bağımsız yapılandırılır. Böylece
+    | Groq/OpenAI metin analizi kullanılırken Gemini görsel modeli seçilebilir.
+    */
+    'media_api_key' => env('AI_MEDIA_API_KEY', ''),
+    'image_model' => env('AI_IMAGE_MODEL', 'gemini-3.1-flash-image'),
+    'video_model' => env('AI_VIDEO_MODEL', 'gemini-omni-flash-preview'),
+    'media_timeout' => (int) env('AI_MEDIA_TIMEOUT', 120),
+    'video_timeout' => (int) env('AI_VIDEO_TIMEOUT', 240),
+
+    /*
+    |--------------------------------------------------------------------------
     | Demo Mode
     |--------------------------------------------------------------------------
     | API key yoksa demo mod aktif olur. Production'da false olmalı.

@@ -26,10 +26,12 @@ class TimesheetExportTest extends TestCase
         $date=now()->subDay()->toDateString(); $period=app(CreateTimesheetPeriodAction::class)->execute('Excel',$date,$date); app(CalculateTimesheetPeriodAction::class)->execute($period);
         $relative=app(ExportTimesheetAction::class)->execute($period); $full=storage_path('app/private/'.$relative);
         $this->assertFileExists($full);
-        $sheet=IOFactory::load($full)->getActiveSheet();
+        $workbook=IOFactory::load($full); $sheet=$workbook->getActiveSheet();
         $this->assertSame("'=2+2",$sheet->getCell('A2')->getValue());
         $this->assertSame("'=FORMULA Test",$sheet->getCell('B2')->getValue());
         $this->assertSame('Puantaj',$sheet->getTitle());
+        $this->assertSame(['Puantaj','Çalışan Özeti'],$workbook->getSheetNames());
+        $this->assertSame('Talep Edilen İzin Dk',$workbook->getSheetByName('Çalışan Özeti')->getCell('H1')->getValue());
         @unlink($full);
     }
 }

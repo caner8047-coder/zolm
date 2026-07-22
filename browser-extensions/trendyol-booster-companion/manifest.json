@@ -1,8 +1,14 @@
 {
   "manifest_version": 3,
   "name": "ZOLM Trendyol Booster Companion",
-  "version": "0.15.1",
-  "description": "Trendyol ürünlerini ZOLM Booster Radar'a ekler; Seller Panel fiyatlandırma, kampanya ve sipariş sayfalarında karlılık gösterir.",
+  "version": "1.0.0",
+  "description": "Trendyol fırsat ve toplu karar kuyruğunu, medya merkezini ve Seller Panel kârlılığını ZOLM'a taşır.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": ["storage", "activeTab", "tabs", "scripting", "alarms"],
   "host_permissions": [
     "http://localhost/*",
@@ -13,8 +19,10 @@
     "https://localhost:*/*",
     "http://127.0.0.1:*/*",
     "https://127.0.0.1:*/*",
+    "https://m.zolm.com.tr/*",
     "https://www.trendyol.com/*",
     "https://*.trendyol.com/*",
+    "https://*.dsmcdn.com/*",
     "https://partner.trendyol.com/*",
     "https://ty.gl/*",
     "https://www.google.com/*",
@@ -32,7 +40,7 @@
     },
     {
       "matches": ["https://partner.trendyol.com/*"],
-      "js": ["seller-panel.js", "campaign-panel.js", "orders-panel.js"],
+      "js": ["seller-panel.js", "campaign-panel.js", "orders-panel.js", "seller-profit-overlay.js"],
       "run_at": "document_idle"
     },
     {
@@ -44,7 +52,8 @@
         "http://localhost:*/*",
         "https://localhost:*/*",
         "http://127.0.0.1:*/*",
-        "https://127.0.0.1:*/*"
+        "https://127.0.0.1:*/*",
+        "https://m.zolm.com.tr/*"
       ],
       "js": ["zolm-bridge.js"],
       "run_at": "document_start"
@@ -52,6 +61,10 @@
   ],
   "action": {
     "default_title": "ZOLM Booster",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
   }
 }

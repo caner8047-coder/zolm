@@ -4,6 +4,8 @@
     $trendyolOffers = collect($supplierResearchDashboard['trendyol_offers'] ?? []);
     $externalOffers = collect($supplierResearchDashboard['external_offers'] ?? []);
     $coverage = collect($supplierResearchDashboard['coverage'] ?? []);
+    $supplierMargin = $this->supplierMarginDashboard;
+    $supplierMarginRows = collect($supplierMargin['rows'] ?? []);
     $riskClass = match($supplierResearch?->risk_level) {
         'high' => 'border-rose-200 bg-rose-50 text-rose-700',
         'medium' => 'border-amber-200 bg-amber-50 text-amber-700',
@@ -214,6 +216,42 @@
                 <div class="min-w-0 rounded-[8px] border border-slate-200 bg-white p-3"><p class="text-xs text-slate-500">Güçlü eşleşen teklif</p><p class="mt-1 truncate text-sm font-semibold text-slate-900">{{ $supplierResearch->verified_offer_count }} teklif · güven %{{ $supplierResearch->confidence_score }}</p></div>
                 <div class="min-w-0 rounded-[8px] border border-slate-200 bg-white p-3"><p class="text-xs text-slate-500">Radar satış sinyali</p><p class="mt-1 truncate text-sm font-semibold text-slate-900">{{ $supplierResearch->scan_count >= 2 ? number_format($supplierOffers->sum('estimated_sales'), 0, ',', '.') . ' tahmini' : '2. taramada başlar' }}</p></div>
             </div>
+
+            <section class="border-b border-slate-200 p-4 lg:p-6" data-testid="booster-supplier-margin-planner">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="min-w-0">
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Tedarikçi marj eşleştirme</p>
+                        <h3 class="mt-1 text-base font-semibold text-slate-900">Hangi teklif hedef marjı taşıyor?</h3>
+                        <p class="mt-1 text-xs text-slate-500">Kaynak ürünün güncel satış fiyatına göre teklifleri aynı maliyet senaryosunda karşılaştırın.</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:w-[600px]">
+                        <label class="min-w-0"><span class="text-[11px] text-slate-500">Komisyon %</span><input type="number" min="0" max="100" step="0.1" wire:model.live.debounce.400ms="supplierCommissionRate" class="mt-1 min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-2 text-base sm:text-sm"></label>
+                        <label class="min-w-0"><span class="text-[11px] text-slate-500">Kargo TL</span><input type="number" min="0" step="0.01" wire:model.live.debounce.400ms="supplierShippingCost" class="mt-1 min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-2 text-base sm:text-sm"></label>
+                        <label class="min-w-0"><span class="text-[11px] text-slate-500">Paket TL</span><input type="number" min="0" step="0.01" wire:model.live.debounce.400ms="supplierPackagingCost" class="mt-1 min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-2 text-base sm:text-sm"></label>
+                        <label class="min-w-0"><span class="text-[11px] text-slate-500">Hedef marj %</span><input type="number" min="-100" max="100" step="0.1" wire:model.live.debounce.400ms="supplierTargetMargin" class="mt-1 min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-2 text-base sm:text-sm"></label>
+                    </div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3"><p class="text-xs text-slate-500">Azami alış maliyeti</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ $this->formatMoney($supplierMargin['max_purchase_cost'] ?? 0) }}</p></div>
+                    <div class="rounded-[8px] border border-emerald-200 bg-emerald-50/70 p-3"><p class="text-xs text-emerald-700">Hedefi geçen</p><p class="mt-1 text-lg font-semibold text-emerald-800">{{ (int) ($supplierMargin['go_count'] ?? 0) }} teklif</p></div>
+                    <div class="rounded-[8px] border border-amber-200 bg-amber-50/70 p-3"><p class="text-xs text-amber-700">Pazarlık gereken</p><p class="mt-1 text-lg font-semibold text-amber-800">{{ (int) ($supplierMargin['negotiate_count'] ?? 0) }} teklif</p></div>
+                </div>
+
+                <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    @forelse($supplierMarginRows->take(6) as $marginRow)
+                        @php($marginTone = match($marginRow['decision']) { 'go' => 'border-emerald-200 bg-emerald-50/70 text-emerald-700', 'negotiate' => 'border-amber-200 bg-amber-50/70 text-amber-700', 'reject' => 'border-rose-200 bg-rose-50/70 text-rose-700', default => 'border-slate-200 bg-slate-50/70 text-slate-600' })
+                        <article class="min-w-0 rounded-[8px] border border-slate-200 bg-white p-3">
+                            <div class="flex items-start justify-between gap-2"><div class="min-w-0"><p class="truncate text-sm font-semibold text-slate-900">{{ $marginRow['seller'] }}</p><p class="mt-0.5 truncate text-xs text-slate-500">{{ $marginRow['platform'] }} · eşleşme %{{ $marginRow['match_score'] }}</p></div><span class="shrink-0 rounded-[6px] border px-2 py-1 text-[11px] font-medium {{ $marginTone }}">{{ $marginRow['decision_label'] }}</span></div>
+                            <div class="mt-3 grid grid-cols-3 gap-2 text-center text-xs"><div class="rounded-[6px] bg-slate-50 p-2"><p class="text-slate-400">Alış</p><p class="mt-1 font-mono font-semibold text-slate-800">{{ $this->formatMoney($marginRow['purchase_cost']) }}</p></div><div class="rounded-[6px] bg-slate-50 p-2"><p class="text-slate-400">Net kâr</p><p class="mt-1 font-mono font-semibold {{ $marginRow['net_profit'] >= 0 ? 'text-emerald-700' : 'text-rose-700' }}">{{ $this->formatMoney($marginRow['net_profit']) }}</p></div><div class="rounded-[6px] bg-slate-50 p-2"><p class="text-slate-400">Marj</p><p class="mt-1 font-mono font-semibold text-slate-800">{{ $marginRow['margin'] !== null ? '%'.number_format($marginRow['margin'], 1, ',', '.') : '—' }}</p></div></div>
+                            @if($marginRow['decision'] === 'negotiate')<p class="mt-2 text-xs text-amber-700">Hedef için {{ $this->formatMoney(max(0, $marginRow['negotiation_gap'])) }} daha düşük alış fiyatı gerekir.</p>@endif
+                        </article>
+                    @empty
+                        <div class="rounded-[8px] border border-dashed border-slate-300 p-4 text-sm text-slate-500 sm:col-span-2 xl:col-span-3">Marj senaryosu için doğrulanmış ve fiyatı olan teklif bekleniyor.</div>
+                    @endforelse
+                </div>
+                <p class="mt-3 rounded-[6px] border border-dashed border-slate-300 bg-slate-50/60 px-3 py-2 text-xs leading-5 text-slate-500">{{ $supplierMargin['evidence_note'] }}</p>
+            </section>
 
             <div class="border-b border-slate-200 p-4 lg:px-6">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

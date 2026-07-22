@@ -9,6 +9,10 @@ class HrPermissionSeeder extends Seeder
 {
     public function run(): void
     {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('permissions')) {
+            return;
+        }
+
         $permissions = config('hr_permissions', require base_path('app/Modules/Hr/Core/Config/hr_permissions.php'));
 
         foreach ($permissions as $perm) {
@@ -44,13 +48,41 @@ class HrPermissionSeeder extends Seeder
 
         DB::table('role_permission')->where('role_id', $managerRoleId)->delete();
         $managerPermissions = DB::table('permissions')
-            ->whereNotIn('name', ['hr.payroll.manage_rules', 'hr.settings.manage'])
+            ->whereNotIn('name', ['hr.payroll.manage_rules', 'hr.payroll.manage_profiles', 'hr.settings.manage'])
             ->pluck('id')
             ->toArray();
 
         foreach ($managerPermissions as $permId) {
             DB::table('role_permission')->insert([
                 'role_id' => $managerRoleId,
+                'permission_id' => $permId,
+            ]);
+        }
+
+        // Çalışan self-servis rolü yalnızca kişisel yüzeyleri ve kendi
+        // taleplerini kullanabilir; yönetim listeleme yetkileri verilmez.
+        DB::table('roles')->updateOrInsert(
+            ['slug' => 'hr_employee'],
+            ['name' => 'Çalışan Self Servis', 'created_at' => now(), 'updated_at' => now()]
+        );
+        $employeeRoleId = DB::table('roles')->where('slug', 'hr_employee')->value('id');
+
+        DB::table('role_permission')->where('role_id', $employeeRoleId)->delete();
+        $employeePermissions = DB::table('permissions')
+            ->whereIn('name', [
+                'hr.self_service.view',
+                'hr.leaves.create',
+                'hr.leaves.cancel_own',
+                'hr.expenses.create',
+                'hr.advances.create',
+                'hr.support.create',
+                'hr.isg.report_incident',
+            ])
+            ->pluck('id');
+
+        foreach ($employeePermissions as $permId) {
+            DB::table('role_permission')->insert([
+                'role_id' => $employeeRoleId,
                 'permission_id' => $permId,
             ]);
         }

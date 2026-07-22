@@ -9,16 +9,13 @@
   window[PANEL_ID] = CONTENT_VERSION;
   document.getElementById(PANEL_ID)?.remove();
 
-  // Bestseller listener unconditionally registered — search result pages
-  // (/sr?q=...) have context 'unknown' and hit the early return below,
-  // so the listener must be hoisted above it.
+  // Çok Satanlar köprüsü tüm Trendyol liste sayfalarında hazır kalır.
   chrome.runtime.onMessage.addListener(function bestsellerHandler(message, sender, sendResponse) {
     if (message?.type !== 'ZOLM_BOOSTER_BESTSELLER_PAGE_STATUS') {
       return false;
     }
 
-    const state = readSearchState();
-    const products = Array.isArray(state?.products) ? state.products : [];
+    const products = extractListingProducts();
 
     sendResponse({
       ok: products.length > 0,
@@ -62,6 +59,45 @@
 
   const context = pageContext();
 
+  if (context === 'listing') {
+    const listingPanel = createListingPanel();
+    document.documentElement.appendChild(listingPanel.host);
+    refreshListingPanel(listingPanel);
+
+    listingPanel.refreshButton.addEventListener('click', () => refreshListingPanel(listingPanel));
+    listingPanel.openButton.addEventListener('click', () => openListingInZolm(listingPanel));
+    listingPanel.opportunityButton.addEventListener('click', () => scanListingOpportunities(listingPanel));
+    listingPanel.queueButton.addEventListener('click', () => startListingDecisionQueue(listingPanel));
+    listingPanel.queueRetryButton.addEventListener('click', () => retryListingDecisionQueue(listingPanel));
+    listingPanel.queueClearButton.addEventListener('click', () => clearListingDecisionQueue(listingPanel));
+    listingPanel.compareButton.addEventListener('click', () => openListingComparison(listingPanel));
+    listingPanel.trackButton.addEventListener('click', () => trackListingSelection(listingPanel));
+
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message?.type !== 'ZOLM_BOOSTER_PAGE_STATUS') {
+        return false;
+      }
+
+      const summary = listingSummary();
+      sendResponse({
+        ok: summary.products.length > 0,
+        context: 'listing',
+        payload: summary,
+        summary: {
+          ready: summary.products.length > 0,
+          pricedItems: summary.pricedProducts.length,
+          message: summary.products.length > 0
+            ? `${summary.products.length} görünür ürün ve ${summary.pricedProducts.length} fiyat sinyali gözlendi. Derin analiz için Çok Satanlar çalışma alanını açın.`
+            : 'Liste kartları henüz okunamadı. Sayfayı aşağı kaydırıp Yenile deneyin.',
+        },
+      });
+
+      return false;
+    });
+
+    return;
+  }
+
   if (context === 'unknown') {
     return;
   }
@@ -74,6 +110,9 @@
   panel.trackButton.addEventListener('click', () => sendToZolm(panel, 'ZOLM_BOOSTER_TRACK'));
   panel.stockButton.addEventListener('click', () => sendToZolm(panel, 'ZOLM_BOOSTER_STOCK_CHECK'));
   panel.storeButton.addEventListener('click', () => sendToZolm(panel, 'ZOLM_BOOSTER_STORE_SCAN'));
+  panel.mediaButton.addEventListener('click', () => toggleProductMedia(panel));
+  panel.mediaDownloadButton.addEventListener('click', () => downloadSelectedProductMedia(panel));
+  panel.mediaCopyButton.addEventListener('click', () => copySelectedProductMedia(panel));
   panel.refreshButton.addEventListener('click', () => refreshPanel(panel));
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -111,6 +150,557 @@
 }
 )();
 
+function createListingPanel() {
+  const host = document.createElement('div');
+  host.id = 'zolm-trendyol-booster-panel';
+  host.style.position = 'fixed';
+  host.style.right = '16px';
+  host.style.bottom = '16px';
+  host.style.zIndex = '2147483647';
+
+  const shadow = host.attachShadow({ mode: 'open' });
+  shadow.innerHTML = `
+    <style>
+      :host { all: initial; }
+      .box {
+        width: 340px;
+        max-height: min(680px, calc(100vh - 32px));
+        overflow: auto;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        background: #fff;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, .18);
+        color: #0f172a;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .head, .foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 12px; }
+      .head { border-bottom: 1px solid #e2e8f0; }
+      .foot { border-top: 1px solid #e2e8f0; color: #64748b; font-size: 11px; }
+      .brand { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #475569; }
+      .pill { border: 1px solid #bfdbfe; border-radius: 6px; background: #eff6ff; padding: 3px 6px; color: #1d4ed8; font-size: 10px; font-weight: 800; }
+      .body { padding: 12px; }
+      .eyebrow { color: #64748b; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+      .title { margin: 4px 0 0; font-size: 15px; font-weight: 800; line-height: 1.35; }
+      .copy { margin: 5px 0 0; color: #64748b; font-size: 11px; line-height: 1.45; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 11px; }
+      .metric { min-width: 0; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; padding: 8px; }
+      .label { color: #64748b; font-size: 10px; }
+      .value { margin-top: 3px; overflow: hidden; color: #0f172a; font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+      .section-title { margin-top: 12px; color: #475569; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+      .products { display: grid; gap: 6px; margin-top: 7px; }
+      .product { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; min-width: 0; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; padding: 8px; }
+      .product:has(input:checked) { border-color: #94a3b8; background: #f8fafc; }
+      .product input { width: 16px; height: 16px; margin: 1px 0 0; accent-color: #0f172a; }
+      .product-main { min-width: 0; }
+      .product-name { overflow: hidden; color: #0f172a; font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .product-meta { margin-top: 3px; overflow: hidden; color: #64748b; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+      .product-action { min-height: 28px; margin-top: 6px; border-color: #cbd5e1; padding: 0 8px; color: #0f172a; font-size: 10px; }
+      .product-decision { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; border-top: 1px solid #e2e8f0; padding-top: 7px; }
+      .product-decision.hidden { display: none; }
+      .decision-cell { min-width: 0; border-radius: 6px; background: #f8fafc; padding: 6px; }
+      .decision-cell span { display: block; overflow: hidden; color: #64748b; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+      .decision-cell strong { display: block; margin-top: 2px; overflow: hidden; color: #0f172a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+      .decision-cell strong.ok { color: #047857; }
+      .decision-cell strong.warn { color: #c2410c; }
+      .decision-cell strong.err { color: #be123c; }
+      .decision-note { grid-column: 1 / -1; color: #64748b; font-size: 9px; line-height: 1.35; }
+      .evidence { margin-top: 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; padding: 8px; color: #475569; font-size: 11px; line-height: 1.45; }
+      .opportunities { display: none; margin-top: 10px; overflow: hidden; border: 1px solid #bbf7d0; border-radius: 8px; background: #f0fdf4; }
+      .opportunities.show { display: block; }
+      .opportunity-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #bbf7d0; padding: 7px 8px; color: #047857; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+      .opportunity-list { display: grid; gap: 1px; background: #d1fae5; }
+      .opportunity-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; background: #fff; padding: 7px 8px; }
+      .opportunity-name { overflow: hidden; color: #0f172a; font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .opportunity-reason { margin-top: 2px; overflow: hidden; color: #64748b; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+      .opportunity-score { color: #047857; font-size: 12px; font-weight: 900; }
+      .opportunity-confidence { color: #64748b; font-size: 9px; text-align: right; }
+      .queue { display: none; margin-top: 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; padding: 8px; }
+      .queue.show { display: block; }
+      .queue-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #475569; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+      .queue-track { height: 6px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: #e2e8f0; }
+      .queue-bar { height: 100%; width: 0; border-radius: inherit; background: #0f172a; transition: width .25s ease; }
+      .queue-copy { margin-top: 6px; color: #64748b; font-size: 10px; line-height: 1.4; }
+      .queue-retry { display: none; min-height: 30px; margin-top: 7px; padding: 0 8px; font-size: 10px; }
+      .queue-retry.show { display: inline-block; }
+      .queue-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+      .queue-buttons button { min-height: 30px; padding: 0 8px; font-size: 10px; }
+      .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 11px; }
+      .actions .wide { grid-column: 1 / -1; }
+      button { min-height: 40px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; padding: 0 11px; color: #334155; cursor: pointer; font: inherit; font-size: 11px; font-weight: 800; }
+      button.primary { border-color: #0f172a; background: #0f172a; color: #fff; }
+      button:disabled { cursor: not-allowed; opacity: .55; }
+      .refresh { min-height: 28px; border: 0; padding: 0; color: #64748b; }
+      .status.ok { color: #047857; }
+      .status.warn { color: #c2410c; }
+      .status.err { color: #be123c; }
+      @media (max-width: 480px) {
+        :host { left: 8px; right: 8px; bottom: 8px; }
+        .box { width: auto; max-height: calc(100vh - 16px); }
+      }
+    </style>
+    <div class="box">
+      <div class="head">
+        <div class="brand">ZOLM Discovery</div>
+        <div class="pill">Gözlenen veri</div>
+      </div>
+      <div class="body">
+        <div class="eyebrow">Trendyol liste araştırması</div>
+        <h2 class="title js-query">Arama sonuçları</h2>
+        <p class="copy js-copy">Görünür ürün kartları okunuyor...</p>
+        <div class="grid">
+          <div class="metric"><div class="label">Görünür ürün</div><div class="value js-count">-</div></div>
+          <div class="metric"><div class="label">Fiyat aralığı</div><div class="value js-range">-</div></div>
+          <div class="metric"><div class="label">Ortalama puan</div><div class="value js-rating">-</div></div>
+          <div class="metric"><div class="label">Marka çeşitliliği</div><div class="value js-brands">-</div></div>
+        </div>
+        <div class="section-title">Öne çıkan görünür kartlar</div>
+        <div class="products js-products"></div>
+        <div class="opportunities js-opportunities"><div class="opportunity-head"><span>Fırsat sıralaması</span><span class="js-opportunity-count"></span></div><div class="opportunity-list js-opportunity-list"></div></div>
+        <div class="queue js-queue"><div class="queue-head"><span>Toplu karar kuyruğu</span><span class="js-queue-count">0/0</span></div><div class="queue-track"><div class="queue-bar js-queue-bar"></div></div><div class="queue-copy js-queue-copy">Kuyruk bekleniyor.</div><div class="queue-buttons"><button class="queue-retry js-queue-retry" type="button">Başarısızları yeniden dene</button><button class="js-queue-clear" type="button">Kuyruğu temizle</button></div></div>
+        <div class="evidence">Bu özet yalnızca açık sayfadaki kartlardan gözlenir. Satış adedi veya stok tahmini değildir; tahmin ve finans kararı ZOLM panelinde ayrıca hesaplanır.</div>
+        <div class="actions">
+          <button class="primary wide js-opportunity" type="button">Fırsatları tara</button>
+          <button class="wide js-queue-start" type="button">İlk 10 ürünü karar kuyruğuna al</button>
+          <button class="js-compare" type="button">2 ürünü karşılaştır</button>
+          <button class="js-track" type="button">2 ürünü takibe al</button>
+          <button class="primary wide js-open" type="button">Listeyi raporla</button>
+        </div>
+      </div>
+      <div class="foot"><button class="refresh js-refresh" type="button">Yenile</button><span class="status js-status">Hazır</span></div>
+    </div>
+  `;
+
+  return {
+    host,
+    query: shadow.querySelector('.js-query'),
+    copy: shadow.querySelector('.js-copy'),
+    count: shadow.querySelector('.js-count'),
+    range: shadow.querySelector('.js-range'),
+    rating: shadow.querySelector('.js-rating'),
+    brands: shadow.querySelector('.js-brands'),
+    products: shadow.querySelector('.js-products'),
+    status: shadow.querySelector('.js-status'),
+    opportunities: shadow.querySelector('.js-opportunities'),
+    opportunityList: shadow.querySelector('.js-opportunity-list'),
+    opportunityCount: shadow.querySelector('.js-opportunity-count'),
+    opportunityButton: shadow.querySelector('.js-opportunity'),
+    queue: shadow.querySelector('.js-queue'),
+    queueBar: shadow.querySelector('.js-queue-bar'),
+    queueCount: shadow.querySelector('.js-queue-count'),
+    queueCopy: shadow.querySelector('.js-queue-copy'),
+    queueButton: shadow.querySelector('.js-queue-start'),
+    queueRetryButton: shadow.querySelector('.js-queue-retry'),
+    queueClearButton: shadow.querySelector('.js-queue-clear'),
+    openButton: shadow.querySelector('.js-open'),
+    compareButton: shadow.querySelector('.js-compare'),
+    trackButton: shadow.querySelector('.js-track'),
+    refreshButton: shadow.querySelector('.js-refresh'),
+    selectedIds: new Set(),
+    opportunityResults: [],
+    queuePollTimer: null,
+  };
+}
+
+function refreshListingPanel(panel) {
+  const summary = listingSummary();
+  panel.query.textContent = summary.keyword || 'Trendyol liste sonuçları';
+  panel.copy.textContent = summary.products.length > 0
+    ? `${summary.products.length} karttan karar öncesi hızlı pazar görünümü oluşturuldu.`
+    : 'Ürün kartları henüz okunamadı. Sayfayı biraz aşağı kaydırıp Yenile deneyin.';
+  panel.count.textContent = String(summary.products.length);
+  panel.range.textContent = summary.pricedProducts.length > 0
+    ? `${formatMoney(Math.min(...summary.pricedProducts))} – ${formatMoney(Math.max(...summary.pricedProducts))}`
+    : 'Yayınlanmıyor';
+  panel.rating.textContent = summary.ratings.length > 0
+    ? `${(summary.ratings.reduce((sum, value) => sum + value, 0) / summary.ratings.length).toFixed(1)} / 5`
+    : 'Yayınlanmıyor';
+  panel.brands.textContent = `${summary.brands.length} marka`;
+  panel.openButton.disabled = summary.products.length === 0;
+  panel.status.textContent = summary.products.length > 0 ? 'Hazır' : 'Veri bekleniyor';
+  panel.status.className = summary.products.length > 0 ? 'status js-status ok' : 'status js-status err';
+  const visibleProducts = summary.products.slice(0, 6);
+  const visibleIds = new Set(visibleProducts.map((product) => String(product.trendyol_product_id)));
+  panel.selectedIds = new Set(Array.from(panel.selectedIds).filter((productId) => visibleIds.has(productId)));
+
+  for (const product of visibleProducts) {
+    if (panel.selectedIds.size >= Math.min(2, visibleProducts.length)) break;
+    panel.selectedIds.add(String(product.trendyol_product_id));
+  }
+
+  panel.products.replaceChildren(...visibleProducts.map((product) => {
+    const row = document.createElement('div');
+    row.className = 'product';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = panel.selectedIds.has(String(product.trendyol_product_id));
+    checkbox.setAttribute('aria-label', `${product.title || 'Ürün'} karşılaştırma seçimi`);
+    const main = document.createElement('div');
+    main.className = 'product-main';
+    const title = document.createElement('div');
+    title.className = 'product-name';
+    title.textContent = product.title || 'Ürün';
+    const meta = document.createElement('div');
+    meta.className = 'product-meta';
+    const details = [
+      product.brand,
+      Number(product.sale_price || 0) > 0 ? formatMoney(product.sale_price) : null,
+      Number(product.rating || 0) > 0 ? `${Number(product.rating).toFixed(1)} puan` : null,
+      Number(product.review_count || 0) > 0 ? `${formatNumber(product.review_count)} yorum` : null,
+    ].filter(Boolean);
+    meta.textContent = details.join(' · ') || `Ürün ID ${product.trendyol_product_id}`;
+    const decisionButton = document.createElement('button');
+    decisionButton.type = 'button';
+    decisionButton.className = 'product-action';
+    decisionButton.textContent = 'Karar merkezine al';
+    const decisionBox = document.createElement('div');
+    decisionBox.className = 'product-decision hidden';
+    decisionButton.addEventListener('click', () => openListingDecision(panel, product, decisionButton, decisionBox));
+    checkbox.addEventListener('change', () => {
+      const productId = String(product.trendyol_product_id);
+      if (checkbox.checked && panel.selectedIds.size >= 4) {
+        checkbox.checked = false;
+        panel.status.textContent = 'En fazla 4 ürün karşılaştırılabilir.';
+        panel.status.className = 'status js-status err';
+        return;
+      }
+
+      if (checkbox.checked) panel.selectedIds.add(productId);
+      else panel.selectedIds.delete(productId);
+      updateListingSelection(panel, visibleProducts);
+    });
+    main.append(title, meta, decisionButton);
+    row.append(checkbox, main, decisionBox);
+    return row;
+  }));
+  updateListingSelection(panel, visibleProducts);
+}
+
+function openListingDecision(panel, product, button, decisionBox) {
+  const sourceUrl = String(product?.source_url || '');
+  if (!sourceUrl) {
+    panel.status.textContent = 'Ürün bağlantısı bulunamadı.';
+    panel.status.className = 'status js-status err';
+    return;
+  }
+
+  button.disabled = true;
+  panel.status.textContent = 'Canlı ürün verisi doğrulanıyor...';
+  panel.status.className = 'status js-status';
+
+  chrome.runtime.sendMessage({ type: 'ZOLM_BOOSTER_DECIDE_LISTING_PRODUCT', source_url: sourceUrl }, (response) => {
+    button.disabled = false;
+
+    if (chrome.runtime.lastError || !response?.ok) {
+      panel.status.textContent = response?.message || chrome.runtime.lastError?.message || 'Karar merkezi açılamadı.';
+      panel.status.className = 'status js-status err';
+      return;
+    }
+
+    renderListingDecisionSummary(decisionBox, response.summary || {});
+    button.textContent = 'Karar merkezini yeniden aç';
+    panel.status.textContent = 'Canlı analiz kaydedildi · Karar merkezi açıldı';
+    panel.status.className = 'status js-status ok';
+  });
+}
+
+function renderListingDecisionSummary(container, summary) {
+  const decision = summary?.decision || {};
+  const current = summary?.current || {};
+  const evidence = summary?.evidence || {};
+  const tone = decision.status === 'go'
+    ? 'ok'
+    : (['loss', 'risk'].includes(decision.status) ? 'err' : 'warn');
+  const dailySales = Number(current.estimated_daily_sales);
+  const confidence = Number(current.confidence_score ?? evidence.confidence_score);
+  const margin = Number(decision.profit_margin_percent);
+
+  const cells = [
+    ['Karar', decision.label || 'Veri topla', tone],
+    ['Satış tahmini', Number.isFinite(dailySales) && dailySales > 0 ? `~${dailySales.toFixed(1)} / gün` : 'Henüz hazır değil', ''],
+    ['Finans', decision.finance_ready && Number.isFinite(margin) ? `%${margin.toFixed(1)} marj` : 'Maliyet gerekli', decision.finance_ready ? tone : 'warn'],
+  ].map(([label, value, valueTone]) => {
+    const cell = document.createElement('div');
+    cell.className = 'decision-cell';
+    const labelNode = document.createElement('span');
+    labelNode.textContent = label;
+    const valueNode = document.createElement('strong');
+    valueNode.className = valueTone;
+    valueNode.textContent = value;
+    cell.append(labelNode, valueNode);
+    return cell;
+  });
+
+  const note = document.createElement('div');
+  note.className = 'decision-note';
+  note.textContent = `${Number.isFinite(confidence) ? `%${Math.max(0, Math.min(100, confidence))} güven · ` : ''}${evidence.sales_label || 'Tahmin, kesin sipariş verisi değildir.'}`;
+  container.replaceChildren(...cells, note);
+  container.classList.remove('hidden');
+}
+
+function updateListingSelection(panel, products) {
+  const selectedCount = products.filter((product) => panel.selectedIds.has(String(product.trendyol_product_id))).length;
+  panel.compareButton.disabled = selectedCount < 2;
+  panel.compareButton.textContent = `${selectedCount} ürünü karşılaştır`;
+  panel.trackButton.disabled = selectedCount < 1;
+  panel.trackButton.textContent = `${selectedCount} ürünü takibe al`;
+
+  if (selectedCount >= 2) {
+    panel.status.textContent = `${selectedCount} ürün seçildi`;
+    panel.status.className = 'status js-status ok';
+  }
+}
+
+function scanListingOpportunities(panel) {
+  const summary = listingSummary();
+  if (summary.products.length < 2) {
+    panel.status.textContent = 'Fırsat taraması için en az 2 görünür ürün gerekir.';
+    panel.status.className = 'status js-status err';
+    return;
+  }
+
+  panel.opportunityButton.disabled = true;
+  panel.status.textContent = `${Math.min(40, summary.products.length)} ürün fırsat sinyalleriyle taranıyor...`;
+  panel.status.className = 'status js-status';
+  chrome.runtime.sendMessage({
+    type: 'ZOLM_BOOSTER_SCAN_LISTING_OPPORTUNITIES',
+    payload: {
+      query: summary.keyword,
+      matched_label: summary.keyword,
+      source_url: summary.source_url,
+      items: summary.products.slice(0, 40),
+    },
+  }, (response) => {
+    panel.opportunityButton.disabled = false;
+    if (chrome.runtime.lastError || !response?.ok) {
+      panel.status.textContent = response?.message || chrome.runtime.lastError?.message || 'Fırsat taraması tamamlanamadı.';
+      panel.status.className = 'status js-status err';
+      return;
+    }
+
+    renderListingOpportunities(panel, response.scan || {});
+    panel.opportunityButton.textContent = 'Fırsatları yeniden tara';
+    panel.status.textContent = response.message || 'Fırsat sıralaması hazırlandı.';
+    panel.status.className = 'status js-status ok';
+  });
+}
+
+function renderListingOpportunities(panel, scan) {
+  panel.opportunityResults = Array.isArray(scan.results) ? scan.results.slice(0, 40) : [];
+  const results = panel.opportunityResults.slice(0, 5);
+  panel.opportunityCount.textContent = `${scan.scanned_count || results.length} tarandı`;
+  panel.opportunityList.replaceChildren(...results.map((result) => {
+    const row = document.createElement('div');
+    row.className = 'opportunity-row';
+    const copy = document.createElement('div');
+    copy.style.minWidth = '0';
+    const name = document.createElement('div');
+    name.className = 'opportunity-name';
+    name.textContent = result.title || 'Ürün';
+    const reason = document.createElement('div');
+    reason.className = 'opportunity-reason';
+    reason.textContent = Array.isArray(result.reasons) && result.reasons.length > 0
+      ? result.reasons[0]
+      : 'Detay doğrulaması önerilir';
+    copy.append(name, reason);
+    const scoreBox = document.createElement('div');
+    const score = document.createElement('div');
+    score.className = 'opportunity-score';
+    score.textContent = `${Number(result.opportunity_score || 0)}/100`;
+    const confidence = document.createElement('div');
+    confidence.className = 'opportunity-confidence';
+    confidence.textContent = `%${Number(result.confidence_score || 0)} güven`;
+    scoreBox.append(score, confidence);
+    row.append(copy, scoreBox);
+    return row;
+  }));
+  panel.opportunities.classList.add('show');
+  panel.queueButton.textContent = `${Math.min(40, panel.opportunityResults.length || listingSummary().products.length)} ürünü karar kuyruğuna al`;
+}
+
+function startListingDecisionQueue(panel) {
+  const fallback = listingSummary().products;
+  const source = panel.opportunityResults.length > 0 ? panel.opportunityResults : fallback;
+  const urls = source.map((item) => item.source_url).filter(Boolean).slice(0, 40);
+  if (urls.length === 0) {
+    panel.status.textContent = 'Karar kuyruğuna alınacak ürün bulunamadı.';
+    panel.status.className = 'status js-status err';
+    return;
+  }
+
+  panel.queueButton.disabled = true;
+  chrome.runtime.sendMessage({ type: 'ZOLM_BOOSTER_START_DECISION_QUEUE', urls }, (response) => {
+    panel.queueButton.disabled = false;
+    if (chrome.runtime.lastError || !response?.ok) {
+      panel.status.textContent = response?.message || chrome.runtime.lastError?.message || 'Karar kuyruğu başlatılamadı.';
+      panel.status.className = 'status js-status err';
+      return;
+    }
+    renderDecisionQueue(panel, response.queue);
+    pollDecisionQueue(panel);
+  });
+}
+
+function pollDecisionQueue(panel) {
+  clearTimeout(panel.queuePollTimer);
+  chrome.runtime.sendMessage({ type: 'ZOLM_BOOSTER_DECISION_QUEUE_STATUS' }, (response) => {
+    if (!chrome.runtime.lastError && response?.ok && response.queue) {
+      renderDecisionQueue(panel, response.queue);
+      if (response.queue.status !== 'completed') {
+        panel.queuePollTimer = setTimeout(() => pollDecisionQueue(panel), 1200);
+      }
+    }
+  });
+}
+
+function retryListingDecisionQueue(panel) {
+  panel.queueRetryButton.disabled = true;
+  chrome.runtime.sendMessage({ type: 'ZOLM_BOOSTER_RETRY_DECISION_QUEUE' }, (response) => {
+    panel.queueRetryButton.disabled = false;
+    if (chrome.runtime.lastError || !response?.ok) return;
+    renderDecisionQueue(panel, response.queue);
+    pollDecisionQueue(panel);
+  });
+}
+
+function clearListingDecisionQueue(panel) {
+  clearTimeout(panel.queuePollTimer);
+  chrome.runtime.sendMessage({ type: 'ZOLM_BOOSTER_CLEAR_DECISION_QUEUE' }, (response) => {
+    if (chrome.runtime.lastError || !response?.ok) return;
+    panel.queue.classList.remove('show');
+    panel.queueBar.style.width = '0%';
+    panel.status.textContent = 'Karar kuyruğu temizlendi.';
+    panel.status.className = 'status js-status';
+  });
+}
+
+function renderDecisionQueue(panel, queue) {
+  if (!queue) return;
+  const completed = Number(queue.completed || 0);
+  const failed = Number(queue.failed || 0);
+  const total = Number(queue.total || 0);
+  panel.queue.classList.add('show');
+  panel.queueBar.style.width = `${Math.max(0, Math.min(100, Number(queue.progress_percent || 0)))}%`;
+  panel.queueCount.textContent = `${completed + failed}/${total}`;
+  panel.queueCopy.textContent = queue.status === 'completed'
+    ? `${completed} ürün analiz edildi${failed ? ` · ${failed} ürün iki denemede okunamadı` : ' · tümü başarılı'}`
+    : `${completed} tamamlandı · ${Number(queue.processing || 0)} işleniyor · ${Number(queue.pending || 0)} bekliyor`;
+  panel.queueRetryButton.classList.toggle('show', queue.status === 'completed' && failed > 0);
+  panel.status.textContent = queue.status === 'completed' ? 'Toplu karar kuyruğu tamamlandı.' : 'Toplu karar kuyruğu çalışıyor...';
+  panel.status.className = failed > 0 && queue.status === 'completed' ? 'status js-status warn' : 'status js-status ok';
+}
+
+function openListingInZolm(panel) {
+  const summary = listingSummary();
+  panel.openButton.disabled = true;
+  panel.status.textContent = 'Pazar ölçümü kaydediliyor...';
+  panel.status.className = 'status js-status';
+
+  chrome.runtime.sendMessage({
+    type: 'ZOLM_BOOSTER_CAPTURE_LISTING',
+    payload: {
+      query: summary.keyword,
+      matched_label: summary.keyword,
+      source_url: summary.source_url,
+      items: summary.products,
+    },
+  }, (response) => {
+    panel.openButton.disabled = false;
+
+    if (chrome.runtime.lastError || !response?.ok) {
+      panel.status.textContent = response?.message || chrome.runtime.lastError?.message || 'ZOLM açılamadı.';
+      panel.status.className = 'status js-status err';
+      return;
+    }
+
+    panel.openButton.textContent = 'Yeni ölçüm kaydet';
+    panel.status.textContent = `${response.item_count || summary.products.length} ürün kaydedildi · Rapor açıldı`;
+    panel.status.className = 'status js-status ok';
+  });
+}
+
+function openListingComparison(panel) {
+  const summary = listingSummary();
+  const urls = summary.products
+    .filter((product) => panel.selectedIds.has(String(product.trendyol_product_id)))
+    .map((product) => product.source_url)
+    .filter(Boolean)
+    .slice(0, 4);
+
+  if (urls.length < 2) {
+    panel.status.textContent = 'Karşılaştırma için en az 2 ürün seçin.';
+    panel.status.className = 'status js-status err';
+    return;
+  }
+
+  panel.compareButton.disabled = true;
+  panel.status.textContent = 'Karşılaştırma seti hazırlanıyor...';
+  panel.status.className = 'status js-status';
+
+  chrome.runtime.sendMessage({ type: 'ZOLM_BOOSTER_COMPARE_LISTING', urls }, (response) => {
+    panel.compareButton.disabled = false;
+
+    if (chrome.runtime.lastError || !response?.ok) {
+      panel.status.textContent = response?.message || chrome.runtime.lastError?.message || 'Karşılaştırma açılamadı.';
+      panel.status.className = 'status js-status err';
+      return;
+    }
+
+    panel.status.textContent = `${urls.length} ürün ZOLM karşılaştırmasına taşındı`;
+    panel.status.className = 'status js-status ok';
+  });
+}
+
+function trackListingSelection(panel) {
+  const summary = listingSummary();
+  const urls = summary.products
+    .filter((product) => panel.selectedIds.has(String(product.trendyol_product_id)))
+    .map((product) => product.source_url)
+    .filter(Boolean)
+    .slice(0, 4);
+
+  if (urls.length === 0) {
+    panel.status.textContent = 'Takip için en az 1 ürün seçin.';
+    panel.status.className = 'status js-status err';
+    return;
+  }
+
+  panel.trackButton.disabled = true;
+  panel.status.textContent = `${urls.length} ürün doğrulanıp takibe alınıyor...`;
+  panel.status.className = 'status js-status';
+
+  chrome.runtime.sendMessage({ type: 'ZOLM_BOOSTER_TRACK_LISTING_SELECTION', urls }, (response) => {
+    panel.trackButton.disabled = false;
+
+    if (chrome.runtime.lastError || !response?.ok) {
+      panel.status.textContent = response?.message || chrome.runtime.lastError?.message || 'Toplu takip tamamlanamadı.';
+      panel.status.className = 'status js-status err';
+      return;
+    }
+
+    panel.trackButton.textContent = 'Takibi güncelle';
+    panel.status.textContent = response.message || `${response.tracked_count || urls.length} ürün takibe alındı`;
+    panel.status.className = response.failed_count > 0 ? 'status js-status warn' : 'status js-status ok';
+  });
+}
+
+function listingSummary() {
+  const products = extractListingProducts();
+  const pricedProducts = products.map((product) => Number(product.sale_price || 0)).filter((value) => value > 0);
+  const ratings = products.map((product) => Number(product.rating || 0)).filter((value) => value > 0 && value <= 5);
+  const brands = Array.from(new Set(products.map((product) => clean(product.brand)).filter(Boolean)));
+
+  const keyword = listingKeyword();
+
+  return {
+    keyword: keyword.length >= 2 ? keyword : 'Trendyol liste',
+    source_url: location.href,
+    products,
+    pricedProducts,
+    ratings,
+    brands,
+  };
+}
+
 function refreshPanel(panel) {
   const context = pageContext();
 
@@ -137,13 +727,14 @@ function createPanel() {
       :host { all: initial; }
       .box {
         width: 320px;
+        max-height: min(720px, calc(100vh - 32px));
         border: 1px solid #dbe3ef;
         border-radius: 10px;
         background: #fff;
         box-shadow: 0 18px 40px rgba(15, 23, 42, .18);
         color: #0f172a;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        overflow: hidden;
+        overflow: auto;
       }
       .head {
         display: flex;
@@ -169,6 +760,18 @@ function createPanel() {
       .label { font-size: 11px; color: #64748b; }
       .value { margin-top: 3px; font-size: 14px; font-weight: 700; color: #0f172a; }
       .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+      .actions .wide { grid-column: 1 / -1; }
+      .media-center { display: none; margin-top: 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; padding: 8px; }
+      .media-center.show { display: block; }
+      .media-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #475569; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+      .media-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+      .media-item { position: relative; min-width: 0; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; aspect-ratio: 1; }
+      .media-item img { width: 100%; height: 100%; object-fit: cover; }
+      .media-item input { position: absolute; top: 4px; left: 4px; width: 15px; height: 15px; margin: 0; accent-color: #0f172a; }
+      .media-video { display: grid; width: 100%; height: 100%; place-items: center; color: #475569; font-size: 9px; font-weight: 800; }
+      .media-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+      .media-actions button { min-height: 34px; font-size: 10px; }
+      .media-note { margin-top: 7px; color: #64748b; font-size: 9px; line-height: 1.4; }
       button {
         min-height: 38px;
         border: 1px solid #cbd5e1;
@@ -218,11 +821,21 @@ function createPanel() {
             <div class="metric"><div class="label">Favori farkı</div><div class="value js-favorite-delta">-</div></div>
           </div>
         </div>
+        <div class="media-center js-media-center">
+          <div class="media-head"><span>Ürün medya merkezi</span><span class="js-media-count">0 öğe</span></div>
+          <div class="media-grid js-media-grid"></div>
+          <div class="media-actions">
+            <button class="primary js-media-download" type="button">Seçileni indir</button>
+            <button class="js-media-copy" type="button">Bağlantıları kopyala</button>
+          </div>
+          <div class="media-note">Görseller yerel cihazınıza indirilir. Video bağlantıları boyut nedeniyle yeni sekmede açılır; ZOLM’a yüklenmez.</div>
+        </div>
         <div class="actions">
           <button class="js-preview">Ön izle</button>
           <button class="primary js-track">Takibe al</button>
           <button class="js-stock">Stok sorgula</button>
           <button class="primary js-store">Mağaza tara</button>
+          <button class="wide js-media" type="button">Medya merkezi</button>
         </div>
       </div>
       <div class="foot">
@@ -246,6 +859,12 @@ function createPanel() {
     trackButton: shadow.querySelector('.js-track'),
     stockButton: shadow.querySelector('.js-stock'),
     storeButton: shadow.querySelector('.js-store'),
+    mediaButton: shadow.querySelector('.js-media'),
+    mediaCenter: shadow.querySelector('.js-media-center'),
+    mediaGrid: shadow.querySelector('.js-media-grid'),
+    mediaCount: shadow.querySelector('.js-media-count'),
+    mediaDownloadButton: shadow.querySelector('.js-media-download'),
+    mediaCopyButton: shadow.querySelector('.js-media-copy'),
     refreshButton: shadow.querySelector('.js-refresh'),
     tracking: shadow.querySelector('.js-tracking'),
     estimatedSales: shadow.querySelector('.js-estimated-sales'),
@@ -253,6 +872,8 @@ function createPanel() {
     trackedStock: shadow.querySelector('.js-tracked-stock'),
     favoriteDelta: shadow.querySelector('.js-favorite-delta'),
     lastScan: shadow.querySelector('.js-last-scan'),
+    mediaItems: [],
+    selectedMediaIndexes: new Set(),
   };
 }
 
@@ -281,11 +902,13 @@ function updatePanel(panel, data, context) {
   panel.trackButton.style.display = productMode ? '' : 'none';
   panel.stockButton.style.display = productMode ? '' : 'none';
   panel.storeButton.style.display = '';
+  panel.mediaButton.style.display = productMode ? '' : 'none';
   panel.storeButton.textContent = productMode ? 'Satıcıyı tara' : 'Mağaza tara';
   panel.previewButton.disabled = productMode && !page.trendyol_product_id;
   panel.trackButton.disabled = productMode && !page.trendyol_product_id;
   panel.stockButton.disabled = productMode && !page.trendyol_product_id;
   panel.storeButton.disabled = productMode ? !page.trendyol_product_id : !summary.ready;
+  renderProductMedia(panel, productMode ? data.media : []);
   panel.status.textContent = 'Hazır';
   panel.status.className = 'js-status';
   panel.tracking.className = 'tracking js-tracking';
@@ -405,6 +1028,127 @@ function setButtonsDisabled(panel, disabled) {
   panel.trackButton.disabled = disabled;
   panel.stockButton.disabled = disabled;
   panel.storeButton.disabled = disabled;
+  panel.mediaButton.disabled = disabled || panel.mediaItems.length === 0;
+}
+
+function renderProductMedia(panel, items) {
+  panel.mediaItems = Array.isArray(items) ? items.slice(0, 24) : [];
+  panel.selectedMediaIndexes = new Set(panel.mediaItems
+    .map((item, index) => item.type === 'image' ? index : null)
+    .filter((index) => index !== null)
+    .slice(0, 12));
+  panel.mediaCount.textContent = `${panel.mediaItems.length} öğe`;
+  panel.mediaButton.disabled = panel.mediaItems.length === 0;
+  panel.mediaButton.textContent = panel.mediaItems.length > 0 ? `Medya merkezi · ${panel.mediaItems.length}` : 'Medya bulunamadı';
+  panel.mediaCenter.className = 'media-center js-media-center';
+
+  panel.mediaGrid.replaceChildren(...panel.mediaItems.map((item, index) => {
+    const label = document.createElement('label');
+    label.className = 'media-item';
+    label.title = item.type === 'video' ? 'Video bağlantısı' : `Görsel ${index + 1}`;
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = panel.selectedMediaIndexes.has(index);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) panel.selectedMediaIndexes.add(index);
+      else panel.selectedMediaIndexes.delete(index);
+    });
+
+    if (item.type === 'video') {
+      const video = document.createElement('span');
+      video.className = 'media-video';
+      video.textContent = 'VİDEO';
+      label.append(checkbox, video);
+    } else {
+      const image = document.createElement('img');
+      image.src = item.url;
+      image.alt = `Ürün görseli ${index + 1}`;
+      image.loading = 'lazy';
+      label.append(checkbox, image);
+    }
+
+    return label;
+  }));
+}
+
+function toggleProductMedia(panel) {
+  if (panel.mediaItems.length === 0) return;
+  panel.mediaCenter.classList.toggle('show');
+}
+
+async function downloadSelectedProductMedia(panel) {
+  const selected = panel.mediaItems
+    .map((item, index) => ({ ...item, index }))
+    .filter((item) => panel.selectedMediaIndexes.has(item.index));
+  const images = selected.filter((item) => item.type === 'image').slice(0, 12);
+  const videos = selected.filter((item) => item.type === 'video').slice(0, 4);
+
+  if (images.length === 0 && videos.length === 0) {
+    panel.status.textContent = 'İndirmek veya açmak için medya seçin.';
+    panel.status.className = 'js-status err';
+    return;
+  }
+
+  panel.mediaDownloadButton.disabled = true;
+  panel.status.textContent = `${images.length} görsel hazırlanıyor...`;
+  panel.status.className = 'js-status';
+  let downloaded = 0;
+
+  for (const item of images) {
+    try {
+      const response = await sendRuntimeMessageFromPage({
+        type: 'ZOLM_BOOSTER_DOWNLOAD_MEDIA',
+        media_url: item.url,
+        filename: `${extractProductId(location.href) || 'urun'}-${item.index + 1}`,
+      });
+      const link = document.createElement('a');
+      link.href = response.data_url;
+      link.download = response.filename;
+      link.style.display = 'none';
+      document.documentElement.appendChild(link);
+      link.click();
+      link.remove();
+      downloaded++;
+    } catch (error) {
+      console.warn('ZOLM media download error:', error);
+    }
+  }
+
+  for (const item of videos) {
+    window.open(item.url, '_blank', 'noopener,noreferrer');
+  }
+
+  panel.mediaDownloadButton.disabled = false;
+  panel.status.textContent = `${downloaded} görsel indirildi${videos.length ? ` · ${videos.length} video açıldı` : ''}`;
+  panel.status.className = downloaded === images.length ? 'js-status ok' : 'js-status err';
+}
+
+async function copySelectedProductMedia(panel) {
+  const urls = panel.mediaItems
+    .filter((item, index) => panel.selectedMediaIndexes.has(index))
+    .map((item) => item.url);
+  if (urls.length === 0) return;
+
+  try {
+    await navigator.clipboard.writeText(urls.join('\n'));
+    panel.status.textContent = `${urls.length} medya bağlantısı kopyalandı.`;
+    panel.status.className = 'js-status ok';
+  } catch (error) {
+    panel.status.textContent = 'Bağlantılar kopyalanamadı.';
+    panel.status.className = 'js-status err';
+  }
+}
+
+function sendRuntimeMessageFromPage(message) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      if (chrome.runtime.lastError || !response?.ok) {
+        reject(new Error(response?.message || chrome.runtime.lastError?.message || 'Eklenti işlemi tamamlanamadı.'));
+        return;
+      }
+      resolve(response);
+    });
+  });
 }
 
 function responseSummary(response) {
@@ -470,6 +1214,20 @@ function pageContext() {
 
   if (extractStoreId(location.href)) {
     return 'store';
+  }
+
+  const url = new URL(location.href);
+  if (
+    url.pathname === '/sr'
+    || url.pathname.startsWith('/sr/')
+    || url.pathname.startsWith('/cok-satanlar')
+    || url.pathname.startsWith('/butik/liste')
+    || /-x-c\d+/i.test(url.pathname)
+    || url.searchParams.has('q')
+    || Boolean(readSearchState())
+    || document.querySelector('.p-card-wrppr a[href*="-p-"], [data-testid="product-card"] a[href*="-p-"]')
+  ) {
+    return 'listing';
   }
 
   return 'unknown';
@@ -613,7 +1371,29 @@ function extractProductData() {
     total_stock: totalStock,
     sellers,
     watch_price: true,
+    media: extractProductMedia(envoyProduct),
   };
+}
+
+function extractProductMedia(envoyProduct) {
+  const media = [];
+  const add = (value, type = 'image') => {
+    let url = clean(value || '');
+    if (url.startsWith('//')) url = `https:${url}`;
+    if (!/^https:\/\//i.test(url)) return;
+    url = url.slice(0, 1600);
+    if (!media.some((item) => item.url === url)) media.push({ url, type });
+  };
+
+  for (const image of Array.isArray(envoyProduct?.images) ? envoyProduct.images : []) {
+    add(typeof image === 'string' ? image : (image?.url || image?.src), 'image');
+  }
+  add(meta('og:image'), 'image');
+  document.querySelectorAll('img[src*="dsmcdn.com"], img[src*="trendyol.com"]').forEach((image) => add(image.currentSrc || image.src, 'image'));
+  add(meta('og:video'), 'video');
+  document.querySelectorAll('video[src], video source[src]').forEach((video) => add(video.currentSrc || video.src, 'video'));
+
+  return media.slice(0, 24);
 }
 
 async function collectProductAnalysis() {
@@ -948,6 +1728,115 @@ function readEnvoyProduct() {
   }
 
   return null;
+}
+
+function extractListingProducts(maxProducts = 72) {
+  const products = new Map();
+  const anchors = document.querySelectorAll('a[href*="-p-"]');
+
+  for (const anchor of anchors) {
+    if (products.size >= maxProducts) break;
+
+    const href = String(anchor.href || anchor.getAttribute('href') || '');
+    const match = href.match(/-p-(\d+)/i);
+    if (!match || products.has(match[1])) continue;
+
+    const card = anchor.closest('.p-card-wrppr, [data-testid="product-card"], .prdct-cntnr-wrppr, li, article') || anchor;
+    const image = card.querySelector('img');
+    const brandNode = card.querySelector('.product-brand, .prdct-desc-cntnr-ttl-w .prdct-desc-cntnr-ttl, [class*="brandName"], [class*="brand-name"]');
+    const nameNode = card.querySelector('.product-name, .prdct-desc-cntnr-name, [data-testid="product-card-name"], [class*="productName"], [class*="product-name"], h2, h3');
+    const priceNode = card.querySelector('.sale-price, .price-value, .single-price, .price-section, .prc-box-dscntd, .prc-box-sllng, [class*="discountedPrice"], [class*="sellingPrice"]');
+    const ratingNode = card.querySelector('.average-rating, .rating-score, .rtngs, [class*="rating-score"], [class*="averageRating"]');
+    const reviewNode = card.querySelector('.review-rating, .ratingCount, .rating-count, .rtngs-cntnr, [class*="reviewCount"]');
+    const brand = clean(brandNode?.textContent || '');
+    const productName = clean(nameNode?.textContent || image?.alt || anchor.getAttribute('title') || anchor.getAttribute('aria-label') || 'Ürün');
+    const title = brand && !productName.toLocaleLowerCase('tr-TR').startsWith(brand.toLocaleLowerCase('tr-TR'))
+      ? `${brand} ${productName}`
+      : productName;
+    const imageUrl = clean(image?.src || image?.getAttribute('data-src') || '');
+    const reviewMatch = clean(reviewNode?.textContent || '').match(/([\d.,]+)/);
+    const rating = Number.parseFloat(clean(ratingNode?.textContent || '').replace(',', '.'));
+
+    products.set(match[1], {
+      trendyol_product_id: match[1],
+      source_url: href.startsWith('http') ? href : new URL(href, location.origin).href,
+      image_url: /^https?:\/\//i.test(imageUrl) ? imageUrl.slice(0, 1000) : null,
+      title: title.slice(0, 240),
+      brand: brand.slice(0, 120),
+      sale_price: parseListingMoney(priceNode?.textContent || ''),
+      rating: Number.isFinite(rating) && rating > 0 && rating <= 5 ? rating : null,
+      review_count: reviewMatch ? Number.parseInt(reviewMatch[1].replace(/\./g, '').replace(',', ''), 10) : null,
+      favorite_count: null,
+      campaign_badges: [],
+      seller_name: '',
+      category_name: '',
+    });
+  }
+
+  if (products.size > 0) {
+    return Array.from(products.values());
+  }
+
+  const state = readSearchState();
+  const stateProducts = state?.searchStateManager?.searchProducts?.productList
+    || state?.productList
+    || state?.products
+    || [];
+
+  for (const product of Array.isArray(stateProducts) ? stateProducts.slice(0, maxProducts) : []) {
+    const productId = String(product?.id || product?.productId || product?.contentId || '');
+    if (!productId || products.has(productId)) continue;
+
+    const productUrl = clean(product?.url || '');
+    const imagePath = clean(product?.images?.[0] || product?.imageUrl || '');
+    const imageUrl = imagePath.startsWith('http') ? imagePath : (imagePath ? `https://cdn.dsmcdn.com${imagePath}` : '');
+    products.set(productId, {
+      trendyol_product_id: productId,
+      source_url: productUrl ? new URL(productUrl, location.origin).href : '',
+      image_url: /^https?:\/\//i.test(imageUrl) ? imageUrl.slice(0, 1000) : null,
+      title: clean(product?.name || product?.title || 'Ürün').slice(0, 240),
+      brand: clean(product?.brand?.name || product?.brand || '').slice(0, 120),
+      sale_price: numericValue(product?.price?.sellingPrice?.value ?? product?.price?.sellingPrice ?? product?.price?.discountedPrice ?? product?.sellingPrice) || 0,
+      rating: numericValue(product?.ratingScore?.averageRating),
+      review_count: nonNegativeInteger(product?.ratingScore?.totalCount),
+      favorite_count: nonNegativeInteger(product?.favoriteCount),
+      campaign_badges: [],
+      seller_name: clean(product?.merchant?.name || product?.merchantName || '').slice(0, 255),
+      category_name: clean(product?.categoryName || '').slice(0, 180),
+    });
+  }
+
+  return Array.from(products.values());
+}
+
+function listingKeyword() {
+  const url = new URL(location.href);
+  const query = clean(url.searchParams.get('q') || url.searchParams.get('qt') || '');
+
+  if (query) return query;
+
+  const heading = firstText(['h1', '[data-testid="search-title"]', '.dscrptn', '.category-title']);
+  return clean(heading || document.title.replace(/\s*[-|]\s*Trendyol.*$/i, '')).slice(0, 120);
+}
+
+function parseListingMoney(value) {
+  const text = clean(value).replace(/[^\d.,]/g, '');
+  if (!text) return 0;
+
+  const lastComma = text.lastIndexOf(',');
+  const lastDot = text.lastIndexOf('.');
+  let normalized = text;
+
+  if (lastComma > lastDot) {
+    normalized = text.replace(/\./g, '').replace(',', '.');
+  } else if (lastDot > lastComma && /\.\d{1,2}$/.test(text)) {
+    normalized = text.replace(/,/g, '');
+  } else {
+    normalized = text.replace(/[.,]/g, '');
+  }
+
+  const amount = Number.parseFloat(normalized);
+  return Number.isFinite(amount) ? amount : 0;
 }
 
 function readSearchState() {

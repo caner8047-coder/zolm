@@ -8,7 +8,8 @@
         "build": "vite build",
         "dev": "vite",
         "extension:check": "node scripts/package-trendyol-booster-extension.mjs --check",
-        "extension:package": "node scripts/package-trendyol-booster-extension.mjs"
+        "extension:package": "node scripts/package-trendyol-booster-extension.mjs",
+        "extension:release": "node scripts/test-trendyol-booster-release.mjs"
     },
     "devDependencies": {
         "@rollup/rollup-darwin-arm64": "^4.55.2",

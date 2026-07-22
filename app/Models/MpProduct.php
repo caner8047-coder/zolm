@@ -75,6 +75,7 @@ class MpProduct extends Model
         // Trendyol
         'image_url',
         'image_urls',
+        'video_urls',
         'shipping_days',
         'shipping_type',
         'fast_delivery_type',
@@ -109,6 +110,7 @@ class MpProduct extends Model
         'pieces'          => 'integer',
         'shipping_days'   => 'integer',
         'image_urls'      => 'array',
+        'video_urls'      => 'array',
         'last_synced_at'  => 'datetime',
     ];
 

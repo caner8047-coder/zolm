@@ -20,6 +20,9 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
+Route::view('/privacy/trendyol-booster-companion', 'legal.trendyol-booster-privacy')
+    ->name('legal.trendyol-booster-privacy');
+
 Route::get('/tools/trendyol-kar-hesaplama', \App\Livewire\PublicTrendyolProfitCalculator::class)
     ->name('tools.trendyol-profit-calculator')
     ->middleware('mp.feature:public_trendyol_profit_tool_enabled');
@@ -273,13 +276,21 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/marketplace-trendyol-booster', \App\Livewire\TrendyolBooster::class)
         ->name('mp.trendyol-booster')
-        ->middleware('mp.feature:trendyol_booster_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class);
+        ->middleware([
+            'mp.feature:trendyol_booster_enabled',
+            \App\Http\Middleware\AdminMiddleware::class,
+            'booster.release',
+        ]);
 
     Route::prefix('/marketplace-trendyol-booster/companion')
         ->name('mp.trendyol-booster.companion.')
-        ->middleware('mp.feature:trendyol_booster_enabled')
-        ->middleware(\App\Http\Middleware\AdminMiddleware::class)
+        ->middleware([
+            'mp.feature:trendyol_booster_enabled',
+            \App\Http\Middleware\AdminMiddleware::class,
+            'throttle:booster-companion',
+            'booster.release',
+            'booster.metric',
+        ])
         ->group(function () {
             Route::get('/session', [TrendyolBoosterCompanionController::class, 'session'])->name('session');
             Route::get('/status', [TrendyolBoosterCompanionController::class, 'status'])->name('status');
@@ -288,6 +299,8 @@ Route::middleware('auth')->group(function () {
             Route::post('/track', [TrendyolBoosterCompanionController::class, 'track'])->name('track');
             Route::post('/stock-check', [TrendyolBoosterCompanionController::class, 'stockCheck'])->name('stock-check');
             Route::post('/store-scan', [TrendyolBoosterCompanionController::class, 'storeScan'])->name('store-scan');
+            Route::post('/bestseller-capture', [TrendyolBoosterCompanionController::class, 'bestsellerCapture'])->name('bestseller-capture');
+            Route::post('/opportunity-scan', [TrendyolBoosterCompanionController::class, 'opportunityScan'])->name('opportunity-scan');
             Route::get('/pending-jobs', [TrendyolBoosterCompanionController::class, 'pendingJobs'])->name('pending-jobs');
             Route::post('/market-research', [TrendyolBoosterCompanionController::class, 'marketResearch'])->name('market-research');
             Route::post('/review-scan/start', [TrendyolBoosterCompanionController::class, 'reviewScanStart'])->name('review-scan.start');

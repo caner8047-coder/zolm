@@ -6,7 +6,17 @@
     $retentionState = $this->trackingRetentionState;
     $operationalAlert = $this->trackingOperationalAlertState;
     $priorityActionState = $this->trackingPriorityActionState;
+    $actionCenter = $this->trackingActionCenter;
+    $companionHealth = $this->companionHealth;
+    $calibration = $this->forecastCalibration;
+    $collectionDashboard = $this->collectionDashboard;
+    $boosterCollections = collect($collectionDashboard['collections'] ?? []);
+    $selectedCollection = $collectionDashboard['selected'] ?? null;
+    $calibrationCategories = collect($calibration['categories'] ?? [])->take(4);
     $priorityActions = collect($priorityActionState['actions'] ?? []);
+    $actionCenterItems = collect($actionCenter['items'] ?? []);
+    $actionAudit = collect($actionCenter['audit'] ?? []);
+    $boosterTeamOptions = $this->boosterTeamOptions;
     $syncHealthAreas = collect($schedulerState['areas'] ?? []);
     $schedulerTone = $schedulerState['tone'] ?? (($schedulerState['healthy'] ?? false) ? 'emerald' : 'amber');
     $retentionTone = $retentionState['tone'] ?? (($retentionState['healthy'] ?? false) ? 'emerald' : 'amber');
@@ -30,6 +40,12 @@
         'sky' => 'border-sky-200 bg-sky-50/70 text-sky-700',
         'slate' => 'border-slate-200 bg-white text-slate-600',
     ][$operationalTone] ?? 'border-slate-200 bg-white text-slate-600';
+    $companionToneClasses = [
+        'emerald' => 'border-emerald-200 bg-emerald-50/70 text-emerald-700',
+        'rose' => 'border-rose-200 bg-rose-50/70 text-rose-700',
+        'sky' => 'border-sky-200 bg-sky-50/70 text-sky-700',
+        'amber' => 'border-amber-200 bg-amber-50/70 text-amber-700',
+    ][$companionHealth['tone'] ?? 'sky'] ?? 'border-slate-200 bg-white text-slate-600';
     $schedulerDotClasses = [
         'emerald' => 'bg-emerald-500',
         'sky' => 'bg-sky-500',
@@ -167,6 +183,12 @@
         'no_movement' => $radarStates->whereIn('status', ['no_movement', 'no_movement_after_restock'])->count(),
         'waiting' => $radarStates->whereIn('status', ['warming_up', 'unavailable'])->count(),
     ];
+    $calibrationTone = [
+        'calibrated' => 'border-emerald-200 bg-emerald-50/70 text-emerald-700',
+        'watch' => 'border-sky-200 bg-sky-50/70 text-sky-700',
+        'needs_tuning' => 'border-rose-200 bg-rose-50/70 text-rose-700',
+        'warming_up' => 'border-amber-200 bg-amber-50/70 text-amber-700',
+    ][$calibration['status'] ?? 'warming_up'] ?? 'border-slate-200 bg-slate-50 text-slate-600';
 @endphp
 
 <div class="space-y-4 lg:space-y-6">
@@ -268,7 +290,7 @@
                 </div>
                 <div class="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)]">
                     <div class="min-w-0 rounded-[8px] border p-3 {{ $retentionToneClasses }}" data-testid="booster-retention-health">
-                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div class="min-w-0">
                                 <div class="flex items-center gap-2">
                                     <span class="h-2 w-2 shrink-0 rounded-full {{ $retentionDotClasses }}"></span>
@@ -308,6 +330,124 @@
                         </div>
                     </div>
                 </div>
+                <div class="mt-3 rounded-[8px] border p-3 {{ $companionToneClasses }}" data-testid="booster-companion-health">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2">
+                                <x-lucide.icon name="radio-tower" class="h-4 w-4 shrink-0" />
+                                <p class="text-xs font-semibold uppercase">Companion gözlem yüzeyi · {{ strtoupper((string) ($companionHealth['release_ring'] ?? 'ga')) }}</p>
+                            </div>
+                            <p class="mt-1 text-sm font-semibold">{{ $companionHealth['label'] }}</p>
+                            <p class="mt-0.5 text-xs opacity-80">Son {{ (int) ($companionHealth['window_minutes'] ?? 60) }} dakika; istek gövdesi, ürün verisi ve kişisel veri telemetriye yazılmaz.</p>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 text-center sm:min-w-[300px]">
+                            <div class="rounded-[6px] bg-white/75 px-2 py-1.5"><p class="text-[10px] font-semibold uppercase opacity-70">İstek</p><p class="font-mono text-sm font-bold">{{ (int) ($companionHealth['request_count'] ?? 0) }}</p></div>
+                            <div class="rounded-[6px] bg-white/75 px-2 py-1.5"><p class="text-[10px] font-semibold uppercase opacity-70">Hata</p><p class="font-mono text-sm font-bold">%{{ number_format((float) ($companionHealth['error_rate'] ?? 0), 2, ',', '.') }}</p></div>
+                            <div class="rounded-[6px] bg-white/75 px-2 py-1.5"><p class="text-[10px] font-semibold uppercase opacity-70">P95</p><p class="font-mono text-sm font-bold">{{ (int) ($companionHealth['p95_duration_ms'] ?? 0) }} ms</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end" data-testid="booster-report-downloads">
+                <button type="button" wire:click="exportBoosterExcel" wire:loading.attr="disabled" wire:target="exportBoosterExcel" class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 sm:w-auto sm:py-2"><x-lucide.icon name="sheet" class="h-4 w-4" /> Excel raporu</button>
+                <button type="button" wire:click="exportBoosterPdf" wire:loading.attr="disabled" wire:target="exportBoosterPdf" class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white sm:w-auto sm:py-2"><x-lucide.icon name="file-text" class="h-4 w-4" /> PDF raporu</button>
+            </div>
+
+            <div class="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white" data-testid="booster-action-center">
+                <div class="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                            <x-lucide.icon name="inbox" class="h-4 w-4 text-slate-600" />
+                            <p class="text-xs font-semibold uppercase text-slate-500">Aksiyon merkezi</p>
+                        </div>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ (int) ($actionCenter['open_count'] ?? 0) }} açık iş, {{ (int) ($actionCenter['critical_count'] ?? 0) }} kritik</p>
+                        <p class="mt-0.5 text-xs text-slate-500">Operasyon ve ürün sinyalleri tek kuyrukta; kabul edin, erteleyin veya yeniden açın.</p>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-center text-xs sm:shrink-0">
+                        <div class="rounded-[6px] border border-slate-200 bg-white px-2.5 py-1.5"><p class="text-slate-400">Açık</p><p class="font-mono font-bold text-slate-900">{{ (int) ($actionCenter['open_count'] ?? 0) }}</p></div>
+                        <div class="rounded-[6px] border border-slate-200 bg-white px-2.5 py-1.5"><p class="text-slate-400">Erteli</p><p class="font-mono font-bold text-amber-700">{{ (int) ($actionCenter['snoozed_count'] ?? 0) }}</p></div>
+                        <div class="rounded-[6px] border border-slate-200 bg-white px-2.5 py-1.5"><p class="text-slate-400">Kabul</p><p class="font-mono font-bold text-emerald-700">{{ (int) ($actionCenter['acknowledged_count'] ?? 0) }}</p></div>
+                    </div>
+                </div>
+                <div class="divide-y divide-slate-100">
+                    @forelse($actionCenterItems as $actionItem)
+                        @php($actionItemTone = $priorityToneClasses[$actionItem['tone'] ?? 'slate'] ?? $priorityToneClasses['slate'])
+                        <article class="flex flex-col gap-3 p-3 sm:flex-row sm:items-center" wire:key="booster-action-{{ md5($actionItem['fingerprint']) }}">
+                            <div class="flex min-w-0 flex-1 items-start gap-3">
+                                <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border {{ $actionItemTone }}"><x-lucide.icon name="{{ ($actionItem['source'] ?? '') === 'product' ? 'package-search' : 'activity' }}" class="h-4 w-4" /></span>
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <p class="text-sm font-semibold text-slate-900">{{ $actionItem['label'] }}</p>
+                                        <span class="rounded-[6px] border {{ $actionItemTone }} px-1.5 py-0.5 font-mono text-[10px] font-semibold">{{ $actionItem['metric'] ?: ($actionItem['source'] === 'product' ? 'Ürün' : 'Operasyon') }}</span>
+                                        <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{{ $actionItem['status_label'] }}</span>
+                                    </div>
+                                    <p class="mt-0.5 truncate text-xs font-medium text-slate-700">{{ $actionItem['title'] }}</p>
+                                    <p class="mt-0.5 text-xs text-slate-500">{{ $actionItem['reason'] }}</p>
+                                    @if(($actionItem['status'] ?? '') === 'snoozed' && $actionItem['snoozed_until'])
+                                        <p class="mt-1 text-[11px] font-medium text-amber-700">{{ $actionItem['snoozed_until']->timezone('Europe/Istanbul')->format('d.m H:i') }} tarihine kadar ertelendi</p>
+                                    @endif
+                                    <label class="mt-2 flex max-w-xs items-center gap-2 text-[11px] text-slate-500"><span class="shrink-0">Sorumlu</span><select wire:change="assignTrackingAction(@js($actionItem['fingerprint']), $event.target.value)" class="min-h-[36px] min-w-0 flex-1 rounded-[6px] border border-slate-200 bg-white px-2 text-xs text-slate-700"><option value="">Ata</option>@foreach($boosterTeamOptions as $teamUser)<option value="{{ $teamUser->id }}" @selected((int) ($actionItem['assigned_user_id'] ?? 0) === (int) $teamUser->id)>{{ $teamUser->name ?: $teamUser->email }}</option>@endforeach</select></label>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+                                @if(($actionItem['status'] ?? 'open') === 'open')
+                                    <button type="button" wire:click="updateTrackingAction(@js($actionItem['fingerprint']), 'snoozed', 24)" class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 sm:w-auto">24 sa. ertele</button>
+                                    <button type="button" wire:click="updateTrackingAction(@js($actionItem['fingerprint']), 'acknowledged')" class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] bg-slate-900 px-3 py-2 text-xs font-medium text-white sm:w-auto">Kabul et</button>
+                                @else
+                                    <button type="button" wire:click="updateTrackingAction(@js($actionItem['fingerprint']), 'open')" class="col-span-2 inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 sm:w-auto">Yeniden aç</button>
+                                @endif
+                            </div>
+                        </article>
+                    @empty
+                        <div class="p-5 text-center text-sm text-slate-500">Açık aksiyon yok. Yeni risk oluştuğunda bu kuyruk otomatik güncellenir.</div>
+                    @endforelse
+                </div>
+                @if($actionAudit->isNotEmpty())
+                    <details class="border-t border-slate-200 bg-slate-50/60"><summary class="flex min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 py-2 text-xs font-semibold text-slate-600"><span>Denetim izi · {{ $actionAudit->count() }} son hareket</span><x-lucide.icon name="chevron-down" class="h-4 w-4" /></summary><div class="grid grid-cols-1 gap-2 border-t border-slate-200 p-3 sm:grid-cols-2 xl:grid-cols-3">@foreach($actionAudit as $audit)<div class="min-w-0 rounded-[6px] border border-slate-200 bg-white px-3 py-2"><p class="truncate text-xs font-semibold text-slate-800">{{ $audit['event_label'] }} · {{ $audit['actor'] }}</p><p class="mt-1 truncate font-mono text-[10px] text-slate-500">{{ $audit['fingerprint'] }}</p><p class="mt-1 text-[11px] text-slate-500">{{ $audit['from'] ?: '—' }} → {{ $audit['to'] ?: '—' }} · {{ $audit['occurred_at']?->timezone('Europe/Istanbul')->format('d.m H:i') }}</p></div>@endforeach</div></details>
+                @endif
+            </div>
+
+            <div class="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white" data-testid="booster-decision-collections">
+                <div class="border-b border-slate-200 bg-slate-50/60 p-3">
+                    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <div class="min-w-0"><div class="flex items-center gap-2"><x-lucide.icon name="folders" class="h-4 w-4 text-slate-600" /><p class="text-xs font-semibold uppercase text-slate-500">Karar koleksiyonları</p></div><p class="mt-1 text-sm font-semibold text-slate-900">Ürünleri araştırma listelerinde gruplayın</p><p class="mt-0.5 text-xs text-slate-500">Tedarikçi görüşmesi, numune, reklam testi veya sezon planı için kalıcı kısa listeler.</p></div>
+                        <form wire:submit="createCollection" class="flex w-full gap-2 lg:w-auto"><input type="text" wire:model.defer="newCollectionName" placeholder="Yeni koleksiyon" class="min-h-[44px] min-w-0 flex-1 rounded-[6px] border border-slate-200 bg-white px-3 text-base sm:min-w-[220px] sm:text-sm"><button type="submit" class="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-[6px] bg-slate-900 px-4 py-2 text-sm font-medium text-white">Oluştur</button></form>
+                    </div>
+                </div>
+                @if($collectionDashboard['ready'] ?? false)
+                    <div class="p-3">
+                        <div class="flex gap-2 overflow-x-auto pb-2">
+                            @forelse($boosterCollections as $collection)
+                                <button type="button" wire:click="$set('selectedCollectionId', {{ $collection->id }})" class="inline-flex min-h-[40px] shrink-0 items-center gap-2 rounded-[6px] border px-3 py-2 text-xs font-medium {{ (int) ($selectedCollection?->id ?? 0) === (int) $collection->id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700' }}"><span>{{ $collection->name }}</span><span class="rounded bg-white/20 px-1.5 py-0.5 font-mono">{{ $collection->products_count }}</span></button>
+                            @empty
+                                <p class="text-xs text-slate-500">İlk karar koleksiyonunuzu oluşturun.</p>
+                            @endforelse
+                        </div>
+                        @if($selectedCollection)
+                            <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+                                <label class="min-w-0 flex-1"><span class="text-xs text-slate-500">Koleksiyona ürün ekle / çıkar</span><select wire:model.defer="collectionProductId" class="mt-1 min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-3 text-base sm:text-sm"><option value="">Ürün seçin</option>@foreach(($collectionDashboard['products'] ?? []) as $collectionProduct)<option value="{{ $collectionProduct->id }}">{{ $collectionProduct->title ?: 'Ürün '.$collectionProduct->id }}</option>@endforeach</select></label>
+                                <button type="button" wire:click="toggleCollectionProduct" class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 sm:w-auto">Üyeliği değiştir</button>
+                            </div>
+                            <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                @forelse($selectedCollection->products as $collectionProduct)
+                                    <article class="flex min-w-0 items-center gap-3 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3"><div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold text-slate-900">{{ $collectionProduct->title ?: 'Trendyol ürünü' }}</p><p class="mt-0.5 truncate text-xs text-slate-500">{{ $collectionProduct->brand ?: 'Marka yok' }} · {{ $this->formatMoney($collectionProduct->sale_price) }}</p></div><button type="button" wire:click="toggleCollectionProduct({{ $collectionProduct->id }})" title="Koleksiyondan çıkar" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500"><x-lucide.icon name="x" class="h-4 w-4" /></button></article>
+                                @empty
+                                    <div class="rounded-[8px] border border-dashed border-slate-300 p-4 text-sm text-slate-500 sm:col-span-2 xl:col-span-3">Bu koleksiyonda henüz ürün yok.</div>
+                                @endforelse
+                            </div>
+                        @endif
+                    </div>
+                @else
+                    <div class="p-4 text-sm text-amber-700">Koleksiyon migration'ı çalıştırıldıktan sonra bu alan açılacak.</div>
+                @endif
+            </div>
+
+            <div class="mt-4 rounded-lg border border-slate-200 bg-white p-3" data-testid="booster-evidence-assistant">
+                <div class="flex items-start gap-3"><span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border border-slate-200 bg-slate-50 text-slate-600"><x-lucide.icon name="sparkles" class="h-4 w-4" /></span><div class="min-w-0"><p class="text-xs font-semibold uppercase text-slate-500">Kanıt bağlı AI karar asistanı</p><p class="mt-1 text-sm font-semibold text-slate-900">Ürünlerim içinde neye öncelik vermeliyim?</p><p class="mt-0.5 text-xs text-slate-500">Yanıt yalnız sizin ZOLM ürün defterinizden üretilir ve her iddia [K1] kaynak kimliğiyle gösterilir.</p></div></div>
+                <form wire:submit="askBoosterAssistant" class="mt-3 flex flex-col gap-2 sm:flex-row"><input type="text" wire:model.defer="assistantQuestion" placeholder="Örn. En düşük riskle hangi ürünü test etmeliyim?" class="min-h-[44px] min-w-0 flex-1 rounded-[6px] border border-slate-200 bg-white px-3 text-base sm:text-sm"><button type="submit" wire:loading.attr="disabled" wire:target="askBoosterAssistant" class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-60 sm:w-auto sm:py-2">Kanıtla yanıtla</button></form>
+                @if(!empty($assistantResponse))
+                    <div class="mt-3 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3"><div class="whitespace-pre-line text-sm leading-6 text-slate-700">{{ $assistantResponse['answer'] ?? '' }}</div><div class="mt-3 flex flex-wrap gap-2">@foreach(($assistantResponse['sources'] ?? []) as $assistantSource)<button type="button" wire:click="openTrackedProductAnalysis({{ (int) $assistantSource['product_id'] }})" class="inline-flex min-h-[36px] max-w-full items-center gap-1 rounded-[6px] border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600"><span class="font-mono font-semibold">[{{ $assistantSource['source_id'] }}]</span><span class="max-w-[180px] truncate">{{ $assistantSource['title'] }}</span></button>@endforeach</div><p class="mt-3 text-[11px] leading-5 text-slate-500">{{ $assistantResponse['disclaimer'] ?? '' }} · Motor: {{ $assistantResponse['provider'] ?? 'kanıt' }}</p></div>
+                @endif
             </div>
 
             <div class="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white" data-testid="booster-priority-actions">
@@ -374,6 +514,30 @@
                 <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3"><div class="flex items-center justify-between gap-2"><p class="truncate text-xs font-medium text-slate-500">İlgi proxy</p><span class="h-2 w-2 shrink-0 rounded-full bg-sky-500"></span></div><p class="mt-1 text-xl font-semibold text-slate-900">{{ $radarSummary['proxy'] }}</p><p class="mt-0.5 truncate text-[11px] text-slate-500">Düşük güvenli tahmin</p></div>
                 <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3"><div class="flex items-center justify-between gap-2"><p class="truncate text-xs font-medium text-slate-500">Hareket yok</p><span class="h-2 w-2 shrink-0 rounded-full bg-slate-400"></span></div><p class="mt-1 text-xl font-semibold text-slate-900">{{ $radarSummary['no_movement'] }}</p><p class="mt-0.5 truncate text-[11px] text-slate-500">Stok düşüşü gözlenmedi</p></div>
                 <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3"><div class="flex items-center justify-between gap-2"><p class="truncate text-xs font-medium text-slate-500">Veri bekliyor</p><span class="h-2 w-2 shrink-0 rounded-full bg-amber-500"></span></div><p class="mt-1 text-xl font-semibold text-slate-900">{{ $radarSummary['waiting'] }}</p><p class="mt-0.5 truncate text-[11px] text-slate-500">Isınan veya eksik kaynak</p></div>
+            </div>
+
+            <div class="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white" data-testid="booster-forecast-calibration">
+                <div class="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/60 p-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="min-w-0">
+                        <p class="text-xs font-semibold uppercase text-slate-500">Tahmin doğruluk ve kalibrasyon merkezi</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">Tahmin edilen satış ile sonraki gerçek stok erimesini karşılaştırır</p>
+                        <p class="mt-0.5 text-xs text-slate-500">{{ $calibration['evidence_note'] }}</p>
+                    </div>
+                    <span class="inline-flex min-h-[36px] shrink-0 items-center justify-center rounded-[6px] border px-3 py-2 text-xs font-semibold {{ $calibrationTone }}">{{ $calibration['label'] }} · {{ (int) $calibration['sample_count'] }} örnek</span>
+                </div>
+                <div class="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3"><p class="text-xs text-slate-500">Ortalama yüzde hata</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ $calibration['mape'] !== null ? '%'.number_format((float) $calibration['mape'], 1, ',', '.') : 'Veri bekleniyor' }}</p><p class="mt-0.5 text-[11px] text-slate-500">Yalnız sıfırdan büyük gerçek satış</p></div>
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3"><p class="text-xs text-slate-500">±%25 içinde</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ $calibration['within_25_percent'] !== null ? '%'.number_format((float) $calibration['within_25_percent'], 1, ',', '.') : 'Veri bekleniyor' }}</p><p class="mt-0.5 text-[11px] text-slate-500">Doğruluk bandı</p></div>
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3"><p class="text-xs text-slate-500">Ort. adet hatası</p><p class="mt-1 text-lg font-semibold text-slate-900">{{ $calibration['mae'] !== null ? number_format((float) $calibration['mae'], 2, ',', '.').' / gün' : 'Veri bekleniyor' }}</p><p class="mt-0.5 text-[11px] text-slate-500">Mutlak hata</p></div>
+                    <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3"><p class="text-xs text-slate-500">Model eğilimi</p><p class="mt-1 truncate text-sm font-semibold text-slate-900">{{ $calibration['bias_label'] }}</p><p class="mt-0.5 text-[11px] text-slate-500">Sapma {{ $calibration['bias'] !== null ? number_format((float) $calibration['bias'], 2, ',', '.').' adet' : '-' }}</p></div>
+                </div>
+                @if($calibrationCategories->isNotEmpty())
+                    <div class="grid grid-cols-1 gap-2 border-t border-slate-100 p-3 sm:grid-cols-2 xl:grid-cols-4">
+                        @foreach($calibrationCategories as $categoryCalibration)
+                            <div class="min-w-0 rounded-[6px] border border-slate-200 bg-white px-3 py-2"><p class="truncate text-xs font-medium text-slate-900">{{ $categoryCalibration['category'] }}</p><p class="mt-0.5 text-[11px] text-slate-500">{{ $categoryCalibration['sample_count'] }} örnek · Hata {{ $categoryCalibration['mape'] !== null ? '%'.number_format((float) $categoryCalibration['mape'], 1, ',', '.') : '-' }}</p></div>
+                        @endforeach
+                    </div>
+                @endif
             </div>
 
             <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50/60 p-3">

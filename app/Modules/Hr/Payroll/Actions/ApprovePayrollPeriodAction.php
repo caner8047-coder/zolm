@@ -24,6 +24,11 @@ class ApprovePayrollPeriodAction
             'Hesabı ve ön kontrolleri tamamlanmamış dönem onaylanamaz.',
         );
         abort_if($period->calculated_by === auth()->id(), 422, 'Bordroyu hesaplayan kişi onaylayamaz.');
+        abort_if(
+            in_array($period->variance_status, ['warning', 'critical'], true) && ! $period->variance_reviewed_at,
+            422,
+            'Dönem farkları ikinci kullanıcı tarafından incelenmeden bordro onaylanamaz.',
+        );
 
         return DB::transaction(function () use ($period) {
             $period->update(['status' => 'approved', 'approved_at' => now(), 'approved_by' => auth()->id()]);

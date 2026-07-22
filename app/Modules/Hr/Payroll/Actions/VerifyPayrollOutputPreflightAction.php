@@ -5,6 +5,7 @@ namespace App\Modules\Hr\Payroll\Actions;
 use App\Modules\Hr\Core\Services\HrAuditService;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Payroll\Models\HrPayrollPeriod;
+use App\Modules\Hr\Payroll\Models\HrPayrollEmployeeProfile;
 use App\Modules\Hr\Payroll\Models\HrPayrollRule;
 use App\Modules\Hr\Payroll\Services\PayrollRuleConfiguration;
 
@@ -22,6 +23,9 @@ class VerifyPayrollOutputPreflightAction
 
         if ($period->status !== 'approved' || $period->preflight_status !== 'passed') {
             $findings[] = $this->finding('period_not_approved', 'Bordro dönemi hesaplanmış ve ikinci kullanıcı tarafından onaylanmış olmalı.');
+        }
+        if ($period->source_status === 'stale') {
+            $findings[] = $this->finding('payroll_source_stale', 'Puantaj, fazla mesai, kural veya çalışan bordro profili hesaplamadan sonra değişti.');
         }
         if (! $period->approved_by || $period->approved_by === $period->calculated_by) {
             $findings[] = $this->finding('maker_checker_invalid', 'Hesaplayan ve onaylayan kullanıcı ayrımı doğrulanamadı.');
@@ -67,6 +71,19 @@ class VerifyPayrollOutputPreflightAction
                 $findings[] = $this->finding('rule_snapshot_invalid', 'Onaylı mevzuat kural sürümü dönemle eşleşmiyor.', $record->employee_id);
             }
 
+            $profileSnapshot = $record->payroll_profile_snapshot;
+            $profile = ! empty($profileSnapshot['id'])
+                ? HrPayrollEmployeeProfile::withoutGlobalScope('tenant')
+                    ->where('legal_entity_id', $period->legal_entity_id)
+                    ->find($profileSnapshot['id'])
+                : null;
+            if (($rule?->configuration['require_employee_payroll_profile'] ?? false) && ! $profile) {
+                $findings[] = $this->finding('payroll_profile_missing', 'Zorunlu çalışan bordro profili bulunamadı.', $record->employee_id);
+            } elseif ($profile && (! in_array($profile->status, ['approved', 'superseded'], true)
+                || $this->profileSnapshot($profile) !== $profileSnapshot)) {
+                $findings[] = $this->finding('payroll_profile_snapshot_invalid', 'Çalışan bordro profili hesap anındaki değerlerle eşleşmiyor.', $record->employee_id);
+            }
+
             $ledgerValid = \App\Modules\Hr\Payroll\Models\HrPayrollTaxLedger::withoutGlobalScope('tenant')
                 ->where('legal_entity_id', $period->legal_entity_id)
                 ->where('payroll_record_id', $record->id)->where('calculation_hash', $record->calculation_hash)->exists();
@@ -101,5 +118,24 @@ class VerifyPayrollOutputPreflightAction
     private function finding(string $code, string $message, ?int $employeeId = null): array
     {
         return array_filter(['code' => $code, 'severity' => 'blocking', 'employee_id' => $employeeId, 'message' => $message], fn ($value) => $value !== null);
+    }
+
+    private function profileSnapshot(HrPayrollEmployeeProfile $profile): array
+    {
+        return [
+            'id' => $profile->id,
+            'version' => $profile->version,
+            'payment_method' => $profile->payment_method,
+            'iban_hash' => $profile->iban_hash,
+            'iban_last_four' => $profile->iban_last_four,
+            'social_security_status' => $profile->social_security_status,
+            'insurance_branch_code' => $profile->insurance_branch_code,
+            'incentive_law_code' => $profile->incentive_law_code,
+            'missing_day_default_code' => $profile->missing_day_default_code,
+            'disability_degree' => $profile->disability_degree,
+            'is_retired' => $profile->is_retired,
+            'is_rd_employee' => $profile->is_rd_employee,
+            'is_technopark_employee' => $profile->is_technopark_employee,
+        ];
     }
 }

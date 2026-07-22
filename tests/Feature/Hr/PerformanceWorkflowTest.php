@@ -25,27 +25,32 @@ use Tests\TestCase;
 class PerformanceWorkflowTest extends TestCase
 {
     use RefreshHrDatabase;
-    private User $user; private LegalEntity $tenant; private HrEmployee $employee; private HrEmployee $reviewer;
+    private User $user; private User $reviewerUser; private LegalEntity $tenant; private HrEmployee $employee; private HrEmployee $reviewer;
 
     protected function setUp():void
     {
         parent::setUp(); (new \Database\Seeders\Hr\HrPermissionSeeder)->run(); $role=DB::table('roles')->where('slug','hr_admin')->value('id'); $this->user=User::factory()->create(['role_id'=>$role]); $this->actingAs($this->user); $this->tenant=LegalEntity::create(['user_id'=>$this->user->id,'name'=>'Performans','tax_number'=>'3131313131','is_active'=>true]); app(TenantContext::class)->set($this->tenant);
-        $this->employee=$this->employee('PER01','Çalışan','performance-e1',$this->user->id); $reviewerUser=User::factory()->create(['role_id'=>$role]); $this->reviewer=$this->employee('PER02','Yönetici','performance-e2',$reviewerUser->id);
+        $this->employee=$this->employee('PER01','Çalışan','performance-e1',$this->user->id); $this->reviewerUser=User::factory()->create(['role_id'=>$role]); $this->reviewer=$this->employee('PER02','Yönetici','performance-e2',$this->reviewerUser->id);
     }
 
     public function test_360_score_is_server_calculated_and_calibration_preserves_original():void
     {
         $cycle=$this->cycle(); $template=app(CreatePerformanceTemplateAction::class)->execute('360',[['title'=>'Yetkinlik','questions'=>[['id'=>'quality','label'=>'Kalite','weight'=>60],['id'=>'team','label'=>'Takım','weight'=>40]]]]);
         $evaluation=app(CreateEvaluationAssignmentAction::class)->execute($cycle,$template,$this->employee,$this->reviewer,ReviewerType::Manager);
+        $this->startEvaluation($cycle); $this->actingAs($this->reviewerUser);
         $submitted=app(SubmitPerformanceEvaluationAction::class)->execute($evaluation,['quality'=>5,'team'=>3]);
         $this->assertSame(PerformanceEvaluationStatus::Submitted,$submitted->status); $this->assertSame('84.00',$submitted->overall_score);
+        $this->assertDatabaseHas('hr_performance_results',['cycle_id'=>$cycle->id,'employee_id'=>$this->employee->id,'overall_score'=>84]);
+        $this->actingAs($this->user);
+        app(CreatePerformanceCycleAction::class)->transition($cycle->fresh(),PerformanceCycleStatus::Calibration);
         $calibrated=app(CalibratePerformanceEvaluationAction::class)->execute($submitted,80,'Ekipler arası ortak kalibrasyon kararı');
         $this->assertSame('84.00',$calibrated->overall_score); $this->assertSame('80.00',$calibrated->calibrated_score); $this->assertNotNull($calibrated->calibrated_at);
+        $this->assertDatabaseHas('hr_performance_results',['cycle_id'=>$cycle->id,'employee_id'=>$this->employee->id,'overall_score'=>80]);
     }
 
     public function test_submitted_evaluation_is_immutable():void
     {
-        $cycle=$this->cycle(); $template=app(CreatePerformanceTemplateAction::class)->execute('Kısa',[['title'=>'Genel','questions'=>[['id'=>'q1','label'=>'Soru','weight'=>100]]]]); $evaluation=app(CreateEvaluationAssignmentAction::class)->execute($cycle,$template,$this->employee,$this->reviewer,ReviewerType::Peer); app(SubmitPerformanceEvaluationAction::class)->execute($evaluation,['q1'=>4]);
+        $cycle=$this->cycle(); $template=app(CreatePerformanceTemplateAction::class)->execute('Kısa',[['title'=>'Genel','questions'=>[['id'=>'q1','label'=>'Soru','weight'=>100]]]]); $evaluation=app(CreateEvaluationAssignmentAction::class)->execute($cycle,$template,$this->employee,$this->reviewer,ReviewerType::Peer); $this->startEvaluation($cycle); $this->actingAs($this->reviewerUser); app(SubmitPerformanceEvaluationAction::class)->execute($evaluation,['q1'=>4]);
         $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class); app(SubmitPerformanceEvaluationAction::class)->execute($evaluation->fresh(),['q1'=>1]);
     }
 
@@ -63,9 +68,10 @@ class PerformanceWorkflowTest extends TestCase
 
     public function test_goal_progress_update_is_audited():void
     {
-        $cycle=$this->cycle(); $goal=app(CreatePerformanceGoalAction::class)->execute($cycle,$this->employee,['title'=>'Teslimat','metric_unit'=>'adet','target_value'=>20,'weight'=>100]);
+        $cycle=$this->cycle(); $goal=app(CreatePerformanceGoalAction::class)->execute($cycle,$this->employee,['title'=>'Teslimat','metric_unit'=>'adet','target_value'=>20,'weight'=>100]); app(CreatePerformanceCycleAction::class)->transition($cycle,PerformanceCycleStatus::Active);
         $updated=app(UpdatePerformanceGoalProgressAction::class)->execute($goal,12);
         $this->assertSame('12.00',$updated->current_value);
+        $this->assertDatabaseHas('hr_performance_goal_check_ins',['goal_id'=>$goal->id,'note'=>'İlerleme güncellendi.']);
         $this->assertDatabaseHas('activity_logs',['user_id'=>$this->user->id,'action'=>'performance_goal_progress_updated']);
     }
 
@@ -79,6 +85,7 @@ class PerformanceWorkflowTest extends TestCase
             ->assertViewHas('evaluations',fn($rows)=>$rows->total()===1&&$rows->first()->is($mine));
     }
 
-    private function cycle(){return app(CreatePerformanceCycleAction::class)->execute(['name'=>'2026','starts_on'=>'2026-01-01','ends_on'=>'2026-12-31','evaluation_starts_on'=>'2026-11-01','evaluation_ends_on'=>'2026-12-15']);}
+    private function cycle(){return app(CreatePerformanceCycleAction::class)->execute(['name'=>'2026','starts_on'=>today()->startOfYear()->toDateString(),'ends_on'=>today()->endOfYear()->toDateString(),'evaluation_starts_on'=>today()->subDay()->toDateString(),'evaluation_ends_on'=>today()->addDay()->toDateString()]);}
+    private function startEvaluation($cycle):void{app(CreatePerformanceCycleAction::class)->transition($cycle,PerformanceCycleStatus::Active);app(CreatePerformanceCycleAction::class)->transition($cycle->fresh(),PerformanceCycleStatus::Evaluation);}
     private function employee(string $number,string $first,string $hash,int $userId):HrEmployee{return HrEmployee::withoutGlobalScope('tenant')->create(['legal_entity_id'=>$this->tenant->id,'user_id'=>$userId,'employee_number'=>$number,'national_id_encrypted'=>'enc','national_id_hash'=>$hash,'national_id_last_four'=>'0001','first_name'=>$first,'last_name'=>'Test','status'=>'active']);}
 }

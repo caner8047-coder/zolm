@@ -10,6 +10,8 @@
         requestId: '',
         pendingAnalysisUrl: '',
         fallbackTimer: null,
+        scanBusy: false,
+        scanMessage: '',
         init() {
             console.log('[Analysis Tab] Sending PING to window...');
             window.postMessage({ source: 'zolm-booster-page', type: 'PING' }, window.location.origin);
@@ -56,6 +58,31 @@
                 this.extensionMessage = 'Chrome Companion yanıt vermedi; eklentiyi yeniden yükleyip tekrar deneyin.';
                 wire.productAnalysisBridgeCompleted(null, this.extensionMessage, false);
             }, 45000);
+        },
+        async scanBarcode(event, wire) {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            if (!file) return;
+            if (!('BarcodeDetector' in window)) {
+                this.scanMessage = 'Bu tarayıcı barkod çözümlemeyi desteklemiyor; kodu elle yazabilirsiniz.';
+                return;
+            }
+            this.scanBusy = true;
+            this.scanMessage = 'Barkod cihazda okunuyor...';
+            try {
+                const bitmap = await createImageBitmap(file);
+                const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'upc_a', 'upc_e', 'qr_code'] });
+                const codes = await detector.detect(bitmap);
+                bitmap.close?.();
+                const value = String(codes?.[0]?.rawValue || '').trim();
+                if (!value) throw new Error('Görüntüde okunabilir barkod bulunamadı.');
+                this.scanMessage = `${value} bulundu; Trendyol'da aranıyor...`;
+                await wire.resolveMobileDiscovery(value);
+            } catch (error) {
+                this.scanMessage = error?.message || 'Barkod okunamadı.';
+            } finally {
+                this.scanBusy = false;
+            }
         },
         receive(event, wire) {
             const data = event.data || {};
@@ -131,6 +158,18 @@
             <span x-show="extensionMessage" x-cloak x-text="extensionMessage" class="rounded-[6px] border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700"></span>
             <span class="text-slate-500">Analiz tek seferliktir; sürekli ölçüm yalnızca Takibe Al ile başlar.</span>
         </div>
+
+        <div class="mt-4 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3" data-testid="booster-mobile-barcode-discovery">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label class="min-w-0 flex-1"><span class="text-xs font-medium text-slate-600">Mobil barkod / ürün kodu</span><input type="text" inputmode="text" wire:model.defer="mobileDiscoveryQuery" wire:keydown.enter="resolveMobileDiscovery" placeholder="Barkodu okutun veya kodu yazın" class="mt-1.5 min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 sm:py-2 sm:text-sm"></label>
+                <div class="grid grid-cols-2 gap-2 sm:flex">
+                    <label class="inline-flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 sm:w-auto sm:py-2"><x-lucide.icon name="scan-line" class="h-4 w-4" /><span x-text="scanBusy ? 'Okunuyor...' : 'Kameradan okut'"></span><input type="file" accept="image/*" capture="environment" class="sr-only" x-on:change="scanBarcode($event, $wire)" x-bind:disabled="scanBusy"></label>
+                    <button type="button" wire:click="resolveMobileDiscovery" wire:loading.attr="disabled" wire:target="resolveMobileDiscovery" class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white sm:w-auto sm:py-2">Kodu ara</button>
+                </div>
+            </div>
+            <p class="mt-2 text-xs text-slate-500">Görüntü cihazınızda çözülür; ZOLM'a yalnızca bulunan kod gönderilir.</p>
+            <p x-show="scanMessage" x-cloak x-text="scanMessage" class="mt-2 text-xs font-medium text-slate-700"></p>
+        </div>
     </section>
 
     @if(!empty($productAnalysis))
@@ -173,6 +212,42 @@
                 ['Dönüşüm tahmini', $analysisCurrent['estimated_conversion_rate'] ?? null, '%', 'Tahmini günlük satış / 24 saat görüntüleme × 100', 'Günlük satış tahmini ile Trendyol 24 saat görüntüleme verisi gerekir.'],
             ];
         @endphp
+
+        <x-zolm.decision-evidence :evidence="$productAnalysis['evidence'] ?? []" />
+
+        <section data-testid="booster-next-action" class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-5">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div class="min-w-0">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Sonraki en iyi adım</p>
+                    @if((float) ($productAnalysis['current']['confidence_score'] ?? 0) < 50)
+                        <h3 class="mt-1 text-base font-semibold text-slate-900">Önce veriyi güçlendirin, sonra maliyet kararına geçin</h3>
+                        <p class="mt-1 text-sm text-slate-500">Güven düşük. Ürünü takibe alıp ikinci bir ölçümle satış sinyalini doğrulayın.</p>
+                    @elseif((float) $cogs <= 0)
+                        <h3 class="mt-1 text-base font-semibold text-slate-900">Alış maliyetini ekleyip finansal kararı tamamlayın</h3>
+                        <p class="mt-1 text-sm text-slate-500">Canlı pazar sinyali hazır; net karar için ürün maliyeti, kargo ve komisyonu doğrulayın.</p>
+                    @else
+                        <h3 class="mt-1 text-base font-semibold text-slate-900">Ürünü finansal karar katmanına taşıyın</h3>
+                        <p class="mt-1 text-sm text-slate-500">Gözlenen sinyali maliyetinizle birleştirip Sat veya Satma kararını üretin.</p>
+                    @endif
+                </div>
+                <div class="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
+                    <button
+                        type="button"
+                        wire:click="openTrackedProductFinance({{ $productAnalysis['tracked_product_id'] }})"
+                        class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base font-medium text-slate-700 transition hover:bg-slate-50 sm:py-2 sm:text-sm"
+                    >
+                        <x-lucide.icon name="calculator" class="h-4 w-4" /> Kâr-Zarar hesabı
+                    </button>
+                    <button
+                        type="button"
+                        wire:click="openTrackedProductSellDecision({{ $productAnalysis['tracked_product_id'] }})"
+                        class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[6px] bg-slate-900 px-4 py-3 text-base font-medium text-white transition hover:bg-slate-800 sm:py-2 sm:text-sm"
+                    >
+                        <x-lucide.icon name="activity" class="h-4 w-4" /> Sat veya Satma
+                    </button>
+                </div>
+            </div>
+        </section>
 
         <section data-testid="booster-product-analysis" class="overflow-hidden rounded-[10px] border border-slate-200 bg-white shadow-sm">
             <div class="flex flex-col gap-4 border-b border-slate-200 p-4 sm:flex-row sm:items-start sm:justify-between lg:p-6">

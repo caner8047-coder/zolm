@@ -6,11 +6,12 @@ use App\Modules\Hr\Core\Services\HrAuditService;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Payroll\Models\HrPayrollAdjustment;
 use App\Modules\Hr\Payroll\Models\HrPayrollPeriod;
+use App\Modules\Hr\Payroll\Services\PayrollItemCatalog;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
 
 class ManagePayrollAdjustmentAction
 {
-    public function __construct(private HrAuditService $audit) {}
+    public function __construct(private HrAuditService $audit, private PayrollItemCatalog $catalog) {}
 
     public function propose(HrPayrollPeriod $period, HrEmployee $employee, array $data): HrPayrollAdjustment
     {
@@ -19,22 +20,16 @@ class ManagePayrollAdjustmentAction
         abort_unless($period->legal_entity_id === $tenant && $employee->legal_entity_id === $tenant, 404);
         abort_unless($period->status === 'prepared' && $period->records()->where('employee_id', $employee->id)->exists(), 422, 'Yalnız hazırlanmış dönemdeki çalışan için düzeltme eklenebilir.');
         $validated = validator($data, [
-            'code' => ['required', 'string', 'max:60'], 'name' => ['required', 'string', 'max:160'],
-            'type' => ['required', 'in:'.implode(',', HrPayrollAdjustment::TYPES)], 'amount_cents' => ['required', 'integer', 'min:1'],
-            'social_security_exempt' => ['sometimes', 'boolean'], 'income_tax_exempt' => ['sometimes', 'boolean'],
-            'pre_tax_deduction' => ['sometimes', 'boolean'], 'reason' => ['required', 'string', 'max:1000'],
+            'code' => ['required', 'string', 'max:60'],
+            'amount_cents' => ['required', 'integer', 'min:1'],
+            'reason' => ['required', 'string', 'max:1000'],
         ])->validate();
-        if ($validated['type'] !== 'earning' && (($validated['social_security_exempt'] ?? false) || ($validated['income_tax_exempt'] ?? false))) {
-            abort(422, 'SGK ve gelir vergisi istisnası yalnız kazanç kalemlerinde kullanılabilir.');
-        }
-        if ($validated['type'] !== 'deduction' && ($validated['pre_tax_deduction'] ?? false)) {
-            abort(422, 'Vergi öncesi seçimi yalnız kesinti kalemlerinde kullanılabilir.');
-        }
+        $item = $this->catalog->get($validated['code']);
         $adjustment = HrPayrollAdjustment::create([
             'legal_entity_id' => $tenant, 'payroll_period_id' => $period->id, 'employee_id' => $employee->id,
-            'code' => strtoupper(trim($validated['code'])), 'name' => trim($validated['name']), 'type' => $validated['type'],
-            'amount_encrypted' => (string) $validated['amount_cents'], 'social_security_exempt' => $validated['social_security_exempt'] ?? false,
-            'income_tax_exempt' => $validated['income_tax_exempt'] ?? false, 'pre_tax_deduction' => $validated['pre_tax_deduction'] ?? false,
+            'code' => $item['code'], 'name' => $item['name'], 'type' => $item['type'],
+            'amount_encrypted' => (string) $validated['amount_cents'], 'social_security_exempt' => $item['social_security_exempt'],
+            'income_tax_exempt' => $item['income_tax_exempt'], 'pre_tax_deduction' => $item['pre_tax_deduction'],
             'status' => 'pending_approval', 'reason' => trim($validated['reason']), 'created_by' => auth()->id(),
         ]);
         $this->audit->log('payroll_adjustment_proposed', $adjustment, null, ['code' => $adjustment->code, 'type' => $adjustment->type, 'amount' => '[MASKED]']);

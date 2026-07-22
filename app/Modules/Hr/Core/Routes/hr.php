@@ -47,13 +47,17 @@ use App\Modules\Hr\Overtime\Livewire\OvertimeWorkspace;
 use App\Modules\Hr\Payroll\Livewire\PayrollRuleManager;
 use App\Modules\Hr\Payroll\Livewire\PayrollWorkspace;
 use App\Modules\Hr\Payroll\Livewire\PayrollCalculator;
+use App\Modules\Hr\Payroll\Livewire\PayrollProfileManager;
 use App\Modules\Hr\Payroll\Actions\ExportPayrollControlOutputAction;
+use App\Modules\Hr\Payroll\Actions\ExportPayrollOperationsPackageAction;
 use App\Modules\Hr\Payroll\Models\HrPayrollPeriod;
 use App\Modules\Hr\Expense\Livewire\ExpenseCategoryManager;
 use App\Modules\Hr\Expense\Livewire\ExpenseWorkspace;
 use App\Modules\Hr\Advance\Livewire\AdvanceWorkspace;
 use App\Modules\Hr\Asset\Livewire\AssetWorkspace;
 use App\Modules\Hr\Performance\Livewire\PerformanceWorkspace;
+use App\Modules\Hr\Performance\Actions\ExportPerformanceReportAction;
+use App\Modules\Hr\Performance\Models\HrPerformanceCycle;
 use App\Modules\Hr\Training\Livewire\TrainingWorkspace;
 use App\Modules\Hr\Engagement\Livewire\EngagementWorkspace;
 use App\Modules\Hr\Recruitment\Livewire\RecruitmentWorkspace;
@@ -151,7 +155,7 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
         Route::get('/leaves/create', LeaveRequestForm::class)->name('leaves.create')
             ->middleware('hr.authorize:hr.leaves.create');
         Route::get('/my/leaves', MyLeaveList::class)->name('my-leaves')
-            ->middleware('hr.authorize:hr.leaves.create');
+            ->middleware('hr.authorize:hr.self_service.view');
         Route::get('/my/leaves/create', LeaveRequestForm::class)->name('my-leaves.create')
             ->defaults('selfService', true)
             ->middleware('hr.authorize:hr.leaves.create');
@@ -159,6 +163,11 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
             ->middleware('hr.authorize:hr.leaves.approve');
         Route::get('/leaves/balances', LeaveBalanceManager::class)->name('leaves.balances')
             ->middleware('hr.authorize:hr.leaves.manage_balance');
+        Route::get('/leaves/{id}/pdf', function (int $id) {
+            $tenantId = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $leave = \App\Modules\Hr\Leave\Models\HrLeaveRequest::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($id);
+            return app(\App\Modules\Hr\Document\Services\HrPdfDocumentGenerator::class)->streamLeaveFormPdf($leave);
+        })->name('leaves.pdf')->middleware('hr.authorize:hr.leaves.view');
         Route::get('/leaves/export', function () {
             $path = app(ExportLeavesAction::class)->execute(request()->only(['status', 'leave_type_id']));
             $fullPath = storage_path("app/private/{$path}");
@@ -183,9 +192,9 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
         Route::get('/shifts', ShiftPlanner::class)->name('shifts')
             ->middleware('hr.authorize:hr.shifts.view');
         Route::get('/my/shift-availability', MyShiftAvailability::class)->name('my-shift-availability')
-            ->middleware('hr.authorize:hr.shifts.view');
+            ->middleware('hr.authorize:hr.self_service.view');
         Route::get('/my/shift-change-requests', MyShiftChangeRequests::class)->name('my-shift-change-requests')
-            ->middleware('hr.authorize:hr.shifts.view');
+            ->middleware('hr.authorize:hr.self_service.view');
         Route::get('/shifts/change-requests', ShiftChangeApprovalInbox::class)->name('shifts.change-requests')
             ->middleware('hr.authorize:hr.shifts.plan');
         Route::get('/settings/shift-templates', ShiftTemplateList::class)->name('settings.shift-templates')
@@ -201,8 +210,13 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
             ->middleware('hr.authorize:hr.attendance.view');
         Route::get('/attendance/anomalies', AttendanceAnomalyInbox::class)->name('attendance.anomalies')
             ->middleware('hr.authorize:hr.attendance.view_anomaly');
+        Route::get('/attendance/anomalies/{id}/pdf', function (int $id) {
+            $tenantId = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $anomaly = \App\Modules\Hr\Attendance\Models\HrAttendanceAnomaly::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($id);
+            return app(\App\Modules\Hr\Document\Services\HrPdfDocumentGenerator::class)->streamAbsenceNoticePdf($anomaly);
+        })->name('attendance.anomalies.pdf')->middleware('hr.authorize:hr.attendance.view_anomaly');
         Route::get('/my/attendance', MyAttendanceTerminal::class)->name('my-attendance')
-            ->middleware('hr.authorize:hr.attendance.view');
+            ->middleware('hr.authorize:hr.self_service.view');
         Route::get('/settings/attendance-devices', AttendanceDeviceManager::class)->name('settings.attendance-devices')
             ->middleware('hr.authorize:hr.attendance.manage');
     });
@@ -222,7 +236,7 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
             ->middleware('hr.authorize:hr.timesheet.view');
         Route::get('/my/overtime', OvertimeWorkspace::class)->name('my-overtime')
             ->defaults('selfService', true)
-            ->middleware('hr.authorize:hr.timesheet.view');
+            ->middleware('hr.authorize:hr.self_service.view');
         Route::get('/settings/overtime-types', OvertimeTypeManager::class)->name('settings.overtime-types')
             ->middleware('hr.authorize:hr.timesheet.close');
     });
@@ -240,8 +254,39 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             ])->deleteFileAfterSend(true);
         })->name('payroll.control-output')->middleware(['hr.authorize:hr.payroll.export', 'hr.authorize:hr.salary.view']);
+        Route::get('/payroll/{period}/operations-package', function (int $period) {
+            $tenantId = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $model = HrPayrollPeriod::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($period);
+            $path = app(ExportPayrollOperationsPackageAction::class)->execute($model);
+            return response()->download(storage_path("app/private/{$path}"), basename($path), [
+                'Content-Type' => 'application/zip',
+            ])->deleteFileAfterSend(true);
+        })->name('payroll.operations-package')->middleware(['hr.authorize:hr.payroll.export', 'hr.authorize:hr.salary.view']);
+
+        Route::get('/payroll/{period}/mphbt-export', function (int $period) {
+            $tenantId = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $model = HrPayrollPeriod::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($period);
+            $path = app(\App\Modules\Hr\Payroll\Services\PayrollExportService::class)->exportMphbtTxt($model);
+            return response()->download(storage_path("app/private/{$path}"), basename($path))->deleteFileAfterSend(true);
+        })->name('payroll.mphbt-export')->middleware(['hr.authorize:hr.payroll.export', 'hr.authorize:hr.salary.view']);
+
+        Route::get('/payroll/{period}/bank-payment-export', function (int $period) {
+            $tenantId = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $model = HrPayrollPeriod::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($period);
+            $path = app(\App\Modules\Hr\Payroll\Services\PayrollExportService::class)->exportBankPaymentCsv($model);
+            return response()->download(storage_path("app/private/{$path}"), basename($path))->deleteFileAfterSend(true);
+        })->name('payroll.bank-payment-export')->middleware(['hr.authorize:hr.payroll.export', 'hr.authorize:hr.salary.view']);
+
+        Route::get('/payroll/{period}/journal-voucher', function (int $period) {
+            $tenantId = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $model = HrPayrollPeriod::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($period);
+            $voucher = app(\App\Modules\Hr\Payroll\Services\PayrollExportService::class)->generateJournalVoucher($model);
+            return response()->json($voucher);
+        })->name('payroll.journal-voucher')->middleware(['hr.authorize:hr.payroll.export', 'hr.authorize:hr.salary.view']);
         Route::get('/settings/payroll-rules', PayrollRuleManager::class)->name('settings.payroll-rules')
             ->middleware('hr.authorize:hr.payroll.manage_rules');
+        Route::get('/settings/payroll-profiles', PayrollProfileManager::class)->name('settings.payroll-profiles')
+            ->middleware('hr.authorize:hr.payroll.manage_profiles');
     });
 
     Route::middleware('hr.module:masraf')->group(function () {
@@ -262,22 +307,57 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
 
     Route::middleware('hr.module:zimmet')->group(function () {
         Route::get('/assets', AssetWorkspace::class)->name('assets')->middleware('hr.authorize:hr.assets.view');
-        Route::get('/my/assets', AssetWorkspace::class)->name('my-assets')->defaults('selfService', true)->middleware('hr.authorize:hr.assets.view');
+        Route::get('/assets/{assignment}/pdf', function (int $assignment) {
+            $tenantId = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $model = \App\Modules\Hr\Asset\Models\HrAssetAssignment::withoutGlobalScope('tenant')->where('legal_entity_id', $tenantId)->findOrFail($assignment);
+            return app(\App\Modules\Hr\Document\Services\HrPdfDocumentGenerator::class)->streamAssetAssignmentPdf($model);
+        })->name('assets.assignment.pdf')->middleware('hr.authorize:hr.assets.view');
+        Route::get('/my/assets', AssetWorkspace::class)->name('my-assets')->defaults('selfService', true)->middleware('hr.authorize:hr.self_service.view');
     });
 
     Route::middleware('hr.module:performans')->group(function () {
         Route::get('/performance', PerformanceWorkspace::class)->name('performance')->middleware('hr.authorize:hr.performance.view');
-        Route::get('/my/performance', PerformanceWorkspace::class)->name('my-performance')->defaults('selfService', true)->middleware('hr.authorize:hr.performance.view');
+        Route::get('/my/performance', PerformanceWorkspace::class)->name('my-performance')->defaults('selfService', true)->middleware('hr.authorize:hr.self_service.view');
+        Route::get('/performance/{cycle}/export', function (int $cycle) {
+            $tenant = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $model = HrPerformanceCycle::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant)->findOrFail($cycle);
+            $path = app(ExportPerformanceReportAction::class)->exportCycle($model);
+            return response()->download(storage_path("app/private/{$path}"), basename($path), ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])->deleteFileAfterSend(true);
+        })->name('performance.export')->middleware('hr.authorize:hr.performance.export');
+        Route::get('/performance/{cycle}/employee/{employee}/report', function (int $cycle, int $employee) {
+            $tenant = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $cycleModel = HrPerformanceCycle::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant)->findOrFail($cycle);
+            $employeeModel = \App\Modules\Hr\Personnel\Models\HrEmployee::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant)->findOrFail($employee);
+            $path = app(ExportPerformanceReportAction::class)->exportEmployee($cycleModel, $employeeModel);
+            return response()->download(storage_path("app/private/{$path}"), basename($path), ['Content-Type' => 'application/pdf'])->deleteFileAfterSend(true);
+        })->name('performance.employee-report')->middleware('hr.authorize:hr.performance.export');
+        Route::get('/my/performance/{cycle}/report', function (int $cycle) {
+            $tenant = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $cycleModel = HrPerformanceCycle::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant)->where('status', 'closed')->findOrFail($cycle);
+            $employee = \App\Modules\Hr\Personnel\Models\HrEmployee::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant)->where('user_id', auth()->id())->firstOrFail();
+            $path = app(ExportPerformanceReportAction::class)->exportEmployee($cycleModel, $employee);
+            return response()->download(storage_path("app/private/{$path}"), basename($path), ['Content-Type' => 'application/pdf'])->deleteFileAfterSend(true);
+        })->name('my-performance.report')->middleware('hr.authorize:hr.self_service.view');
+        Route::get('/performance/defense-pdf/{id?}', function (?int $id = null) {
+            $tenant = app(\App\Modules\Hr\Core\Services\TenantContext::class)->getId();
+            $evaluation = null;
+            if ($id) {
+                $evaluation = \App\Modules\Hr\Performance\Models\HrPerformanceEvaluation::withoutGlobalScope('tenant')
+                    ->where('legal_entity_id', $tenant)
+                    ->find($id);
+            }
+            return app(\App\Modules\Hr\Document\Services\HrPdfDocumentGenerator::class)->streamDefenseRequestPdf($evaluation);
+        })->name('performance.defense-pdf')->middleware('hr.authorize:hr.performance.view');
     });
 
     Route::middleware('hr.module:egitim')->group(function () {
         Route::get('/training', TrainingWorkspace::class)->name('training')->middleware('hr.authorize:hr.training.view');
-        Route::get('/my/training', TrainingWorkspace::class)->name('my-training')->defaults('selfService', true)->middleware('hr.authorize:hr.training.view');
+        Route::get('/my/training', TrainingWorkspace::class)->name('my-training')->defaults('selfService', true)->middleware('hr.authorize:hr.self_service.view');
     });
 
     Route::middleware('hr.module:baglilik')->group(function () {
         Route::get('/engagement', EngagementWorkspace::class)->name('engagement')->middleware('hr.authorize:hr.engagement.view');
-        Route::get('/my/engagement', EngagementWorkspace::class)->name('my-engagement')->defaults('selfService', true)->middleware('hr.authorize:hr.engagement.view');
+        Route::get('/my/engagement', EngagementWorkspace::class)->name('my-engagement')->defaults('selfService', true)->middleware('hr.authorize:hr.self_service.view');
     });
 
     Route::middleware('hr.module:aday_takip')->group(function () {
@@ -286,6 +366,7 @@ Route::middleware(['auth', ResolveHrTenant::class])->prefix('hr')->name('hr.')->
 
     Route::middleware('hr.module:personel')->group(function () {
         Route::get('/lifecycle', LifecycleWorkspace::class)->name('lifecycle')->middleware('hr.authorize:hr.lifecycle.view');
+        Route::get('/severance-calculator', \App\Modules\Hr\Lifecycle\Livewire\SeveranceCalculator::class)->name('severance-calculator')->middleware('hr.authorize:hr.lifecycle.view');
     });
 
     // Personel

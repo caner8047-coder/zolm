@@ -2897,6 +2897,8 @@
             </div>
         </section>
         @elseif($activePanel === 'products')
+        @include('livewire.partials.marketplace-capital-optimization')
+
         <section class="rounded-[10px] border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>

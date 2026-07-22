@@ -11,6 +11,9 @@
         extensionReady: false,
         extensionMessage: '',
         busy: false,
+        autoStart: @js(!$isMarketResearch && $comparisonAutoStart),
+        autoStarted: false,
+        wireRef: null,
         init() { window.postMessage({ source: 'zolm-booster-page', type: 'PING' }, window.location.origin); },
         receive(event) {
             const data = event.data || {};
@@ -18,12 +21,20 @@
             if (data.type === 'READY') {
                 this.extensionReady = true;
                 this.extensionMessage = '';
+                this.maybeAutoRun();
                 return;
             }
             if (data.type === 'BRIDGE_ERROR') {
                 this.extensionReady = false;
                 this.extensionMessage = data.message || 'Chrome Companion köprüsü yanıt vermedi.';
             }
+        },
+        maybeAutoRun() {
+            if (!this.autoStart || this.autoStarted || this.busy || !this.extensionReady || !this.wireRef) return;
+            const urlCount = Array.from(this.$root.querySelectorAll('[data-research-url]')).filter((input) => input.value.trim()).length;
+            if (urlCount < 2) return;
+            this.autoStarted = true;
+            this.run(this.wireRef);
         },
         query(url, timeoutMs = 50000) {
             return new Promise((resolve, reject) => {
@@ -56,9 +67,16 @@
             } catch (error) {
                 this.extensionMessage = error.message || 'Chrome Companion yanıtı başarısız oldu; sunucu karşılaştırması çalıştırılıyor.';
                 await wire.{{ $runMethod }}();
-            } finally { this.busy = false; }
+            } finally {
+                this.busy = false;
+                if (this.autoStart) {
+                    this.autoStart = false;
+                    await wire.set('comparisonAutoStart', false);
+                }
+            }
         }
     }"
+    x-init="wireRef = $wire; maybeAutoRun()"
     x-on:message.window="receive($event)"
     class="space-y-4 lg:space-y-6"
 >

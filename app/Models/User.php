@@ -142,12 +142,10 @@ class User extends Authenticatable
             ->delete();
 
         foreach ($roleIds as $roleId) {
-            DB::table('model_has_roles')->insert([
+            DB::table('model_has_roles')->insertOrIgnore([
                 'role_id' => $roleId,
                 'model_id' => $this->id,
                 'model_type' => self::class,
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
         }
     }

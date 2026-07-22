@@ -11,7 +11,7 @@ class HrPayrollAdjustment extends Model
 {
     use BelongsToLegalEntity;
 
-    public const TYPES = ['earning', 'deduction', 'employer_incentive'];
+    public const TYPES = ['earning', 'deduction', 'employer_incentive', 'employer_benefit'];
 
     protected $fillable = ['legal_entity_id', 'payroll_period_id', 'employee_id', 'code', 'name', 'type', 'amount_encrypted', 'social_security_exempt', 'income_tax_exempt', 'pre_tax_deduction', 'status', 'reason', 'created_by', 'approved_by', 'approved_at'];
     protected $hidden = ['amount_encrypted'];
