@@ -7,6 +7,10 @@ use App\Models\LegalEntity;
 use App\Models\User;
 use App\Modules\Hr\Core\Services\TenantContext;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
+use App\Modules\Hr\Document\Models\HrDocumentType;
+use App\Modules\Hr\Organization\Models\HrDepartment;
+use App\Modules\Hr\Organization\Models\HrTeam;
+use App\Modules\Hr\Organization\Models\HrUnit;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -76,5 +80,28 @@ class HrServicePagesSmokeTest extends TestCase
 
         $this->assertGreaterThanOrEqual(50, $checked, 'Beklenen İK servis sayısı taranmadı.');
         $this->assertSame([], $failures, "Hata veren İK servisleri:\n".implode("\n", $failures));
+
+        $employee = HrEmployee::withoutGlobalScope('tenant')->sole();
+        $department = HrDepartment::withoutGlobalScope('tenant')->where('legal_entity_id', $tenant->id)->firstOrFail();
+        $unit = HrUnit::create(['department_id' => $department->id, 'name' => 'Servis Birimi', 'code' => 'SRV']);
+        $team = HrTeam::create(['unit_id' => $unit->id, 'name' => 'Servis Ekibi']);
+        $documentType = HrDocumentType::create([
+            'legal_entity_id' => $tenant->id,
+            'code' => 'SMOKE',
+            'name' => 'Servis Belgesi',
+            'category' => 'other',
+            'sensitivity' => 'standard',
+            'is_active' => true,
+        ]);
+
+        foreach ([
+            route('hr.personnel.show', $employee),
+            route('hr.personnel.edit', $employee),
+            route('hr.settings.units.edit', $unit),
+            route('hr.settings.teams.edit', $team),
+            route('hr.settings.document-types.edit', $documentType),
+        ] as $dynamicUrl) {
+            $this->get($dynamicUrl)->assertOk();
+        }
     }
 }

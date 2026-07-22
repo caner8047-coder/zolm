@@ -33,9 +33,13 @@ class EmployeeEdit extends Component
     public ?string $date_of_birth = null;
     public ?string $marital_status = null;
 
-    public function mount(int $id): void
+    public function mount(HrEmployee $employee): void
     {
-        $this->employee = HrEmployee::withoutGlobalScope('tenant')->findOrFail($id);
+        abort_unless($employee->legal_entity_id === app(TenantContext::class)->getId(), 404);
+
+        $this->employee = HrEmployee::withoutGlobalScope('tenant')
+            ->where('legal_entity_id', app(TenantContext::class)->getId())
+            ->findOrFail($employee->id);
 
         // Form alanlarını doldur
         $this->first_name = $this->employee->first_name;

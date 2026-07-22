@@ -18,19 +18,20 @@ class UnitForm extends Component
     public bool $is_active = true;
     public int $sort_order = 0;
 
-    public function mount(?int $id = null): void
+    public function mount(?HrUnit $unit = null): void
     {
-        if ($id) {
-            $this->unitId = $id;
-            $unit = HrUnit::withoutGlobalScope('tenant')
+        if ($unit) {
+            abort_unless($unit->department?->legal_entity_id === app(TenantContext::class)->getId(), 404);
+            $this->unitId = $unit->id;
+            $unitModel = HrUnit::withoutGlobalScope('tenant')
                 ->whereHas('department', fn($query) => $query->where('legal_entity_id', app(TenantContext::class)->getId()))
-                ->findOrFail($id);
-            $this->name = $unit->name;
-            $this->code = $unit->code;
-            $this->department_id = $unit->department_id;
-            $this->manager_employee_id = $unit->manager_employee_id;
-            $this->is_active = $unit->is_active;
-            $this->sort_order = $unit->sort_order;
+                ->findOrFail($unit->id);
+            $this->name = $unitModel->name;
+            $this->code = $unitModel->code;
+            $this->department_id = $unitModel->department_id;
+            $this->manager_employee_id = $unitModel->manager_employee_id;
+            $this->is_active = $unitModel->is_active;
+            $this->sort_order = $unitModel->sort_order;
         }
     }
 

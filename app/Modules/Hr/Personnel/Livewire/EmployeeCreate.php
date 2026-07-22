@@ -8,6 +8,8 @@ use App\Modules\Hr\Personnel\Actions\CreateEmployeeAction;
 use App\Modules\Hr\Organization\Models\HrDepartment;
 use App\Modules\Hr\Organization\Models\HrPosition;
 use App\Modules\Hr\Organization\Models\HrBranch;
+use App\Modules\Hr\Organization\Services\OrgStructureService;
+use App\Modules\Hr\Personnel\Models\HrEmploymentRecord;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -38,6 +40,14 @@ class EmployeeCreate extends Component
     public ?int $manager_employee_id = null;
     public string $employment_type = 'full_time';
     public string $start_date = '';
+
+    public function mount(OrgStructureService $organization): void
+    {
+        $defaults = $organization->ensureMinimumStructure();
+        $this->branch_id = $defaults['branch']->id;
+        $this->department_id = $defaults['department']->id;
+        $this->position_id = $defaults['position']->id;
+    }
 
     public function render()
     {
@@ -107,7 +117,20 @@ class EmployeeCreate extends Component
         ];
 
         $action = app(CreateEmployeeAction::class);
-        $employee = $action->execute($employeeData, $employmentData);
+        $employee = $action->findExistingByNationalId((string) $this->national_id);
+        $recoveredExisting = $employee !== null;
+
+        if ($employee) {
+            HrEmploymentRecord::withoutGlobalScope('tenant')
+                ->where('legal_entity_id', app(TenantContext::class)->getId())
+                ->where('employee_id', $employee->id)
+                ->where('status', 'active')
+                ->latest('id')
+                ->first()
+                ?->update($employmentData + ['updated_by' => auth()->id()]);
+        } else {
+            $employee = $action->execute($employeeData, $employmentData);
+        }
 
         // Fotoğraf yükleme
         if ($this->photo) {
@@ -116,7 +139,12 @@ class EmployeeCreate extends Component
             $employee->update(['photo_file_id' => $hrFile->id]);
         }
 
-        session()->flash('success', 'Çalışan başarıyla oluşturuldu: ' . $employee->employee_number);
+        session()->flash(
+            'success',
+            $recoveredExisting
+                ? 'Daha önce başlatılan çalışan kaydı tamamlandı: ' . $employee->employee_number
+                : 'Çalışan başarıyla oluşturuldu: ' . $employee->employee_number
+        );
 
         $this->redirect(route('hr.personnel.show', $employee->id));
     }

@@ -80,6 +80,16 @@ class CreateEmployeeAction
         });
     }
 
+    public function findExistingByNationalId(string $nationalId): ?HrEmployee
+    {
+        $nationalIdHash = hash('sha256', trim($nationalId) . config('app.key'));
+
+        return HrEmployee::withoutGlobalScope('tenant')
+            ->where('legal_entity_id', app(TenantContext::class)->getId())
+            ->where('national_id_hash', $nationalIdHash)
+            ->first();
+    }
+
     private function generateEmployeeNumber(int $tenantId): string
     {
         $prefix = config('hr.employee_number.prefix', 'EMP');

@@ -18,18 +18,19 @@ class TeamForm extends Component
     public bool $is_active = true;
     public int $sort_order = 0;
 
-    public function mount(?int $id = null): void
+    public function mount(?HrTeam $team = null): void
     {
-        if ($id) {
-            $this->teamId = $id;
-            $team = HrTeam::withoutGlobalScope('tenant')
+        if ($team) {
+            abort_unless($team->unit?->department?->legal_entity_id === app(TenantContext::class)->getId(), 404);
+            $this->teamId = $team->id;
+            $teamModel = HrTeam::withoutGlobalScope('tenant')
                 ->whereHas('unit.department', fn($query) => $query->where('legal_entity_id', app(TenantContext::class)->getId()))
-                ->findOrFail($id);
-            $this->name = $team->name;
-            $this->unit_id = $team->unit_id;
-            $this->lead_employee_id = $team->lead_employee_id;
-            $this->is_active = $team->is_active;
-            $this->sort_order = $team->sort_order;
+                ->findOrFail($team->id);
+            $this->name = $teamModel->name;
+            $this->unit_id = $teamModel->unit_id;
+            $this->lead_employee_id = $teamModel->lead_employee_id;
+            $this->is_active = $teamModel->is_active;
+            $this->sort_order = $teamModel->sort_order;
         }
     }
 

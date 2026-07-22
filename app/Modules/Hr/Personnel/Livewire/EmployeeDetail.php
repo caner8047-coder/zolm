@@ -34,9 +34,13 @@ class EmployeeDetail extends Component
     public ?int $rejectDocId = null;
     public string $rejectReason = '';
 
-    public function mount(int $id): void
+    public function mount(HrEmployee|int|null $employee = null, ?int $id = null): void
     {
+        $employeeId = $employee instanceof HrEmployee ? $employee->id : ($employee ?? $id);
+        abort_unless($employeeId !== null, 404);
+
         $this->employee = HrEmployee::withoutGlobalScope('tenant')
+            ->where('legal_entity_id', app(TenantContext::class)->getId())
             ->with([
                 'activeEmployment.position',
                 'activeEmployment.department',
@@ -45,7 +49,7 @@ class EmployeeDetail extends Component
                 'employmentRecords.position',
                 'employmentRecords.department',
             ])
-            ->findOrFail($id);
+            ->findOrFail($employeeId);
     }
 
     public function render()

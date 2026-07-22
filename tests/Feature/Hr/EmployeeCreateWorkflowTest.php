@@ -9,6 +9,8 @@ use App\Modules\Hr\Personnel\Actions\CreateEmployeeAction;
 use App\Modules\Hr\Personnel\Livewire\EmployeeCreate;
 use App\Modules\Hr\Personnel\Models\HrEmployee;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -33,6 +35,7 @@ class EmployeeCreateWorkflowTest extends TestCase
 
         app(TenantContext::class)->set($tenant);
         $this->actingAs($this->user);
+        Storage::fake('private');
     }
 
     public function test_form_requires_an_eleven_digit_national_id(): void
@@ -45,6 +48,21 @@ class EmployeeCreateWorkflowTest extends TestCase
             ->assertHasErrors(['national_id' => 'required']);
 
         $this->assertDatabaseCount('hr_employees', 0);
+    }
+
+    public function test_form_provisions_initial_organization_options(): void
+    {
+        Livewire::test(EmployeeCreate::class)
+            ->assertSet('branch_id', fn ($value) => $value !== null)
+            ->assertSet('department_id', fn ($value) => $value !== null)
+            ->assertSet('position_id', fn ($value) => $value !== null)
+            ->assertSee('Merkez')
+            ->assertSee('Genel')
+            ->assertSee('Çalışan');
+
+        $this->assertDatabaseCount('hr_branches', 1);
+        $this->assertDatabaseCount('hr_departments', 1);
+        $this->assertDatabaseCount('hr_positions', 1);
     }
 
     public function test_valid_form_creates_encrypted_employee_and_employment_record(): void
@@ -91,5 +109,32 @@ class EmployeeCreateWorkflowTest extends TestCase
         }
 
         $this->assertDatabaseCount('hr_employees', 1);
+    }
+
+    public function test_retry_completes_existing_employee_with_photo_without_duplicate(): void
+    {
+        Livewire::test(EmployeeCreate::class)
+            ->set('first_name', 'Caner')
+            ->set('last_name', 'Ünal')
+            ->set('national_id', '12345678901')
+            ->set('start_date', '2026-07-01')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $employee = HrEmployee::withoutGlobalScope('tenant')->sole();
+        $this->assertNull($employee->photo_file_id);
+
+        Livewire::test(EmployeeCreate::class)
+            ->set('first_name', 'Caner')
+            ->set('last_name', 'Ünal')
+            ->set('national_id', '12345678901')
+            ->set('start_date', '2026-07-01')
+            ->set('photo', UploadedFile::fake()->image('personel.png', 200, 200))
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseCount('hr_employees', 1);
+        $this->assertNotNull($employee->fresh()->photo_file_id);
+        $this->assertDatabaseCount('hr_files', 1);
     }
 }

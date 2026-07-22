@@ -22,13 +22,15 @@ class DocumentTypeForm extends Component
     public bool $is_active = true;
     public int $sort_order = 0;
 
-    public function mount(?int $id = null): void
+    public function mount(?HrDocumentType $documentType = null): void
     {
-        if ($id) {
-            $this->typeId = $id;
-            $type = HrDocumentType::withoutGlobalScope('tenant')->where('legal_entity_id', app(TenantContext::class)->getId())->findOrFail($id);
+        if ($documentType) {
+            abort_unless($documentType->legal_entity_id === app(TenantContext::class)->getId(), 404);
+            $this->typeId = $documentType->id;
+            $type = HrDocumentType::withoutGlobalScope('tenant')->where('legal_entity_id', app(TenantContext::class)->getId())->findOrFail($documentType->id);
             foreach (['name', 'code', 'category', 'sensitivity', 'description', 'requires_expiry_date', 'requires_issue_date', 'requires_document_number', 'is_mandatory', 'employee_can_upload', 'is_active', 'sort_order'] as $field) {
-                $this->{$field} = $type->{$field};
+                $value = $type->{$field};
+                $this->{$field} = $value instanceof \BackedEnum ? $value->value : $value;
             }
         }
     }
@@ -58,7 +60,10 @@ class DocumentTypeForm extends Component
             ->toArray();
 
         if ($this->typeId) {
-            HrDocumentType::withoutGlobalScope('tenant')->where('id', $this->typeId)->update($data);
+            HrDocumentType::withoutGlobalScope('tenant')
+                ->where('legal_entity_id', $tenantId)
+                ->where('id', $this->typeId)
+                ->update($data);
             session()->flash('success', 'Belge türü güncellendi.');
         } else {
             $data['created_by'] = auth()->id();
