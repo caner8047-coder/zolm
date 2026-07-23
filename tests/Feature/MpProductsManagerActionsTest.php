@@ -281,7 +281,7 @@ class MpProductsManagerActionsTest extends TestCase
         ])->test(MpProductsManager::class)
             ->assertSee('Durum: Satışta')
             ->assertSeeHtml('wire:click="resetFilters"')
-            ->assertSee('Sıfırla');
+            ->assertSee('Temizle');
     }
 
     public function test_empty_state_offers_filter_reset_when_no_results_match(): void

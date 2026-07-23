@@ -160,7 +160,7 @@
 <div class="products-page-shell -mt-1 lg:-mt-4 w-full space-y-5 lg:space-y-6"
      x-data="{
         expanded: [],
-        advancedFilters: {{ $advancedFiltersActive ? 'true' : 'false' }},
+        advancedFilters: false,
         workspaceCollapsed: false,
         searchDraft: @js($search),
         searchNavigationTimer: null,
@@ -745,42 +745,21 @@
     {{-- ═══════════════════════════════════════════════ --}}
     {{-- BLOK 2: TABLO BAŞLANGICI --}}
     {{-- ═══════════════════════════════════════════════ --}}
-    <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
+    <section class="space-y-4">
 
-        <div class="products-control-surface mb-5 rounded-[10px] border border-slate-200 p-3 lg:p-4">
-            <div class="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_304px]">
-                <div class="rounded-[10px] border border-slate-200 bg-white/90 p-3 sm:p-4">
-                    <div class="flex flex-col gap-4 border-b border-slate-200/80 pb-3 xl:flex-row xl:items-start xl:justify-between">
+        <div class="products-control-surface mb-4 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+            <div class="grid items-start">
+                <div>
+                    <div class="flex items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
                         <div class="min-w-0">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span class="inline-flex items-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                    Komut Çubuğu
-                                </span>
-                                <span class="inline-flex items-center rounded-[6px] bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white">
-                                    {{ $formatCount($products->total()) }} ürün
-                                </span>
-                                @if(count($activeFilters) > 0)
-                                    <span class="inline-flex items-center rounded-[6px] border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-600">
-                                        {{ count($activeFilters) }} aktif filtre
-                                    </span>
-                                @endif
-                            </div>
-                            <p class="mt-3 text-sm font-semibold text-slate-900">Ana ürün ve kanal akışı tek çalışma panelinde</p>
+                            <p class="text-sm font-semibold text-slate-900">Ürünleri filtrele</p>
+                            <p class="mt-0.5 text-xs text-slate-500">{{ $formatCount($products->total()) }} ürün gösteriliyor</p>
                         </div>
-                        <div class="grid grid-cols-3 gap-1.5 xl:w-[288px] xl:flex-none">
-                            <div class="rounded-[6px] border border-slate-200 bg-slate-50/80 px-2 py-1.5">
-                                <p class="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-400">Yayında</p>
-                                <p class="mt-0.5 text-[11px] font-semibold text-emerald-600">{{ $formatCount($stats['listed_products']) }}</p>
-                            </div>
-                            <div class="rounded-[6px] border border-slate-200 bg-slate-50/80 px-2 py-1.5">
-                                <p class="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-400">Sorun</p>
-                                <p class="mt-0.5 text-[11px] font-semibold text-amber-600">{{ $formatCount($stats['pending_match_issues']) }}</p>
-                            </div>
-                            <div class="rounded-[6px] border border-slate-200 bg-slate-50/80 px-2 py-1.5">
-                                <p class="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-400">Gönderim</p>
-                                <p class="mt-0.5 text-[11px] font-semibold text-rose-600">{{ $formatCount($stats['failed_pushes']) }}</p>
-                            </div>
-                        </div>
+                        @if(count($activeFilters) > 0)
+                            <span class="inline-flex shrink-0 items-center rounded-[6px] border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-600">
+                                {{ count($activeFilters) }} filtre
+                            </span>
+                        @endif
                     </div>
 
                     <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_220px]">
@@ -852,28 +831,10 @@
                     <div x-show="advancedFilters"
                          x-cloak
                          x-transition
-                         class="mt-3 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
-                        <div class="flex items-center justify-between gap-3">
-                            <div>
-                                <p class="text-[11px] font-semibold text-slate-700">Gelişmiş filtreler</p>
-                                <p class="mt-0.5 text-[10px] text-slate-500">Durum ve sayısal aralıkları daraltın.</p>
-                            </div>
-                            @if($showResetFilters)
-                                <button wire:click="resetFilters"
-                                        type="button"
-                                        title="Filtreleri sıfırla"
-                                        wire:loading.attr="disabled"
-                                        wire:target="resetFilters"
-                                        class="inline-flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded-[6px] border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60">
-                                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                    Sıfırla
-                                </button>
-                            @endif
-                        </div>
+                        class="mt-3 border-t border-slate-200 pt-3">
+                        <p class="text-xs font-semibold text-slate-700">Detaylı filtreler</p>
 
-                        <div class="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4 2xl:grid-cols-7">
+                        <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                             <label class="min-w-0">
                                 <span class="mb-1 block text-[10px] font-semibold text-slate-500">Listeleme</span>
                                 <select wire:model.live="listingStatusFilter" class="min-h-10 w-full rounded-[6px] border border-slate-200 bg-white px-2.5 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
@@ -938,7 +899,7 @@
                             </div>
                         </div>
 
-                        <div class="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3 xl:grid-cols-5">
+                        <div class="mt-3 grid grid-cols-1 gap-3 border-t border-slate-200 pt-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                             @foreach([
                                 ['label' => 'Satış fiyatı', 'min' => 'filterSalePriceMin', 'max' => 'filterSalePriceMax', 'step' => '0.01'],
                                 ['label' => 'Maliyet', 'min' => 'filterCostMin', 'max' => 'filterCostMax', 'step' => '0.01'],
@@ -967,46 +928,22 @@
                         </div>
                     </div>
 
-                    <div class="mt-3 space-y-3 xl:hidden">
-                        <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 px-4 py-3">
-                            <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Aktif filtreler</p>
-                            <div class="mt-3 flex flex-wrap gap-2 text-[11px]">
-                                @if(count($activeFilters) > 0)
-                                    @foreach($activeFilters as $filter)
-                                        <span class="rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 text-slate-600">{{ $filter }}</span>
-                                    @endforeach
-                                @else
-                                    <span class="rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 text-slate-500">Aktif filtre yok</span>
-                                @endif
+                    <div class="mt-3 space-y-3">
+                        @if(count($activeFilters) > 0)
+                            <div class="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3 text-[11px]">
+                                <span class="font-medium text-slate-500">Aktif:</span>
+                                @foreach($activeFilters as $filter)
+                                    <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600">{{ $filter }}</span>
+                                @endforeach
+                                <button wire:click="resetFilters"
+                                        type="button"
+                                        wire:loading.attr="disabled"
+                                        wire:target="resetFilters"
+                                        class="ml-auto text-[11px] font-medium text-slate-500 transition hover:text-slate-900 disabled:opacity-60">
+                                    Temizle
+                                </button>
                             </div>
-                        </div>
-
-                        <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 px-4 py-3">
-                            <div class="flex items-center justify-between gap-3">
-                                <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Çalışma alanı özeti</p>
-                                <span class="rounded-[6px] border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                                    {{ count($visibleColumns) }}/{{ count($columnDefs) }}
-                                </span>
-                            </div>
-                            <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
-                                <div class="rounded-[6px] border border-slate-200 bg-white px-3 py-2">
-                                    <p class="text-slate-500">Bağlı mağaza</p>
-                                    <p class="mt-1 font-medium text-slate-900">{{ $formatCount($sidebarSummary['store_count'] ?? 0) }}</p>
-                                </div>
-                                <div class="rounded-[6px] border border-slate-200 bg-white px-3 py-2">
-                                    <p class="text-slate-500">Aktif mağaza</p>
-                                    <p class="mt-1 font-medium text-slate-900">{{ $formatCount($sidebarSummary['active_store_count'] ?? 0) }}</p>
-                                </div>
-                                <div class="rounded-[6px] border border-slate-200 bg-white px-3 py-2">
-                                    <p class="text-slate-500">Bağsız listeleme</p>
-                                    <p class="mt-1 font-medium {{ (int) ($sidebarSummary['orphan_listings'] ?? 0) > 0 ? 'text-amber-600' : 'text-slate-900' }}">{{ $formatCount($sidebarSummary['orphan_listings'] ?? 0) }}</p>
-                                </div>
-                                <div class="rounded-[6px] border border-slate-200 bg-white px-3 py-2">
-                                    <p class="text-slate-500">Son senkron</p>
-                                    <p class="mt-1 font-medium text-slate-900">{{ $latestCatalogSyncAt?->format('d.m H:i') ?: 'Henüz yok' }}</p>
-                                </div>
-                            </div>
-                        </div>
+                        @endif
 
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             @if(count($selectedProducts) > 0)
@@ -1285,78 +1222,10 @@
                                 </div>
                             @endif
 
-                            @if($showResetFilters)
-                                <button wire:click="resetFilters"
-                                        type="button"
-                                        wire:loading.attr="disabled"
-                                        wire:target="resetFilters"
-                                        class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-white">
-                                    Filtreleri temizle
-                                </button>
-                            @endif
                         </div>
                     </div>
                 </div>
 
-                <div class="products-tool-rail hidden xl:block rounded-[10px] border border-slate-200 p-4 text-slate-900 shadow-sm">
-                    <div class="flex items-center justify-between gap-3">
-                        <div>
-                            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Çalışma Alanı Araçları</p>
-                            <p class="mt-2 text-lg font-semibold text-slate-900">Görünüm ve kanal sağlığı</p>
-                        </div>
-                        <span class="rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-500">
-                            {{ count($visibleColumns) }}/{{ count($columnDefs) }}
-                        </span>
-                    </div>
-
-                    <div class="mt-4 space-y-3">
-                        <div class="rounded-[8px] border border-slate-200 bg-white/90 px-4 py-3">
-                            <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Aktif filtreler</p>
-                            <div class="mt-3 flex flex-wrap gap-2 text-[11px]">
-                                @if(count($activeFilters) > 0)
-                                    @foreach($activeFilters as $filter)
-                                        <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600">{{ $filter }}</span>
-                                    @endforeach
-                                @else
-                                    <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-500">Aktif filtre yok</span>
-                                @endif
-                            </div>
-                        </div>
-
-                        <div class="rounded-[8px] border border-slate-200 bg-white/90 px-4 py-3 text-sm text-slate-500">
-                            <div class="flex items-start justify-between gap-3">
-                                <span>Bağlı mağaza</span>
-                                <span class="font-medium text-slate-900">{{ $formatCount($sidebarSummary['store_count'] ?? 0) }}</span>
-                            </div>
-                            <div class="mt-2 flex items-start justify-between gap-3">
-                                <span>Aktif mağaza</span>
-                                <span class="font-medium text-slate-900">{{ $formatCount($sidebarSummary['active_store_count'] ?? 0) }}</span>
-                            </div>
-                            <div class="mt-2 flex items-start justify-between gap-3">
-                                <span>Gönderim hazır</span>
-                                <span class="font-medium text-slate-900">{{ $formatCount(($sidebarSummary['price_push_ready'] ?? 0) + ($sidebarSummary['stock_push_ready'] ?? 0)) }}</span>
-                            </div>
-                            <div class="mt-2 flex items-start justify-between gap-3">
-                                <span>Bağsız listeleme</span>
-                                <span class="font-medium {{ (int) ($sidebarSummary['orphan_listings'] ?? 0) > 0 ? 'text-amber-600' : 'text-slate-900' }}">{{ $formatCount($sidebarSummary['orphan_listings'] ?? 0) }}</span>
-                            </div>
-                            <div class="mt-2 flex items-start justify-between gap-3">
-                                <span>Son katalog senkronu</span>
-                                <span class="font-medium text-slate-900">{{ $latestCatalogSyncAt?->format('d.m H:i') ?: 'Henüz yok' }}</span>
-                            </div>
-                        </div>
-
-                        @if($showResetFilters)
-                            <button wire:click="resetFilters"
-                                    type="button"
-                                    wire:loading.attr="disabled"
-                                    wire:target="resetFilters"
-                                    class="inline-flex min-h-[44px] w-full items-center justify-center rounded-[6px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-white">
-                                Filtreleri Temizle
-                            </button>
-                        @endif
-                    </div>
-                </div>
             </div>
         </div>
 
