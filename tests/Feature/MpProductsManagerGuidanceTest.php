@@ -63,7 +63,10 @@ class MpProductsManagerGuidanceTest extends TestCase
         $this->actingAs($user);
 
         Livewire::test(MpProductsManager::class)
-            ->assertSee('Detaylar')
+            ->assertSee('Rehberi aç')
+            ->assertSee('Bu uyarılar ne anlama geliyor?')
+            ->assertSee('Neden:')
+            ->assertSee('Çözüm:')
             ->assertSee('Listing tamlık alanları eksik')
             ->assertSee('Ürünler');
     }

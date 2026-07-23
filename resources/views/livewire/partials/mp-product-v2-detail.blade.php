@@ -27,6 +27,7 @@
     $extraCostPercentageAmount = (float) ($selectedProfitScenario['extra_cost_percentage_amount'] ?? ($salePrice * ($extraCostPercentage / 100)));
     $extraCostTotal = $extraCostFixed + $extraCostPercentageAmount;
     $returnRate = $product->return_rate !== null ? (float) $product->return_rate : null;
+    $deliverySummary = $this->productDeliverySummary($product);
     $changeLogs = $this->productChangeHistory($product, 250);
 
     $hasProductCost = (float) ($product->cogs ?? 0) > 0;
@@ -157,7 +158,7 @@
                     @csrf
                     <button type="submit"
                             title="Pazaryerlerinden bu ürünün güncel fiyat, stok, kanal ve görsel bilgisini al"
-                            class="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                            class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50 sm:w-auto sm:py-2">
                         <svg class="h-3.5 w-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v6h6M20 20v-6h-6M5.5 15A7 7 0 0018 18.5M18.5 9A7 7 0 006 5.5" />
                         </svg>
@@ -204,7 +205,9 @@
             <div class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
                 <p class="text-xs text-slate-500">İade / teslimat</p>
                 <p class="mt-1 text-lg font-semibold {{ ($returnRate ?? 0) >= 15 ? 'text-rose-600' : 'text-slate-900' }}">{{ $formatPercent($returnRate) }}</p>
-                <p class="mt-1 text-xs text-slate-500">{{ $product->fast_delivery_type ?: 'Standart teslimat' }}</p>
+                <p class="mt-1 truncate text-xs text-slate-500" title="{{ $deliverySummary['title'] }}">
+                    Termin: {{ $deliverySummary['label'] }}
+                </p>
             </div>
         </div>
     </section>

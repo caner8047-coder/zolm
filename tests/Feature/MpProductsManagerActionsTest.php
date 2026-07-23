@@ -64,6 +64,38 @@ class MpProductsManagerActionsTest extends TestCase
             ->assertSet('f_stock_code', $product->stock_code);
     }
 
+    public function test_product_table_presets_keep_required_columns_available(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->call('toggleColumn', 'urun')
+            ->assertSet('visibleColumns', MpProductsManager::RECOMMENDED_COLUMNS)
+            ->call('toggleColumn', 'islem')
+            ->assertSet('visibleColumns', MpProductsManager::RECOMMENDED_COLUMNS)
+            ->call('showAllColumns')
+            ->assertSet('visibleColumns', array_keys(MpProductsManager::$allColumnDefs))
+            ->call('useRecommendedColumns')
+            ->assertSet('visibleColumns', MpProductsManager::RECOMMENDED_COLUMNS)
+            ->assertSee('Otomatik genişlik')
+            ->assertSeeHtml('data-testid="mp-products-table-scroll"')
+            ->assertSeeHtml('data-testid="mp-products-column-menu"');
+    }
+
+    public function test_numeric_manual_delivery_term_is_presented_as_days(): void
+    {
+        $product = new MpProduct(['fast_delivery_type' => '5']);
+        $product->setRelation('channelListings', collect());
+
+        $summary = (new MpProductsManager())->productDeliverySummary($product);
+
+        $this->assertSame('5 gün', $summary['label']);
+        $this->assertSame('5g', $summary['short_label']);
+        $this->assertSame('5 gün', $summary['title']);
+    }
+
     public function test_duplicate_product_creates_copy(): void
     {
         $user = User::factory()->create();
@@ -856,7 +888,7 @@ class MpProductsManagerActionsTest extends TestCase
         $this->assertNull($product->return_rate_calculated_at);
     }
 
-    public function test_inline_update_changes_control_fields_and_return_source(): void
+    public function test_inline_update_changes_control_fields_without_overriding_calculated_return_metric(): void
     {
         $user = User::factory()->create();
         $product = MpProduct::query()->create($this->productPayload($user->id));
@@ -875,8 +907,8 @@ class MpProductsManagerActionsTest extends TestCase
         $this->assertEqualsWithDelta(22.4, (float) $product->extra_cost_fixed, 0.001);
         $this->assertEqualsWithDelta(4.5, (float) $product->extra_cost_percentage, 0.001);
         $this->assertSame(4, (int) $product->pieces);
-        $this->assertEqualsWithDelta(16.2, (float) $product->return_rate, 0.001);
-        $this->assertSame('manual_inline', $product->return_rate_source);
+        $this->assertNull($product->return_rate);
+        $this->assertNull($product->return_rate_source);
         $this->assertSame('Aynı gün', $product->fast_delivery_type);
     }
 

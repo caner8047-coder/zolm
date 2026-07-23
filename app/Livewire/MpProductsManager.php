@@ -44,6 +44,10 @@ class MpProductsManager extends Component
     use WithPagination;
     use WithFileUploads;
 
+    public const REQUIRED_COLUMNS = ['urun', 'islem'];
+
+    public const RECOMMENDED_COLUMNS = ['urun', 'kanal', 'fiyat', 'cogs', 'kargo', 'stok', 'iade', 'teslimat', 'roi', 'durum', 'islem'];
+
     public static array $allColumnDefs = [
         'urun' => 'Ürün',
         'kanal' => 'Kanal',
@@ -110,7 +114,7 @@ class MpProductsManager extends Component
     public string $sortField = 'product_name';
     public string $sortDirection = 'asc';
     public int $perPage = 25;
-    public array $visibleColumns = ['urun', 'kanal', 'fiyat', 'cogs', 'kargo', 'stok', 'teslimat', 'iade', 'roi', 'durum', 'islem'];
+    public array $visibleColumns = self::RECOMMENDED_COLUMNS;
 
     public $importFile;
     public bool $showImportModal = false;
@@ -151,8 +155,14 @@ class MpProductsManager extends Component
     public $f_desi = 0;
     public $f_pieces = 1;
     public string $f_fast_delivery_type = '';
+    public $f_shipping_days = null;
+    public array $f_channel_shipping_days = [];
+    public array $f_channel_stock_quantity = [];
+    public array $f_channel_sale_price = [];
+    public array $f_channel_list_price = [];
     public string $f_status = 'active';
     public string $f_platforms = '';
+    public bool $f_append_seo_keywords_to_description = false;
     public string $f_description = '';
     public string $f_image_url = '';
     public array $f_image_urls = [];
@@ -1143,20 +1153,30 @@ class MpProductsManager extends Component
 
     public function toggleColumn(string $column): void
     {
-        if (!array_key_exists($column, static::$allColumnDefs)) {
+        if (!array_key_exists($column, static::$allColumnDefs) || in_array($column, self::REQUIRED_COLUMNS, true)) {
             return;
         }
 
         if (in_array($column, $this->visibleColumns, true)) {
-            if (count($this->visibleColumns) === 1) {
-                return;
-            }
-
             $this->visibleColumns = array_values(array_diff($this->visibleColumns, [$column]));
         } else {
             $this->visibleColumns[] = $column;
             $this->visibleColumns = $this->normalizeVisibleColumns($this->visibleColumns);
         }
+
+        app(MpSettingsService::class)->set('marketplace_products.v2.visible_columns', $this->visibleColumns);
+    }
+
+    public function useRecommendedColumns(): void
+    {
+        $this->visibleColumns = self::RECOMMENDED_COLUMNS;
+
+        app(MpSettingsService::class)->set('marketplace_products.v2.visible_columns', $this->visibleColumns);
+    }
+
+    public function showAllColumns(): void
+    {
+        $this->visibleColumns = array_keys(static::$allColumnDefs);
 
         app(MpSettingsService::class)->set('marketplace_products.v2.visible_columns', $this->visibleColumns);
     }
@@ -1351,6 +1371,20 @@ class MpProductsManager extends Component
         $this->f_desi = $product->desi;
         $this->f_pieces = $product->pieces;
         $this->f_fast_delivery_type = $product->fast_delivery_type ?? '';
+        $this->f_shipping_days = $product->shipping_days;
+        $this->f_channel_shipping_days = [];
+        $this->f_channel_stock_quantity = [];
+        $this->f_channel_sale_price = [];
+        $this->f_channel_list_price = [];
+        $channelListings = $product->relationLoaded('channelListings')
+            ? $product->channelListings
+            : $product->channelListings()->with('store:id,marketplace,store_name')->get();
+        foreach ($channelListings as $listing) {
+            $this->f_channel_shipping_days[$listing->id] = $listing->shipping_days;
+            $this->f_channel_stock_quantity[$listing->id] = $listing->stock_quantity;
+            $this->f_channel_sale_price[$listing->id] = $listing->sale_price;
+            $this->f_channel_list_price[$listing->id] = $listing->list_price;
+        }
         $this->f_status = $product->status ?? 'active';
         $this->f_platforms = $product->platforms ?? '';
         $this->f_description = $product->description ?? '';
@@ -1687,6 +1721,7 @@ class MpProductsManager extends Component
             'desi' => $this->f_desi,
             'pieces' => $this->f_pieces,
             'fast_delivery_type' => $this->f_fast_delivery_type ?: null,
+            'shipping_days' => filled($this->f_shipping_days) ? (int) $this->f_shipping_days : null,
             'status' => $this->f_status,
             'platforms' => $this->f_platforms ?: null,
             'description' => $this->f_description ?: null,
@@ -1702,6 +1737,35 @@ class MpProductsManager extends Component
             $beforeSnapshot = $logger->productSnapshot($product);
             $product->update($data);
             $freshProduct = $product->fresh();
+
+            if ($freshProduct) {
+                foreach ($this->f_channel_stock_quantity as $listingId => $qty) {
+                    ChannelListing::query()
+                        ->where('mp_product_id', $freshProduct->id)
+                        ->where('id', (int) $listingId)
+                        ->update(['stock_quantity' => filled($qty) ? (int) $qty : 0]);
+                }
+
+                foreach ($this->f_channel_sale_price as $listingId => $salePrice) {
+                    $listPrice = $this->f_channel_list_price[$listingId] ?? null;
+                    ChannelListing::query()
+                        ->where('mp_product_id', $freshProduct->id)
+                        ->where('id', (int) $listingId)
+                        ->update([
+                            'sale_price' => filled($salePrice) ? (float) $salePrice : null,
+                            'list_price' => filled($listPrice) ? (float) $listPrice : null,
+                        ]);
+                }
+
+                if (Schema::hasColumn('channel_listings', 'shipping_days')) {
+                    foreach ($this->f_channel_shipping_days as $listingId => $days) {
+                        ChannelListing::query()
+                            ->where('mp_product_id', $freshProduct->id)
+                            ->where('id', (int) $listingId)
+                            ->update(['shipping_days' => filled($days) ? (int) $days : null]);
+                    }
+                }
+            }
 
             if ($freshProduct) {
                 $logger->logProductSnapshotChanges(
@@ -1914,6 +1978,134 @@ class MpProductsManager extends Component
 
         $this->loadSetState($product->fresh() ?: $product);
         session()->flash('success', 'Ürün tekil ürün moduna alındı.');
+    }
+
+    public function generateSeoKeywords(): void
+    {
+        $name = trim((string) $this->f_product_name);
+        $category = trim((string) $this->f_category_name);
+        $brand = trim((string) $this->f_brand);
+        $color = trim((string) $this->f_color);
+
+        if ($name === '' && $category === '') {
+            session()->flash('warning', 'Anahtar kelime üretmek için lütfen en az Ürün Adı veya Kategori bilgisini doldurun.');
+            return;
+        }
+
+        $keywords = [];
+
+        // 1. AI Service Entegrasyonu (Gemini / AI Provider)
+        $apiKey = (string) config('ai.api_key', '');
+        if (filled($apiKey)) {
+            try {
+                $prompt = "E-ticaret pazaryerleri (Trendyol, Hepsiburada, N11, Amazon) için yüksek arama hacimli SEO anahtar kelimeleri üret.
+Ürün Adı: {$name}
+Kategori: {$category}
+Marka: {$brand}
+Renk: {$color}
+
+Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle ayırarak yaz. Başka açıklama yapma.";
+
+                $aiService = app(\App\Services\AIService::class);
+                $response = $aiService->ask('seo_expert', $prompt);
+
+                if (filled($response) && !str_starts_with($response, '❌')) {
+                    $rawList = explode(',', str_replace(["\n", "\r", '.', '"'], ',', $response));
+                    foreach ($rawList as $item) {
+                        $cleaned = trim($item);
+                        if ($cleaned !== '' && mb_strlen($cleaned) > 2) {
+                            $keywords[] = mb_strtolower($cleaned);
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Fallback to rules engine
+            }
+        }
+
+        // 2. Akıllı E-Ticaret SEO Kural Motoru (Fallback)
+        if (empty($keywords)) {
+            $baseWords = array_filter(explode(' ', mb_strtolower("{$name} {$category} {$color} {$brand}")));
+            $stopWords = ['ve', 'ile', 'de', 'da', 'icin', 'için', 'bir', 'bu', 'veya', 'gibi'];
+            $cleanWords = array_values(array_filter($baseWords, fn ($w) => !in_array($w, $stopWords, true) && mb_strlen($w) > 2));
+
+            if (filled($name)) {
+                $keywords[] = mb_strtolower($name);
+            }
+            if (filled($category)) {
+                $keywords[] = mb_strtolower($category);
+            }
+
+            for ($i = 0; $i < count($cleanWords) - 1; $i++) {
+                $keywords[] = $cleanWords[$i] . ' ' . $cleanWords[$i + 1];
+            }
+
+            if (filled($color) && filled($category)) {
+                $keywords[] = mb_strtolower("{$color} {$category}");
+            }
+            if (filled($brand) && filled($category)) {
+                $keywords[] = mb_strtolower("{$brand} {$category}");
+            }
+
+            if (filled($category)) {
+                $keywords[] = mb_strtolower("dekoratif {$category}");
+                $keywords[] = mb_strtolower("modern {$category}");
+                $keywords[] = mb_strtolower("şik {$category} modelleri");
+            }
+        }
+
+        $uniqueKeywords = collect($keywords)
+            ->map(fn ($k) => trim((string) $k))
+            ->filter()
+            ->unique()
+            ->take(12)
+            ->implode(', ');
+
+        $this->f_platforms = $uniqueKeywords;
+
+        if ($this->f_append_seo_keywords_to_description) {
+            $this->appendKeywordsToDescription();
+        }
+
+        session()->flash('success', 'SEO uyumlu anahtar kelimeler üretildi.');
+    }
+
+    public function updatedFAppendSeoKeywordsToDescription(bool $value): void
+    {
+        if ($value) {
+            $this->appendKeywordsToDescription();
+        } else {
+            $this->removeKeywordsFromDescription();
+        }
+    }
+
+    public function appendKeywordsToDescription(): void
+    {
+        $keywords = trim((string) $this->f_platforms);
+        if ($keywords === '') {
+            return;
+        }
+
+        $currentDesc = trim((string) $this->f_description);
+        $tag = "\n\nArama Anahtar Kelimeleri: ";
+
+        if (str_contains($currentDesc, 'Arama Anahtar Kelimeleri:')) {
+            $parts = explode("Arama Anahtar Kelimeleri:", $currentDesc);
+            $currentDesc = trim($parts[0]);
+        }
+
+        $this->f_description = $currentDesc !== ''
+            ? $currentDesc . $tag . $keywords
+            : trim($tag) . ' ' . $keywords;
+    }
+
+    public function removeKeywordsFromDescription(): void
+    {
+        $currentDesc = trim((string) $this->f_description);
+        if (str_contains($currentDesc, 'Arama Anahtar Kelimeleri:')) {
+            $parts = explode("Arama Anahtar Kelimeleri:", $currentDesc);
+            $this->f_description = trim($parts[0]);
+        }
     }
 
     public function deleteProduct(int $id): void
@@ -3865,6 +4057,32 @@ class MpProductsManager extends Component
         return (string) (MarketplaceProviderRegistry::get((string) $marketplace)['label'] ?? ucfirst((string) $marketplace));
     }
 
+    public function marketplaceFavicon(?string $marketplace): ?string
+    {
+        $domain = match (strtolower((string) $marketplace)) {
+            'trendyol' => 'trendyol.com',
+            'hepsiburada' => 'hepsiburada.com',
+            'n11' => 'n11.com',
+            'ciceksepeti' => 'ciceksepeti.com',
+            'amazon', 'amazon_tr' => 'amazon.com.tr',
+            'pazarama' => 'pazarama.com',
+            'koctas' => 'koctas.com.tr',
+            'woocommerce' => 'woocommerce.com',
+            'shopify' => 'shopify.com',
+            'ideasoft' => 'ideasoft.com.tr',
+            'ticimax' => 'ticimax.com',
+            default => null,
+        };
+
+        return $domain ? "https://www.google.com/s2/favicons?domain={$domain}&sz=32" : null;
+    }
+
+    public function marketplaceInitial(?string $marketplace): string
+    {
+        $marketplace = (string) $marketplace;
+        return $marketplace !== '' ? strtoupper(substr($marketplace, 0, 1)) : 'M';
+    }
+
     public function listingDeliveryTermLabel(ChannelListing $listing): string
     {
         $parts = [];
@@ -3960,6 +4178,21 @@ class MpProductsManager extends Component
         }
 
         $manualLabel = trim((string) $product->fast_delivery_type);
+        $manualDays = preg_match('/^\d+$/', $manualLabel) === 1 ? (int) $manualLabel : null;
+
+        if ($manualDays !== null) {
+            $label = $this->deliveryDaysLabel($manualDays);
+
+            return [
+                'label' => $label,
+                'short_label' => $this->deliveryDaysShortLabel($manualDays),
+                'detail' => 'Ana ürün',
+                'title' => $label,
+                'count' => 0,
+                'terms' => [],
+                'has_channel_terms' => false,
+            ];
+        }
 
         return [
             'label' => $manualLabel !== '' ? $manualLabel : 'Standart',
@@ -4899,6 +5132,11 @@ class MpProductsManager extends Component
             $merged = array_values(array_unique(array_merge($this->visibleColumns, $normalized)));
             $normalized = array_values(array_filter($valid, fn ($column) => in_array($column, $merged, true)));
         }
+
+        $normalized = array_values(array_filter(
+            $valid,
+            fn ($column) => in_array($column, array_merge(self::REQUIRED_COLUMNS, $normalized), true)
+        ));
 
         return $normalized !== [] ? $normalized : $this->visibleColumns;
     }

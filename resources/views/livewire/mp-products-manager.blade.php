@@ -157,7 +157,7 @@
         : 0);
 @endphp
 
-<div class="products-page-shell -mt-1 lg:-mt-4 w-full space-y-5 overflow-hidden lg:space-y-6"
+<div class="products-page-shell -mt-1 lg:-mt-4 w-full space-y-5 lg:space-y-6"
      x-data="{
         expanded: [],
         advancedFilters: {{ $advancedFiltersActive ? 'true' : 'false' }},
@@ -211,8 +211,6 @@
             this.applySearchNavigation(this.searchDraft);
         }
      }">
-    <x-zolm.risk-guidance :guidance="$this->riskGuidance" context-label="Ürünler" />
-
     @once
         <style>
             .products-page-shell {
@@ -220,16 +218,7 @@
             }
 
             .products-hero-card {
-                background:
-                    radial-gradient(circle at top left, rgba(59, 130, 246, 0.10), transparent 28%),
-                    radial-gradient(circle at top right, rgba(15, 23, 42, 0.06), transparent 30%),
-                    linear-gradient(180deg, rgba(248, 250, 252, 0.94), rgba(255, 255, 255, 1));
-            }
-
-            .products-hero-lead {
-                background:
-                    radial-gradient(circle at top right, rgba(96, 165, 250, 0.10), transparent 24%),
-                    linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 250, 252, 0.94));
+                background: #ffffff;
             }
 
             .products-control-surface {
@@ -237,13 +226,11 @@
             }
 
             .products-tool-rail {
-                background:
-                    radial-gradient(circle at top right, rgba(96, 165, 250, 0.10), transparent 28%),
-                    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1));
+                background: #ffffff;
             }
 
             .products-stat-card {
-                background: linear-gradient(180deg, #ffffff, #f8fafc);
+                background: #ffffff;
             }
 
             .products-ledger-shell {
@@ -252,8 +239,8 @@
 
             .mp-products-v2-table {
                 table-layout: fixed;
-                width: var(--products-table-width, 100%);
-                min-width: var(--products-table-width, 100%);
+                width: 100%;
+                min-width: var(--products-table-min-width, 100%);
             }
 
             .mp-products-v2-table th {
@@ -342,6 +329,29 @@
                 white-space: normal;
             }
 
+            .products-table-scroll {
+                overscroll-behavior-inline: contain;
+            }
+
+            .products-table-edge {
+                pointer-events: none;
+                position: absolute;
+                top: 1px;
+                bottom: 1.75rem;
+                z-index: 15;
+                width: 2rem;
+            }
+
+            .products-table-edge-left {
+                left: 1px;
+                background: linear-gradient(90deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0));
+            }
+
+            .products-table-edge-right {
+                right: 4.125rem;
+                background: linear-gradient(270deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0));
+            }
+
             .col-resize-handle {
                 position: absolute;
                 top: 0;
@@ -379,24 +389,67 @@
                     resizing: false,
                     startX: 0,
                     startWidth: 0,
+                    startTableWidth: 0,
                     currentTh: null,
+                    currentTable: null,
                     handle: null,
+                    hasHorizontalOverflow: false,
+                    isAtScrollStart: true,
+                    isAtScrollEnd: true,
+                    resizeObserver: null,
+                    init() {
+                        this.$nextTick(() => {
+                            this.updateScrollState();
+                            this.resizeObserver = new ResizeObserver(() => this.updateScrollState());
+                            this.resizeObserver.observe(this.$refs.scroller);
+                        });
+                    },
+                    destroy() {
+                        this.resizeObserver?.disconnect();
+                    },
+                    updateScrollState() {
+                        const scroller = this.$refs.scroller;
+
+                        if (!scroller) {
+                            return;
+                        }
+
+                        this.hasHorizontalOverflow = scroller.scrollWidth > scroller.clientWidth + 2;
+                        this.isAtScrollStart = scroller.scrollLeft <= 2;
+                        this.isAtScrollEnd = scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 2;
+                    },
                     startResize(event, th) {
                         this.resizing = true;
                         this.startX = event.pageX;
                         this.startWidth = th.offsetWidth;
                         this.currentTh = th;
+                        this.currentTable = th.closest('table');
+                        this.startTableWidth = this.currentTable?.offsetWidth ?? 0;
                         this.handle = event.target;
                         this.handle.classList.add('active');
+                        document.body.style.cursor = 'col-resize';
+                        document.body.style.userSelect = 'none';
 
                         const onMouseMove = (moveEvent) => {
                             if (!this.resizing) {
                                 return;
                             }
 
-                            const newWidth = Math.max(90, this.startWidth + (moveEvent.pageX - this.startX));
+                            const newWidth = Math.max(76, this.startWidth + (moveEvent.pageX - this.startX));
+                            const widthDelta = newWidth - this.startWidth;
                             this.currentTh.style.width = newWidth + 'px';
                             this.currentTh.style.minWidth = newWidth + 'px';
+
+                            if (this.currentTable) {
+                                const nextTableWidth = Math.max(
+                                    this.$refs.scroller?.clientWidth ?? 0,
+                                    this.startTableWidth + widthDelta
+                                );
+
+                                this.currentTable.style.setProperty('--products-table-min-width', nextTableWidth + 'px');
+                            }
+
+                            this.updateScrollState();
                         };
 
                         const onMouseUp = () => {
@@ -404,6 +457,9 @@
                             if (this.handle) {
                                 this.handle.classList.remove('active');
                             }
+                            document.body.style.cursor = '';
+                            document.body.style.userSelect = '';
+                            this.updateScrollState();
 
                             document.removeEventListener('mousemove', onMouseMove);
                             document.removeEventListener('mouseup', onMouseUp);
@@ -476,67 +532,83 @@
     {{-- ═══════════════════════════════════════════════ --}}
     <div class="products-collapse-panel space-y-4 overflow-hidden"
          x-bind:style="workspaceCollapsed ? 'max-height: 0px; opacity: 0; transform: translateY(-10px); margin-bottom: 0; pointer-events: none;' : 'max-height: 2600px; opacity: 1; transform: translateY(0); pointer-events: auto;'">
-        <section class="products-hero-card rounded-[10px] border border-slate-200/90 p-4 shadow-sm lg:p-5">
-            <div class="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(420px,1.08fr)_minmax(0,0.92fr)]">
-                <div class="products-hero-lead rounded-[10px] border border-slate-200 p-4 shadow-sm lg:p-6">
-                    <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px]">
+        <section class="products-hero-card rounded-[10px] border border-slate-200 p-4 shadow-sm lg:p-5">
+            <div>
+                <div>
+                    <div class="space-y-4">
                         <div class="min-w-0">
-                            <div class="inline-flex items-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                                Ürün Çalışma Alanı
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div class="inline-flex w-fit items-center rounded-[6px] border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                                    Ürün Çalışma Alanı
+                                </div>
+                                <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                    <span class="inline-flex items-center gap-1.5 rounded-[5px] border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">
+                                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                        Canlı
+                                    </span>
+                                    <span class="rounded-[5px] border border-slate-200 bg-white px-2 py-1 text-slate-500">
+                                        Son senkron {{ $latestCatalogSyncAt?->format('d.m H:i') ?: 'yok' }}
+                                    </span>
+                                </div>
                             </div>
-                            <h1 class="mt-4 text-3xl font-bold leading-none tracking-tight text-slate-950 lg:mt-5 lg:text-[40px]">Ürün Yönetimi</h1>
-                            <p class="mt-3 max-w-xl text-sm leading-6 text-slate-500">
+                            <h1 class="mt-3 text-2xl font-bold leading-none tracking-tight text-slate-950 lg:text-[32px]">Ürün Yönetimi</h1>
+                            <p class="mt-2 hidden max-w-3xl text-sm leading-5 text-slate-500 sm:block">
                                 Ana ürün kartlarını maliyet otoritesi olarak koruyun; kanal listelemelerini, stok ve fiyat akışlarını tek çalışma alanında yönetin.
                             </p>
 
-                            <div class="mt-5 flex flex-col gap-3 sm:flex-row">
+                            <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-3 2xl:grid-cols-7">
                                 <button wire:click="openImportModal"
                                         wire:loading.attr="disabled"
                                         wire:target="openImportModal"
-                                        class="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                        title="Excel içe aktar"
+                                        class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
                                     <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                                     </svg>
-                                    Excel İçe Aktar
+                                    İçe Aktar
                                 </button>
                                 <button wire:click="openCostUpdateModal"
                                         wire:loading.attr="disabled"
                                         wire:target="openCostUpdateModal"
-                                        class="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                        title="Maliyet güncelle"
+                                        class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
                                     <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m-4-4l4 4 4-4M5 4h14a2 2 0 012 2v3M3 15v3a2 2 0 002 2h14" />
                                     </svg>
-                                    Maliyet Güncelle
+                                    Maliyet
                                 </button>
                                 {{-- COGS Sihirbazı — maliyet eksik ürünleri kategori bazlı hızlı atama --}}
                                 @php $cogsMissingCount = $stats['missing_cost_products'] ?? 0; @endphp
                                 <button wire:click="openCogsWizard"
                                         wire:loading.attr="disabled"
                                         wire:target="openCogsWizard"
-                                        class="relative inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[6px] border {{ $cogsMissingCount > 0 ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' }} px-4 py-3 text-sm font-medium transition">
+                                        title="COGS Sihirbazı"
+                                        class="relative inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[6px] border {{ $cogsMissingCount > 0 ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' }} px-3 py-2 text-xs font-medium transition">
                                     <svg class="h-4 w-4 {{ $cogsMissingCount > 0 ? 'text-amber-500' : 'text-slate-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                                     </svg>
-                                    COGS Sihirbazı
+                                    COGS
                                     @if($cogsMissingCount > 0)
-                                        <span class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">{{ $cogsMissingCount > 99 ? '99+' : $cogsMissingCount }}</span>
+                                        <span class="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white">{{ $cogsMissingCount > 99 ? '99+' : $cogsMissingCount }}</span>
                                     @endif
                                 </button>
                                 {{-- Akıllı Eşleştirme — eşleşmeyen sipariş stok kodları için fuzzy match --}}
                                 <button wire:click="openMatchWizard"
                                         wire:loading.attr="disabled"
                                         wire:target="openMatchWizard"
-                                        class="relative inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[6px] border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100">
+                                        title="Akıllı eşleştir"
+                                        class="relative inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[6px] border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 transition hover:bg-indigo-100">
                                     <svg class="h-4 w-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                                     </svg>
-                                    <span wire:loading.remove wire:target="openMatchWizard">Akıllı Eşleştir</span>
+                                    <span wire:loading.remove wire:target="openMatchWizard">Eşleştir</span>
                                     <span wire:loading wire:target="openMatchWizard">Yükleniyor...</span>
                                 </button>
                                 <button wire:click="exportExcel"
                                         wire:loading.attr="disabled"
                                         wire:target="exportExcel"
-                                        class="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                        title="Excel dışa aktar"
+                                        class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
                                     <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
@@ -545,7 +617,8 @@
                                 <button wire:click="refreshReturnRates"
                                         wire:loading.attr="disabled"
                                         wire:target="refreshReturnRates"
-                                        class="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                                        title="İade metriklerini yenile"
+                                        class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
                                     <svg wire:loading.remove wire:target="refreshReturnRates" class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M20 8A8 8 0 006.6 4.7M4 16a8 8 0 0013.4 3.3" />
                                     </svg>
@@ -553,12 +626,12 @@
                                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                                     </svg>
-                                    İade metriklerini yenile
+                                    İadeler
                                 </button>
                                 <button wire:click="openCreateModal"
                                         wire:loading.attr="disabled"
                                         wire:target="openCreateModal"
-                                        class="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
+                                        class="order-first inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[6px] bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-800">
                                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                                     </svg>
@@ -566,100 +639,84 @@
                                 </button>
                             </div>
 
-                            <div class="mt-4 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3 lg:mt-5">
-                                <div class="rounded-[8px] border border-slate-200 bg-slate-50/80 px-3 py-3">
-                                    <p class="text-slate-500">Ana görünüm</p>
-                                    <p class="mt-1 font-semibold text-slate-900">Maliyet + stok otoritesi</p>
-                                </div>
-                                <div class="rounded-[8px] border border-slate-200 bg-slate-50/80 px-3 py-3">
-                                    <p class="text-slate-500">Kontrol yüzeyi</p>
-                                    <p class="mt-1 font-semibold text-slate-900">Filtre + araçlar birleşik</p>
-                                </div>
-                                <div class="rounded-[8px] border border-slate-200 bg-slate-50/80 px-3 py-3">
-                                    <p class="text-slate-500">Kanal sağlığı</p>
-                                    <p class="mt-1 font-semibold text-slate-900">Listeleme ve gönderim izleme</p>
-                                </div>
-                            </div>
                         </div>
 
-                        <div class="grid gap-3">
-                            <div class="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/70 px-2.5 py-3 sm:px-3">
                                 <div class="flex items-center gap-1.5">
-                                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Listeleme kapsamı</p>
-                                    <x-zolm.help-tip title="Listeleme kapsamı" summary="Ana ürünlerin ne kadarının en az bir kanalda listelendiğini yüzde olarak gösterir." source="Ana ürün sayısı ve aktif listeleme kayıtları." refresh="Yeni listeleme açıldığında, kapandığında veya senkron geldiğinde." impact="Kanal yayılımını ve büyüme boşluğunu hızlıca gösterir." />
+                                    <p class="truncate text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:text-[11px] sm:tracking-[0.18em]">Listeleme kapsamı</p>
+                                    <span class="hidden sm:inline-flex">
+                                        <x-zolm.help-tip title="Listeleme kapsamı" summary="Ana ürünlerin ne kadarının en az bir kanalda listelendiğini yüzde olarak gösterir." source="Ana ürün sayısı ve aktif listeleme kayıtları." refresh="Yeni listeleme açıldığında, kapandığında veya senkron geldiğinde." impact="Kanal yayılımını ve büyüme boşluğunu hızlıca gösterir." />
+                                    </span>
                                 </div>
-                                <p class="mt-3 text-3xl font-bold tracking-tight text-slate-950">%{{ $listedCoverage }}</p>
-                                <div class="mt-3 h-2 rounded-full bg-slate-100">
-                                    <div class="h-2 rounded-full bg-slate-900 transition-all" style="width: {{ min(100, max(0, $listedCoverage)) }}%"></div>
+                                <p class="mt-2 text-lg font-bold tracking-tight text-slate-950 sm:text-xl">%{{ $listedCoverage }}</p>
+                                <div class="mt-2 h-1.5 rounded-full bg-slate-200">
+                                    <div class="h-1.5 rounded-full bg-slate-900 transition-all" style="width: {{ min(100, max(0, $listedCoverage)) }}%"></div>
                                 </div>
                             </div>
-                            <div class="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
-                                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Yayında</p>
-                                <p class="mt-2 text-2xl font-bold tracking-tight text-slate-950">{{ $formatCount($stats['listed_products']) }}</p>
-                                <p class="mt-2 text-xs text-emerald-600">{{ $formatCount($stats['active_listings']) }} aktif listeleme</p>
+                            <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/70 px-2.5 py-3 sm:px-3">
+                                <p class="truncate text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:text-[11px] sm:tracking-[0.18em]">Yayında</p>
+                                <p class="mt-2 text-lg font-bold tracking-tight text-slate-950 sm:text-xl">{{ $formatCount($stats['listed_products']) }}</p>
+                                <p class="mt-1 truncate text-[10px] text-emerald-600 sm:text-xs">{{ $formatCount($stats['active_listings']) }} aktif listeleme</p>
                             </div>
-                            <div class="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
+                            <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/70 px-2.5 py-3 sm:px-3">
                                 <div class="flex items-center gap-1.5">
-                                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Eşleşme riski</p>
-                                    <x-zolm.help-tip title="Eşleşme riski" summary="Ana ürünle kanal listelemesi arasında net ilişki kurulamayan kayıtları gösterir." source="Eşleşme sorun kayıtları ve bağsız listeleme sayısı." refresh="Sorun çözüldüğünde veya yeni listeleme geldiğinde." impact="Fiyat, kâr ve stok akışındaki güvenilirliği etkiler." />
+                                    <p class="truncate text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:text-[11px] sm:tracking-[0.18em]">Eşleşme riski</p>
+                                    <span class="hidden sm:inline-flex">
+                                        <x-zolm.help-tip title="Eşleşme riski" summary="Ana ürünle kanal listelemesi arasında net ilişki kurulamayan kayıtları gösterir." source="Eşleşme sorun kayıtları ve bağsız listeleme sayısı." refresh="Sorun çözüldüğünde veya yeni listeleme geldiğinde." impact="Fiyat, kâr ve stok akışındaki güvenilirliği etkiler." />
+                                    </span>
                                 </div>
-                                <p class="mt-2 text-2xl font-bold tracking-tight text-slate-950">{{ $formatCount($stats['pending_match_issues']) }}</p>
-                                <p class="mt-2 text-xs text-amber-600">{{ $formatCount($sidebarSummary['orphan_listings'] ?? 0) }} bağsız listeleme</p>
+                                <p class="mt-2 text-lg font-bold tracking-tight text-slate-950 sm:text-xl">{{ $formatCount($stats['pending_match_issues']) }}</p>
+                                <p class="mt-1 truncate text-[10px] text-amber-600 sm:text-xs">{{ $formatCount($sidebarSummary['orphan_listings'] ?? 0) }} bağsız listeleme</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
-                    <div class="products-stat-card rounded-[10px] border border-slate-200 p-5 shadow-sm lg:col-span-2">
-                        <div class="flex items-start justify-between gap-4">
-                            <div class="min-w-0">
-                                <div class="inline-flex items-center rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                    Çalışma Alanı Özeti
-                                </div>
-                                <p class="mt-4 text-3xl font-bold tracking-tight text-slate-950 lg:text-[36px]">{{ $formatCount($stats['total_products']) }}</p>
-                                <p class="mt-2 text-sm font-medium text-slate-700">toplam ana ürün</p>
+                @if(false)
+                <div class="self-stretch">
+                    <div class="products-stat-card flex h-full flex-col rounded-[10px] border border-slate-200 p-4 shadow-sm">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="inline-flex items-center rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Çalışma Alanı Özeti
                             </div>
                             <span class="rounded-[6px] bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-600">Canlı</span>
                         </div>
-                        <div class="mt-4 grid gap-2 sm:grid-cols-2">
-                            <div class="rounded-[8px] border border-slate-200 bg-slate-50/80 px-4 py-3">
-                                <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Toplam listeleme</p>
-                                <p class="mt-2 text-lg font-semibold tracking-tight text-slate-950">{{ $formatCount($stats['total_listings']) }}</p>
+
+                        <div class="mt-3 grid grid-cols-3 gap-2 xl:grid-cols-1">
+                            <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+                                <p class="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Ana ürün</p>
+                                <p class="mt-1 text-xl font-bold tracking-tight text-slate-950">{{ $formatCount($stats['total_products']) }}</p>
                             </div>
-                            <div class="rounded-[8px] border border-slate-200 bg-slate-50/80 px-4 py-3">
-                                <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Stok Değeri</p>
-                                <p class="mt-2 text-lg font-semibold tracking-tight text-slate-950">{{ $formatMoney($stats['stock_value']) }}</p>
+                            <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+                                <p class="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Listeleme</p>
+                                <p class="mt-1 text-xl font-bold tracking-tight text-slate-950">{{ $formatCount($stats['total_listings']) }}</p>
+                            </div>
+                            <div class="min-w-0 rounded-[8px] border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+                                <p class="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Stok değeri</p>
+                                <p class="mt-1 truncate text-base font-bold tracking-tight text-slate-950" title="{{ $formatMoney($stats['stock_value']) }}">{{ $formatMoney($stats['stock_value']) }}</p>
                             </div>
                         </div>
-                        <div class="mt-4 flex flex-wrap items-center gap-2 text-xs">
-                            <span class="rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 text-slate-600">{{ $formatCount($stats['multi_channel_products']) }} çok kanallı</span>
-                            <span class="rounded-[6px] border border-slate-200 bg-white px-2.5 py-1 text-slate-600">Son katalog senkronu {{ $latestCatalogSyncAt?->format('d.m H:i') ?: 'yok' }}</span>
+                        <div class="mt-auto flex flex-wrap items-center gap-1.5 pt-3 text-[11px]">
+                            <span class="rounded-[5px] border border-slate-200 bg-white px-2 py-1 text-slate-600">Senkron {{ $latestCatalogSyncAt?->format('d.m H:i') ?: 'yok' }}</span>
                         </div>
                     </div>
 
-                    <div class="products-stat-card rounded-[10px] border border-slate-200 p-4 shadow-sm">
+                    {{--
+                    <div class="products-stat-card rounded-[10px] border border-slate-200 p-3 shadow-sm">
                         <div class="flex items-center gap-1.5">
-                            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Gönderim Hazır</p>
-                            <x-zolm.help-tip title="Gönderim hazır" summary="Fiyat ve stok değişimini dış kanala göndermeye uygun profil ve mağaza hazırlığını gösterir." source="Senkron profil ayarları, mağaza yetkileri ve gönderim hazırlık kontrolleri." refresh="Profil güncellendiğinde veya mağaza hazırlığı değiştiğinde." impact="Hangi mağazalarda otomatik gönderim yapılabileceğini belirler." />
-                        </div>
-                        <p class="mt-3 text-2xl font-bold tracking-tight text-slate-950">{{ $formatCount($sidebarSummary['price_push_ready'] ?? 0) }}/{{ $formatCount($sidebarSummary['stock_push_ready'] ?? 0) }}</p>
-                        <p class="mt-2 text-xs text-slate-500">Fiyat / stok profili hazır mağaza</p>
-                    </div>
-                    <div class="products-stat-card rounded-[10px] border border-slate-200 p-4 shadow-sm">
-                        <div class="flex items-center gap-1.5">
-                            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Gönderim Hatası</p>
                             <x-zolm.help-tip title="Gönderim hatası" summary="Son dönemde başarısız katalog, fiyat veya stok gönderimlerini özetler." source="Katalog senkronu ve gönderim hata kayıtları." refresh="Her yeni gönderim sonucu işlendiğinde." impact="Kanalda güncel olmayan fiyat veya stok riskini işaret eder." />
                         </div>
-                        <p class="mt-3 text-2xl font-bold tracking-tight text-slate-950">{{ $formatCount($sidebarSummary['failed_catalog_syncs'] ?? 0) }}</p>
-                        <p class="mt-2 text-xs text-rose-600">Son 24 saatte başarısız katalog senkronu</p>
                     </div>
+                    --}}
                 </div>
+                @endif
             </div>
         </section>
 
         @include('livewire.partials.mp-guidance-banner', [
             'diagnosticsGuidance' => $diagnosticsGuidance,
+            'riskGuidance' => $this->riskGuidance,
             'guidanceItems' => $diagnosticsGuidance['items'] ?? [],
             'primaryGuidance' => $primaryGuidance,
             'secondaryGuidance' => $secondaryGuidance,
@@ -691,7 +748,7 @@
     <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
 
         <div class="products-control-surface mb-5 rounded-[10px] border border-slate-200 p-3 lg:p-4">
-            <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_304px]">
+            <div class="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_304px]">
                 <div class="rounded-[10px] border border-slate-200 bg-white/90 p-3 sm:p-4">
                     <div class="flex flex-col gap-4 border-b border-slate-200/80 pb-3 xl:flex-row xl:items-start xl:justify-between">
                         <div class="min-w-0">
@@ -736,7 +793,7 @@
                                    @search="flushSearchNavigation()"
                                    type="search"
                                    placeholder="Ürün adı, barkod, stok kodu arayın..."
-                                   class="w-full rounded-[6px] border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm font-medium text-slate-900 shadow-sm transition focus:border-slate-900 focus:bg-white focus:outline-none">
+                                   class="w-full rounded-[6px] border border-slate-200 bg-white py-3 pl-10 pr-4 text-base font-medium text-slate-900 shadow-sm transition focus:border-slate-900 focus:bg-white focus:outline-none sm:text-sm">
                         </div>
                         <select wire:model.live="filterStatus"
                                 class="w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
@@ -782,104 +839,131 @@
                         </select>
                         <button type="button"
                                 @click="advancedFilters = !advancedFilters"
-                                class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-white xl:w-auto sm:py-2">
-                            <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                :aria-expanded="advancedFilters"
+                                :class="advancedFilters ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white'"
+                                class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border px-4 py-3 text-sm font-medium transition xl:w-auto sm:py-2">
+                            <svg class="h-4 w-4" :class="advancedFilters ? 'text-slate-300' : 'text-slate-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                             </svg>
                             Gelişmiş
                         </button>
                     </div>
 
-                    <div x-show="advancedFilters" x-cloak x-transition class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-8">
-                        <select wire:model.live="listingStatusFilter"
-                                class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <option value="all">Listeleme Durumu</option>
-                            <option value="active">Yayında</option>
-                            <option value="passive">Pasif</option>
-                            <option value="draft">Taslak</option>
-                        </select>
-                        <select wire:model.live="legalEntityFilter"
-                                class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <option value="all">Tüm Firmalar</option>
-                            @foreach($legalEntities as $entity)
-                                <option value="{{ $entity->id }}">{{ $entity->name }}</option>
-                            @endforeach
-                        </select>
-                        <select wire:model.live="filterStockLevel"
-                                class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <option value="all">Stok Seviyesi</option>
-                            <option value="in_stock">Stokta</option>
-                            <option value="critical">Kritik</option>
-                            <option value="out_of_stock">Tükendi</option>
-                        </select>
-                        <select wire:model.live="filterCostDefined"
-                                class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <option value="all">Maliyet Durumu</option>
-                            <option value="yes">Maliyet tanımlı</option>
-                            <option value="no">Maliyet eksik</option>
-                        </select>
-                        <select wire:model.live="recipeLinkFilter"
-                                class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <option value="all">Reçete Bağı</option>
-                            <option value="linked">Reçeteye bağlı</option>
-                            <option value="unlinked">Reçeteye bağlı olmayan</option>
-                        </select>
-                        <select wire:model.live="setContentFilter"
-                                class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <option value="all">Set İçeriği</option>
-                            <option value="defined">Set içeriği girilenler</option>
-                            <option value="missing">Set kartı boş olanlar</option>
-                        </select>
-                        <div class="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
-                            <select wire:model.live="filterProfitComparison"
-                                    class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                                <option value="all">Kârlılık</option>
-                                <option value="below">Altında</option>
-                                <option value="above">Üstünde</option>
-                            </select>
-                            <input type="number"
-                                   step="0.1"
-                                   wire:model.live.debounce.500ms="filterProfitMargin"
-                                   placeholder="%"
-                                   class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                        </div>
-                        <div class="flex items-center">
+                    <div x-show="advancedFilters"
+                         x-cloak
+                         x-transition
+                         class="mt-3 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="text-[11px] font-semibold text-slate-700">Gelişmiş filtreler</p>
+                                <p class="mt-0.5 text-[10px] text-slate-500">Durum ve sayısal aralıkları daraltın.</p>
+                            </div>
                             @if($showResetFilters)
                                 <button wire:click="resetFilters"
                                         type="button"
                                         title="Filtreleri sıfırla"
                                         wire:loading.attr="disabled"
                                         wire:target="resetFilters"
-                                        class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">
-                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        class="inline-flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded-[6px] border border-rose-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60">
+                                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                                     </svg>
                                     Sıfırla
                                 </button>
                             @endif
                         </div>
-                    </div>
 
-                    <div x-show="advancedFilters" x-cloak x-transition class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                        <div class="grid grid-cols-2 gap-2">
-                            <input type="number" step="0.01" wire:model.live.debounce.500ms="filterSalePriceMin" placeholder="Satış min" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <input type="number" step="0.01" wire:model.live.debounce.500ms="filterSalePriceMax" placeholder="Satış max" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                        <div class="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4 2xl:grid-cols-7">
+                            <label class="min-w-0">
+                                <span class="mb-1 block text-[10px] font-semibold text-slate-500">Listeleme</span>
+                                <select wire:model.live="listingStatusFilter" class="min-h-10 w-full rounded-[6px] border border-slate-200 bg-white px-2.5 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                    <option value="all">Tümü</option>
+                                    <option value="active">Yayında</option>
+                                    <option value="passive">Pasif</option>
+                                    <option value="draft">Taslak</option>
+                                </select>
+                            </label>
+                            <label class="min-w-0">
+                                <span class="mb-1 block text-[10px] font-semibold text-slate-500">Firma</span>
+                                <select wire:model.live="legalEntityFilter" class="min-h-10 w-full rounded-[6px] border border-slate-200 bg-white px-2.5 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                    <option value="all">Tümü</option>
+                                    @foreach($legalEntities as $entity)
+                                        <option value="{{ $entity->id }}">{{ $entity->name }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <label class="min-w-0">
+                                <span class="mb-1 block text-[10px] font-semibold text-slate-500">Stok seviyesi</span>
+                                <select wire:model.live="filterStockLevel" class="min-h-10 w-full rounded-[6px] border border-slate-200 bg-white px-2.5 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                    <option value="all">Tümü</option>
+                                    <option value="in_stock">Stokta</option>
+                                    <option value="critical">Kritik</option>
+                                    <option value="out_of_stock">Tükendi</option>
+                                </select>
+                            </label>
+                            <label class="min-w-0">
+                                <span class="mb-1 block text-[10px] font-semibold text-slate-500">Maliyet</span>
+                                <select wire:model.live="filterCostDefined" class="min-h-10 w-full rounded-[6px] border border-slate-200 bg-white px-2.5 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                    <option value="all">Tümü</option>
+                                    <option value="yes">Tanımlı</option>
+                                    <option value="no">Eksik</option>
+                                </select>
+                            </label>
+                            <label class="min-w-0">
+                                <span class="mb-1 block text-[10px] font-semibold text-slate-500">Reçete bağı</span>
+                                <select wire:model.live="recipeLinkFilter" class="min-h-10 w-full rounded-[6px] border border-slate-200 bg-white px-2.5 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                    <option value="all">Tümü</option>
+                                    <option value="linked">Bağlı</option>
+                                    <option value="unlinked">Bağlı değil</option>
+                                </select>
+                            </label>
+                            <label class="min-w-0">
+                                <span class="mb-1 block text-[10px] font-semibold text-slate-500">Set içeriği</span>
+                                <select wire:model.live="setContentFilter" class="min-h-10 w-full rounded-[6px] border border-slate-200 bg-white px-2.5 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                    <option value="all">Tümü</option>
+                                    <option value="defined">Tanımlı</option>
+                                    <option value="missing">Eksik</option>
+                                </select>
+                            </label>
+                            <div class="min-w-0">
+                                <span class="mb-1 block text-[10px] font-semibold text-slate-500">Kâr marjı</span>
+                                <div class="grid grid-cols-[minmax(0,1fr)_64px] gap-1.5">
+                                    <select wire:model.live="filterProfitComparison" aria-label="Kâr marjı karşılaştırması" class="min-h-10 min-w-0 rounded-[6px] border border-slate-200 bg-white px-2 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                        <option value="all">Tümü</option>
+                                        <option value="below">Altında</option>
+                                        <option value="above">Üstünde</option>
+                                    </select>
+                                    <input type="number" step="0.1" wire:model.live.debounce.500ms="filterProfitMargin" aria-label="Kâr marjı yüzdesi" placeholder="%" class="min-h-10 min-w-0 rounded-[6px] border border-slate-200 bg-white px-2 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                </div>
+                            </div>
                         </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <input type="number" step="0.01" wire:model.live.debounce.500ms="filterCostMin" placeholder="Maliyet min" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <input type="number" step="0.01" wire:model.live.debounce.500ms="filterCostMax" placeholder="Maliyet max" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <input type="number" step="1" wire:model.live.debounce.500ms="filterStockMin" placeholder="Stok min" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <input type="number" step="1" wire:model.live.debounce.500ms="filterStockMax" placeholder="Stok max" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <input type="number" step="0.1" wire:model.live.debounce.500ms="filterDesiMin" placeholder="Desi min" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <input type="number" step="0.1" wire:model.live.debounce.500ms="filterDesiMax" placeholder="Desi max" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <input type="number" step="0.1" wire:model.live.debounce.500ms="filterReturnRateMin" placeholder="İade min %" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
-                            <input type="number" step="0.1" wire:model.live.debounce.500ms="filterReturnRateMax" placeholder="İade max %" class="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+
+                        <div class="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3 xl:grid-cols-5">
+                            @foreach([
+                                ['label' => 'Satış fiyatı', 'min' => 'filterSalePriceMin', 'max' => 'filterSalePriceMax', 'step' => '0.01'],
+                                ['label' => 'Maliyet', 'min' => 'filterCostMin', 'max' => 'filterCostMax', 'step' => '0.01'],
+                                ['label' => 'Stok', 'min' => 'filterStockMin', 'max' => 'filterStockMax', 'step' => '1'],
+                                ['label' => 'Desi', 'min' => 'filterDesiMin', 'max' => 'filterDesiMax', 'step' => '0.1'],
+                                ['label' => 'İade oranı %', 'min' => 'filterReturnRateMin', 'max' => 'filterReturnRateMax', 'step' => '0.1'],
+                            ] as $rangeFilter)
+                                <div class="min-w-0">
+                                    <span class="mb-1 block text-[10px] font-semibold text-slate-500">{{ $rangeFilter['label'] }}</span>
+                                    <div class="grid grid-cols-2 gap-1.5">
+                                        <input type="number"
+                                               step="{{ $rangeFilter['step'] }}"
+                                               wire:model.live.debounce.500ms="{{ $rangeFilter['min'] }}"
+                                               aria-label="{{ $rangeFilter['label'] }} minimum"
+                                               placeholder="Min"
+                                               class="min-h-10 min-w-0 w-full rounded-[6px] border border-slate-200 bg-white px-2.5 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                        <input type="number"
+                                               step="{{ $rangeFilter['step'] }}"
+                                               wire:model.live.debounce.500ms="{{ $rangeFilter['max'] }}"
+                                               aria-label="{{ $rangeFilter['label'] }} maksimum"
+                                               placeholder="Maks"
+                                               class="min-h-10 min-w-0 w-full rounded-[6px] border border-slate-200 bg-white px-2.5 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                    </div>
+                                </div>
+                            @endforeach
                         </div>
                     </div>
 
@@ -1497,21 +1581,21 @@
     <div class="products-ledger-shell hidden md:block rounded-[10px] border border-slate-200 p-3 shadow-sm">
         @php
             $columnMeta = [
-                'urun' => ['label' => 'Ürün', 'width' => '380px'],
-                'kanal' => ['label' => 'Kanal', 'width' => '124px'],
-                'fiyat' => ['label' => 'Satış', 'width' => '160px'],
-                'cogs' => ['label' => 'Maliyet', 'width' => '160px'],
-                'kargo' => ['label' => 'Lojistik', 'width' => '146px'],
-                'ek_gider' => ['label' => 'Ek Gider', 'width' => '154px'],
-                'stok' => ['label' => 'Stok', 'width' => '84px'],
-                'kritik_stok' => ['label' => 'Kritik', 'width' => '92px'],
-                'kdv' => ['label' => 'KDV', 'width' => '78px'],
-                'maliyet_kdv' => ['label' => 'Maliyet KDV', 'width' => '112px'],
-                'desi' => ['label' => 'Desi', 'width' => '86px'],
-                'iade' => ['label' => 'İade', 'width' => '96px'],
-                'teslimat' => ['label' => 'Termin', 'width' => '88px'],
-                'roi' => ['label' => 'Kâr', 'width' => '112px'],
-                'durum' => ['label' => 'Durum', 'width' => '92px'],
+                'urun' => ['label' => 'Ürün', 'width' => '320px'],
+                'kanal' => ['label' => 'Kanal', 'width' => '116px'],
+                'fiyat' => ['label' => 'Satış', 'width' => '150px'],
+                'cogs' => ['label' => 'Maliyet', 'width' => '150px'],
+                'kargo' => ['label' => 'Lojistik', 'width' => '140px'],
+                'ek_gider' => ['label' => 'Ek Gider', 'width' => '140px'],
+                'stok' => ['label' => 'Stok', 'width' => '82px'],
+                'kritik_stok' => ['label' => 'Kritik', 'width' => '90px'],
+                'kdv' => ['label' => 'KDV', 'width' => '72px'],
+                'maliyet_kdv' => ['label' => 'Maliyet KDV', 'width' => '108px'],
+                'desi' => ['label' => 'Desi', 'width' => '80px'],
+                'iade' => ['label' => 'İade', 'width' => '110px'],
+                'teslimat' => ['label' => 'Termin', 'width' => '92px'],
+                'roi' => ['label' => 'Kâr', 'width' => '104px'],
+                'durum' => ['label' => 'Durum', 'width' => '90px'],
                 'islem' => ['label' => 'İşlem', 'width' => '64px'],
             ];
             $columnHelp = [
@@ -1558,13 +1642,13 @@
                     'impact' => 'Hızlı fiyatlama ve kârlılık kararlarını yönlendirir.',
                 ],
             ];
-            $tableWidthPx = 36;
+            $tableMinWidthPx = 36;
             foreach ($columnMeta as $columnKey => $meta) {
                 if (in_array($columnKey, $visibleColumns, true)) {
-                    $tableWidthPx += (int) str_replace('px', '', $meta['width'] ?? '120');
+                    $tableMinWidthPx += (int) str_replace('px', '', $meta['width'] ?? '120');
                 }
             }
-            $tableWidthPx += 1;
+            $tableMinWidthPx += 1;
         @endphp
 
         <div class="mb-2 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between">
@@ -1574,6 +1658,12 @@
             </div>
             <div class="flex flex-wrap items-center gap-2 text-xs">
                 <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600">{{ $formatCount($products->total()) }} ürün</span>
+                <span class="hidden items-center gap-1.5 rounded-[6px] border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700 xl:inline-flex" title="Görünür kolonlar kullanılabilir alana otomatik yayılır">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7H5a2 2 0 00-2 2v8a2 2 0 002 2h3m8-12h3a2 2 0 012 2v8a2 2 0 01-2 2h-3M8 12h8m-5-3-3 3 3 3m2-6 3 3-3 3" />
+                    </svg>
+                    Otomatik genişlik
+                </span>
                 <button type="button"
                         wire:click="refreshCommissionRates"
                         wire:loading.attr="disabled"
@@ -1873,8 +1963,14 @@
             </div>
         </div>
 
-        <div class="w-full overflow-x-auto rounded-[8px] border border-slate-200 bg-white" x-data="columnResize()">
-            <table class="mp-products-v2-table table-fixed" style="--products-table-width: {{ $tableWidthPx }}px;">
+        <div x-data="columnResize()"
+             wire:key="products-table-layout-{{ md5(implode('|', $visibleColumns)) }}"
+             class="relative">
+            <div x-ref="scroller"
+                 @scroll.passive="updateScrollState()"
+                 data-testid="mp-products-table-scroll"
+                 class="products-table-scroll w-full overflow-x-auto rounded-[8px] border border-slate-200 bg-white">
+            <table class="mp-products-v2-table table-fixed" style="--products-table-min-width: {{ $tableMinWidthPx }}px;">
                 <thead class="bg-slate-50/90 text-slate-500">
                     <tr>
                         <th class="w-9 px-1.5 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.14em]">
@@ -2937,6 +3033,24 @@
                     @endforelse
                 </tbody>
             </table>
+            </div>
+
+            <div x-show="hasHorizontalOverflow && !isAtScrollStart"
+                 x-cloak
+                 class="products-table-edge products-table-edge-left"
+                 aria-hidden="true"></div>
+            <div x-show="hasHorizontalOverflow && !isAtScrollEnd"
+                 x-cloak
+                 class="products-table-edge products-table-edge-right"
+                 aria-hidden="true"></div>
+            <div x-show="hasHorizontalOverflow"
+                 x-cloak
+                 class="mt-2 flex items-center justify-end gap-1.5 px-1 text-[11px] text-slate-500">
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m8 7-5 5 5 5m8-10 5 5-5 5M3 12h18" />
+                </svg>
+                Diğer kolonlar için yatay kaydırın
+            </div>
         </div>
     </div>
 
