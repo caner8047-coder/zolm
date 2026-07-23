@@ -1,5 +1,13 @@
 # ZOLM - Changelog
 
+## V1.1 - 2026-07-23 (Integrated Operations)
+
+### Sürümleme
+- Uygulama sürüm kaynağı `ZOLM v1.1` olarak güncellendi.
+- Sidebar sürüm rozeti merkezi `config/version.php` ayarından `v1.1` gösterir.
+
+---
+
 ## V1 - 2026-07-18 (Platform Foundation)
 
 ### Sürümleme

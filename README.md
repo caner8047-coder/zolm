@@ -1,10 +1,10 @@
-# ZOLM v1
+# ZOLM v1.1
 
 ZOLM; üretim, operasyon, pazaryeri muhasebesi, ERP / ön muhasebe, CRM ve müşteri iletişim süreçlerini tek panelde birleştiren Laravel tabanlı iş yönetim platformudur.
 
 ## Sürüm
 
-- **Ürün etiketi:** ZOLM v1
+- **Ürün etiketi:** ZOLM v1.1
 - **Uygulama sürümü:** `1.0.0`
 - **Release tarihi:** 2026-07-18
 - **Sürüm kaynağı:** `config/version.php`
