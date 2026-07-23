@@ -103,6 +103,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Serializable Classes
+    |--------------------------------------------------------------------------
+    |
+    | Laravel 13 güvenlik ayarı: cache unserialization sırasında hangi PHP
+    | sınıflarının deserialize edilebileceğini kontrol eder. false = hiçbiri.
+    | Projede cache'e PHP objesi saklanmadığından false güvenlidir.
+    |
+    */
+
+    'serializable_classes' => false,
+
+    /*
+    |--------------------------------------------------------------------------
     | Cache Key Prefix
     |--------------------------------------------------------------------------
     |

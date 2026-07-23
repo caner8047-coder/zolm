@@ -48,8 +48,9 @@ class ZolmDemoTenantHardeningTest extends TestCase
         $secondStores = MarketplaceStore::where('user_id', $secondUser->id)->get();
         $reloadedFirstStores = MarketplaceStore::where('user_id', $firstUser->id)->get();
 
-        $this->assertCount(9, $reloadedFirstStores);
-        $this->assertCount(9, $secondStores);
+        $providerCount = count(\App\Services\Marketplace\MarketplaceProviderRegistry::providers());
+        $this->assertCount($providerCount, $reloadedFirstStores);
+        $this->assertCount($providerCount, $secondStores);
         $this->assertSame(
             $firstStoreIds,
             $reloadedFirstStores->pluck('id')->sort()->values()->all(),
@@ -72,7 +73,7 @@ class ZolmDemoTenantHardeningTest extends TestCase
                 ->count(),
             'İlk tenant mağazalarının ownership bilgisi korunmalıdır.'
         );
-        $this->assertSame(18, MarketplaceStore::whereIn('user_id', [$firstUser->id, $secondUser->id])->count());
+        $this->assertSame($providerCount * 2, MarketplaceStore::whereIn('user_id', [$firstUser->id, $secondUser->id])->count());
     }
 
     public function test_reset_removes_restricted_and_null_on_delete_roots_before_reseeding_single_fixtures(): void
@@ -128,9 +129,10 @@ class ZolmDemoTenantHardeningTest extends TestCase
         $this->assertDatabaseMissing('wa_accounts', ['id' => $oldIds['wa_account']]);
         $this->assertDatabaseMissing('wa_knowledge_articles', ['id' => $oldIds['knowledge_article']]);
 
-        $this->assertCount(9, $newStoreIds);
-        $this->assertSame(9, SupportChannel::whereIn('store_id', $newStoreIds)->count());
-        $this->assertSame(9, SupportChannel::count());
+        $providerCount = count(\App\Services\Marketplace\MarketplaceProviderRegistry::providers());
+        $this->assertCount($providerCount, $newStoreIds);
+        $this->assertSame($providerCount, SupportChannel::whereIn('store_id', $newStoreIds)->count());
+        $this->assertSame($providerCount, SupportChannel::count());
         $this->assertSame(1, WaAccount::whereIn('store_id', $newStoreIds)->count());
         $this->assertSame(1, WaAccount::count());
         $this->assertSame(0, SupportChannel::whereNull('store_id')->count());
@@ -212,10 +214,11 @@ class ZolmDemoTenantHardeningTest extends TestCase
             ->where('trigger_type', 'demo')
             ->get();
 
-        $this->assertCount(9, $storeIds);
-        $this->assertCount(27, $syncRuns);
+        $providerCount = count(\App\Services\Marketplace\MarketplaceProviderRegistry::providers());
+        $this->assertCount($providerCount, $storeIds);
+        $this->assertCount($providerCount * 3, $syncRuns);
         $this->assertSame(['completed'], $syncRuns->pluck('status')->unique()->sort()->values()->all());
-        $this->assertSame(27, $syncRuns->whereNotNull('finished_at')->count());
+        $this->assertSame($providerCount * 3, $syncRuns->whereNotNull('finished_at')->count());
     }
 
     public function test_reseed_migrates_legacy_tenant_identifiers_without_creating_duplicates(): void
@@ -239,7 +242,8 @@ class ZolmDemoTenantHardeningTest extends TestCase
 
         $this->seedTenant();
 
-        $this->assertSame(9, MarketplaceStore::where('user_id', $user->id)->count());
+        $providerCount = count(\App\Services\Marketplace\MarketplaceProviderRegistry::providers());
+        $this->assertSame($providerCount, MarketplaceStore::where('user_id', $user->id)->count());
         $this->assertSame($trendyolStore->id, MarketplaceStore::where('user_id', $user->id)
             ->where('marketplace', 'trendyol')->value('id'));
         $this->assertDatabaseMissing('marketplace_stores', ['seller_id' => 'demo-mockdata1-trendyol']);
