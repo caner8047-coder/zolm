@@ -10,7 +10,7 @@
 ┌─────────────────────────────────────────────┐
 │              ZOLM v1 ÇEKİRDEK              │
 │                                             │
-│  Laravel 11 + Livewire 3 + Alpine.js       │
+│  Laravel 13 + Livewire 4 + Alpine.js       │
 │  MySQL 8 + Tailwind CSS + PhpSpreadsheet   │
 │  AI: Gemini API + OpenAI + Groq fallback   │
 │  309 Model │ 343 Service │ 128 Component   │

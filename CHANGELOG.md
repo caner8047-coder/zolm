@@ -1,5 +1,15 @@
 # ZOLM - Changelog
 
+## Altyapı Güncellemesi - 2026-07-23 (Laravel 13)
+
+### Teknik
+- Laravel framework 13.21.1'e, Laravel Tinker 3.0.2'ye ve PHPUnit 12.5.31'e yükseltildi.
+- Livewire 4.3.3 korundu; Laravel 13 ile uyumluluğu doğrulandı.
+- Cache unserialization güvenliği için `serializable_classes=false` eklendi; private/local disklerin HTTP üzerinden servis edilmesi kapatıldı.
+- Sail/PHP 8.3 ortamında 2.615 test ve 10.255 assertion başarıyla tamamlandı.
+
+---
+
 ## V1.1 - 2026-07-23 (Integrated Operations)
 
 ### Sürümleme

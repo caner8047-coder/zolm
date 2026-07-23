@@ -4,18 +4,18 @@ Bu dosya tüm AI asistanları (Codex, Gemini, Copilot) için proje kurallarını
 
 ## Teknoloji Stack
 
-- **Framework:** Laravel 11 + Livewire 3 (TALL Stack)
+- **Framework:** Laravel 13 + Livewire 4 (TALL Stack)
 - **Frontend:** Alpine.js + Tailwind CSS (CDN)
 - **Database:** MySQL 8 (Docker/Sail)
 - **Excel:** PhpSpreadsheet (okuma/yazma)
 - **AI:** Gemini API (profil analizi)
-- **Dil:** PHP 8.2+, Türkçe UI
+- **Dil:** PHP 8.3+, Türkçe UI
 
 ## Proje Yapısı
 
 ```
 app/
-├── Livewire/           # Tüm sayfa component'leri (Livewire 3 full-page)
+├── Livewire/           # Tüm sayfa component'leri (Livewire 4 full-page)
 │   ├── ProductionMotor.php      # Üretim Motoru sayfası
 │   ├── OperationMotor.php       # Operasyon Motoru sayfası
 │   ├── ProfileWizard.php        # AI Profil oluşturma sihirbazı

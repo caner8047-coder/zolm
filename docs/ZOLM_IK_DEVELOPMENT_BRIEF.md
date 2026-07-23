@@ -2,7 +2,7 @@
 
 **Versiyon:** 1.1
 **Tarih:** 2026-07-20
-**Teknoloji:** PHP 8.3 / Laravel 12 / Livewire 4 / Tailwind CSS
+**Teknoloji:** PHP 8.3 / Laravel 13 / Livewire 4 / Tailwind CSS
 **Hedef DB:** MySQL 8+ (test: SQLite/MySQL)
 **Durum:** Uygulama kodu henüz yazılmamıştır. Bu doküman ürün haritasıdır.
 
@@ -1501,7 +1501,7 @@ CertificateExpired       → Hatırlatma bildirimi gönder
 
 | Karar | Seçim | Gerekçe |
 |-------|-------|---------|
-| Mimari | Modüler monolit | Laravel 12 uyumlu, ölçeklenebilir |
+| Mimari | Modüler monolit | Laravel 13 uyumlu, ölçeklenebilir |
 | Tenant | Multi-layer (middleware + scope + cache + dosya) | Veri sızıntısı engeli |
 | Audit | Tek `activity_logs` tablosu + metadata | Mevcut altyapı tekrar kullanılır |
 | Hassas veri | Şifreli alan + hash çifti | KVKK uyumu |

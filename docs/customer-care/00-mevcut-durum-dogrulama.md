@@ -1,7 +1,7 @@
 # Faz 0 — Güncel Repo Doğrulaması ve Boşluk Analizi
 
 **Oluşturulma:** 2026-07-11  
-**Revizyon:** 2026-07-11 (Faz 0 Kalite Kapısı 02)  
+**Revizyon:** 2026-07-23 (Laravel 13 yükseltmesi sonrası)
 **Branch:** `codex/recovery-20260706-172630`  
 **Son commit:** `497b531 feat(accounting): add pilot feedback backlog workflow`  
 **Remote:** `https://github.com/caner8047-coder/zolm.git`  
@@ -25,7 +25,7 @@ Kirli ağaçtaki `docs/customer-care/` dizini (bu faz promptları dahil) mevcut 
 
 | Alan | Değer |
 |---|---|
-| Framework | Laravel 12 (`^12.0`) + Livewire 4 (`^4.0`) |
+| Framework | Laravel 13 (`^13.0`) + Livewire 4 (`^4.0`) |
 | PHP versiyonu | `^8.3` |
 | DB | MySQL 8 (Docker Sail: `zolm-mysql-1`, port 3306) |
 | Queue driver | `database` (env: `QUEUE_CONNECTION=database`) |
@@ -39,7 +39,7 @@ Kirli ağaçtaki `docs/customer-care/` dizini (bu faz promptları dahil) mevcut 
 | `database/migrations/` | 220 |
 | Test dosyası | 182 |
 
-> **Not:** `composer.json` framework sürümü `^12.0`, `AGENTS.md`'de ise `Laravel 11` yazıyor. Gerçek versiyon Laravel 12'dir.
+> **Not:** Kaynak doğrulama için `composer.lock` ve çalışan Sail ortamı esas alınır. Güncel sürümler Laravel 13.21.1 ve Livewire 4.3.3'tür.
 
 ---
 

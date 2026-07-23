@@ -32,7 +32,7 @@ Bu modüller ayrı ayrı ekranlar gibi görünse de teknik olarak dört ana omur
 
 ### 1.1. Güçlü Yanlar
 
-- ZOLM gerçek operasyonlardan büyümüş bir Laravel 11 + Livewire 3 uygulamasıdır.
+- ZOLM gerçek operasyonlardan büyümüş bir Laravel 13 + Livewire 4 uygulamasıdır.
 - Çoklu pazaryeri omurgası büyük ölçüde oluşmuştur.
 - `channel_orders`, `channel_order_items`, `order_financial_events`, `order_profit_snapshots` tarafı pazaryeri karlılığı için güçlü bir temel sunar.
 - Eski `mp_*` pazaryeri muhasebe katmanı Trendyol Excel/settlement süreçlerinde ciddi iş kuralı birikimi taşır.
@@ -772,4 +772,3 @@ Bu nedenle ilk gerçek geliştirme PR'ı şu kapsamda olmalıdır:
 - `PartyIdentityResolver`
 - CRM 360 içinde party/cari özeti
 - Feature flag: `party_core_enabled`
-

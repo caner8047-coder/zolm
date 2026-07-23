@@ -143,7 +143,7 @@ Gerçek secret veya credential ekleme.
 
 ## 3. Feature middleware
 
-`EnsureCustomerCareFeatureEnabled` middleware'i oluştur ve Laravel 12'nin mevcut `bootstrap/app.php` alias convention'ına göre `customer-care.feature` aliasıyla kaydet.
+`EnsureCustomerCareFeatureEnabled` middleware'i oluştur ve Laravel 13'ün mevcut `bootstrap/app.php` alias convention'ına göre `customer-care.feature` aliasıyla kaydet.
 
 Kurallar:
 

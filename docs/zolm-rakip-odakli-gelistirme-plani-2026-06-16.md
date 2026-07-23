@@ -32,7 +32,7 @@ Alt yuzeyler:
 
 ### 2.1. Ana Teknoloji
 
-- Laravel 11 + Livewire 3.
+- Laravel 13 + Livewire 4.
 - TALL mantigi; Alpine.js + Tailwind CDN.
 - MySQL 8 / Sail.
 - Excel icin PhpSpreadsheet.
