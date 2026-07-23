@@ -86,8 +86,37 @@
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1">Platformlar</label>
-                                <input type="text" wire:model="f_platforms" class="w-full px-3 py-2 text-base sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-200" placeholder="Trendyol, Hepsiburada, N11...">
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-xs sm:text-sm font-medium text-slate-700">SEO Anahtar Kelimeler</label>
+                                    <button type="button"
+                                            wire:click="generateSeoKeywords"
+                                            wire:loading.attr="disabled"
+                                            wire:target="generateSeoKeywords"
+                                            class="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 transition hover:text-indigo-800 disabled:opacity-50">
+                                        <svg wire:loading.remove wire:target="generateSeoKeywords" class="h-3.5 w-3.5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                        </svg>
+                                        <svg wire:loading wire:target="generateSeoKeywords" class="h-3.5 w-3.5 animate-spin text-indigo-600" viewBox="0 0 24 24" fill="none">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                        </svg>
+                                        <span wire:loading.remove wire:target="generateSeoKeywords">⚡ AI İle SEO Üret</span>
+                                        <span wire:loading wire:target="generateSeoKeywords">AI Üretiyor...</span>
+                                    </button>
+                                </div>
+                                <input type="text"
+                                       wire:model.live="f_platforms"
+                                       class="w-full px-3 py-2 text-base sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-200"
+                                       placeholder="ör: puf, teddy puf, sütlü kahve puf, dekoratif puf koltuk, salon pufu...">
+                                <div class="mt-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                    <p class="text-[11px] text-slate-500">Ürün başlığı, kategori ve markaya göre Trendyol, Hepsiburada ve N11 aramalarında öne çıkaran SEO kelimeleri üretilir.</p>
+                                    <label class="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-700">
+                                        <input type="checkbox"
+                                               wire:model.live="f_append_seo_keywords_to_description"
+                                               class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-200">
+                                        <span>Açıklamaya Otomatik Ekle</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         @endif
@@ -196,6 +225,87 @@
                                     </span>
                                 </span>
                             </label>
+
+                            @php
+                                $editingProductObj = $this->editingId ? \App\Models\MpProduct::find($this->editingId) : null;
+                                $editingPricingListings = $editingProductObj ? $editingProductObj->channelListings : collect();
+                            @endphp
+
+                            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <h4 class="text-xs font-bold text-slate-900">Pazaryeri Bazlı Özel Fiyat Yönetimi</h4>
+                                        <p class="text-[11px] text-slate-500">Trendyol, Hepsiburada, N11 vb. kanallara özel satış ve piyasa (üst) fiyatları.</p>
+                                    </div>
+                                    @if($editingPricingListings->isNotEmpty())
+                                        <span class="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{{ $editingPricingListings->count() }} Mağaza</span>
+                                    @endif
+                                </div>
+
+                                @if($editingPricingListings->isNotEmpty())
+                                    <div class="max-h-60 overflow-y-auto pr-1 space-y-1.5">
+                                        @foreach($editingPricingListings as $listing)
+                                            @php
+                                                $store = $listing->store;
+                                                $faviconUrl = method_exists($this, 'marketplaceFavicon')
+                                                    ? $this->marketplaceFavicon($store?->marketplace)
+                                                    : (isset($marketplaceFavicon) ? $marketplaceFavicon($store?->marketplace) : null);
+                                                $mpName = method_exists($this, 'humanMarketplace')
+                                                    ? $this->humanMarketplace($store?->marketplace)
+                                                    : ucfirst((string) $store?->marketplace);
+                                                $initial = method_exists($this, 'marketplaceInitial')
+                                                    ? $this->marketplaceInitial($store?->marketplace)
+                                                    : (isset($marketplaceInitial) ? $marketplaceInitial($store?->marketplace) : 'M');
+                                            @endphp
+                                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-[6px] border border-slate-200 bg-white px-2.5 py-1.5 transition hover:border-slate-300">
+                                                <div class="flex items-center gap-2 min-w-0">
+                                                    <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[9px] font-semibold text-slate-700">
+                                                        @if($faviconUrl)
+                                                            <img src="{{ $faviconUrl }}" alt="" class="h-3.5 w-3.5" loading="lazy">
+                                                        @else
+                                                            {{ $initial }}
+                                                        @endif
+                                                    </span>
+                                                    <div class="min-w-0">
+                                                        <p class="truncate text-xs font-semibold text-slate-900 leading-tight">{{ $store?->store_name ?: $mpName }}</p>
+                                                        <p class="truncate text-[10px] text-slate-400">{{ $mpName }}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div class="flex items-center gap-3 shrink-0">
+                                                    <div class="flex items-center gap-1">
+                                                        <span class="text-[11px] font-medium text-slate-500">Satış:</span>
+                                                        <div class="relative">
+                                                            <input type="number"
+                                                                   step="0.01"
+                                                                   wire:model="f_channel_sale_price.{{ $listing->id }}"
+                                                                   placeholder="{{ number_format((float)($this->f_sale_price ?: 0), 2, '.', '') }}"
+                                                                   class="h-7 w-24 rounded-[6px] border border-slate-200 bg-white px-1.5 text-right text-xs font-semibold text-slate-900 focus:border-slate-900 focus:outline-none">
+                                                        </div>
+                                                        <span class="text-[10px] font-medium text-slate-400">₺</span>
+                                                    </div>
+
+                                                    <div class="flex items-center gap-1">
+                                                        <span class="text-[11px] font-medium text-slate-500">Piyasa:</span>
+                                                        <div class="relative">
+                                                            <input type="number"
+                                                                   step="0.01"
+                                                                   wire:model="f_channel_list_price.{{ $listing->id }}"
+                                                                   placeholder="{{ number_format((float)($this->f_market_price ?: 0), 2, '.', '') }}"
+                                                                   class="h-7 w-24 rounded-[6px] border border-slate-200 bg-white px-1.5 text-right text-xs font-semibold text-slate-900 focus:border-slate-900 focus:outline-none">
+                                                        </div>
+                                                        <span class="text-[10px] font-medium text-slate-400">₺</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <div class="rounded-[6px] border border-dashed border-slate-200 bg-white p-2.5 text-center text-xs text-slate-400">
+                                        Bu ürüne bağlı mağaza bulunmuyor. Pazaryeri eklendiğinde kanala özel satış ve piyasa fiyatlarını buradan yönetebilirsiniz.
+                                    </div>
+                                @endif
+                            </div>
                         </div>
                         @endif
 
@@ -227,18 +337,104 @@
                                     <input type="text" wire:model="f_variant" class="w-full px-3 py-2 text-base sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-200">
                                 </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 px-3 py-2">
-                                    <p class="text-xs font-medium text-slate-700">İade oranı otomatik hesaplanır</p>
-                                    <p class="mt-1 text-xs text-slate-500">Sipariş satırları ve İade Merkezi'ndeki onaylı/teslim edilmiş iade kayıtları kullanılır.</p>
-                                </div>
                                 <div>
                                     <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1">Teslimat Tipi</label>
                                     <input type="text" wire:model="f_fast_delivery_type" class="w-full px-3 py-2 text-base sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-200" placeholder="Standart, hızlı teslimat, aynı gün">
                                     @error('f_fast_delivery_type') <span class="text-red-500 text-xs mt-1 block">{{ $message }}</span> @enderror
                                 </div>
+                                <div>
+                                    <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1">Varsayılan Termin Süresi (Gün)</label>
+                                    <input type="number" min="0" max="30" wire:model="f_shipping_days" class="w-full px-3 py-2 text-base sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-200" placeholder="Örn: 5">
+                                    @error('f_shipping_days') <span class="text-red-500 text-xs mt-1 block">{{ $message }}</span> @enderror
+                                </div>
+                            </div>
+
+                            @php
+                                $editingProductObj = $this->editingId ? \App\Models\MpProduct::find($this->editingId) : null;
+                                $editingListings = $editingProductObj ? $editingProductObj->channelListings : collect();
+                            @endphp
+
+                            <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <h4 class="text-xs font-bold text-slate-900">Pazaryeri Bazlı Stok & Termin Yönetimi</h4>
+                                        <p class="text-[11px] text-slate-500">Her mağaza/kanal için bağımsız stok miktarı ve termin (kargoya verme) günü.</p>
+                                    </div>
+                                    @if($editingListings->isNotEmpty())
+                                        <span class="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{{ $editingListings->count() }} Mağaza</span>
+                                    @endif
+                                </div>
+
+                                @if($editingListings->isNotEmpty())
+                                    <div class="max-h-60 overflow-y-auto pr-1 space-y-1.5">
+                                        @foreach($editingListings as $listing)
+                                            @php
+                                                $store = $listing->store;
+                                                $faviconUrl = method_exists($this, 'marketplaceFavicon')
+                                                    ? $this->marketplaceFavicon($store?->marketplace)
+                                                    : (isset($marketplaceFavicon) ? $marketplaceFavicon($store?->marketplace) : null);
+                                                $mpName = method_exists($this, 'humanMarketplace')
+                                                    ? $this->humanMarketplace($store?->marketplace)
+                                                    : ucfirst((string) $store?->marketplace);
+                                                $initial = method_exists($this, 'marketplaceInitial')
+                                                    ? $this->marketplaceInitial($store?->marketplace)
+                                                    : (isset($marketplaceInitial) ? $marketplaceInitial($store?->marketplace) : 'M');
+                                            @endphp
+                                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-[6px] border border-slate-200 bg-white px-2.5 py-1.5 transition hover:border-slate-300">
+                                                <div class="flex items-center gap-2 min-w-0">
+                                                    <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[9px] font-semibold text-slate-700">
+                                                        @if($faviconUrl)
+                                                            <img src="{{ $faviconUrl }}" alt="" class="h-3.5 w-3.5" loading="lazy">
+                                                        @else
+                                                            {{ $initial }}
+                                                        @endif
+                                                    </span>
+                                                    <div class="min-w-0">
+                                                        <p class="truncate text-xs font-semibold text-slate-900 leading-tight">{{ $store?->store_name ?: $mpName }}</p>
+                                                        <p class="truncate text-[10px] text-slate-400">{{ $mpName }}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div class="flex items-center gap-3 shrink-0">
+                                                    <div class="flex items-center gap-1">
+                                                        <span class="text-[11px] font-medium text-slate-500">Stok:</span>
+                                                        <input type="number"
+                                                               min="0"
+                                                               wire:model="f_channel_stock_quantity.{{ $listing->id }}"
+                                                               placeholder="{{ $this->f_stock_quantity ?: '0' }}"
+                                                               class="h-7 w-16 rounded-[6px] border border-slate-200 bg-white px-1.5 text-right text-xs font-semibold text-slate-900 focus:border-slate-900 focus:outline-none">
+                                                    </div>
+
+                                                    <div class="flex items-center gap-1">
+                                                        <span class="text-[11px] font-medium text-slate-500">Termin:</span>
+                                                        <input type="number"
+                                                               min="0"
+                                                               max="30"
+                                                               wire:model="f_channel_shipping_days.{{ $listing->id }}"
+                                                               placeholder="{{ $this->f_shipping_days ?: '5' }}"
+                                                               class="h-7 w-14 rounded-[6px] border border-slate-200 bg-white px-1.5 text-right text-xs font-semibold text-slate-900 focus:border-slate-900 focus:outline-none">
+                                                        <span class="text-[10px] font-medium text-slate-400">Gün</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <div class="rounded-[6px] border border-dashed border-slate-200 bg-white p-2.5 text-center text-xs text-slate-400">
+                                        Bu ürüne bağlı mağaza bulunmuyor. Pazaryeri eklendiğinde pazaryerine özel stok ve termin sürelerini buradan yönetebilirsiniz.
+                                    </div>
+                                @endif
                             </div>
                             <div>
-                                <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1">Ürün Açıklaması</label>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-xs sm:text-sm font-medium text-slate-700">Ürün Açıklaması</label>
+                                    <label class="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-700">
+                                        <input type="checkbox"
+                                               wire:model.live="f_append_seo_keywords_to_description"
+                                               class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-200">
+                                        <span>SEO Kelimelerini Altına Otomatik Ekle</span>
+                                    </label>
+                                </div>
                                 <textarea wire:model="f_description" rows="4" class="w-full px-3 py-2 text-base sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-200" placeholder="Ürün hakkında detaylı açıklama..."></textarea>
                             </div>
                         </div>
