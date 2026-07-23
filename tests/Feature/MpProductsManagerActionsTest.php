@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Jobs\SyncMarketplaceDataJob;
 use App\Livewire\MpProductsManager;
 use App\Models\ChannelListing;
+use App\Models\ChannelClaim;
+use App\Models\ChannelClaimItem;
 use App\Models\ChannelOrder;
 use App\Models\ChannelOrderItem;
 use App\Models\ChannelProduct;
@@ -18,6 +20,7 @@ use App\Models\Recipe;
 use App\Models\User;
 use App\Services\MpProductImportService;
 use App\Services\MpSettingsService;
+use App\Services\Marketplace\MarketplaceProductReturnRateService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -839,7 +842,6 @@ class MpProductsManagerActionsTest extends TestCase
             ->set('f_extra_cost_percentage', 3.5)
             ->set('f_vat_rate', 10)
             ->set('f_cost_vat_rate', 20)
-            ->set('f_return_rate', 12.25)
             ->set('f_fast_delivery_type', 'Hızlı teslimat')
             ->call('saveProduct');
 
@@ -848,10 +850,10 @@ class MpProductsManagerActionsTest extends TestCase
         $this->assertEqualsWithDelta(18.75, (float) $product->extra_cost_fixed, 0.001);
         $this->assertEqualsWithDelta(3.5, (float) $product->extra_cost_percentage, 0.001);
         $this->assertEqualsWithDelta(20.0, (float) $product->cost_vat_rate, 0.001);
-        $this->assertEqualsWithDelta(12.25, (float) $product->return_rate, 0.001);
-        $this->assertSame('manual_form', $product->return_rate_source);
+        $this->assertNull($product->return_rate);
+        $this->assertNull($product->return_rate_source);
         $this->assertSame('Hızlı teslimat', $product->fast_delivery_type);
-        $this->assertNotNull($product->return_rate_calculated_at);
+        $this->assertNull($product->return_rate_calculated_at);
     }
 
     public function test_inline_update_changes_control_fields_and_return_source(): void
@@ -1431,8 +1433,61 @@ class MpProductsManagerActionsTest extends TestCase
         $product->refresh();
 
         $this->assertEqualsWithDelta(25.0, (float) $product->return_rate, 0.001);
-        $this->assertSame('orders', $product->return_rate_source);
+        $this->assertSame('orders_and_returns', $product->return_rate_source);
         $this->assertNotNull($product->return_rate_calculated_at);
+    }
+
+    public function test_return_rate_uses_confirmed_return_claim_quantity_without_double_counting(): void
+    {
+        $user = User::factory()->create();
+        $legalEntity = $this->legalEntityFor($user, 'claim-rate');
+        $product = MpProduct::query()->create($this->productPayload($user->id));
+        $store = $this->connectedStoreFor($user, $legalEntity, 'trendyol', 'CLAIM-RATE');
+        $order = ChannelOrder::query()->create([
+            'store_id' => $store->id,
+            'legal_entity_id' => $legalEntity->id,
+            'external_order_id' => 'CLAIM-ORDER-1',
+            'order_number' => 'CLAIM-ORDER-1',
+            'order_status' => 'Delivered',
+            'ordered_at' => now(),
+        ]);
+
+        ChannelOrderItem::query()->create([
+            'store_id' => $store->id,
+            'channel_order_id' => $order->id,
+            'mp_product_id' => $product->id,
+            'external_line_id' => 'CLAIM-LINE-1',
+            'quantity' => 10,
+            'is_matched' => true,
+        ]);
+
+        $claim = ChannelClaim::query()->create([
+            'store_id' => $store->id,
+            'external_claim_id' => 'CLAIM-1',
+            'order_number' => 'CLAIM-ORDER-1',
+            'type' => 'return',
+            'status' => 'approved',
+        ]);
+        ChannelClaimItem::query()->create([
+            'claim_id' => $claim->id,
+            'external_item_id' => 'CLAIM-ITEM-1',
+            'external_order_line_id' => 'CLAIM-LINE-1',
+            'quantity' => 2,
+            'status' => 'approved',
+        ]);
+
+        $this->assertSame(1, ChannelClaimItem::query()
+            ->join('channel_claims', 'channel_claims.id', '=', 'channel_claim_items.claim_id')
+            ->where('channel_claims.store_id', $store->id)
+            ->where('channel_claim_items.external_order_line_id', 'CLAIM-LINE-1')
+            ->whereIn('channel_claims.status', ['delivered', 'approved'])
+            ->count());
+
+        app(MarketplaceProductReturnRateService::class)->recalculateForProducts([$product->id], $user->id);
+
+        $product->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $product->return_rate, 0.001);
+        $this->assertSame('orders_and_returns', $product->return_rate_source);
     }
 
     public function test_quick_match_modal_resolves_pending_issue_for_selected_product(): void

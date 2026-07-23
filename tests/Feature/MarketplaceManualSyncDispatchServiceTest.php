@@ -87,6 +87,35 @@ class MarketplaceManualSyncDispatchServiceTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_it_allows_a_local_manual_retry_to_bypass_a_stale_queued_run(): void
+    {
+        Queue::fake();
+
+        $store = $this->createStore();
+
+        $staleRun = IntegrationSyncRun::query()->create([
+            'store_id' => $store->id,
+            'sync_type' => 'claims',
+            'trigger_type' => 'manual',
+            'status' => 'queued',
+            'notes_json' => ['options' => []],
+        ]);
+        $staleRun->forceFill([
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinutes(2),
+        ])->saveQuietly();
+
+        $result = app(MarketplaceManualSyncDispatchService::class)->dispatch($store, 'claims', [
+            'source' => 'test',
+            'ignore_queued_active' => true,
+        ]);
+
+        $this->assertTrue($result['created']);
+        $this->assertFalse($result['debounced']);
+        $this->assertSame(2, IntegrationSyncRun::query()->where('store_id', $store->id)->count());
+        Queue::assertPushed(SyncMarketplaceDataJob::class);
+    }
+
     public function test_it_debounces_when_recent_manual_run_exists_inside_window(): void
     {
         Queue::fake();

@@ -73,6 +73,41 @@ class MarketplaceManualMatchServiceTest extends TestCase
         ]);
     }
 
+    public function test_it_creates_a_master_product_from_an_unmatched_channel_listing_and_resolves_the_issue(): void
+    {
+        [$user, $store, $existingProduct, $listing, $order, $item, $issue] = $this->createGraph();
+        $existingProduct->delete();
+        $listing->channelProduct->update([
+            'images' => [
+                ['url' => 'https://cdn.example.test/zem-cover.jpg'],
+                ['imageUrl' => 'https://cdn.example.test/zem-detail.jpg'],
+            ],
+        ]);
+
+        $result = app(MarketplaceManualMatchService::class)->createMasterProductFromListing($issue, $user->id);
+
+        $this->assertTrue($result['created']);
+        $this->assertSame('ZEM Test Koltuk', $result['product']->product_name);
+        $this->assertSame('STK-'.substr($listing->listing_id, 5), $result['product']->stock_code);
+        $this->assertSame('https://cdn.example.test/zem-cover.jpg', $result['product']->image_url);
+        $this->assertSame([
+            'https://cdn.example.test/zem-cover.jpg',
+            'https://cdn.example.test/zem-detail.jpg',
+        ], $result['product']->image_urls);
+        $this->assertSame(1, $result['updated_items']);
+
+        $this->assertDatabaseHas('channel_listings', [
+            'id' => $listing->id,
+            'mp_product_id' => $result['product']->id,
+        ]);
+
+        $this->assertDatabaseHas('product_match_issues', [
+            'id' => $issue->id,
+            'match_status' => 'resolved',
+            'resolved_by' => $user->id,
+        ]);
+    }
+
     public function test_order_item_without_listing_gets_actionable_issue_and_can_be_matched(): void
     {
         $user = User::factory()->create();

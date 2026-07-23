@@ -22,6 +22,7 @@ use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceListingPushService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Services\Marketplace\MarketplaceRiskSignalService;
+use App\Services\Marketplace\MarketplaceProductReturnRateService;
 use App\Services\Marketplace\ProductCreativeStudioService;
 use App\Services\MpProductChangeLogger;
 use App\Services\MpProductImportService;
@@ -77,7 +78,7 @@ class MpProductsManager extends Component
         'iade' => 'return_rate',
         'teslimat' => 'delivery_term_metric',
         'roi' => 'profit_margin_metric',
-        'durum' => 'status',
+        'durum' => 'computed_status',
     ];
 
     public string $search = '';
@@ -147,7 +148,6 @@ class MpProductsManager extends Component
     public bool $f_profit_commission_override_enabled = false;
     public $f_stock_quantity = 0;
     public $f_critical_stock_threshold = null;
-    public $f_return_rate = null;
     public $f_desi = 0;
     public $f_pieces = 1;
     public string $f_fast_delivery_type = '';
@@ -273,7 +273,6 @@ class MpProductsManager extends Component
             'f_desi' => 'required|numeric|min:0',
             'f_pieces' => 'required|integer|min:1',
             'f_critical_stock_threshold' => 'nullable|integer|min:0',
-            'f_return_rate' => 'nullable|numeric|min:0|max:100',
             'f_fast_delivery_type' => 'nullable|string|max:80',
             'f_status' => 'required|in:active,out_of_stock,pending,suspended',
             'f_image_url' => 'nullable|string|max:2048',
@@ -942,6 +941,17 @@ class MpProductsManager extends Component
                 \DB::raw("{$recipeUpdatedAtMetricExpression} as active_recipe_updated_at_metric"),
                 \DB::raw("{$profitMetricExpression} as profit_metric"),
                 \DB::raw("{$profitMarginMetricExpression} as profit_margin_metric"),
+                \DB::raw("
+                    CASE
+                        WHEN mp_products.status = 'out_of_stock' THEN 'out_of_stock'
+                        WHEN mp_products.status = 'pending' THEN 'pending'
+                        WHEN mp_products.status = 'suspended' THEN 'suspended'
+                        WHEN COALESCE(listing_agg.listing_count_metric, 0) = 0 THEN 'passive'
+                        WHEN COALESCE(listing_agg.active_listing_count_metric, 0) = 0 THEN 'passive'
+                        WHEN COALESCE(listing_agg.active_listing_count_metric, 0) < COALESCE(listing_agg.listing_count_metric, 0) THEN 'partial'
+                        ELSE 'active'
+                    END as computed_status
+                "),
             ])
             ->leftJoinSub($listingAggregate, 'listing_agg', function ($join) {
                 $join->on('listing_agg.mp_product_id', '=', 'mp_products.id');
@@ -1338,7 +1348,6 @@ class MpProductsManager extends Component
         $this->f_profit_commission_override_enabled = (bool) $product->profit_commission_override_enabled;
         $this->f_stock_quantity = $product->stock_quantity;
         $this->f_critical_stock_threshold = $product->critical_stock_threshold;
-        $this->f_return_rate = $product->return_rate;
         $this->f_desi = $product->desi;
         $this->f_pieces = $product->pieces;
         $this->f_fast_delivery_type = $product->fast_delivery_type ?? '';
@@ -1675,9 +1684,6 @@ class MpProductsManager extends Component
             'profit_commission_override_enabled' => (bool) $this->f_profit_commission_override_enabled,
             'stock_quantity' => $this->f_stock_quantity,
             'critical_stock_threshold' => filled($this->f_critical_stock_threshold) ? (int) $this->f_critical_stock_threshold : null,
-            'return_rate' => filled($this->f_return_rate) ? (float) $this->f_return_rate : null,
-            'return_rate_source' => filled($this->f_return_rate) ? 'manual_form' : null,
-            'return_rate_calculated_at' => filled($this->f_return_rate) ? now() : null,
             'desi' => $this->f_desi,
             'pieces' => $this->f_pieces,
             'fast_delivery_type' => $this->f_fast_delivery_type ?: null,
@@ -1935,7 +1941,7 @@ class MpProductsManager extends Component
 
     public function updateProductStatus(int $id, string $status): void
     {
-        if (!in_array($status, ['active', 'out_of_stock', 'pending', 'suspended'], true)) {
+        if (!in_array($status, ['active', 'partial', 'passive', 'out_of_stock', 'pending', 'suspended'], true)) {
             return;
         }
 
@@ -1944,6 +1950,8 @@ class MpProductsManager extends Component
 
         $statusLabel = match ($status) {
             'active' => 'Satışta',
+            'partial' => 'Kısmi Satışta',
+            'passive' => 'Pasif',
             'out_of_stock' => 'Tükendi',
             'pending' => 'Onay bekliyor',
             'suspended' => 'Beklemede',
@@ -2030,7 +2038,6 @@ class MpProductsManager extends Component
             'critical_stock_threshold' => ['type' => 'nullable_integer', 'label' => 'kritik stok eşiği'],
             'desi' => ['type' => 'decimal', 'label' => 'desi'],
             'pieces' => ['type' => 'positive_integer', 'label' => 'parça sayısı'],
-            'return_rate' => ['type' => 'nullable_percent', 'label' => 'iade oranı'],
             'fast_delivery_type' => ['type' => 'nullable_string', 'label' => 'teslimat tipi'],
         ];
 
@@ -2047,11 +2054,6 @@ class MpProductsManager extends Component
         $normalized = $this->normalizeInlineValue($value, $allowed[$field]['type']);
 
         $updates = [$field => $normalized];
-
-        if ($field === 'return_rate') {
-            $updates['return_rate_source'] = $normalized === null ? null : 'manual_inline';
-            $updates['return_rate_calculated_at'] = $normalized === null ? null : now();
-        }
 
         $logger = app(MpProductChangeLogger::class);
         $beforeSnapshot = $logger->productSnapshot($product);
@@ -2097,51 +2099,20 @@ class MpProductsManager extends Component
             return;
         }
 
-        $metrics = ChannelOrderItem::query()
-            ->join('channel_orders', 'channel_orders.id', '=', 'channel_order_items.channel_order_id')
-            ->whereIn('channel_order_items.mp_product_id', $productIds)
-            ->whereHas('store', fn (Builder $query) => $query->where('user_id', $this->userId()))
-            ->groupBy('channel_order_items.mp_product_id')
-            ->selectRaw('channel_order_items.mp_product_id')
-            ->selectRaw('SUM(CASE WHEN COALESCE(channel_order_items.quantity, 1) > 1 THEN COALESCE(channel_order_items.quantity, 1) ELSE 1 END) as total_quantity')
-            ->selectRaw("
-                SUM(
-                    CASE
-                        WHEN channel_orders.returned_at IS NOT NULL
-                            OR LOWER(COALESCE(channel_orders.order_status, '')) LIKE '%return%'
-                            OR LOWER(COALESCE(channel_orders.order_status, '')) LIKE '%iade%'
-                            OR LOWER(COALESCE(channel_order_items.line_status, '')) LIKE '%return%'
-                            OR LOWER(COALESCE(channel_order_items.line_status, '')) LIKE '%iade%'
-                        THEN CASE WHEN COALESCE(channel_order_items.quantity, 1) > 1 THEN COALESCE(channel_order_items.quantity, 1) ELSE 1 END
-                        ELSE 0
-                    END
-                ) as returned_quantity
-            ")
-            ->get()
-            ->keyBy('mp_product_id');
+        $metrics = app(MarketplaceProductReturnRateService::class)
+            ->recalculateForProducts($productIds, $this->userId());
 
-        $updated = 0;
+        $updated = collect($metrics)->filter(static fn (array $metric) => $metric['ordered_quantity'] > 0)->count();
         $logger = app(MpProductChangeLogger::class);
         $beforeSnapshots = $logger->productSnapshotsForIds($this->userId(), $productIds);
         $batchId = $logger->batchId('return_rate_refresh');
 
         foreach ($productIds as $productId) {
-            $metric = $metrics->get($productId);
+            $metric = $metrics[$productId] ?? null;
 
-            if (!$metric || (int) $metric->total_quantity <= 0) {
+            if (!$metric || $metric['ordered_quantity'] <= 0) {
                 continue;
             }
-
-            $returnRate = round(((float) $metric->returned_quantity / max(1, (float) $metric->total_quantity)) * 100, 2);
-
-            MpProduct::query()
-                ->where('user_id', $this->userId())
-                ->whereKey($productId)
-                ->update([
-                    'return_rate' => $returnRate,
-                    'return_rate_source' => 'orders',
-                    'return_rate_calculated_at' => now(),
-                ]);
 
             $freshProduct = MpProduct::query()
                 ->where('user_id', $this->userId())
@@ -2154,12 +2125,11 @@ class MpProductsManager extends Component
                     $beforeSnapshots[$productId] ?? [],
                     'return_rate_refresh',
                     Auth::id(),
-                    'Sipariş geçmişinden iade oranı hesaplama',
+                    'Sipariş ve iade merkezi sinyallerinden iade oranı hesaplama',
                     $batchId
                 );
             }
 
-            $updated++;
         }
 
         $this->clearSelection();
@@ -2167,7 +2137,7 @@ class MpProductsManager extends Component
         session()->flash(
             $updated > 0 ? 'success' : 'warning',
             $updated > 0
-                ? "{$updated} ürün için iade oranı sipariş geçmişinden güncellendi."
+                ? "{$updated} ürün için iade oranı sipariş ve iade kayıtlarından güncellendi."
                 : 'Seçili ürünlerde iade oranı hesaplanacak sipariş geçmişi bulunamadı.'
         );
     }
@@ -5132,7 +5102,6 @@ class MpProductsManager extends Component
         $this->f_profit_commission_override_enabled = false;
         $this->f_stock_quantity = 0;
         $this->f_critical_stock_threshold = null;
-        $this->f_return_rate = null;
         $this->f_desi = 0;
         $this->f_pieces = 1;
         $this->f_fast_delivery_type = '';

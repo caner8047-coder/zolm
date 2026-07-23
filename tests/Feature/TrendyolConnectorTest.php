@@ -327,6 +327,10 @@ class TrendyolConnectorTest extends TestCase
                         'listPrice' => 1800,
                         'currencyType' => 'TRY',
                     ],
+                    'images' => [
+                        ['url' => 'https://cdn.example.test/trendyol-cover.jpg'],
+                        ['imageUrl' => 'https://cdn.example.test/trendyol-detail.jpg'],
+                    ],
                     'variants' => [[
                         'variantId' => 'VARIANT-1',
                         'barcode' => '8690000001111',
@@ -361,6 +365,10 @@ class TrendyolConnectorTest extends TestCase
         $this->assertSame(20.0, data_get($result, 'items.0.listing.commission_rate'));
         $this->assertSame('catalog', data_get($result, 'items.0.listing.commission_source'));
         $this->assertSame(9, data_get($result, 'items.0.listing.stock_quantity'));
+        $this->assertSame([
+            'https://cdn.example.test/trendyol-cover.jpg',
+            'https://cdn.example.test/trendyol-detail.jpg',
+        ], data_get($result, 'items.0.product.images'));
     }
 
     public function test_it_uses_trendyol_cargo_barcode_for_common_label_requests(): void

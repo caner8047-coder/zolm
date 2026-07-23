@@ -475,11 +475,21 @@ Route::middleware('auth')->group(function () {
         ->name('mp.products')
         ->middleware('mp.feature:products_v2_enabled')
         ->middleware(AdminMiddleware::class);
+    Route::post('/marketplace-products/{productId}/refresh-current-status', \App\Http\Controllers\MarketplaceProductCurrentStatusController::class)
+        ->name('mp.products.refresh-current-status')
+        ->middleware('mp.feature:products_v2_enabled')
+        ->middleware(AdminMiddleware::class);
 
     Route::get('/marketplace-matching-center', MarketplaceMatchingCenter::class)
         ->name('mp.matching')
         ->middleware('mp.feature:matching_center_enabled')
         ->middleware(AdminMiddleware::class);
+    Route::post('/marketplace-matching-center/select', [\App\Http\Controllers\MarketplaceMatchingBulkSelectionController::class, 'select'])->name('mp.matching.select');
+    Route::post('/marketplace-matching-center/apply', [\App\Http\Controllers\MarketplaceMatchingBulkSelectionController::class, 'apply'])->name('mp.matching.apply');
+    Route::post('/marketplace-matching-center/clear-selection', [\App\Http\Controllers\MarketplaceMatchingBulkSelectionController::class, 'clear'])->name('mp.matching.clear-selection');
+    Route::post('/marketplace-matching-center/toggle-selection', [\App\Http\Controllers\MarketplaceMatchingBulkSelectionController::class, 'toggle'])->name('mp.matching.toggle-selection');
+    Route::post('/marketplace-matching-center/create-product', [\App\Http\Controllers\MarketplaceMatchingBulkSelectionController::class, 'createProduct'])->name('mp.matching.create-product');
+    Route::post('/marketplace-matching-center/defer', [\App\Http\Controllers\MarketplaceMatchingBulkSelectionController::class, 'defer'])->name('mp.matching.defer');
 
     Route::get('/marketplace-finance', MarketplaceFinance::class)
         ->name('mp.finance')

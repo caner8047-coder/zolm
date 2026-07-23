@@ -59,6 +59,10 @@ class MarketplaceCatalogSyncServiceTest extends TestCase
                 'stock_code' => 'TY-TERM-1',
                 'barcode' => '8690000000999',
                 'title' => 'Termin Test Ürünü',
+                'images' => [
+                    ['url' => 'https://cdn.example.test/termin-cover.jpg'],
+                    ['imageUrl' => 'https://cdn.example.test/termin-detail.jpg'],
+                ],
             ],
             'listing' => [
                 'listing_id' => 'TY-LST-1',
@@ -79,6 +83,12 @@ class MarketplaceCatalogSyncServiceTest extends TestCase
             'shipping_type' => 'Standart',
             'fast_delivery_type' => 'Hızlı teslimat',
         ]);
+
+        $this->assertSame('https://cdn.example.test/termin-cover.jpg', $product->fresh()->image_url);
+        $this->assertSame([
+            'https://cdn.example.test/termin-cover.jpg',
+            'https://cdn.example.test/termin-detail.jpg',
+        ], $product->fresh()->image_urls);
     }
 
 }

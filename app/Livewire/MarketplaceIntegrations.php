@@ -903,6 +903,8 @@ class MarketplaceIntegrations extends Component
 
         try {
             $syncOptions = [];
+            $runInlineOnLocal = app()->environment('local')
+                && (bool) config('marketplace.manual_sync.inline_on_local', true);
 
             if (
                 $syncType === 'products'
@@ -914,11 +916,19 @@ class MarketplaceIntegrations extends Component
                 ];
             }
 
+            if (
+                $syncType === 'questions'
+                && MarketplaceProviderRegistry::normalize((string) $this->selectedStore->marketplace) === 'trendyol'
+            ) {
+                // Manuel işlemde cevaplanmış soruları da görünür kıl; zamanlanmış akış yalnız aksiyon bekleyenleri tarar.
+                $syncOptions['status'] = 'all';
+            }
+
             $result = app(MarketplaceManualSyncDispatchService::class)->dispatch($this->selectedStore, $syncType, [
                 'options' => $syncOptions,
                 'bypass_recent' => (bool) ($syncOptions['full_catalog_refresh'] ?? false),
-                'force_inline' => $syncType === 'products',
-                'ignore_queued_active' => $syncType === 'products',
+                'force_inline' => $runInlineOnLocal,
+                'ignore_queued_active' => $runInlineOnLocal,
                 'source' => 'manual_sync_button',
                 'origin_screen' => 'integrations',
             ]);

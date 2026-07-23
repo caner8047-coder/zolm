@@ -32,7 +32,7 @@ class MarketplaceManualSyncDispatchService
 
         $debounceSeconds = $this->debounceWindow($store);
         $willRunInline = $this->shouldRunInline($notes);
-        $activeStatuses = $willRunInline && (bool) data_get($notes, 'ignore_queued_active', false)
+        $activeStatuses = (bool) data_get($notes, 'ignore_queued_active', false)
             ? ['processing', 'retrying']
             : null;
         $activeRun = $this->findActiveRun($store, $syncType, $activeStatuses);

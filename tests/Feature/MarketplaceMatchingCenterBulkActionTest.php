@@ -78,6 +78,33 @@ class MarketplaceMatchingCenterBulkActionTest extends TestCase
         ]);
     }
 
+    public function test_it_selects_and_clears_the_current_page_for_bulk_actions(): void
+    {
+        [$user, $issue] = $this->createGraph('pending');
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceMatchingCenter::class)
+            ->call('togglePageSelection')
+            ->assertSet('selectedIssueIds', [(string) $issue->id])
+            ->assertSet('selectPage', true)
+            ->call('togglePageSelection')
+            ->assertSet('selectedIssueIds', [])
+            ->assertSet('selectPage', false);
+    }
+
+    public function test_it_selects_the_current_page_from_the_explicit_bulk_selection_action(): void
+    {
+        [$user, $issue] = $this->createGraph('pending');
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceMatchingCenter::class)
+            ->call('selectCurrentPageIssues')
+            ->assertSet('selectedIssueIds', [(string) $issue->id])
+            ->assertSet('selectPage', true);
+    }
+
     public function test_it_matches_recommended_candidate_from_stored_candidate_ids(): void
     {
         $user = User::factory()->create();

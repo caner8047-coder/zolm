@@ -174,6 +174,9 @@ class MarketplaceOrderSyncService
             $impactedOrderIds[] = $order->id;
         }
 
+        // Sipariş akışı değiştiğinde iade metriği kullanıcı müdahalesi olmadan güncel kalır.
+        app(MarketplaceProductReturnRateService::class)->recalculateForStore($store);
+
         return [
             'created' => $created,
             'updated' => $updated,

@@ -45,6 +45,8 @@
         $filterStatus !== 'all'
             ? 'Durum: ' . match ($filterStatus) {
                 'active' => 'Satışta',
+                'partial' => 'Kısmi Satışta',
+                'passive' => 'Pasif',
                 'out_of_stock' => 'Tükendi',
                 'pending' => 'Onay bekliyor',
                 'suspended' => 'Beklemede',
@@ -551,7 +553,7 @@
                                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                                     </svg>
-                                    İade Oranı
+                                    İade metriklerini yenile
                                 </button>
                                 <button wire:click="openCreateModal"
                                         wire:loading.attr="disabled"
@@ -740,6 +742,8 @@
                                 class="w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
                             <option value="all">Tüm Durumlar</option>
                             <option value="active">Satışta</option>
+                            <option value="partial">Kısmi Satışta</option>
+                            <option value="passive">Pasif</option>
                             <option value="out_of_stock">Tükendi</option>
                             <option value="pending">Onay bekliyor</option>
                             <option value="suspended">Beklemede</option>
@@ -1275,17 +1279,14 @@
     {{-- ═══════════════════════════════════════════════ --}}
     {{-- TABLO --}}
     {{-- ═══════════════════════════════════════════════ --}}
-    <div class="mb-3 rounded-[8px] border border-slate-200 bg-white/90 px-4 py-3 md:hidden">
-        <div class="flex items-start justify-between gap-3">
-            <div>
-                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Ürün Kayıt Defteri</p>
-                <p class="mt-1 text-sm font-semibold text-slate-900">Canlı ürün tablosu</p>
-            </div>
+    <div class="mb-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 md:hidden">
+        <div class="flex items-center justify-between gap-3">
+            <p class="text-sm font-semibold text-slate-900">Ürün listesi</p>
             <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-600">
                 {{ count($visibleColumns) }}/{{ count($columnDefs) }}
             </span>
         </div>
-        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span>{{ $formatCount($products->total()) }} ürün</span>
             <span wire:loading.delay.short
                   wire:target="search,filterStatus,filterCategory,listingCoverageFilter,marketplaceFilter,filterBrand,listingStatusFilter,legalEntityFilter,filterStockLevel,filterCostDefined,recipeLinkFilter,setContentFilter,perPage,resetFilters,sortTable,refreshCommissionRates"
@@ -1301,7 +1302,7 @@
                 wire:click="refreshCommissionRates"
                 wire:loading.attr="disabled"
                 wire:target="refreshCommissionRates"
-                class="mt-3 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+                class="mt-2 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
             <svg wire:loading.remove wire:target="refreshCommissionRates" class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5.64 16.36A8 8 0 0018.36 18M18.36 7.64A8 8 0 005.64 6" />
             </svg>
@@ -1461,7 +1462,7 @@
 
                             <div class="mt-3 flex items-center justify-between gap-3">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <x-zolm.status-badge size="sm" :tone="$product->status === 'active' ? 'success' : ($product->status === 'out_of_stock' ? 'danger' : 'warning')">
+                                    <x-zolm.status-badge size="sm" :tone="$product->status_tone">
                                         {{ $product->status_label }}
                                     </x-zolm.status-badge>
                                     <span class="rounded-[6px] bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">%{{ number_format((float) ($product->vat_rate ?? 0), 0, ',', '.') }} KDV</span>
@@ -1566,10 +1567,10 @@
             $tableWidthPx += 1;
         @endphp
 
-        <div class="mb-3 flex flex-col gap-3 rounded-[8px] border border-slate-200 bg-white/90 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Ürün Kayıt Defteri</p>
-                <p class="mt-1 text-sm font-semibold text-slate-900">Canlı ürün tablosu</p>
+        <div class="mb-2 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex min-w-0 items-center gap-2">
+                <p class="truncate text-sm font-semibold text-slate-900">Ürün listesi</p>
+                <span class="hidden text-xs text-slate-500 sm:inline">Ana ürünler ve kanal bilgileri</span>
             </div>
             <div class="flex flex-wrap items-center gap-2 text-xs">
                 <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600">{{ $formatCount($products->total()) }} ürün</span>
@@ -2498,14 +2499,17 @@
 
                             @if(in_array('iade', $visibleColumns, true))
                                 <td class="px-2 py-3 align-top">
-                                    <div class="space-y-1">
-                                        <input type="number"
-                                               step="0.1"
-                                               value="{{ $product->return_rate !== null ? (float) $product->return_rate : '' }}"
-                                               wire:change="updateInlineField({{ $product->id }}, 'return_rate', $event.target.value)"
-                                               placeholder="%"
-                                               class="h-8 w-full rounded-[6px] border border-slate-200 bg-white px-2 text-right text-[12px] font-semibold {{ (float) ($product->return_rate ?? 0) >= 15 ? 'text-rose-600' : 'text-slate-800' }} focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200">
-                                        <p class="truncate text-right text-[10px] text-slate-400">{{ $product->return_rate_source ?: 'manuel' }}</p>
+                                    @php
+                                        $orderedQuantity = (int) ($product->return_order_quantity ?? 0);
+                                        $returnedQuantity = (int) ($product->return_claim_quantity ?? 0);
+                                    @endphp
+                                    <div class="min-w-[88px] text-right" title="{{ $orderedQuantity > 0 ? $orderedQuantity.' adet sipariş · '.$returnedQuantity.' adet iade' : 'Sipariş/iade verisi henüz oluşmadı' }}">
+                                        <p class="text-[12px] font-semibold {{ (float) ($product->return_rate ?? 0) >= 15 ? 'text-rose-600' : 'text-slate-800' }}">
+                                            {{ $product->return_rate !== null ? '%'.number_format((float) $product->return_rate, 1, ',', '.') : '—' }}
+                                        </p>
+                                        <p class="mt-0.5 text-[10px] text-slate-500">
+                                            {{ $orderedQuantity > 0 ? $orderedQuantity.' sipariş / '.$returnedQuantity.' iade' : 'Veri bekleniyor' }}
+                                        </p>
                                     </div>
                                 </td>
                             @endif
@@ -2661,7 +2665,7 @@
 
                             @if(in_array('durum', $visibleColumns, true))
                                 <td class="px-2 py-3 align-top text-right">
-                                    <x-zolm.status-badge size="sm" :tone="$product->status === 'active' ? 'success' : ($product->status === 'out_of_stock' ? 'danger' : 'warning')">
+                                    <x-zolm.status-badge size="sm" :tone="$product->status_tone">
                                         {{ $product->status_label }}
                                     </x-zolm.status-badge>
                                 </td>
@@ -2771,21 +2775,20 @@
 
                                             <div class="mt-2 space-y-1 border-t border-slate-200 pt-2">
                                                 <p class="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Senkron</p>
-                                                <button type="button"
+                                                <form method="POST" action="{{ route('mp.products.refresh-current-status', $product->id) }}">
+                                                    @csrf
+                                                    <button type="submit"
                                                         @click="actionMenuOpen = false"
-                                                        wire:click="refreshCurrentStatus({{ $product->id }})"
-                                                        wire:loading.attr="disabled"
-                                                        wire:loading.class="cursor-wait opacity-60"
-                                                        wire:target="refreshCurrentStatus({{ $product->id }})"
-                                                        title="Pazaryerlerinden bu ürünün güncel fiyat, stok ve kanal bilgisini al"
-                                                        class="flex w-full items-center gap-2.5 rounded-[6px] px-3 py-2 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed">
+                                                        title="Pazaryerlerinden bu ürünün güncel fiyat, stok, kanal ve mevcut görsel bilgisini al"
+                                                        class="flex w-full items-center gap-2.5 rounded-[6px] px-3 py-2 text-left transition hover:bg-slate-50">
                                                     <span class="text-slate-400">
                                                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v6h6M20 20v-6h-6M5.5 15A7 7 0 0018 18.5M18.5 9A7 7 0 006 5.5" />
                                                         </svg>
                                                     </span>
                                                     <span class="min-w-0 truncate text-xs font-medium text-slate-700">Güncel durum al</span>
-                                                </button>
+                                                    </button>
+                                                </form>
                                                 <button type="button"
                                                         @click="actionMenuOpen = false"
                                                         wire:click="openQuickMatchModal({{ $product->id }})"
@@ -2918,7 +2921,16 @@
                                         </button>
                                     </div>
                                 @else
-                                    Kayıtlı ürün bulunamadı. Excel yükleyebilir veya manuel ürün ekleyebilirsiniz.
+                                    @if(($sidebarSummary['orphan_listings'] ?? 0) > 0)
+                                        <div class="flex flex-col items-center justify-center gap-4">
+                                            <p>{{ number_format($sidebarSummary['orphan_listings']) }} pazaryeri ürünü alındı; henüz ana ürünle eşleşmediği için bu tabloda gösterilmiyor.</p>
+                                            <a href="{{ route('mp.matching') }}" wire:navigate class="inline-flex min-h-[44px] items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 sm:py-2">
+                                                Eşleştirme Merkezi'ni aç
+                                            </a>
+                                        </div>
+                                    @else
+                                        Kayıtlı ürün bulunamadı. Excel yükleyebilir veya manuel ürün ekleyebilirsiniz.
+                                    @endif
                                 @endif
                             </td>
                         </tr>

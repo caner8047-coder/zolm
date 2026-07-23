@@ -67,6 +67,9 @@ class MarketplaceClaimSyncService
             }
         }
 
+        // İade Merkezi'nden gelen onaylı/teslim edilmiş talepler ürün oranına yansıtılır.
+        app(MarketplaceProductReturnRateService::class)->recalculateForStore($store);
+
         return [
             'created' => $created,
             'updated' => $updated,

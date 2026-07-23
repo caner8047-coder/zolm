@@ -27,7 +27,15 @@
     $extraCostPercentageAmount = (float) ($selectedProfitScenario['extra_cost_percentage_amount'] ?? ($salePrice * ($extraCostPercentage / 100)));
     $extraCostTotal = $extraCostFixed + $extraCostPercentageAmount;
     $returnRate = $product->return_rate !== null ? (float) $product->return_rate : null;
-    $changeLogs = $this->productChangeHistory($product, 12);
+    $changeLogs = $this->productChangeHistory($product, 250);
+
+    $hasProductCost = (float) ($product->cogs ?? 0) > 0;
+    $hasPackagingCost = (float) ($product->packaging_cost ?? 0) > 0;
+    $hasCargoCost = (float) ($product->cargo_cost ?? 0) > 0;
+    $hasDeliveryInfo = filled($product->shipping_days)
+        || filled($product->shipping_type)
+        || filled($product->fast_delivery_type)
+        || $listings->contains(fn ($listing) => filled($listing->shipping_days) || filled($listing->shipping_type) || filled($listing->fast_delivery_type));
 
     $priceMismatchCount = $listings->filter(fn ($listing) => abs(((float) ($listing->sale_price ?? 0)) - $masterSalePrice) > 1)->count();
     $stockMismatchCount = $listings->filter(fn ($listing) => (int) ($listing->stock_quantity ?? 0) !== $masterStock)->count();
@@ -61,6 +69,46 @@
         ];
     }
 
+    if (! $hasProductCost) {
+        $todoItems[] = [
+            'tone' => 'warning',
+            'title' => 'Ürün maliyeti eksik',
+            'body' => 'Maliyet alanı 0 görünüyor. Satırdaki Maliyet > Ürün alanından birim ürün maliyetini gir.',
+        ];
+    }
+
+    if (! $hasPackagingCost) {
+        $todoItems[] = [
+            'tone' => 'warning',
+            'title' => 'Ambalaj maliyetini kontrol et',
+            'body' => 'Ambalaj alanı 0 görünüyor. Gerçek bir maliyet varsa satırdaki Maliyet > Ambalaj alanına ekle.',
+        ];
+    }
+
+    if (! $hasCargoCost) {
+        $todoItems[] = [
+            'tone' => 'warning',
+            'title' => 'Kargo maliyetini kontrol et',
+            'body' => 'Kargo tutarı 0 görünüyor. Ücretsiz kargo yoksa satırdaki Lojistik > Tutar alanını doldur.',
+        ];
+    }
+
+    if ($returnRate === null) {
+        $todoItems[] = [
+            'tone' => 'warning',
+            'title' => 'İade oranı henüz bilinmiyor',
+            'body' => 'İade verisi oluşmadı veya manuel oran girilmedi. İade alanından oranı ekleyebilir ya da sipariş verisi geldikçe hesaplanmasını bekleyebilirsin.',
+        ];
+    }
+
+    if (! $hasDeliveryInfo) {
+        $todoItems[] = [
+            'tone' => 'warning',
+            'title' => 'Teslimat bilgisi eksik',
+            'body' => 'Termin bilgisi gelmedi. Mağaza senkronunu yenile veya ürünün teslimat ayarını kontrol et.',
+        ];
+    }
+
     if ($profitValue < 0) {
         $todoItems[] = [
             'tone' => 'danger',
@@ -74,14 +122,6 @@
             'tone' => 'warning',
             'title' => 'İade oranı yüksek',
             'body' => 'Sipariş geçmişinden gelen iade oranı yüksek. Kanal bazlı fiyat, açıklama ve paketleme kontrolü yapılmalı.',
-        ];
-    }
-
-    if ($todoItems === []) {
-        $todoItems[] = [
-            'tone' => 'success',
-            'title' => 'Her şey yolunda görünüyor',
-            'body' => 'Eşleşme, fiyat ve stok için acil bir işlem görünmüyor.',
         ];
     }
 
@@ -113,17 +153,17 @@
                     Son ürün çekme:
                     <span class="font-medium text-slate-900">{{ $latestListingSyncAt?->format('d.m.Y H:i') ?: 'Henüz yok' }}</span>
                 </p>
-                <button type="button"
-                        wire:click="refreshCurrentStatus({{ $product->id }})"
-                        wire:loading.attr="disabled"
-                        wire:target="refreshCurrentStatus({{ $product->id }})"
-                        title="Pazaryerlerinden bu ürünün güncel fiyat, stok ve kanal bilgisini al"
-                        class="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
-                    <svg class="h-3.5 w-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v6h6M20 20v-6h-6M5.5 15A7 7 0 0018 18.5M18.5 9A7 7 0 006 5.5" />
-                    </svg>
-                    Güncel durum al
-                </button>
+                <form method="POST" action="{{ route('mp.products.refresh-current-status', $product->id) }}">
+                    @csrf
+                    <button type="submit"
+                            title="Pazaryerlerinden bu ürünün güncel fiyat, stok, kanal ve görsel bilgisini al"
+                            class="inline-flex min-h-[34px] items-center justify-center gap-2 rounded-[6px] border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                        <svg class="h-3.5 w-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v6h6M20 20v-6h-6M5.5 15A7 7 0 0018 18.5M18.5 9A7 7 0 006 5.5" />
+                        </svg>
+                        Güncel durum al
+                    </button>
+                </form>
             </div>
         </div>
 
@@ -169,26 +209,29 @@
         </div>
     </section>
 
-    <section class="rounded-[8px] border border-slate-200 bg-white p-4">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <details class="group rounded-[8px] border border-slate-200 bg-white">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
             <div class="min-w-0">
-                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Değişim Defteri</p>
-                <h3 class="mt-1 text-base font-semibold text-slate-900">Fiyat, maliyet ve lojistik geçmişi</h3>
+                <p class="text-sm font-semibold text-slate-900">Değişim geçmişi</p>
+                <p class="mt-0.5 text-xs text-slate-500">Fiyat, maliyet ve lojistik kayıtları</p>
             </div>
-            <span class="inline-flex w-fit items-center rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
-                Son {{ $changeLogs->count() }} kayıt
-            </span>
-        </div>
+            <div class="flex shrink-0 items-center gap-2">
+                <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600">{{ $changeLogs->count() === 250 ? '250+' : $changeLogs->count() }} kayıt</span>
+                <svg class="h-4 w-4 text-slate-400 transition group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m6 9 6 6 6-6" />
+                </svg>
+            </div>
+        </summary>
 
         @if($changeLogs->isNotEmpty())
-            <div class="mt-4 overflow-hidden rounded-lg border border-slate-200">
+            <div class="mx-4 mb-4 overflow-hidden rounded-lg border border-slate-200">
                 <div class="hidden grid-cols-[minmax(130px,0.8fr)_minmax(150px,1fr)_minmax(180px,1.4fr)_minmax(140px,1fr)] gap-3 border-b border-slate-200 bg-slate-50/70 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 md:grid">
                     <span>Tarih</span>
                     <span>Alan</span>
                     <span>Değişim</span>
                     <span>Kaynak</span>
                 </div>
-                <div class="divide-y divide-slate-100 bg-white">
+                <div class="divide-y divide-slate-100 bg-white {{ $changeLogs->count() > 8 ? 'max-h-[470px] overflow-y-auto overscroll-contain' : '' }}" @if($changeLogs->count() > 8) style="scrollbar-gutter: stable;" @endif>
                     @foreach($changeLogs as $change)
                         <article class="grid grid-cols-1 gap-2 px-3 py-3 text-sm md:grid-cols-[minmax(130px,0.8fr)_minmax(150px,1fr)_minmax(180px,1.4fr)_minmax(140px,1fr)] md:items-center md:gap-3">
                             <div class="min-w-0">
@@ -198,7 +241,11 @@
                             <div class="min-w-0">
                                 <p class="font-semibold text-slate-900">{{ $change->field_label }}</p>
                                 <p class="mt-0.5 text-xs text-slate-500">
-                                    {{ $change->change_scope === 'listing' ? ($change->store?->store_name ?: 'Kanal kaydı') : 'Ana ürün' }}
+                                    @if($change->change_scope === 'listing')
+                                        {{ trim(($change->store?->marketplace ? ucfirst($change->store->marketplace).' · ' : '').($change->store?->store_name ?: 'Kanal kaydı')) }}
+                                    @else
+                                        Ana ürün
+                                    @endif
                                 </p>
                             </div>
                             <div class="min-w-0">
@@ -222,6 +269,11 @@
                             </div>
                             <div class="min-w-0">
                                 <p class="truncate text-sm font-medium text-slate-700">{{ $change->source_label ?: $change->source }}</p>
+                                @if($change->store)
+                                    <p class="mt-0.5 truncate text-xs text-slate-500" title="{{ ucfirst($change->store->marketplace) }} · {{ $change->store->store_name }}">
+                                        {{ ucfirst($change->store->marketplace) }} · {{ $change->store->store_name }}
+                                    </p>
+                                @endif
                                 @if($change->note)
                                     <p class="mt-0.5 truncate text-xs text-slate-500" title="{{ $change->note }}">{{ $change->note }}</p>
                                 @endif
@@ -229,36 +281,62 @@
                         </article>
                     @endforeach
                 </div>
+                @if($changeLogs->count() === 250)
+                    <p class="border-t border-slate-100 bg-slate-50/60 px-3 py-2 text-xs text-slate-500">Performans için en yeni 250 değişim gösteriliyor.</p>
+                @endif
             </div>
         @else
-            <div class="mt-4 rounded-[8px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+            <div class="mx-4 mb-4 rounded-[8px] border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                 Bu ürün için henüz fiyat, maliyet veya lojistik değişim kaydı oluşmadı.
             </div>
         @endif
-    </section>
+    </details>
 
-    <section class="rounded-[8px] border border-slate-200 bg-white p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Yapılacak İş</p>
-        <div class="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
-            @foreach($todoItems as $item)
-                <div class="rounded-[8px] border p-3 {{ $item['tone'] === 'danger' ? 'border-rose-200 bg-rose-50' : ($item['tone'] === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50') }}">
-                    <p class="text-sm font-semibold {{ $item['tone'] === 'danger' ? 'text-rose-800' : ($item['tone'] === 'warning' ? 'text-amber-800' : 'text-emerald-800') }}">{{ $item['title'] }}</p>
-                    <p class="mt-1 text-sm {{ $item['tone'] === 'danger' ? 'text-rose-700' : ($item['tone'] === 'warning' ? 'text-amber-700' : 'text-emerald-700') }}">{{ $item['body'] }}</p>
-                </div>
-            @endforeach
-        </div>
-    </section>
-
-    <section class="rounded-[8px] border border-slate-200 bg-white p-4">
-        <div>
+    <details class="group rounded-[8px] border border-slate-200 bg-white">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
             <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Mağazalardaki Durum</p>
-                <h3 class="mt-1 text-base font-semibold text-slate-900">{{ $listingCount }} bağlı mağaza kaydı</h3>
+                <p class="text-sm font-semibold text-slate-900">Kontrol listesi</p>
+                <p class="mt-0.5 text-xs text-slate-500">Eksik veya kontrol edilmesi gereken ürün bilgileri</p>
             </div>
+            <div class="flex shrink-0 items-center gap-2">
+                <span class="rounded-[6px] border {{ $todoItems === [] ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700' }} px-2 py-1 text-[11px] font-semibold">
+                    {{ $todoItems === [] ? 'Kontrol tamam' : count($todoItems) . ' eksik' }}
+                </span>
+                <svg class="h-4 w-4 text-slate-400 transition group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m6 9 6 6 6-6" />
+                </svg>
+            </div>
+        </summary>
+        <div class="mx-4 mb-4 grid grid-cols-1 gap-2 lg:grid-cols-2">
+            @forelse($todoItems as $item)
+                <div class="rounded-[8px] border p-3 {{ $item['tone'] === 'danger' ? 'border-rose-200 bg-rose-50' : 'border-amber-200 bg-amber-50' }}">
+                    <p class="text-sm font-semibold {{ $item['tone'] === 'danger' ? 'text-rose-800' : 'text-amber-800' }}">{{ $item['title'] }}</p>
+                    <p class="mt-1 text-sm {{ $item['tone'] === 'danger' ? 'text-rose-700' : 'text-amber-700' }}">{{ $item['body'] }}</p>
+                </div>
+            @empty
+                <div class="rounded-[8px] border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
+                    Zorunlu maliyet, lojistik, iade ve kanal kontrollerinde eksik görünmüyor.
+                </div>
+            @endforelse
         </div>
+    </details>
+
+    <details class="group rounded-[8px] border border-slate-200 bg-white">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
+            <div>
+                <p class="text-sm font-semibold text-slate-900">Mağaza detayları</p>
+                <p class="mt-0.5 text-xs text-slate-500">Fiyat, stok ve gönderim durumu</p>
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
+                <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600">{{ $listingCount }} mağaza</span>
+                <svg class="h-4 w-4 text-slate-400 transition group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m6 9 6 6 6-6" />
+                </svg>
+            </div>
+        </summary>
 
         @if($listings->isNotEmpty())
-            <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-4">
+            <div class="mx-4 mb-4 grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-4">
                 @foreach($listings as $listing)
                     @php
                         $store = $listing->store;
@@ -420,9 +498,9 @@
                 @endforeach
             </div>
         @else
-            <div class="mt-4 rounded-[8px] border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+            <div class="mx-4 mb-4 rounded-[8px] border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
                 Bu ürüne bağlı mağaza kaydı yok. Ürünleri çektiğinizde burada görünür.
             </div>
         @endif
-    </section>
+    </details>
 </div>

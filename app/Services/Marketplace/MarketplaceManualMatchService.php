@@ -123,6 +123,114 @@ class MarketplaceManualMatchService
     }
 
     /**
+     * Kanal listelemesinden ana ürün oluşturur ve aynı işlemde eşleştirir.
+     * Aynı kullanıcıda aynı barkod veya stok kodu zaten varsa yeni kayıt açmaz.
+     *
+     * @return array{product: MpProduct, created: bool, updated_items: int, impacted_orders: int}
+     */
+    public function createMasterProductFromListing(ProductMatchIssue $issue, ?int $resolvedBy = null): array
+    {
+        $issue->loadMissing([
+            'store.syncProfile',
+            'channelListing.channelProduct',
+            'channelListing.product',
+        ]);
+
+        $listing = $issue->channelListing;
+        $channelProduct = $listing?->channelProduct;
+
+        if (! $listing || ! $channelProduct) {
+            throw new \RuntimeException('Bu kayıt ana ürün oluşturmak için gerekli kanal bilgilerini içermiyor.');
+        }
+
+        if ($listing->mp_product_id) {
+            throw new \RuntimeException('Bu kanal ürünü zaten bir ana ürüne bağlı.');
+        }
+
+        $stockCode = trim((string) $channelProduct->stock_code);
+        $barcode = trim((string) $channelProduct->barcode);
+        $existingProduct = null;
+
+        if ($barcode !== '' || $stockCode !== '') {
+            $existingProduct = MpProduct::query()
+                ->where('user_id', $issue->store->user_id)
+                ->where(function ($query) use ($stockCode, $barcode) {
+                    if ($barcode !== '') {
+                        $query->orWhere('barcode', $barcode);
+                    }
+
+                    if ($stockCode !== '') {
+                        $query->orWhere('stock_code', $stockCode);
+                    }
+                })
+                ->first();
+        }
+
+        if ($existingProduct) {
+            return [
+                'product' => $existingProduct,
+                'created' => false,
+                ...$this->manualMatch($issue, $existingProduct, $resolvedBy),
+            ];
+        }
+
+        $creation = DB::transaction(function () use ($issue, $channelProduct, $listing, $resolvedBy, $stockCode, $barcode) {
+            $imageUrls = $this->normalizedImageUrls($channelProduct->images);
+
+            $product = MpProduct::query()->create([
+                'user_id' => $issue->store->user_id,
+                'barcode' => $barcode !== '' ? $barcode : null,
+                'stock_code' => $stockCode !== '' ? $stockCode : null,
+                'product_name' => $channelProduct->title ?: 'Pazaryeri ürünü',
+                'brand' => $channelProduct->brand,
+                'category_name' => $channelProduct->category_name,
+                'description' => $channelProduct->description,
+                'image_url' => $imageUrls[0] ?? null,
+                'image_urls' => $imageUrls !== [] ? $imageUrls : null,
+                'vat_rate' => $channelProduct->vat_rate ?? 10,
+                'sale_price' => $listing->sale_price ?? 0,
+                'market_price' => $listing->list_price ?? $listing->sale_price ?? 0,
+                'stock_quantity' => $listing->stock_quantity ?? 0,
+                'status' => 'active',
+                'import_source' => 'marketplace_manual_match',
+                'last_synced_at' => now(),
+            ]);
+
+            return [
+                'product' => $product,
+                'match' => $this->manualMatch($issue, $product, $resolvedBy),
+            ];
+        });
+
+        return [
+            'product' => $creation['product'],
+            'created' => true,
+            ...$creation['match'],
+        ];
+    }
+
+    /** @return array<int, string> */
+    protected function normalizedImageUrls(mixed $images): array
+    {
+        return collect(is_array($images) ? $images : [])
+            ->map(function (mixed $image): ?string {
+                if (is_string($image)) {
+                    return trim($image);
+                }
+
+                if (!is_array($image)) {
+                    return null;
+                }
+
+                return trim((string) ($image['url'] ?? $image['imageUrl'] ?? $image['secureUrl'] ?? $image['src'] ?? ''));
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
      * Listing kaydı olmayan issue'lar için fallback eşleştirme.
      * Seçilen ürünün stock_code ve barcode'u ile mağazadaki tüm
      * eşleşmemiş sipariş satırlarını bulup doğrudan eşleştirir.

@@ -3,6 +3,8 @@
     $guidanceItems = collect($diagnosticsGuidance['items'] ?? []);
     $primaryGuidance = $guidanceItems->first();
     $secondaryGuidance = $guidanceItems->slice(1)->take(4)->values();
+    $pageIssueIds = $issues->pluck('id')->map(fn ($id) => (string) $id)->all();
+    $allCurrentIssuesSelected = $pageIssueIds !== [] && count(array_intersect($selectedIssueIds, $pageIssueIds)) === count($pageIssueIds);
     $sortIcon = function (string $columnKey) use ($sortableColumns, $sortField, $sortDirection) {
         $dbColumn = $sortableColumns[$columnKey] ?? null;
         if (!$dbColumn) {
@@ -47,7 +49,47 @@
     </style>
 @endonce
 
-<div class="mp-matching-page w-full space-y-5 overflow-hidden" x-data="{ expanded: [], prioritiesOpen: false, advancedFilters: false }">
+<div class="mp-matching-page w-full space-y-5" x-data="{
+    expanded: [],
+    advancedFilters: false,
+    bulkActionOpen: false,
+    bulkAction: '',
+    bulkActionLabels: {
+        create_products: 'Seçilileri ürün listesine ekle',
+        ignore: 'Seçilileri inceleme dışı bırak',
+        reopen: 'Seçilileri yeniden aç',
+    },
+    selectedIssueIds: @js($selectedIssueIds),
+    pageIssueIds: @js($pageIssueIds),
+    submitPageSelection(checked, form) {
+        const previous = [...this.selectedIssueIds];
+        this.selectedIssueIds = checked
+            ? [...new Set([...this.selectedIssueIds, ...this.pageIssueIds])]
+            : this.selectedIssueIds.filter(id => !this.pageIssueIds.includes(String(id)));
+
+        fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        }).catch(() => {
+            this.selectedIssueIds = previous;
+        });
+    },
+    toggleIssueSelection(id, checked, form) {
+        const previous = [...this.selectedIssueIds];
+        this.selectedIssueIds = checked
+            ? [...new Set([...this.selectedIssueIds, String(id)])]
+            : this.selectedIssueIds.filter(selectedId => String(selectedId) !== String(id));
+
+        fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        }).catch(() => {
+            this.selectedIssueIds = previous;
+        });
+    },
+}">
     @if(session()->has('success') || session()->has('warning'))
         @php
             $toastTone = session()->has('success') ? 'success' : 'warning';
@@ -97,93 +139,25 @@
         </div>
     @endif
 
-    <section class="mp-matching-surface rounded-2xl border border-slate-200 p-4 lg:p-6 shadow-sm">
-        <div class="grid grid-cols-1 gap-4 xl:grid-cols-12">
-            <div class="xl:col-span-5 rounded-2xl border border-slate-200 bg-white p-5 lg:p-6">
-                <div class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase matching-kicker text-slate-500">
-                    Karar Masası
+    <section class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Ürün eşleştirme</span>
+                    <span class="rounded-[6px] bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">{{ $formatCount($stats['pending_issues']) }} bekleyen kayıt</span>
                 </div>
-                <h1 class="mt-4 text-3xl font-bold tracking-tight text-slate-900 lg:text-4xl">Eşleştirme Merkezi</h1>
-                <p class="mt-3 text-sm leading-6 text-slate-500 lg:text-base">
-                    Kararsız listing’leri hızla ayırın, doğru master ürüne bağlayın ve kârlılık akışını bozan eşleşme risklerini temizleyin.
-                </p>
-
-                <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <a href="{{ route('mp.products') }}" class="inline-flex min-h-[48px] items-center justify-center rounded-lg border border-slate-200 bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800">Ürünler</a>
-                    <a href="{{ route('mp.overview') }}" class="inline-flex min-h-[48px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Kontrol merkezi</a>
-                    <a href="{{ route('mp.integrations') }}" class="inline-flex min-h-[48px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Entegrasyonlar</a>
-                </div>
-
-                <div class="mt-6 grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-4">
-                    <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <p class="uppercase tracking-[0.18em] text-slate-400">Sorun</p>
-                        <p class="mt-1 font-semibold text-slate-900">{{ $formatCount($stats['total_issues']) }}</p>
-                    </div>
-                    <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <p class="uppercase tracking-[0.18em] text-slate-400">Aday</p>
-                        <p class="mt-1 font-semibold text-slate-900">{{ $formatCount($stats['with_candidates']) }}</p>
-                    </div>
-                    <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <p class="uppercase tracking-[0.18em] text-slate-400">Çözüm</p>
-                        <p class="mt-1 font-semibold text-slate-900">{{ $formatCount($stats['resolved_issues']) }}</p>
-                    </div>
-                    <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <p class="uppercase tracking-[0.18em] text-slate-400">Göz ardı</p>
-                        <p class="mt-1 font-semibold text-slate-900">{{ $formatCount($stats['ignored_issues']) }}</p>
-                    </div>
-                </div>
+                <h1 class="mt-3 text-xl font-bold tracking-tight text-slate-900 lg:text-2xl">Pazaryeri ürünlerini ana ürün listenize ekleyin</h1>
+                <p class="mt-2 text-sm text-slate-500">Satırdan <span class="font-medium text-slate-700">Ürün listesine ekle</span> seçin; mevcut ürün varsa satırı açıp eşleştirin.</p>
             </div>
-
-            <div class="xl:col-span-4 grid grid-cols-2 gap-3">
-                <div class="rounded-2xl border {{ $stats['pending_issues'] > 0 ? 'border-amber-200 bg-amber-50/80' : 'border-slate-200 bg-white/90' }} p-4 lg:p-5">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] {{ $stats['pending_issues'] > 0 ? 'text-amber-700' : 'text-slate-400' }}">Bekleyen sorun</p>
-                    <p class="mt-3 text-3xl font-bold {{ $stats['pending_issues'] > 0 ? 'text-amber-700' : 'text-slate-900' }}">{{ $formatCount($stats['pending_issues']) }}</p>
-                    <p class="mt-2 text-sm {{ $stats['pending_issues'] > 0 ? 'text-amber-800/80' : 'text-slate-500' }}">{{ $stats['total_issues'] }} toplam sorun</p>
+            <div class="grid grid-cols-2 gap-3 lg:w-[250px]">
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Eklenecek</p>
+                    <p class="mt-1 text-lg font-semibold text-slate-900">{{ $formatCount($stats['pending_issues']) }}</p>
                 </div>
-                <div class="matching-soft-card rounded-2xl border border-slate-200 p-4 lg:p-5">
-                    <div class="flex items-center gap-1.5">
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Aday bulunan</p>
-                        <x-zolm.help-tip title="Aday bulunan" summary="Sistem aynı listeleme için potansiyel master ürün adayları bulduysa bu sayaç yükselir." source="Barkod, stok kodu, listeleme adı ve profil eşleşme kuralları." refresh="Yeni sorun üretildiğinde veya aday hesaplama tekrarlandığında." impact="Elle karar vererek sorun çözme hızınızı artırır." />
-                    </div>
-                    <p class="mt-3 text-3xl font-bold text-sky-600">{{ $formatCount($stats['with_candidates']) }}</p>
-                    <p class="mt-2 text-sm text-slate-500">Listelemesiz {{ $stats['without_listing'] }}</p>
+                <div class="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Eşleşmiş</p>
+                    <p class="mt-1 text-lg font-semibold text-emerald-600">{{ $formatCount($stats['resolved_issues']) }}</p>
                 </div>
-                <div class="matching-soft-card rounded-2xl border border-slate-200 p-4 lg:p-5">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Çözülen</p>
-                    <p class="mt-3 text-3xl font-bold text-emerald-600">{{ $formatCount($stats['resolved_issues']) }}</p>
-                    <p class="mt-2 text-sm text-slate-500">Elle veya otomatik</p>
-                </div>
-                <div class="matching-soft-card rounded-2xl border border-slate-200 p-4 lg:p-5">
-                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Göz ardı</p>
-                    <p class="mt-3 text-3xl font-bold text-slate-900">{{ $formatCount($stats['ignored_issues']) }}</p>
-                    <p class="mt-2 text-sm text-slate-500">Bilinçli kapatılan</p>
-                </div>
-            </div>
-
-            <div class="xl:col-span-3 rounded-2xl border border-slate-200 bg-white/90 p-4 lg:p-5">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Bugünkü karar</p>
-                @if($primaryGuidance)
-                    <h2 class="mt-3 text-lg font-semibold text-slate-900">{{ $primaryGuidance['title'] }}</h2>
-                    <p class="mt-2 text-sm text-slate-500">{{ $primaryGuidance['recommended_action'] }}</p>
-                    <div class="mt-4 space-y-2">
-                        <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                            <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Mağaza</p>
-                            <p class="mt-1 text-sm font-semibold text-slate-900">{{ $primaryGuidance['store_name'] ?: '-' }}</p>
-                        </div>
-                        <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                            <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Etki</p>
-                            <p class="mt-1 text-sm font-semibold text-slate-900">{{ $formatCount($primaryGuidance['impact_count']) }} kayıt</p>
-                        </div>
-                        <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                            <p class="text-xs uppercase tracking-[0.16em] text-slate-400">Şiddet</p>
-                            <p class="mt-1 text-sm font-semibold text-slate-900">{{ $this->guidanceSeverityLabel($primaryGuidance['severity']) }}</p>
-                        </div>
-                    </div>
-                @else
-                    <div class="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                        Aktif öncelik önerisi oluştuğunda burada en kritik sorun kümesi öne çıkar.
-                    </div>
-                @endif
             </div>
         </div>
     </section>
@@ -195,9 +169,9 @@
                     <div>
                         <div class="flex items-center gap-2">
                             <h2 class="text-lg font-bold text-slate-900">Sorun Listesi</h2>
-                            <x-zolm.help-tip title="Sorun Listesi" summary="Eşleşme problemi yaşayan kanal kayıtlarını öncelik sırasıyla gösterir." source="Pazaryeri eşleşme sorun kayıtları ve aday ürün havuzu." refresh="Yeni sorun üretildiğinde, toplu aksiyon çalıştığında veya sorun çözüldüğünde." impact="Ürün ve kârlılık akışını bozan kayıtları operasyon sırasına sokar." />
+                            <x-zolm.help-tip position="left" title="Sorun Listesi" summary="Eşleşme problemi yaşayan kanal kayıtlarını öncelik sırasıyla gösterir." source="Pazaryeri eşleşme sorun kayıtları ve aday ürün havuzu." refresh="Yeni sorun üretildiğinde, toplu aksiyon çalıştığında veya sorun çözüldüğünde." impact="Ürün ve kârlılık akışını bozan kayıtları operasyon sırasına sokar." />
                         </div>
-                        <p class="mt-2 text-sm text-slate-500">Satırı açınca kanal kaydı ve aday master ürünler görünür.</p>
+                        <p class="mt-2 text-sm text-slate-500">Önce <span class="font-medium text-slate-700">Ürün listesine ekle</span> ile ana ürün oluşturun; mevcut ürün varsa satırı açıp eşleştirin.</p>
                     </div>
 
                     <div class="flex flex-col items-start gap-2 lg:items-end">
@@ -236,7 +210,8 @@
                     </div>
                 </div>
 
-                <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <details class="mt-4 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                    <summary class="cursor-pointer text-sm font-medium text-slate-700">Tanı ve gelişmiş operasyon araçları</summary>
                     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div class="min-w-0">
                             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Bugün önce bunlara bak</p>
@@ -347,7 +322,7 @@
                             </div>
                         @endif
                     </div>
-                </div>
+                </details>
 
                 <div class="matching-ledger-shell mt-4 overflow-hidden rounded-[10px] border border-slate-200 bg-white shadow-sm">
                     <div class="matching-ledger-top border-b border-slate-200 px-4 py-4 lg:px-5 lg:py-5">
@@ -375,24 +350,13 @@
                         </div>
                     </div>
 
-                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
+                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
                         <div>
                             <label class="block text-xs sm:text-sm font-medium text-slate-500">Arama</label>
                             <input wire:model.live.debounce.300ms="search"
                                    type="text"
                                    placeholder="Stok kodu, barkod, listing..."
                                    class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                        </div>
-
-                        <div>
-                            <label class="block text-xs sm:text-sm font-medium text-slate-500">Pazaryeri</label>
-                            <select wire:model.live="marketplaceFilter"
-                                    class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                                <option value="">Tümü</option>
-                                @foreach($marketplaceOptions as $marketplace)
-                                    <option value="{{ $marketplace }}">{{ $this->humanMarketplace($marketplace) }}</option>
-                                @endforeach
-                            </select>
                         </div>
 
                         <div>
@@ -422,7 +386,18 @@
 
                     </div>
 
-                    <div x-show="advancedFilters" x-cloak x-transition class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div x-show="advancedFilters" x-cloak x-transition class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-slate-500">Pazaryeri</label>
+                            <select wire:model.live="marketplaceFilter"
+                                    class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                <option value="">Tümü</option>
+                                @foreach($marketplaceOptions as $marketplace)
+                                    <option value="{{ $marketplace }}">{{ $this->humanMarketplace($marketplace) }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
                         <div>
                             <label class="block text-xs sm:text-sm font-medium text-slate-500">Firma</label>
                             <select wire:model.live="legalEntityFilter"
@@ -458,43 +433,45 @@
                         </div>
                     </div>
 
-                    <div class="mt-4 flex flex-col gap-3 rounded-[8px] border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                            <label class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-                                <input type="checkbox"
-                                       wire:model.live="selectPage"
-                                       class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
-                                <span>Bu sayfayı seç</span>
-                            </label>
-                            <div class="text-sm text-slate-500">
-                                {{ number_format(count($selectedIssueIds), 0, ',', '.') }} sorun seçili
-                            </div>
+                    <section x-cloak x-show="selectedIssueIds.length > 0" class="mt-4 flex flex-col gap-3 rounded-[8px] border border-indigo-200 bg-indigo-50/40 p-3 sm:flex-row sm:items-center sm:justify-between" aria-label="Toplu işlem">
+                        <div class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                            <span x-text="selectedIssueIds.length" class="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-900 px-1.5 text-xs font-semibold text-white">{{ number_format(count($selectedIssueIds), 0, ',', '.') }}</span>
+                            kayıt seçildi
                         </div>
-
-                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-                            <select wire:model.live="bulkIssueActionType"
-                                    class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-base sm:w-56 sm:py-2 sm:text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                                <option value="">Toplu sorun aksiyonu</option>
-                                @foreach($this->bulkIssueActionOptions() as $actionKey => $actionLabel)
-                                    <option value="{{ $actionKey }}">{{ $actionLabel }}</option>
-                                @endforeach
-                            </select>
+                        <form method="POST" action="{{ route('mp.matching.apply') }}" class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            @csrf
+                            <div class="relative w-full sm:w-56">
+                                <input type="hidden" name="action" :value="bulkAction">
+                                <button type="button"
+                                        @click="bulkActionOpen = !bulkActionOpen"
+                                        class="flex min-h-[44px] w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-900 shadow-sm transition hover:bg-slate-50 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <span x-text="bulkAction ? bulkActionLabels[bulkAction] : 'Toplu sorun aksiyonu'"></span>
+                                    <svg class="h-4 w-4 text-slate-400 transition" :class="{ 'rotate-180': bulkActionOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6" /></svg>
+                                </button>
+                                <div x-cloak
+                                     x-show="bulkActionOpen"
+                                     x-transition.origin.top.right
+                                     @click.outside="bulkActionOpen = false"
+                                     class="absolute bottom-full right-0 z-40 mb-2 w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                                    <button type="button" @click="bulkAction = 'create_products'; bulkActionOpen = false" class="flex w-full items-center rounded-md px-3 py-2 text-left text-sm font-medium text-slate-900 hover:bg-slate-50">Seçilileri ürün listesine ekle</button>
+                                    <button type="button" @click="bulkAction = 'ignore'; bulkActionOpen = false" class="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Seçilileri inceleme dışı bırak</button>
+                                    <button type="button" @click="bulkAction = 'reopen'; bulkActionOpen = false" class="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Seçilileri yeniden aç</button>
+                                </div>
+                            </div>
 
                             <div class="flex gap-2">
-                                <button type="button"
-                                        wire:click="runBulkIssueAction"
+                                <button type="submit"
                                         class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-slate-900 px-4 py-3 sm:py-2 text-sm font-medium text-white transition hover:bg-slate-800">
                                     Uygula
                                 </button>
-                                <button type="button"
-                                        wire:click="clearIssueSelection"
+                                <button type="submit" formaction="{{ route('mp.matching.clear-selection') }}"
                                         class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                                     Seçimi temizle
                                 </button>
                             </div>
                             </div>
-                        </div>
-                    </div>
+                        </form>
+                    </section>
                     </div>
 
                     <div class="px-4 pb-4 pt-3 lg:px-5 lg:pb-5">
@@ -572,10 +549,21 @@
                         <table class="matching-v2-table w-full divide-y divide-slate-200 table-fixed" style="min-width: 900px;">
                             <thead class="bg-slate-50 text-slate-500">
                                 <tr>
-                                    <th class="w-10 px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]">
-                                        <input type="checkbox"
-                                               wire:model.live="selectPage"
-                                               class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                    <th class="w-10 px-3 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em]">
+                                        <form method="POST" action="{{ $allCurrentIssuesSelected ? route('mp.matching.clear-selection') : route('mp.matching.select') }}" class="inline-flex" x-ref="pageSelectionForm">
+                                            @csrf
+                                            @if(! $allCurrentIssuesSelected)
+                                                @foreach($issues as $issue)
+                                                    <input type="hidden" name="issue_ids[]" value="{{ $issue->id }}">
+                                                @endforeach
+                                            @endif
+                                            <input type="checkbox"
+                                                   aria-label="Bu sayfadaki kayıtları seç"
+                                                   title="Bu sayfadaki {{ $issues->count() }} kaydı seç"
+                                                   :checked="pageIssueIds.length > 0 && pageIssueIds.every(id => selectedIssueIds.includes(String(id)))"
+                                                   @change="submitPageSelection($event.target.checked, $event.target.form)"
+                                                   class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                        </form>
                                     </th>
                                     <th class="w-10 px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em]"></th>
                                     @foreach($columnMeta as $columnKey => $meta)
@@ -598,13 +586,23 @@
                                 @forelse($issues as $issue)
                                     <tr class="transition hover:bg-slate-50/80">
                                         <td class="px-3 py-4 align-top">
-                                            <input type="checkbox"
-                                                   wire:model.live="selectedIssueIds"
-                                                   value="{{ $issue->id }}"
-                                                   class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                            <form method="POST" action="{{ route('mp.matching.toggle-selection') }}" class="inline-flex">
+                                                @csrf
+                                                <input type="hidden" name="issue_id" value="{{ $issue->id }}">
+                                                <input type="hidden" name="selected" value="0">
+                                                <input type="checkbox"
+                                                       name="selected"
+                                                       value="1"
+                                                       aria-label="{{ $issue->channel_title_alias ?: 'Kanal ürünü' }} kaydını seç"
+                                                       :checked="selectedIssueIds.includes('{{ $issue->id }}')"
+                                                       @change="toggleIssueSelection('{{ $issue->id }}', $event.target.checked, $event.target.form)"
+                                                       class="rounded border-slate-300 text-slate-900 shadow-sm focus:ring-indigo-200">
+                                            </form>
                                         </td>
-                                        <td class="px-3 py-4 align-top">
-                                            <button type="button"
+                                            <td class="px-3 py-4 align-top">
+                                                <button type="button"
+                                                    title="Ürünü incele ve eşleştir"
+                                                    aria-label="Ürünü incele ve eşleştir"
                                                     class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
                                                     @click="expanded.includes({{ $issue->id }}) ? expanded = expanded.filter(i => i !== {{ $issue->id }}) : expanded.push({{ $issue->id }})">
                                                 <svg class="h-4 w-4 transition" :class="{ 'rotate-90': expanded.includes({{ $issue->id }}) }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -655,10 +653,13 @@
                                         @if(in_array('aksiyon', $visibleColumns, true))
                                             <td class="px-3 py-4 align-top text-right">
                                                 @if($issue->match_status === 'pending')
-                                                    <button wire:click="ignoreIssue({{ $issue->id }})"
-                                                            class="inline-flex min-h-[36px] items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 transition hover:bg-amber-100">
-                                                        Göz ardı et
-                                                    </button>
+                                                    <form method="POST" action="{{ route('mp.matching.create-product') }}">
+                                                        @csrf
+                                                        <input type="hidden" name="issue_id" value="{{ $issue->id }}">
+                                                        <button type="submit" class="inline-flex min-h-[36px] items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-800">
+                                                            Ürün listesine ekle
+                                                        </button>
+                                                    </form>
                                                 @else
                                                     <button wire:click="reopenIssue({{ $issue->id }})"
                                                             class="inline-flex min-h-[36px] items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
@@ -706,89 +707,6 @@
             </div>
         </section>
 
-        {{-- ÖNCELİKLİ DÜZELTME --}}
-        <section x-data="{ priorityOpen: false }" class="rounded-2xl border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
-            <div class="flex items-center justify-between gap-3 cursor-pointer" @click="priorityOpen = !priorityOpen">
-                <div>
-                    <h2 class="text-lg font-bold text-slate-900">Öncelikli Düzeltme</h2>
-                    <p class="mt-1 text-sm text-slate-500">{{ $formatCount($diagnosticsGuidance['totals']['items']) }} öneri · {{ $formatCount($diagnosticsGuidance['totals']['critical']) }} kritik · {{ $formatCount($diagnosticsGuidance['totals']['warning']) }} uyarı</p>
-                </div>
-                <svg class="h-5 w-5 shrink-0 text-slate-400 transition" :class="{ 'rotate-180': priorityOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 9l-7 7-7-7" /></svg>
-            </div>
-            <div x-cloak x-show="priorityOpen" x-transition class="mt-4 space-y-3">
-                <div class="flex flex-wrap items-center gap-2">
-                    <button wire:click="exportDiagnosticsGuidanceCsv" class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">CSV al</button>
-                    <button wire:click="focusTopGuidance" class="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-3 sm:py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">{{ $this->guidanceFocusLabel() }}</button>
-                    <button wire:click="syncTopGuidance" class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-slate-900 px-4 py-3 sm:py-2 text-sm font-medium text-white transition hover:bg-slate-800">{{ $this->guidanceSyncLabel() }}</button>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-                        <p class="text-xs uppercase tracking-[0.12em] text-slate-500">Toplam öneri</p>
-                        <p class="mt-2 text-lg font-semibold text-slate-900">{{ $formatCount($diagnosticsGuidance['totals']['items']) }}</p>
-                    </div>
-                    <div class="rounded-lg border border-rose-200 bg-rose-50/70 p-3">
-                        <p class="text-xs uppercase tracking-[0.12em] text-rose-600">Kritik</p>
-                        <p class="mt-2 text-lg font-semibold text-rose-700">{{ $formatCount($diagnosticsGuidance['totals']['critical']) }}</p>
-                    </div>
-                    <div class="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
-                        <p class="text-xs uppercase tracking-[0.12em] text-amber-600">Uyarı</p>
-                        <p class="mt-2 text-lg font-semibold text-amber-700">{{ $formatCount($diagnosticsGuidance['totals']['warning']) }}</p>
-                    </div>
-                </div>
-                @if(($diagnosticsGuidance['items'][0] ?? null) !== null)
-                    @php
-                        $topGuidance = $diagnosticsGuidance['items'][0];
-                    @endphp
-                    <a href="{{ $this->guidanceRoute($topGuidance) }}" class="block rounded-lg border border-slate-200 bg-slate-50/60 p-3 transition hover:border-slate-300 hover:bg-white">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <x-zolm.status-badge :tone="$this->guidanceSeverityTone($topGuidance['severity'])">{{ $this->guidanceSeverityLabel($topGuidance['severity']) }}</x-zolm.status-badge>
-                            <span class="text-xs text-slate-500">{{ $this->humanMarketplace($topGuidance['marketplace']) }} · {{ $topGuidance['store_name'] ?: '-' }}</span>
-                        </div>
-                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ $topGuidance['title'] }}</p>
-                        <p class="mt-1 text-sm text-slate-500">{{ $topGuidance['recommended_action'] }}</p>
-                        <div class="mt-2 flex flex-wrap gap-2">
-                            <span class="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">{{ $formatCount($topGuidance['impact_count']) }} kayıt</span>
-                            <span class="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">{{ $this->guidanceRouteLabel($topGuidance['route']) }}</span>
-                        </div>
-                    </a>
-                @else
-                    <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">Bugün öncelikli bir tanı kaydı yok.</div>
-                @endif
-            </div>
-        </section>
-
-        {{-- NASIL İLERLER --}}
-        <section x-data="{ flowOpen: false }" class="rounded-2xl border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
-            <div class="flex items-center justify-between gap-3 cursor-pointer" @click="flowOpen = !flowOpen">
-                <div>
-                    <h2 class="text-lg font-bold text-slate-900">Nasıl İlerler?</h2>
-                    <p class="mt-1 text-sm text-slate-500">Manuel eşleştirme akış adımları</p>
-                </div>
-                <svg class="h-5 w-5 shrink-0 text-slate-400 transition" :class="{ 'rotate-180': flowOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 9l-7 7-7-7" /></svg>
-            </div>
-            <div x-cloak x-show="flowOpen" x-transition class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-slate-500">
-                <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3">1. Bekleyen sorunu açın.</div>
-                <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3">2. Aday ürünlerden doğru master ürünü seçin.</div>
-                <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3">3. Sistem listing ve siparisleri günceller.</div>
-                <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3">4. Kâr snapshot'ı yeniden hesaplanır.</div>
-            </div>
-        </section>
-
-        {{-- KAPSAM --}}
-        <section x-data="{ scopeOpen: false }" class="rounded-2xl border border-slate-200 bg-white p-4 lg:p-6 shadow-sm">
-            <div class="flex items-center justify-between gap-3 cursor-pointer" @click="scopeOpen = !scopeOpen">
-                <div>
-                    <h2 class="text-lg font-bold text-slate-900">Dikkat Edilmesi Gerekenler</h2>
-                    <p class="mt-1 text-sm text-slate-500">{{ $formatCount($stats['pending_issues']) }} bekleyen sorun</p>
-                </div>
-                <svg class="h-5 w-5 shrink-0 text-slate-400 transition" :class="{ 'rotate-180': scopeOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 9l-7 7-7-7" /></svg>
-            </div>
-            <div x-cloak x-show="scopeOpen" x-transition class="mt-4 space-y-3 text-sm text-slate-500">
-                <div class="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-amber-800">Listelemeye bağlı sorunlar doğrudan manuel eşleştirilebilir.</div>
-                <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3">Listeleme ilişkisi olmayan kayıtlar analiz / göz ardı akışında kalır.</div>
-                <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3">Otomatik eşleşme ayarları <span class="font-medium text-slate-900">Entegrasyonlar</span> ekranından yönetilir.</div>
-            </div>
-        </section>
     </div>
 
     {{-- TABLO STİLLERİ --}}

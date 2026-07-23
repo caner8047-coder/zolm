@@ -73,6 +73,7 @@ class MarketplaceMatchingCenter extends Component
     public function mount(): void
     {
         $this->visibleColumns = $this->normalizeVisibleColumns($this->visibleColumns);
+        $this->selectedIssueIds = collect(session('marketplace_matching.selected_issue_ids', []))->map(fn ($id) => (string) $id)->values()->all();
     }
 
     public function updated($property): void
@@ -92,9 +93,53 @@ class MarketplaceMatchingCenter extends Component
         }
     }
 
-    public function updatedSelectPage(bool $value): void
+    /**
+     * Geçerli sayfadaki kayıtları seçer veya seçimden çıkarır.
+     * Checkbox'ın Livewire'ın boolean model güncellemesine bağımlı kalmaması,
+     * seçimin tabloda ve toplu aksiyon çubuğunda aynı anda görünmesini sağlar.
+     */
+    public function togglePageSelection(): void
     {
-        $this->selectedIssueIds = $value ? $this->currentPageIssueIds() : [];
+        $currentPageIds = $this->currentPageIssueIds();
+        $selectedIds = collect($this->selectedIssueIds)
+            ->filter(fn ($id) => filled($id))
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values();
+
+        $isCurrentPageSelected = $currentPageIds !== []
+            && count(array_intersect($selectedIds->all(), $currentPageIds)) === count($currentPageIds);
+
+        $this->selectedIssueIds = $isCurrentPageSelected
+            ? $selectedIds->reject(fn ($id) => in_array($id, $currentPageIds, true))->values()->all()
+            : $selectedIds->merge($currentPageIds)->unique()->values()->all();
+
+        $this->selectPage = ! $isCurrentPageSelected;
+    }
+
+    public function selectCurrentPageIssues(): void
+    {
+        $currentPageIds = $this->currentPageIssueIds();
+
+        $this->selectedIssueIds = collect($this->selectedIssueIds)
+            ->filter(fn ($id) => filled($id))
+            ->map(fn ($id) => (string) $id)
+            ->merge($currentPageIds)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->selectPage = $currentPageIds !== [];
+
+        session()->flash('success', count($currentPageIds) . ' kayıt toplu işlem için seçildi.');
+    }
+
+    public function isCurrentPageSelected(): bool
+    {
+        $currentPageIds = $this->currentPageIssueIds();
+
+        return $currentPageIds !== []
+            && count(array_intersect($this->selectedIssueIds, $currentPageIds)) === count($currentPageIds);
     }
 
     public function updatedSelectedIssueIds(): void
@@ -344,6 +389,22 @@ class MarketplaceMatchingCenter extends Component
         $this->manualMatch($issueId, $recommended->id);
     }
 
+    public function createMasterProduct(int $issueId): void
+    {
+        $issue = $this->resolveIssueForUser($issueId);
+
+        try {
+            $result = app(MarketplaceManualMatchService::class)->createMasterProductFromListing($issue, $this->userId());
+            $message = $result['created']
+                ? "Ana ürün oluşturuldu ve kanal ürünü '{$result['product']->product_name}' ile eşleştirildi."
+                : "Mevcut ana ürün '{$result['product']->product_name}' bulundu ve kanal ürünüyle eşleştirildi.";
+
+            session()->flash('success', $message);
+        } catch (\Throwable $exception) {
+            session()->flash('warning', $exception->getMessage());
+        }
+    }
+
     public function ignoreIssue(int $issueId): void
     {
         $issue = $this->resolveIssueForUser($issueId);
@@ -583,7 +644,8 @@ class MarketplaceMatchingCenter extends Component
     public function bulkIssueActionOptions(): array
     {
         return [
-            'ignore' => 'Seçilileri göz ardı et',
+            'create_products' => 'Seçilileri ürün listesine ekle',
+            'ignore' => 'Seçilileri inceleme dışı bırak',
             'reopen' => 'Seçilileri yeniden aç',
         ];
     }

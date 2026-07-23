@@ -77,6 +77,8 @@
                                     <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1">Durum</label>
                                     <select wire:model="f_status" class="w-full px-3 py-2 text-base sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-200">
                                         <option value="active">Satışta</option>
+                                        <option value="partial">Kısmi Satışta</option>
+                                        <option value="passive">Pasif</option>
                                         <option value="out_of_stock">Tükendi</option>
                                         <option value="pending">Onay Bekliyor</option>
                                         <option value="suspended">Beklemede</option>
@@ -225,13 +227,9 @@
                                     <input type="text" wire:model="f_variant" class="w-full px-3 py-2 text-base sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-200">
                                 </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1">İade Oranı (%)</label>
-                                    <div class="relative">
-                                        <input type="number" step="0.1" wire:model="f_return_rate" class="w-full px-3 py-2 pr-8 text-base sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-200" placeholder="Sipariş geçmişinden hesaplanabilir">
-                                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span>
-                                    </div>
-                                    @error('f_return_rate') <span class="text-red-500 text-xs mt-1 block">{{ $message }}</span> @enderror
+                                <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 px-3 py-2">
+                                    <p class="text-xs font-medium text-slate-700">İade oranı otomatik hesaplanır</p>
+                                    <p class="mt-1 text-xs text-slate-500">Sipariş satırları ve İade Merkezi'ndeki onaylı/teslim edilmiş iade kayıtları kullanılır.</p>
                                 </div>
                                 <div>
                                     <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1">Teslimat Tipi</label>

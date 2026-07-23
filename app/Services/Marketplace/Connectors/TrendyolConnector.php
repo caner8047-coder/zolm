@@ -1353,6 +1353,7 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                 'title' => data_get($payload, 'title'),
                 'brand' => data_get($payload, 'brand'),
                 'category_name' => data_get($payload, 'categoryName'),
+                'images' => $this->normalizedImageUrls($payload),
                 'vat_rate' => $this->toDecimal($this->firstPresent(
                     data_get($payload, 'vatRate'),
                     data_get($payload, 'vatBaseAmount'),
@@ -1406,6 +1407,7 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                 'salePrice' => data_get($payload, 'price.salePrice') ?: data_get($payload, 'salePrice'),
                 'listPrice' => data_get($payload, 'price.listPrice') ?: data_get($payload, 'listPrice'),
                 'commissionRate' => $this->trendyolCatalogCommissionRate($payload),
+                'images' => data_get($payload, 'images'),
                 'quantity' => data_get($payload, 'stock.quantity') ?: data_get($payload, 'quantity'),
                 'approvedDate' => data_get($payload, 'approvedDate'),
                 'createDate' => data_get($payload, 'creationDate') ?: data_get($payload, 'createDate'),
@@ -1438,6 +1440,7 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                         'title' => data_get($payload, 'title'),
                         'brand' => data_get($payload, 'brand.name') ?: data_get($payload, 'brand'),
                         'category_name' => data_get($payload, 'category.name') ?: data_get($payload, 'categoryName'),
+                        'images' => $this->normalizedImageUrls($variant, $payload),
                         'vat_rate' => $this->toDecimal($this->firstPresent(
                             data_get($variant, 'vatRate'),
                             data_get($payload, 'vatRate')
@@ -1471,6 +1474,28 @@ class TrendyolConnector extends AbstractMarketplaceConnector implements PullsOrd
                     ], $this->catalogDeliveryTermData($variant, $payload)),
                 ];
             })
+            ->all();
+    }
+
+    /** @return array<int, string> */
+    protected function normalizedImageUrls(array ...$payloads): array
+    {
+        return collect($payloads)
+            ->flatMap(fn (array $payload) => Arr::wrap(data_get($payload, 'images') ?: data_get($payload, 'imageUrls') ?: []))
+            ->map(function (mixed $image): ?string {
+                if (is_string($image)) {
+                    return trim($image);
+                }
+
+                if (!is_array($image)) {
+                    return null;
+                }
+
+                return trim((string) (data_get($image, 'url') ?: data_get($image, 'imageUrl') ?: data_get($image, 'secureUrl') ?: ''));
+            })
+            ->filter()
+            ->unique()
+            ->values()
             ->all();
     }
 

@@ -57,6 +57,8 @@ class MpProduct extends Model
         'stock_quantity',
         'critical_stock_threshold',
         'return_rate',
+        'return_order_quantity',
+        'return_claim_quantity',
         'return_rate_source',
         'return_rate_calculated_at',
         'last_stock_alert_level',
@@ -113,6 +115,8 @@ class MpProduct extends Model
         'stock_quantity'  => 'integer',
         'critical_stock_threshold' => 'integer',
         'return_rate'     => 'decimal:2',
+        'return_order_quantity' => 'integer',
+        'return_claim_quantity' => 'integer',
         'return_rate_calculated_at' => 'datetime',
         'last_stock_alert_quantity' => 'integer',
         'last_stock_alerted_at' => 'datetime',
@@ -218,16 +222,86 @@ class MpProduct extends Model
     // ─── Accessor'lar ───────────────────────────────────────
 
     /**
+     * Ürünün kanallardaki yayında durumuna göre dinamik durum çözümü.
+     * Rules:
+     * - Aktif satışta olduğu bir mağaza yoksa => pasif (passive)
+     * - Mağazaların bir kısmında satışta ise (örn. 5/3) => kısmi satışta (partial)
+     * - Tüm bağlı mağazalarda satışta ise => satışta (active)
+     */
+    public function getComputedStatusAttribute(): string
+    {
+        if (isset($this->attributes['computed_status'])) {
+            return (string) $this->attributes['computed_status'];
+        }
+
+        if ($this->status === 'out_of_stock') {
+            return 'out_of_stock';
+        }
+        if ($this->status === 'pending') {
+            return 'pending';
+        }
+        if ($this->status === 'suspended') {
+            return 'suspended';
+        }
+
+        if (array_key_exists('active_listing_count_metric', $this->attributes) && array_key_exists('listing_count_metric', $this->attributes)) {
+            $listingCount = (int) ($this->attributes['listing_count_metric'] ?? 0);
+            $activeListingCount = (int) ($this->attributes['active_listing_count_metric'] ?? 0);
+        } elseif ($this->relationLoaded('channelListings')) {
+            $listingCount = $this->channelListings->count();
+            $activeListingCount = $this->channelListings->filter(function ($listing) {
+                return in_array(strtolower((string) $listing->listing_status), ['active', 'approved', 'live', 'on_sale', 'onsale', 'published', 'publish', 'enabled'], true);
+            })->count();
+        } else {
+            return $this->status === 'active' ? 'passive' : ($this->status ?: 'passive');
+        }
+
+        if ($listingCount > 0) {
+            if ($activeListingCount === 0) {
+                return 'passive';
+            }
+            if ($activeListingCount < $listingCount) {
+                return 'partial';
+            }
+            return 'active';
+        }
+
+        if ($this->status === 'active') {
+            return 'passive';
+        }
+
+        return $this->status ?: 'passive';
+    }
+
+    /**
      * Durum etiketi (Türkçe)
      */
     public function getStatusLabelAttribute(): string
     {
-        return match ($this->status) {
+        return match ($this->computed_status) {
             'active'       => 'Satışta',
+            'partial'      => 'Kısmi Satışta',
+            'passive'      => 'Pasif',
             'out_of_stock' => 'Tükendi',
             'pending'      => 'Onay Bekliyor',
             'suspended'    => 'Beklemede',
-            default        => $this->status ?? 'Bilinmiyor',
+            default        => ucfirst($this->computed_status),
+        };
+    }
+
+    /**
+     * Status tone for Zolm UI badges (success, warning, danger, default)
+     */
+    public function getStatusToneAttribute(): string
+    {
+        return match ($this->computed_status) {
+            'active'       => 'success',
+            'partial'      => 'warning',
+            'passive'      => 'default',
+            'out_of_stock' => 'danger',
+            'pending'      => 'warning',
+            'suspended'    => 'default',
+            default        => 'default',
         };
     }
 
@@ -250,8 +324,10 @@ class MpProduct extends Model
      */
     public function getStatusColorAttribute(): string
     {
-        return match ($this->status) {
+        return match ($this->computed_status) {
             'active'       => 'bg-emerald-100 text-emerald-800',
+            'partial'      => 'bg-amber-100 text-amber-800',
+            'passive'      => 'bg-slate-100 text-slate-700',
             'out_of_stock' => 'bg-red-100 text-red-800',
             'pending'      => 'bg-yellow-100 text-yellow-800',
             'suspended'    => 'bg-gray-100 text-gray-800',
@@ -350,11 +426,30 @@ class MpProduct extends Model
     }
 
     /**
-     * Durum filtresi
+     * Durum filtresi (Satışta, Kısmi Satışta, Pasif, Tükendi vb.)
      */
     public function scopeByStatus(Builder $query, ?string $status): Builder
     {
         if (empty($status) || $status === 'all') return $query;
+
+        if ($status === 'active') {
+            return $query->where('mp_products.status', '!=', 'out_of_stock')
+                ->whereRaw('COALESCE(listing_agg.active_listing_count_metric, 0) > 0')
+                ->whereRaw('COALESCE(listing_agg.active_listing_count_metric, 0) = COALESCE(listing_agg.listing_count_metric, 0)');
+        }
+
+        if ($status === 'partial') {
+            return $query->whereRaw('COALESCE(listing_agg.active_listing_count_metric, 0) > 0 AND COALESCE(listing_agg.active_listing_count_metric, 0) < COALESCE(listing_agg.listing_count_metric, 0)');
+        }
+
+        if ($status === 'passive') {
+            return $query->where(function ($q) {
+                $q->whereRaw('COALESCE(listing_agg.active_listing_count_metric, 0) = 0')
+                  ->orWhere('mp_products.status', 'passive')
+                  ->orWhere('mp_products.status', 'suspended');
+            });
+        }
+
         return $query->where('mp_products.status', $status);
     }
 

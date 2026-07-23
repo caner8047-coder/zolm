@@ -124,6 +124,7 @@ class MarketplaceCatalogSyncService
             );
 
             $listing->refresh()->loadMissing(['store', 'product', 'channelProduct']);
+            $this->fillMissingMasterProductImages($listing);
             $logger->logListingSnapshotChanges(
                 $listing,
                 $beforeListingSnapshot,
@@ -151,6 +152,53 @@ class MarketplaceCatalogSyncService
         }
 
         return compact('created', 'updated', 'skipped');
+    }
+
+    /**
+     * Pazaryerinden oluşturulan ana üründe kapak görseli boş kalmasın.
+     * Elle yüklenmiş bir görseli pazaryeri verisiyle ezmeyiz.
+     */
+    protected function fillMissingMasterProductImages(ChannelListing $listing): void
+    {
+        $masterProduct = $listing->product;
+        $channelProduct = $listing->channelProduct;
+
+        if (! $masterProduct || ! $channelProduct || filled($masterProduct->main_image)) {
+            return;
+        }
+
+        $imageUrls = $this->normalizedImageUrls($channelProduct->images);
+
+        if ($imageUrls === []) {
+            return;
+        }
+
+        $masterProduct->forceFill([
+            'image_url' => $imageUrls[0],
+            'image_urls' => $imageUrls,
+            'last_synced_at' => now(),
+        ])->save();
+    }
+
+    /** @return array<int, string> */
+    protected function normalizedImageUrls(mixed $images): array
+    {
+        return collect(is_array($images) ? $images : [])
+            ->map(function (mixed $image): ?string {
+                if (is_string($image)) {
+                    return trim($image);
+                }
+
+                if (! is_array($image)) {
+                    return null;
+                }
+
+                return trim((string) ($image['url'] ?? $image['imageUrl'] ?? $image['secureUrl'] ?? $image['src'] ?? ''));
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     protected function resolveProduct(
