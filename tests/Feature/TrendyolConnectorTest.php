@@ -371,6 +371,46 @@ class TrendyolConnectorTest extends TestCase
         ], data_get($result, 'items.0.product.images'));
     }
 
+    public function test_it_normalizes_approved_product_v2_delivery_options(): void
+    {
+        Http::fake([
+            'https://apigw.trendyol.com/integration/product/sellers/123456/products/approved*' => Http::response([
+                'content' => [[
+                    'contentId' => 'CONTENT-DELIVERY-1',
+                    'title' => 'Terminli Ürün',
+                    'variants' => [[
+                        'variantId' => 'VARIANT-DELIVERY-1',
+                        'barcode' => '8690000002222',
+                        'stockCode' => 'TY-DELIVERY-1',
+                        'status' => 'onSale',
+                        'deliveryOptions' => [
+                            'deliveryDuration' => 2,
+                            'isRushDelivery' => true,
+                            'fastDeliveryOptions' => [[
+                                'deliveryOptionType' => 'SAME_DAY_SHIPPING',
+                                'deliveryDailyCutOffHour' => '15:00',
+                            ]],
+                        ],
+                        'stock' => ['quantity' => 4],
+                    ]],
+                ]],
+                'totalPages' => 1,
+                'totalElements' => 1,
+                'page' => 0,
+            ], 200),
+        ]);
+
+        $endDate = CarbonImmutable::now('Europe/Istanbul')->subDay();
+
+        $result = app(TrendyolConnector::class)->pullProducts($this->makeStore(), [
+            'start_date' => $endDate->subDays(2)->toIso8601String(),
+            'end_date' => $endDate->toIso8601String(),
+        ]);
+
+        $this->assertSame(2, data_get($result, 'items.0.listing.shipping_days'));
+        $this->assertSame('Aynı gün', data_get($result, 'items.0.listing.fast_delivery_type'));
+    }
+
     public function test_it_uses_trendyol_cargo_barcode_for_common_label_requests(): void
     {
         Http::fake([
