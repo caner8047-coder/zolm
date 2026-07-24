@@ -121,6 +121,42 @@ class MarketplaceDispatchSyncCommandsTest extends TestCase
         Queue::assertPushed(SyncMarketplaceDataJob::class, 1);
     }
 
+    public function test_due_dispatch_does_not_duplicate_an_old_queued_sync_run(): void
+    {
+        Queue::fake();
+
+        [$readyStore] = $this->makeStores();
+
+        IntegrationSyncRun::query()->create([
+            'store_id' => $readyStore->id,
+            'sync_type' => 'questions',
+            'trigger_type' => 'schedule',
+            'status' => 'queued',
+            'notes_json' => ['options' => []],
+            'created_at' => now()->subHours(6),
+            'updated_at' => now()->subHours(6),
+        ]);
+
+        $baselineCount = IntegrationSyncRun::query()
+            ->where('store_id', $readyStore->id)
+            ->where('sync_type', 'questions')
+            ->count();
+
+        $this->artisan('marketplace:dispatch-due-syncs', [
+            '--type' => 'questions',
+            '--store' => $readyStore->id,
+        ])->assertExitCode(0);
+
+        $this->assertSame(
+            $baselineCount,
+            IntegrationSyncRun::query()
+                ->where('store_id', $readyStore->id)
+                ->where('sync_type', 'questions')
+                ->count()
+        );
+        Queue::assertNothingPushed();
+    }
+
     public function test_due_dispatch_uses_global_15_minute_order_interval_for_existing_profiles(): void
     {
         Queue::fake();

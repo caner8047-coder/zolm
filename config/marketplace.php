@@ -51,6 +51,7 @@ return [
 
     'queues' => [
         'sync' => env('MARKETPLACE_SYNC_QUEUE', env('DB_QUEUE', 'default')),
+        'maintenance' => env('MARKETPLACE_MAINTENANCE_QUEUE', env('DB_QUEUE', 'default')),
         'listing_push' => env('MARKETPLACE_LISTING_PUSH_QUEUE', env('DB_QUEUE', 'default')),
         'order_actions' => env('MARKETPLACE_ORDER_ACTION_QUEUE', env('DB_QUEUE', 'default')),
     ],

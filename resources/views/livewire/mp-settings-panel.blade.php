@@ -114,7 +114,7 @@
         </button>
         @if($settingsActiveSection === 'profitability')
         <div class="p-6 border-t border-gray-100 space-y-5">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
                 <div class="space-y-1.5">
                     <label class="block text-sm font-semibold text-gray-700">Hedef Kâr Marjı</label>
                     <div class="relative">

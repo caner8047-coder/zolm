@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\QueueBusy;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Log;
 use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
@@ -51,6 +53,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureViteHotReloadFallback();
         $this->registerWhatsAppEvents();
+        $this->registerQueueHealthEvents();
         RateLimiter::for('customer-care-enterprise', function (Request $request) {
             $tokenFingerprint = hash('sha256', (string) $request->bearerToken());
             return Limit::perMinute(120)->by($tokenFingerprint . '|' . $request->ip());
@@ -135,5 +138,17 @@ class AppServiceProvider extends ServiceProvider
             \App\Events\ReturnStatusChanged::class,
             \App\Listeners\WhatsApp\ProcessReturnNotificationListener::class,
         );
+    }
+
+    protected function registerQueueHealthEvents(): void
+    {
+        Event::listen(QueueBusy::class, function (QueueBusy $event): void {
+            Log::critical('[QueueHealth] Kuyruk eşiği aşıldı.', [
+                'connection' => $event->connection,
+                'queue' => $event->queue,
+                'size' => $event->size,
+                'threshold' => (int) config('queue.monitor.max_jobs', 100),
+            ]);
+        });
     }
 }

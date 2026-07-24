@@ -5,31 +5,40 @@ namespace App\Jobs\WhatsApp;
 use App\Models\WaOutbox;
 use App\Services\WhatsApp\OutboxService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
-class RetryFailedMessageJob implements ShouldQueue
+class RetryFailedMessageJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
+    public int $uniqueFor = 86400;
 
     public function __construct()
     {
         $this->queue = config('whatsapp.queue.outbox', 'default');
     }
 
+    public function uniqueId(): string
+    {
+        return 'whatsapp-retry-failed';
+    }
+
     public function handle(OutboxService $outboxService): void
     {
         $failedOrStalePending = WaOutbox::query()
-            ->where('status', WaOutbox::STATUS_FAILED)
-            ->orWhere(function ($q) {
-                $q->where('status', WaOutbox::STATUS_PENDING)
-                    ->where('updated_at', '<', now()->subMinutes(5));
+            ->where(function ($query) {
+                $query->where('status', WaOutbox::STATUS_FAILED)
+                    ->orWhere(function ($staleQuery) {
+                        $staleQuery->where('status', WaOutbox::STATUS_PROCESSING)
+                            ->where('updated_at', '<', now()->subMinutes(5));
+                    });
             })
-            ->where('retry_count', '<', \DB::raw('max_retries'))
+            ->whereColumn('retry_count', '<', 'max_retries')
             ->where(function ($q) {
                 $q->whereNull('next_retry_at')
                     ->orWhere('next_retry_at', '<=', now());

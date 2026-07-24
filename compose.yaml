@@ -46,6 +46,50 @@ services:
                 condition: service_healthy
             redis:
                 condition: service_healthy
+    queue-marketplace:
+        build:
+            context: './vendor/laravel/sail/runtimes/8.5'
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        image: 'sail-8.5/app'
+        command: php artisan queue:work database --queue=${MARKETPLACE_SYNC_QUEUE:-marketplace-sync},${MARKETPLACE_MAINTENANCE_QUEUE:-marketplace-maintenance} --sleep=2 --tries=3 --timeout=1800 --max-time=3600 --memory=512 --no-interaction
+        restart: unless-stopped
+        stop_grace_period: 31m
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            mysql:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+    queue-default:
+        build:
+            context: './vendor/laravel/sail/runtimes/8.5'
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        image: 'sail-8.5/app'
+        command: php artisan queue:work database --queue=${WHATSAPP_OUTBOX_QUEUE:-whatsapp},${DB_QUEUE:-default} --sleep=2 --tries=3 --timeout=1800 --max-time=3600 --memory=512 --no-interaction
+        restart: unless-stopped
+        stop_grace_period: 31m
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            mysql:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
     mysql:
         image: 'mysql:8.4'
         ports:

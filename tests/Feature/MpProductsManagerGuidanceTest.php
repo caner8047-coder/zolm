@@ -38,7 +38,7 @@ class MpProductsManagerGuidanceTest extends TestCase
         DB::setDefaultConnection('mysql');
     }
 
-    public function test_it_shows_compact_guidance_band_in_products_view(): void
+    public function test_it_does_not_render_guidance_band_in_products_view(): void
     {
         $user = User::factory()->create();
         ['store' => $store] = $this->createStoreGraph($user, 'PROD-GUIDE');
@@ -63,12 +63,11 @@ class MpProductsManagerGuidanceTest extends TestCase
         $this->actingAs($user);
 
         Livewire::test(MpProductsManager::class)
-            ->assertSee('Rehberi aç')
-            ->assertSee('Bu uyarılar ne anlama geliyor?')
-            ->assertSee('Neden:')
-            ->assertSee('Çözüm:')
-            ->assertSee('Listing tamlık alanları eksik')
-            ->assertSee('Ürünler');
+            ->assertDontSee('Rehberi aç')
+            ->assertDontSee('Bu uyarılar ne anlama geliyor?')
+            ->assertDontSeeHtml('data-testid="mp-guidance-compact-panel"')
+            ->assertDontSeeHtml('data-testid="mp-guidance-diagnostic-row"')
+            ->assertDontSee('Listing tamlık alanları eksik');
     }
 
     public function test_it_can_focus_products_list_from_top_guidance(): void
@@ -178,7 +177,6 @@ class MpProductsManagerGuidanceTest extends TestCase
         $this->actingAs($user);
 
         Livewire::test(MpProductsManager::class)
-            ->assertSee('Legacy finans satirlari V2 ledger\'a tasinmamis')
             ->call('syncTopGuidance')
             ->assertRedirect(route('mp.orders', ['storeFilter' => $store->id]));
     }

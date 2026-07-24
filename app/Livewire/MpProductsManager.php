@@ -1330,7 +1330,6 @@ class MpProductsManager extends Component
         ]);
     }
 
-    public function exportDiagnosticsGuidanceCsv()
     public function exportProductChangeHistory(int $productId)
     {
         $product = MpProduct::query()
@@ -1351,6 +1350,7 @@ class MpProductsManager extends Component
         return response()->download($tempPath, $fileName)->deleteFileAfterSend(true);
     }
 
+    public function exportDiagnosticsGuidanceCsv()
     {
         $filename = 'urunler_karar_destegi_' . now()->format('Ymd_His') . '.csv';
         $guidance = $this->diagnosticsGuidance();
@@ -5183,9 +5183,7 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
 
     public function render()
     {
-        return view('livewire.mp-products-manager', [
-            'diagnosticsGuidance' => $this->diagnosticsGuidance,
-        ])->layout('layouts.app', [
+        return view('livewire.mp-products-manager')->layout('layouts.app', [
             'title' => 'Pazaryeri Ürünlerim',
         ]);
     }

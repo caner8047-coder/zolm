@@ -160,9 +160,6 @@
         || filled($filterReturnRateMin)
         || filled($filterReturnRateMax);
     $showResetFilters = count($activeFilters) > 0 || $sortField !== 'product_name' || $sortDirection !== 'asc';
-    $guidanceItems = collect($diagnosticsGuidance['items'] ?? []);
-    $primaryGuidance = $guidanceItems->first();
-    $secondaryGuidance = $guidanceItems->slice(1)->take(4)->values();
     $latestCatalogSyncAt = !empty($sidebarSummary['latest_catalog_sync'])
         ? \Illuminate\Support\Carbon::parse($sidebarSummary['latest_catalog_sync'])
         : null;
@@ -727,17 +724,6 @@
                 @endif
             </div>
         </section>
-
-        @include('livewire.partials.mp-guidance-banner', [
-            'diagnosticsGuidance' => $diagnosticsGuidance,
-            'riskGuidance' => $this->riskGuidance,
-            'guidanceItems' => $diagnosticsGuidance['items'] ?? [],
-            'primaryGuidance' => $primaryGuidance,
-            'secondaryGuidance' => $secondaryGuidance,
-            'accordionStyle' => true,
-            'defaultOpen' => false,
-            'headerContextLabel' => 'Ürünler',
-        ])
     </div>
 
     <div class="pb-1">
@@ -2316,7 +2302,7 @@
                                          x-data="{
                                             open: false,
                                             hideTimer: null,
-                                            style: 'left: 0px; top: 0px; width: 340px;',
+                                            style: 'left: 8px; top: 8px; width: min(296px, calc(100vw - 16px));',
                                             show() {
                                                 window.clearTimeout(this.hideTimer);
                                                 this.open = true;
@@ -2335,9 +2321,9 @@
                                                 }
 
                                                 const rect = trigger.getBoundingClientRect();
-                                                const width = 340;
-                                                const panelHeight = panel.offsetHeight || 260;
                                                 const viewportPadding = 8;
+                                                const width = Math.min(296, window.innerWidth - (viewportPadding * 2));
+                                                const panelHeight = panel.offsetHeight || 220;
                                                 const left = Math.min(
                                                     Math.max(viewportPadding, rect.right - width),
                                                     window.innerWidth - width - viewportPadding
@@ -2371,16 +2357,16 @@
                                                  :style="style"
                                                  @mouseenter="window.clearTimeout(hideTimer)"
                                                  @mouseleave="hideSoon()"
-                                                 class="fixed z-[9999] rounded-[8px] border border-slate-200 bg-white p-3 text-left shadow-xl">
-                                                <div class="flex items-start justify-between gap-3">
-                                                    <div>
-                                                        <p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Komisyon ve Hakediş</p>
-                                                        <p class="mt-1 text-xs font-semibold text-slate-900">{{ $product->product_name ?: 'İsimsiz ürün' }}</p>
+                                                 class="fixed z-[9999] rounded-[8px] border border-slate-200 bg-white p-2.5 text-left shadow-lg">
+                                                <div class="flex items-start justify-between gap-2">
+                                                    <div class="min-w-0">
+                                                        <p class="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Komisyon ve Hakediş</p>
+                                                        <p class="mt-0.5 truncate text-[11px] font-semibold text-slate-900" title="{{ $product->product_name ?: 'İsimsiz ürün' }}">{{ $product->product_name ?: 'İsimsiz ürün' }}</p>
                                                     </div>
-                                                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{{ $selectedScenarioLabel }}</span>
+                                                    <span class="shrink-0 rounded-[6px] bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-600">{{ $selectedScenarioLabel }}</span>
                                                 </div>
 
-                                                <div class="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+                                                <div class="mt-2 max-h-72 space-y-1.5 overflow-y-auto">
                                                     @foreach($commissionScenarios as $scenario)
                                                         @php
                                                             $scenarioSelected = ($scenario['key'] ?? null) === ($selectedProfitScenario['selection_key'] ?? $selectedProfitScenario['key'] ?? null)
@@ -2389,27 +2375,27 @@
                                                             $scenarioProfit = (float) ($scenario['profit'] ?? 0);
                                                             $scenarioMargin = $scenario['profit_margin'] ?? null;
                                                         @endphp
-                                                        <div class="rounded-[8px] border p-2 {{ $scenarioSelected ? 'border-slate-900 bg-slate-50' : 'border-slate-200 bg-white' }}">
-                                                            <div class="flex items-start justify-between gap-2">
+                                                        <div class="rounded-[6px] border px-2 py-1.5 {{ $scenarioSelected ? 'border-slate-300 bg-slate-50/70' : 'border-slate-200 bg-white' }}">
+                                                            <div class="flex items-start justify-between gap-1.5">
                                                                 <div class="min-w-0">
-                                                                    <p class="truncate text-xs font-semibold text-slate-900">{{ $scenario['store_name'] ?? '-' }}</p>
-                                                                    <p class="mt-0.5 text-[10px] text-slate-500">{{ $scenario['marketplace_label'] ?? '-' }} · {{ $scenario['commission_source'] ?? '-' }}</p>
+                                                                    <p class="truncate text-[11px] font-semibold leading-4 text-slate-900">{{ $scenario['store_name'] ?? '-' }}</p>
+                                                                    <p class="truncate text-[9px] leading-3 text-slate-500">{{ $scenario['marketplace_label'] ?? '-' }} · {{ $scenario['commission_source'] ?? '-' }}</p>
                                                                 </div>
-                                                                <span class="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700">%{{ number_format((float) ($scenario['commission_rate'] ?? 0), 1, ',', '.') }}</span>
+                                                                <span class="shrink-0 rounded-[6px] bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-700">%{{ number_format((float) ($scenario['commission_rate'] ?? 0), 1, ',', '.') }}</span>
                                                             </div>
-                                                            <div class="mt-2 grid grid-cols-3 gap-2 text-[10px]">
-                                                                <div>
+                                                            <div class="mt-1.5 grid grid-cols-3 gap-1.5 text-[9px] leading-3">
+                                                                <div class="min-w-0">
                                                                     <p class="text-slate-400">Kesinti</p>
-                                                                    <p class="font-semibold text-slate-700">{{ $formatMoney($scenario['commission_amount'] ?? 0) }}</p>
+                                                                    <p class="truncate text-[10px] font-semibold text-slate-700">{{ $formatMoney($scenario['commission_amount'] ?? 0) }}</p>
                                                                 </div>
-                                                                <div>
+                                                                <div class="min-w-0">
                                                                     <p class="text-slate-400">Hakediş</p>
-                                                                    <p class="font-semibold text-slate-700">{{ $formatMoney($scenario['receivable'] ?? 0) }}</p>
+                                                                    <p class="truncate text-[10px] font-semibold text-slate-700">{{ $formatMoney($scenario['receivable'] ?? 0) }}</p>
                                                                 </div>
-                                                                <div>
+                                                                <div class="min-w-0">
                                                                     <p class="text-slate-400">Kâr</p>
-                                                                    <p class="font-semibold {{ $scenarioProfit >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $formatMoney($scenarioProfit) }}</p>
-                                                                    <p class="text-[10px] text-slate-500">{{ $formatMultiplier($scenarioMargin) }}</p>
+                                                                    <p class="truncate text-[10px] font-semibold {{ $scenarioProfit >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $formatMoney($scenarioProfit) }}</p>
+                                                                    <p class="text-[9px] text-slate-500">{{ $formatMultiplier($scenarioMargin) }}</p>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -2688,7 +2674,7 @@
                                          x-data="{
                                             open: false,
                                             hideTimer: null,
-                                            style: 'left: 0px; top: 0px; width: 360px;',
+                                            style: 'left: 8px; top: 0px; width: min(360px, calc(100vw - 16px));',
                                             show() {
                                                 window.clearTimeout(this.hideTimer);
                                                 this.open = true;
@@ -2706,10 +2692,10 @@
                                                     return;
                                                 }
 
-                                                const rect = trigger.getBoundingClientRect();
-                                                const width = 360;
-                                                const panelHeight = panel.offsetHeight || 280;
                                                 const viewportPadding = 8;
+                                                const rect = trigger.getBoundingClientRect();
+                                                const width = Math.min(360, window.innerWidth - (viewportPadding * 2));
+                                                const panelHeight = panel.offsetHeight || 280;
                                                 const left = Math.min(
                                                     Math.max(viewportPadding, rect.right - width),
                                                     window.innerWidth - width - viewportPadding

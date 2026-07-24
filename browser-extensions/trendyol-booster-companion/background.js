@@ -35,11 +35,23 @@ const MARKETPLACE_TARGETS = [
 
 chrome.runtime.onInstalled.addListener(() => {
   wakeZolmTabs();
+  migrateProfitCalculationSettings();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   wakeZolmTabs();
+  migrateProfitCalculationSettings();
 });
+
+async function migrateProfitCalculationSettings() {
+  const stored = await chrome.storage.sync.get({ profitCalculationVersion: 1 });
+  if (Number(stored.profitCalculationVersion || 1) >= 2) return;
+
+  await chrome.storage.sync.set({
+    profitCalculationVersion: 2,
+    withholdingTaxEnabled: true,
+  });
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const senderUrl = sender.tab ? sender.tab.url : (sender.url || 'unknown');

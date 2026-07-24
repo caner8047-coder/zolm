@@ -1146,6 +1146,50 @@ class MpProductsManagerActionsTest extends TestCase
         $this->assertEqualsWithDelta(3.50, (float) $otherProduct->fresh()->packaging_cost, 0.001);
     }
 
+    public function test_bulk_action_workspace_groups_actions_and_exposes_cogs_update(): void
+    {
+        $user = User::factory()->create();
+        $product = MpProduct::query()->create($this->productPayload($user->id));
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->set('selectedProducts', [(string) $product->id])
+            ->assertSee('Toplu işlemler')
+            ->assertSee('Fiyat & kâr')
+            ->assertSee('Maliyet & lojistik')
+            ->assertSee('Kritik stok eşiği')
+            ->assertSeeHtml('id="mobile-bulk-actions"')
+            ->assertSeeHtml('id="desktop-bulk-actions"')
+            ->assertSeeHtml('wire:click="bulkSetCogs"');
+    }
+
+    public function test_bulk_action_sets_cogs_for_selected_products(): void
+    {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+        $product = MpProduct::query()->create($this->productPayload($user->id));
+        $otherProduct = MpProduct::query()->create(array_merge($this->productPayload($otherUser->id), [
+            'barcode' => '8691234567899',
+            'stock_code' => 'TEST-STK-009',
+            'cogs' => 44.50,
+        ]));
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->set('selectedProducts', [(string) $product->id, (string) $otherProduct->id])
+            ->set('bulkCogs', 125.678)
+            ->call('bulkSetCogs')
+            ->assertSet('bulkCogs', null)
+            ->assertSet('selectedProducts', [])
+            ->assertSet('selectAll', false);
+
+        $this->assertEqualsWithDelta(125.68, (float) $product->fresh()->cogs, 0.001);
+        $this->assertSame('manual', $product->fresh()->cost_source);
+        $this->assertEqualsWithDelta(44.50, (float) $otherProduct->fresh()->cogs, 0.001);
+    }
+
     public function test_bulk_action_sets_logistics_info_for_selected_products(): void
     {
         $user = User::factory()->create();
@@ -1193,50 +1237,6 @@ class MpProductsManagerActionsTest extends TestCase
 
     public function test_bulk_action_sets_and_clears_critical_stock_threshold(): void
     {
-    public function test_bulk_action_workspace_groups_actions_and_exposes_cogs_update(): void
-    {
-        $user = User::factory()->create();
-        $product = MpProduct::query()->create($this->productPayload($user->id));
-
-        $this->actingAs($user);
-
-        Livewire::test(MpProductsManager::class)
-            ->set('selectedProducts', [(string) $product->id])
-            ->assertSee('Toplu işlemler')
-            ->assertSee('Fiyat & kâr')
-            ->assertSee('Maliyet & lojistik')
-            ->assertSee('Kritik stok eşiği')
-            ->assertSeeHtml('id="mobile-bulk-actions"')
-            ->assertSeeHtml('id="desktop-bulk-actions"')
-            ->assertSeeHtml('wire:click="bulkSetCogs"');
-    }
-
-    public function test_bulk_action_sets_cogs_for_selected_products(): void
-    {
-        $user = User::factory()->create();
-        $otherUser = User::factory()->create();
-        $product = MpProduct::query()->create($this->productPayload($user->id));
-        $otherProduct = MpProduct::query()->create(array_merge($this->productPayload($otherUser->id), [
-            'barcode' => '8691234567899',
-            'stock_code' => 'TEST-STK-009',
-            'cogs' => 44.50,
-        ]));
-
-        $this->actingAs($user);
-
-        Livewire::test(MpProductsManager::class)
-            ->set('selectedProducts', [(string) $product->id, (string) $otherProduct->id])
-            ->set('bulkCogs', 125.678)
-            ->call('bulkSetCogs')
-            ->assertSet('bulkCogs', null)
-            ->assertSet('selectedProducts', [])
-            ->assertSet('selectAll', false);
-
-        $this->assertEqualsWithDelta(125.68, (float) $product->fresh()->cogs, 0.001);
-        $this->assertSame('manual', $product->fresh()->cost_source);
-        $this->assertEqualsWithDelta(44.50, (float) $otherProduct->fresh()->cogs, 0.001);
-    }
-
         $user = User::factory()->create();
         $firstProduct = MpProduct::query()->create($this->productPayload($user->id));
         $secondProduct = MpProduct::query()->create(array_merge($this->productPayload($user->id), [

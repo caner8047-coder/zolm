@@ -96,7 +96,7 @@ class DispatchDueMarketplaceSyncsCommand extends Command
                     continue;
                 }
 
-                if ($this->hasFreshPendingRun($store->id, $syncType)) {
+                if ($this->hasPendingRun($store->id, $syncType)) {
                     continue;
                 }
 
@@ -177,13 +177,17 @@ class DispatchDueMarketplaceSyncsCommand extends Command
             ->lessThanOrEqualTo(now());
     }
 
-    protected function hasFreshPendingRun(int $storeId, string $syncType): bool
+    /**
+     * Worker geçici olarak devre dışı kaldığında eski bir queued run'ın
+     * arkasına her dakika yeni run eklenmesini engeller. Queued kayıt ancak
+     * işlendiğinde veya açıkça uzlaştırıldığında terminal duruma geçmelidir.
+     */
+    protected function hasPendingRun(int $storeId, string $syncType): bool
     {
         return IntegrationSyncRun::query()
             ->where('store_id', $storeId)
             ->where('sync_type', $syncType)
             ->whereIn('status', ['queued', 'processing'])
-            ->where('created_at', '>=', now()->subHours(2))
             ->exists();
     }
 

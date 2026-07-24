@@ -6,17 +6,29 @@ use App\Models\IntegrationPushRun;
 use App\Models\MarketplaceStore;
 use App\Services\Marketplace\MarketplaceConnectorManager;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
 
-class TrackMarketplaceBatchRequestsJob implements ShouldQueue
+class TrackMarketplaceBatchRequestsJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $timeout = 600;
+    public int $uniqueFor = 86400;
+
+    public function __construct()
+    {
+        $this->onQueue((string) config('marketplace.queues.maintenance', 'default'));
+    }
+
+    public function uniqueId(): string
+    {
+        return 'marketplace-track-batch-requests';
+    }
 
     public function handle(MarketplaceConnectorManager $connectorManager): void
     {

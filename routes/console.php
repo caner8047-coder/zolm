@@ -87,6 +87,19 @@ Schedule::call(fn () => $runInlineCommand('marketplace:dispatch-due-syncs'))
     ->everyMinute()
     ->withoutOverlapping(10);
 
+Schedule::call(fn () => $runInlineCommand('queue:monitor', [
+    'queues' => implode(',', [
+        'database:default',
+        'database:marketplace-sync',
+        'database:marketplace-maintenance',
+        'database:whatsapp',
+    ]),
+    '--max' => (int) config('queue.monitor.max_jobs', 100),
+]))
+    ->name('queue-monitor-zolm')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(4);
+
 // Gece onarım sync: 03:00'te çalışır, nightly_repair_sync_enabled olan mağazalar için
 // eksik finans, snapshot ve eşleşme sorunlarını onarır.
 Schedule::call(fn () => $runInlineCommand('marketplace:nightly-repair'))

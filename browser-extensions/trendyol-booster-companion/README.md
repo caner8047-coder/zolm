@@ -45,7 +45,7 @@ Seller Panel'de:
 2. Sağ üstten `Geliştirici modu`nu aç.
 3. `Paketlenmemiş öğe yükle` seçeneğiyle bu klasörü seç:
    `browser-extensions/trendyol-booster-companion`
-4. Chrome kartında sürümün `1.0.0` göründüğünü kontrol et. Eski sürüm görünüyorsa doğru klasörü seçip `Yeniden yükle` düğmesine bas.
+4. Chrome kartında sürümün `1.1.0` göründüğünü kontrol et. Eski sürüm görünüyorsa doğru klasörü seçip `Yeniden yükle` düğmesine bas.
 5. ZOLM panelinde oturum aç.
 6. Canlı kullanımda varsayılan `https://m.zolm.com.tr` adresini kullanın; yerel geliştirmede popup'a `http://localhost` girin.
 7. ZOLM paneli açıkken popup içinden `Oturumu test et` düğmesine bas; panel oturumu doğrulanınca modüller eklenti köprüsünü kullanır.
@@ -93,6 +93,8 @@ Chrome'da test ederken `build/trendyol-booster-companion` klasörünü `Paketlen
 - Kampanya karlılığı yalnızca eşik, indirim ve Trendyol katkı kuralı güvenle okunabildiğinde gösterilir; kural okunamazsa tahmin üretilmez.
 - Sipariş kartında `Anlık Tahmin` görüldüğünde gerçek pazaryeri kargo ve finans kesintileri henüz senkronize değildir; senkron sonrası kart ZOLM snapshot sonucuna geçer.
 - Popup'taki `Platform hizmet bedeli` KDV dahil ve sipariş başınadır. Varsayılan 9,33 TL'dir; Trendyol tarifeniz değiştiğinde buradan güncelleyebilirsiniz.
+- Kârlılık sözleşmesi sürüm 2'de e-ticaret stopajı varsayılan olarak açıktır. Stopaj KDV hariç satış bedelinden hesaplanır; komisyon, kargo ve hizmet bedeli matrahı azaltmaz.
+- Eklentide gösterilen ana sonuç stopaj sonrası nakit net kârdır. Stopaj mahsup edilebilir vergi alacağı olduğundan sunucu yanıtında muhasebe kârı ayrıca korunur.
 
 ## Notlar
 
