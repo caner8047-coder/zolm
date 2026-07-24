@@ -2191,6 +2191,96 @@ class MarketplaceOrders extends Component
         ];
     }
 
+    /**
+     * Bugünkü siparişlerde satılan ürün adedini saatlik ritme dönüştürür.
+     *
+     * @return array{
+     *     date_label: string,
+     *     total_products: int,
+     *     total_orders: int,
+     *     points: array<int, array{hour: int, label: string, products: int, orders: int}>
+     * }
+     */
+    protected function getTodaySalesTrend(): array
+    {
+        $orderDateSql = $this->channelOrderDateMetricSql();
+        $dayStart = now()->startOfDay();
+        $dayEnd = now()->endOfDay();
+
+        $baseQuery = ChannelOrder::query()
+            ->select([
+                'channel_orders.id',
+                DB::raw("{$orderDateSql} as source_ordered_at_metric"),
+                DB::raw('COALESCE(SUM(channel_order_items.quantity), 0) as total_quantity'),
+            ])
+            ->join('marketplace_stores', 'marketplace_stores.id', '=', 'channel_orders.store_id')
+            ->leftJoin('channel_order_items', 'channel_order_items.channel_order_id', '=', 'channel_orders.id')
+            ->where('marketplace_stores.user_id', auth()->id())
+            ->whereBetween(DB::raw($orderDateSql), [
+                $dayStart->format('Y-m-d H:i:s'),
+                $dayEnd->format('Y-m-d H:i:s'),
+            ])
+            ->whereNotIn(DB::raw('LOWER(channel_orders.order_status)'), [
+                'cancelled',
+                'canceled',
+                'iptal',
+                'iptal edildi',
+                'returned',
+                'return',
+                'iade',
+                'iade edildi',
+                'refunded',
+                'rejected',
+            ])
+            ->groupBy('channel_orders.id')
+            ->groupByRaw($orderDateSql);
+
+        if ($this->marketplaceFilter !== '') {
+            $baseQuery->where('marketplace_stores.marketplace', $this->marketplaceFilter);
+        }
+
+        if ($this->storeFilter !== '') {
+            $baseQuery->where('channel_orders.store_id', $this->storeFilter);
+        }
+
+        $driver = DB::connection()->getDriverName();
+        $hourSql = $driver === 'sqlite'
+            ? "CAST(strftime('%H', source_ordered_at_metric) AS INTEGER)"
+            : 'HOUR(source_ordered_at_metric)';
+
+        $hourlyRows = DB::query()
+            ->fromSub($baseQuery, 'today_orders')
+            ->selectRaw("
+                {$hourSql} as sale_hour,
+                COUNT(DISTINCT id) as orders_count,
+                COALESCE(SUM(total_quantity), 0) as products_count
+            ")
+            ->groupByRaw($hourSql)
+            ->orderBy('sale_hour')
+            ->get()
+            ->keyBy(fn ($row) => (int) $row->sale_hour);
+
+        $points = collect(range(0, 23))
+            ->map(function (int $hour) use ($hourlyRows): array {
+                $row = $hourlyRows->get($hour);
+
+                return [
+                    'hour' => $hour,
+                    'label' => sprintf('%02d:00–%02d:59', $hour, $hour),
+                    'products' => (int) ($row->products_count ?? 0),
+                    'orders' => (int) ($row->orders_count ?? 0),
+                ];
+            })
+            ->all();
+
+        return [
+            'date_label' => $dayStart->copy()->locale('tr')->translatedFormat('d F Y'),
+            'total_products' => array_sum(array_column($points, 'products')),
+            'total_orders' => array_sum(array_column($points, 'orders')),
+            'points' => $points,
+        ];
+    }
+
     protected function getSidebarSummary(): array
     {
         $storesQuery = MarketplaceStore::query()->where('user_id', auth()->id());
@@ -3889,6 +3979,80 @@ class MarketplaceOrders extends Component
         $this->actionMessageTone = $feedback['tone'];
     }
 
+    public function syncOrders(): void
+    {
+        $storesQuery = MarketplaceStore::query()
+            ->with('connection')
+            ->where('user_id', auth()->id())
+            ->where('is_active', true);
+
+        if ($this->storeFilter !== '') {
+            $storesQuery->whereKey((int) $this->storeFilter);
+        } elseif ($this->marketplaceFilter !== '') {
+            $storesQuery->where('marketplace', $this->marketplaceFilter);
+        }
+
+        $stores = $storesQuery->get()
+            ->filter(fn (MarketplaceStore $store) => $store->connection
+                && $store->connection->status !== 'draft');
+
+        if ($stores->isEmpty()) {
+            $this->actionMessage = 'Sipariş senkronu için aktif ve bağlantısı tamamlanmış bir mağaza bulunamadı.';
+            $this->actionMessageTone = 'warning';
+
+            return;
+        }
+
+        $dispatchService = app(MarketplaceManualSyncDispatchService::class);
+        $results = collect();
+        $errors = collect();
+
+        foreach ($stores as $store) {
+            try {
+                $results->push([
+                    'store' => $store,
+                    'result' => $dispatchService->dispatch($store, 'orders', [
+                        'options' => [],
+                        'source' => 'orders_workspace_shortcut',
+                        'origin_screen' => 'orders',
+                    ]),
+                ]);
+            } catch (\Throwable $exception) {
+                report($exception);
+                $errors->push($store->store_name);
+            }
+        }
+
+        if ($results->count() === 1 && $errors->isEmpty()) {
+            $item = $results->first();
+            $feedback = $dispatchService->feedback(
+                $item['result'],
+                'sipariş',
+                $item['store']->store_name,
+            );
+
+            $this->actionMessage = $feedback['message'];
+            $this->actionMessageTone = $feedback['tone'];
+
+            return;
+        }
+
+        $queuedCount = $results
+            ->filter(fn (array $item) => (bool) ($item['result']['created'] ?? false))
+            ->count();
+        $existingCount = $results->count() - $queuedCount;
+        $messageParts = collect([
+            $queuedCount > 0 ? "{$queuedCount} mağaza için sipariş senkronu kuyruğa alındı." : null,
+            $existingCount > 0 ? "{$existingCount} mağazada mevcut senkron kullanılacak." : null,
+            $errors->isNotEmpty() ? $errors->count().' mağazada senkron başlatılamadı.' : null,
+        ])->filter();
+
+        $this->actionMessage = $messageParts->implode(' ');
+        $this->actionMessageTone = $queuedCount > 0
+            ? 'success'
+            : ($errors->isNotEmpty() ? 'warning' : 'info');
+    }
+
     public function focusLegacyProjectionCard(): void
     {
         $card = $this->getLegacyProjectionGuidanceCard();
@@ -4819,6 +4983,7 @@ SQL;
         return view('livewire.marketplace-orders', [
             'orders' => $orders,
             'stats' => $this->getChannelStats(),
+            'todaySalesTrend' => $this->getTodaySalesTrend(),
             'statusOptions' => $this->getStatusOptions(),
             'marketplaceOptions' => $this->getMarketplaceOptions(),
             'storeOptions' => $this->getStoreOptions(),
@@ -4831,8 +4996,6 @@ SQL;
             'legalEntityOptions' => $this->getLegalEntityOptions(),
             'sidebarSummary' => $this->getSidebarSummary(),
             'legacySummary' => $this->getLegacySummary(),
-            'diagnosticsGuidance' => $this->getDiagnosticsGuidanceSummary(),
-            'legacyProjectionGuidanceCard' => $this->getLegacyProjectionGuidanceCard(),
             'activeFilters' => $this->getActiveFilters(),
             'orderLabelDefinitions' => $this->orderLabelDefinitions(),
             'columnDefs' => static::$allColumnDefs,

@@ -3,34 +3,33 @@
 namespace Tests\Feature;
 
 use App\Jobs\SyncMarketplaceDataJob;
-use App\Models\IntegrationConnection;
 use App\Livewire\MarketplaceOrders;
 use App\Models\ChannelOrder;
 use App\Models\ChannelOrderItem;
 use App\Models\ChannelOrderPackage;
-use App\Models\IntegrationSyncRun;
+use App\Models\IntegrationConnection;
 use App\Models\IntegrationSyncProfile;
+use App\Models\IntegrationSyncRun;
 use App\Models\LegalEntity;
 use App\Models\MarketplaceStore;
-use App\Models\MpOrder;
 use App\Models\MpOperationalOrder;
 use App\Models\MpOperationalOrderItem;
+use App\Models\MpOrder;
 use App\Models\MpPeriod;
 use App\Models\OrderFinancialEvent;
 use App\Models\OrderProfitSnapshot;
 use App\Models\User;
 use App\Services\MpSettingsService;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\TestCase;
 
 class MarketplaceOrdersGuidanceTest extends TestCase
 {
-    use \Illuminate\Foundation\Testing\RefreshDatabase;
+    use RefreshDatabase;
 
-    public function test_it_shows_compact_guidance_band_in_orders_view(): void
+    public function test_it_hides_diagnostic_warning_band_and_keeps_sync_action_in_workspace(): void
     {
         $user = User::factory()->create();
         $suffix = (string) random_int(100000, 999999);
@@ -38,7 +37,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Orders Guidance Ltd.',
-            'tax_number' => '3' . $suffix,
+            'tax_number' => '3'.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -49,8 +48,8 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM ORDERS GUIDE',
-            'store_code' => 'ORD-GUIDE-' . $suffix,
-            'seller_id' => 'ORD-GUIDE-' . $suffix,
+            'store_code' => 'ORD-GUIDE-'.$suffix,
+            'seller_id' => 'ORD-GUIDE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
@@ -76,8 +75,10 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $this->actingAs($user);
 
         Livewire::test(MarketplaceOrders::class)
-            ->assertSee('Ürün eşleşme alanları eksik')
-            ->assertSee('Eşleştirme Merkezi');
+            ->assertSee('Sipariş senkronunu başlat')
+            ->assertDontSee('Ürün eşleşme alanları eksik')
+            ->assertDontSee('Kritik ve Uyarılar')
+            ->assertDontSee('Eşleştirme Merkezi');
     }
 
     public function test_it_can_focus_orders_list_from_top_guidance(): void
@@ -108,7 +109,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             ->assertSet('matchStateFilter', 'needs_match');
     }
 
-    public function test_it_can_queue_order_sync_from_top_guidance(): void
+    public function test_it_can_queue_order_sync_from_workspace_action(): void
     {
         Queue::fake();
 
@@ -131,7 +132,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $this->actingAs($user);
 
         Livewire::test(MarketplaceOrders::class)
-            ->call('syncTopGuidance')
+            ->call('syncOrders')
             ->assertSet('actionMessageTone', 'success');
 
         $this->assertDatabaseHas('integration_sync_runs', [
@@ -162,7 +163,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'ORD-LEGACY-' . random_int(100000, 999999);
+        $orderNumber = 'ORD-LEGACY-'.random_int(100000, 999999);
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -186,7 +187,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $this->actingAs($user);
 
         Livewire::test(MarketplaceOrders::class)
-            ->assertSee('Legacy finans satirlari V2 ledger\'a tasinmamis')
+            ->assertDontSee('Legacy finans satirlari V2 ledger\'a tasinmamis')
             ->call('syncTopGuidance')
             ->assertRedirect(route('mp.orders', ['storeFilter' => $store->id]));
     }
@@ -204,7 +205,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'ORD-PREVIEW-' . random_int(100000, 999999);
+        $orderNumber = 'ORD-PREVIEW-'.random_int(100000, 999999);
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -235,7 +236,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             ->assertSee('1');
     }
 
-    public function test_it_shows_legacy_projection_focus_card_in_orders_guidance_band(): void
+    public function test_it_hides_legacy_projection_guidance_from_orders_workspace(): void
     {
         [$user, $store] = $this->createStoreGraph('10');
 
@@ -248,8 +249,8 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $pendingOrderNumber = 'ORD-LEG-CARD-PEND-' . random_int(100000, 999999);
-        $confirmedOrderNumber = 'ORD-LEG-CARD-CONF-' . random_int(100000, 999999);
+        $pendingOrderNumber = 'ORD-LEG-CARD-PEND-'.random_int(100000, 999999);
+        $confirmedOrderNumber = 'ORD-LEG-CARD-CONF-'.random_int(100000, 999999);
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -300,7 +301,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'channel_order_id' => $confirmedOrder->id,
             'event_source' => 'legacy_mp_order',
             'event_type' => 'seller_revenue',
-            'external_event_id' => sha1('orders-legacy-card-' . $confirmedOrderNumber),
+            'external_event_id' => sha1('orders-legacy-card-'.$confirmedOrderNumber),
             'reference_number' => $confirmedOrderNumber,
             'event_date' => now()->subHours(5),
             'settlement_date' => now()->subHours(5),
@@ -336,10 +337,11 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $this->actingAs($user);
 
         Livewire::test(MarketplaceOrders::class)
-            ->assertSee('Legacy finans backlogu mağaza bazında görünüyor')
-            ->assertSee('Filtrele ve İncele')
-            ->assertSee('Bekleyen 1')
-            ->assertSee('Kesine dönen 1');
+            ->assertSee('Sipariş senkronunu başlat')
+            ->assertDontSee('Legacy finans backlogu mağaza bazında görünüyor')
+            ->assertDontSee('Filtrele ve İncele')
+            ->assertDontSee('Bekleyen 1')
+            ->assertDontSee('Kesine dönen 1');
     }
 
     public function test_it_can_focus_legacy_projection_backlog_from_focus_card(): void
@@ -355,7 +357,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'ORD-LEG-FOCUS-' . random_int(100000, 999999);
+        $orderNumber = 'ORD-LEG-FOCUS-'.random_int(100000, 999999);
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -400,7 +402,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'ORD-LEG-PREVIEW-' . random_int(100000, 999999);
+        $orderNumber = 'ORD-LEG-PREVIEW-'.random_int(100000, 999999);
 
         ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -446,7 +448,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'ORD-LEG-RUN-' . random_int(100000, 999999);
+        $orderNumber = 'ORD-LEG-RUN-'.random_int(100000, 999999);
 
         $channelOrder = ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -510,7 +512,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $orderNumber = 'ORD-DETAIL-' . random_int(100000, 999999);
+        $orderNumber = 'ORD-DETAIL-'.random_int(100000, 999999);
 
         $channelOrder = ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -533,12 +535,12 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $package = ChannelOrderPackage::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $channelOrder->id,
-            'external_package_id' => 'PKG-' . $orderNumber,
-            'package_number' => 'PKT-' . $orderNumber,
+            'external_package_id' => 'PKG-'.$orderNumber,
+            'package_number' => 'PKT-'.$orderNumber,
             'package_status' => 'delivered',
             'cargo_company' => 'Aras Kargo',
-            'cargo_tracking_number' => 'TRK-' . $orderNumber,
-            'cargo_barcode' => 'BAR-' . $orderNumber,
+            'cargo_tracking_number' => 'TRK-'.$orderNumber,
+            'cargo_barcode' => 'BAR-'.$orderNumber,
             'cargo_desi' => 3.6,
             'shipped_at' => now()->subHours(20),
             'delivered_at' => now()->subHours(2),
@@ -548,7 +550,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'store_id' => $store->id,
             'channel_order_id' => $channelOrder->id,
             'channel_order_package_id' => $package->id,
-            'external_line_id' => 'LINE-' . $orderNumber,
+            'external_line_id' => 'LINE-'.$orderNumber,
             'stock_code' => 'ZEM-001',
             'barcode' => '1907584520',
             'product_name' => 'Lines Puf, Teddy Kumaş Sütlü Kahve',
@@ -591,7 +593,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'store_id' => $store->id,
             'legal_entity_id' => $store->legal_entity_id,
             'order_number' => $orderNumber,
-            'package_number' => 'PKT:' . $orderNumber,
+            'package_number' => 'PKT:'.$orderNumber,
             'order_date' => now()->subDay(),
             'delivery_date' => now()->subHours(2),
             'source_marketplace' => 'trendyol',
@@ -612,10 +614,10 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'tax_office' => 'Çankaya',
             'tax_number' => '1234567890',
             'cargo_company' => 'Aras Kargo',
-            'tracking_number' => 'TRK-' . $orderNumber,
-            'cargo_code' => 'CARGO-' . $orderNumber,
+            'tracking_number' => 'TRK-'.$orderNumber,
+            'cargo_code' => 'CARGO-'.$orderNumber,
             'status' => 'Teslim Edildi',
-            'invoice_number' => 'FTR-' . $orderNumber,
+            'invoice_number' => 'FTR-'.$orderNumber,
             'is_corporate_invoice' => 'Evet',
             'is_invoiced' => 'Evet',
             'total_gross_amount' => 1999.80,
@@ -696,8 +698,8 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $store->legal_entity_id,
-            'external_order_id' => 'ORD-ACTION-' . random_int(100000, 999999),
-            'order_number' => 'ORD-ACTION-' . random_int(100000, 999999),
+            'external_order_id' => 'ORD-ACTION-'.random_int(100000, 999999),
+            'order_number' => 'ORD-ACTION-'.random_int(100000, 999999),
             'order_status' => 'Created',
             'customer_name' => 'Aksiyon Test',
             'ordered_at' => now()->subHour(),
@@ -706,8 +708,8 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         ChannelOrderPackage::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_package_id' => 'PKG-ACTION-' . random_int(100000, 999999),
-            'package_number' => 'PKG-ACTION-' . random_int(100000, 999999),
+            'external_package_id' => 'PKG-ACTION-'.random_int(100000, 999999),
+            'package_number' => 'PKG-ACTION-'.random_int(100000, 999999),
             'package_status' => 'Created',
         ]);
 
@@ -732,8 +734,8 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $store->legal_entity_id,
-            'external_order_id' => 'ORD-EDIT-' . random_int(100000, 999999),
-            'order_number' => 'ORD-EDIT-' . random_int(100000, 999999),
+            'external_order_id' => 'ORD-EDIT-'.random_int(100000, 999999),
+            'order_number' => 'ORD-EDIT-'.random_int(100000, 999999),
             'order_status' => 'Created',
             'customer_name' => 'İlk Müşteri',
             'ordered_at' => now()->subHour(),
@@ -742,7 +744,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $item = ChannelOrderItem::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_line_id' => 'LINE-EDIT-' . random_int(100000, 999999),
+            'external_line_id' => 'LINE-EDIT-'.random_int(100000, 999999),
             'product_name' => 'Eski Ürün',
             'barcode' => '8690000000001',
             'stock_code' => 'SKU-OLD-1',
@@ -792,8 +794,8 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $store->legal_entity_id,
-            'external_order_id' => 'ORD-CLONE-' . random_int(100000, 999999),
-            'order_number' => 'ORD-CLONE-' . random_int(100000, 999999),
+            'external_order_id' => 'ORD-CLONE-'.random_int(100000, 999999),
+            'order_number' => 'ORD-CLONE-'.random_int(100000, 999999),
             'order_status' => 'Created',
             'customer_name' => 'Kopya Test',
             'ordered_at' => now()->subHour(),
@@ -802,8 +804,8 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $package = ChannelOrderPackage::query()->create([
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
-            'external_package_id' => 'PKG-CLONE-' . random_int(100000, 999999),
-            'package_number' => 'PKG-CLONE-' . random_int(100000, 999999),
+            'external_package_id' => 'PKG-CLONE-'.random_int(100000, 999999),
+            'package_number' => 'PKG-CLONE-'.random_int(100000, 999999),
             'package_status' => 'Created',
         ]);
 
@@ -811,7 +813,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'store_id' => $store->id,
             'channel_order_id' => $order->id,
             'channel_order_package_id' => $package->id,
-            'external_line_id' => 'LINE-CLONE-' . random_int(100000, 999999),
+            'external_line_id' => 'LINE-CLONE-'.random_int(100000, 999999),
             'product_name' => 'Test Ürünü',
             'quantity' => 1,
             'line_status' => 'Created',
@@ -841,8 +843,8 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $labeledOrder = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $store->legal_entity_id,
-            'external_order_id' => 'ORD-LABEL-' . random_int(100000, 999999),
-            'order_number' => 'ORD-LABEL-' . random_int(100000, 999999),
+            'external_order_id' => 'ORD-LABEL-'.random_int(100000, 999999),
+            'order_number' => 'ORD-LABEL-'.random_int(100000, 999999),
             'order_status' => 'Created',
             'customer_name' => 'Etiketli Sipariş',
             'ordered_at' => now()->subHour(),
@@ -851,8 +853,8 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $plainOrder = ChannelOrder::query()->create([
             'store_id' => $store->id,
             'legal_entity_id' => $store->legal_entity_id,
-            'external_order_id' => 'ORD-PLAIN-' . random_int(100000, 999999),
-            'order_number' => 'ORD-PLAIN-' . random_int(100000, 999999),
+            'external_order_id' => 'ORD-PLAIN-'.random_int(100000, 999999),
+            'order_number' => 'ORD-PLAIN-'.random_int(100000, 999999),
             'order_status' => 'Created',
             'customer_name' => 'Etiketsiz Sipariş',
             'ordered_at' => now()->subMinutes(30),
@@ -908,6 +910,87 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             ->assertDontSee('Canlı sipariş tablosu hakkında bilgi');
     }
 
+    public function test_it_renders_the_productized_order_workspace_with_today_sales_trend(): void
+    {
+        [$user, $store] = $this->createStoreGraph('17');
+
+        $morningOrder = ChannelOrder::query()->create([
+            'store_id' => $store->id,
+            'legal_entity_id' => $store->legal_entity_id,
+            'external_order_id' => 'ORD-TREND-MORNING',
+            'order_number' => 'ORD-TREND-MORNING',
+            'order_status' => 'Created',
+            'ordered_at' => now()->startOfDay()->addHours(9)->addMinutes(15),
+        ]);
+
+        ChannelOrderItem::query()->create([
+            'store_id' => $store->id,
+            'channel_order_id' => $morningOrder->id,
+            'external_line_id' => 'LINE-TREND-MORNING',
+            'product_name' => 'Sabah Ürünü',
+            'quantity' => 3,
+            'line_status' => 'Created',
+        ]);
+
+        $afternoonOrder = ChannelOrder::query()->create([
+            'store_id' => $store->id,
+            'legal_entity_id' => $store->legal_entity_id,
+            'external_order_id' => 'ORD-TREND-AFTERNOON',
+            'order_number' => 'ORD-TREND-AFTERNOON',
+            'order_status' => 'Created',
+            'ordered_at' => now()->startOfDay()->addHours(14)->addMinutes(40),
+        ]);
+
+        ChannelOrderItem::query()->create([
+            'store_id' => $store->id,
+            'channel_order_id' => $afternoonOrder->id,
+            'external_line_id' => 'LINE-TREND-AFTERNOON',
+            'product_name' => 'Öğleden Sonra Ürünü',
+            'quantity' => 4,
+            'line_status' => 'Created',
+        ]);
+
+        $cancelledOrder = ChannelOrder::query()->create([
+            'store_id' => $store->id,
+            'legal_entity_id' => $store->legal_entity_id,
+            'external_order_id' => 'ORD-TREND-CANCELLED',
+            'order_number' => 'ORD-TREND-CANCELLED',
+            'order_status' => 'Cancelled',
+            'ordered_at' => now()->startOfDay()->addHours(16),
+        ]);
+
+        ChannelOrderItem::query()->create([
+            'store_id' => $store->id,
+            'channel_order_id' => $cancelledOrder->id,
+            'external_line_id' => 'LINE-TREND-CANCELLED',
+            'product_name' => 'İptal Edilen Ürün',
+            'quantity' => 11,
+            'line_status' => 'Cancelled',
+        ]);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceOrders::class)
+            ->assertSee('Sipariş Çalışma Alanı')
+            ->assertSee('Sipariş Yönetimi')
+            ->assertSee('Pazaryeri siparişlerini, kargo hazırlığını ve finans durumunu tek çalışma alanında yönetin.')
+            ->assertSee('Sipariş senkronunu başlat')
+            ->assertSee('İçe Aktar')
+            ->assertSee('Eşleştir')
+            ->assertSee('Entegrasyonlar')
+            ->assertSee('Çıktı Ayarları')
+            ->assertSee('Bugün saatlere göre satılan ürün adedi grafiği')
+            ->assertSee('7 ürün')
+            ->assertSee('Siparişleri filtrele')
+            ->assertDontSee('Finans kapsamı')
+            ->assertDontSee('Eşleşme riski')
+            ->assertDontSee('Hazır olma oranı')
+            ->assertDontSee('Sipariş Ritim')
+            ->assertDontSee('Çalışma Alanı Özeti')
+            ->assertDontSee('Kritik ve Uyarılar')
+            ->assertDontSee('Venture');
+    }
+
     /**
      * @return array{0: User, 1: MarketplaceStore}
      */
@@ -919,7 +1002,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
         $entity = LegalEntity::query()->create([
             'user_id' => $user->id,
             'name' => 'Zem Orders Guidance Ltd.',
-            'tax_number' => $prefix . $suffix,
+            'tax_number' => $prefix.$suffix,
             'company_type' => 'limited',
             'currency' => 'TRY',
             'is_active' => true,
@@ -930,8 +1013,8 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             'legal_entity_id' => $entity->id,
             'marketplace' => 'trendyol',
             'store_name' => 'ZEM ORDERS GUIDE',
-            'store_code' => 'ORD-GUIDE-' . $suffix,
-            'seller_id' => 'ORD-GUIDE-' . $suffix,
+            'store_code' => 'ORD-GUIDE-'.$suffix,
+            'seller_id' => 'ORD-GUIDE-'.$suffix,
             'status' => 'configured',
             'timezone' => 'Europe/Istanbul',
             'currency' => 'TRY',
