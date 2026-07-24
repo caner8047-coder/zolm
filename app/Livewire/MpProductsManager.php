@@ -1330,6 +1330,26 @@ class MpProductsManager extends Component
     }
 
     public function exportDiagnosticsGuidanceCsv()
+    public function exportProductChangeHistory(int $productId)
+    {
+        $product = MpProduct::query()
+            ->with(['channelListings.store'])
+            ->where('user_id', $this->userId())
+            ->findOrFail($productId);
+
+        // Export, ekrandaki performans limitinden bağımsız olarak bütün geçmişi içermelidir.
+        $logs = $this->productChangeHistory($product, null);
+
+        $service = new \App\Services\MpProductChangeHistoryExportService();
+        $slug = $product->model_code ? \Illuminate\Support\Str::slug($product->model_code) : $product->id;
+        $fileName = 'urun_degisim_raporu_' . $slug . '_' . now()->format('Ymd_His') . '.xlsx';
+        $tempPath = storage_path('app/temp/' . $fileName);
+
+        $service->export($product, $logs, $tempPath);
+
+        return response()->download($tempPath, $fileName)->deleteFileAfterSend(true);
+    }
+
     {
         $filename = 'urunler_karar_destegi_' . now()->format('Ymd_His') . '.csv';
         $guidance = $this->diagnosticsGuidance();
@@ -5149,7 +5169,7 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
         ]);
     }
 
-    public function productChangeHistory(MpProduct $product, int $limit = 10): \Illuminate\Support\Collection
+    public function productChangeHistory(MpProduct $product, ?int $limit = 10): \Illuminate\Support\Collection
     {
         if (!Schema::hasTable('mp_product_change_logs')) {
             return collect();
@@ -5173,7 +5193,7 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
             })
             ->latest('changed_at')
             ->latest('id')
-            ->limit($limit)
+            ->when($limit !== null, fn (Builder $query) => $query->limit($limit))
             ->get();
     }
 
