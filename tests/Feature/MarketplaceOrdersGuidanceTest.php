@@ -681,7 +681,7 @@ class MarketplaceOrdersGuidanceTest extends TestCase
             ->assertSee('Hakediş')
             ->assertSee('Hakediş hesabı')
             ->assertSee('Kârlılık hesabı')
-            ->assertSee('Kârlılık = Kâr / Maliyet')
+            ->assertSee('Maliyet getirisi')
             ->assertSee('Müşteri Bilgileri')
             ->assertSee('Fatura Bilgileri')
             ->assertSee('Lojistik & Tarihler', false)

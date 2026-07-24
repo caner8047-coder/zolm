@@ -23,6 +23,7 @@ class MarketplaceProfitSnapshotService
         protected MarketplaceVatEffectService $vatEffectService,
         protected MarketplaceWithholdingEffectService $withholdingEffectService,
         protected MarketplaceCostBreakdownService $costBreakdownService,
+        protected MarketplaceProfitCalculationService $profitCalculationService,
         protected CurrencyExchangeService $exchangeService,
     ) {
     }
@@ -97,24 +98,86 @@ class MarketplaceProfitSnapshotService
         $withholdingTotal = (float) $withholding['amount'];
         $sellerRevenueNet = (float) $costBreakdown['seller_revenue_net'];
         $hasFinancials = $settledFinancialEvents->isNotEmpty();
+        $sellerRevenueAlreadyExcludesCommission = strtolower((string) $store->marketplace) === 'trendyol'
+            && $settledFinancialEvents->contains(fn (OrderFinancialEvent $event) => (
+                strtolower((string) $event->event_source) === 'settlements'
+                && strtolower((string) $event->event_type) === 'seller_revenue'
+            ));
+        $confirmedCommissionDeduction = $sellerRevenueAlreadyExcludesCommission ? 0.0 : $commissionTotal;
+        $settings = new MpSettingsService((int) $store->user_id);
+        $estimatedServiceFee = $settings->getEstimatedPlatformServiceFee((string) $store->marketplace);
+        $hasActualServiceFee = (int) data_get(
+            $costBreakdown,
+            'categories.service_fee.event_count',
+            0,
+        ) > 0;
+        $effectiveServiceFeeOnly = $hasActualServiceFee
+            ? $serviceFeeOnly
+            : $estimatedServiceFee;
+        $effectiveServiceFeeTotal = round(
+            $effectiveServiceFeeOnly
+                + $advertisingTotal
+                + $penaltyTotal
+                + $earlyPaymentTotal
+                + $discountTotal
+                + $otherCostTotal,
+            2,
+        );
 
-        $estimatedNetReceivable = round($grossRevenue - $estimatedCommission - $withholdingTotal, 2);
-        $netReceivable = $hasFinancials
-            ? round($sellerRevenueNet - $commissionTotal - $cargoTotal - $serviceFeeTotal - $withholdingTotal, 2)
-            : $estimatedNetReceivable;
+        $effectiveCommissionTotal = $commissionTotal > 0
+            ? $commissionTotal
+            : $estimatedCommission;
         $vat = $this->vatEffectService->calculate(
             store: $store,
             order: $order,
             items: $items,
             grossRevenue: $grossRevenue,
-            commissionTotal: $commissionTotal > 0 ? $commissionTotal : $estimatedCommission,
+            commissionTotal: $effectiveCommissionTotal,
             cargoTotal: $hasFinancials ? $cargoTotal : 0.0,
+            serviceFeeTotal: $effectiveServiceFeeTotal,
         );
         $vatEffect = (float) $vat['net_vat'];
 
-        $estimatedProfit = round($estimatedNetReceivable - $cogsCost - $packagingCost - $ownCargoCost - $vatEffect, 2);
+        $estimatedCalculation = $this->profitCalculationService->calculate([
+            'gross_revenue' => $grossRevenue,
+            'cogs' => $cogsCost,
+            'packaging_cost' => $packagingCost,
+            'commission' => $estimatedCommission,
+            'own_cargo' => $ownCargoCost,
+            'service_fee' => $estimatedServiceFee,
+            'withholding' => $withholdingTotal,
+            'net_vat' => $vatEffect,
+        ]);
+        $estimatedNetReceivable = $estimatedCalculation['net_receivable'];
+        $estimatedProfit = $estimatedCalculation['cash_profit'];
+
+        // Finans kaynakları satıcı gelirini farklı seviyelerde (brüt veya komisyon
+        // sonrası) verebilir. Önce kanonik brüt bazı yeniden kur, sonra tek formülü uygula.
+        $confirmedGrossBasis = round(
+            $sellerRevenueNet - $confirmedCommissionDeduction + $effectiveCommissionTotal,
+            2,
+        );
+        $confirmedCalculation = $this->profitCalculationService->calculate([
+            'gross_revenue' => $confirmedGrossBasis,
+            'cogs' => $cogsCost,
+            'packaging_cost' => $packagingCost,
+            'commission' => $effectiveCommissionTotal,
+            'marketplace_cargo' => $cargoTotal,
+            'own_cargo' => $ownCargoCost,
+            'service_fee' => $effectiveServiceFeeOnly,
+            'advertising' => $advertisingTotal,
+            'other_marketplace_deductions' => $penaltyTotal
+                + $earlyPaymentTotal
+                + $discountTotal
+                + $otherCostTotal,
+            'withholding' => $withholdingTotal,
+            'net_vat' => $vatEffect,
+        ]);
+        $netReceivable = $hasFinancials
+            ? $confirmedCalculation['net_receivable']
+            : $estimatedNetReceivable;
         $confirmedProfit = $hasFinancials
-            ? round($netReceivable - $cogsCost - $packagingCost - $ownCargoCost - $vatEffect, 2)
+            ? $confirmedCalculation['cash_profit']
             : $estimatedProfit;
 
         // OrderLifecycleResolver ile iade/iptal zarar hesaplaması
@@ -146,9 +209,9 @@ class MarketplaceProfitSnapshotService
             'profit_state' => $profitState,
             'gross_revenue' => $grossRevenue * $exchangeRate,
             'net_receivable' => $netReceivable * $exchangeRate,
-            'commission_total' => ($commissionTotal > 0 ? $commissionTotal : $estimatedCommission) * $exchangeRate,
+            'commission_total' => $effectiveCommissionTotal * $exchangeRate,
             'cargo_total' => $cargoTotal * $exchangeRate,
-            'service_fee_total' => $serviceFeeTotal * $exchangeRate,
+            'service_fee_total' => $effectiveServiceFeeTotal * $exchangeRate,
             'advertising_total' => $advertisingTotal * $exchangeRate,
             'penalty_total' => $penaltyTotal * $exchangeRate,
             'early_payment_total' => $earlyPaymentTotal * $exchangeRate,

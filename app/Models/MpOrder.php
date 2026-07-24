@@ -261,20 +261,8 @@ class MpOrder extends Model
             return -abs($this->return_logistic_loss);
         }
 
-        $hakedis  = (float) $this->net_hakedis;
-        $cogs     = (float) $this->resolved_cogs_at_time;
-        $packing  = (float) $this->resolved_packaging_cost_at_time;
-        
-        // KDV hesaplama açık mı kontrol et
-        $svc = new \App\Services\MpSettingsService($this->resolveOwnerUserId());
-        $ownCargo = $svc->usesOwnCargo() ? (float) $this->resolved_own_cargo_cost_at_time : 0.0;
-        $vatDeduction = 0;
-        if ($svc->isKdvEnabled()) {
-            $vatDeduction = $this->vat_balance; // KDV bakiyesi borç mu alacak mı?
-        }
-        
-        // Hakediş - Ürün Maliyeti - Ambalaj Gideri - Kendi Kargo Maliyeti - Ödenecek KDV (eğer açıksa)
-        return round($hakedis - $cogs - $packing - $ownCargo - $vatDeduction, 2);
+        return (float) (new \App\Services\UnitEconomicsService())
+            ->calculateForOrder($this)['real_net_profit'];
     }
 
     /**

@@ -41,7 +41,7 @@
   let marginLow = 5.0;
   let marginHigh = 20.0;
   let serviceFeeFixed = 9.33;
-  let withholdingTaxEnabled = false;
+  let withholdingTaxEnabled = true;
 
   async function loadSettings() {
     try {
@@ -49,7 +49,7 @@
         marginLow: 5.0,
         marginHigh: 20.0,
         serviceFeeFixed: 9.33,
-        withholdingTaxEnabled: false
+        withholdingTaxEnabled: true
       });
       marginLow = parseFloat(stored.marginLow) ?? 5.0;
       marginHigh = parseFloat(stored.marginHigh) ?? 20.0;
@@ -203,44 +203,36 @@
   function calculateProfit(salePrice, commissionRate, costData) {
     if (!costData) return null;
 
-    const cogs = parseFloat(costData.cogs) || 0;
-    const totalCost = costData.total_cost || 0;
     const effectiveCommission = commissionRate > 0 ? commissionRate : (costData.commission_rate || 0);
     const effectiveSalePrice = salePrice > 0 ? salePrice : (costData.sale_price || 0);
-
-    const commissionAmount = effectiveSalePrice * (effectiveCommission / 100);
-
-    // %1 e-ticaret stopajı: komisyon matrahı azaltmaz; satış fiyatının
-    // KDV hariç tutarı üzerinden hesaplanır.
-    const vatRate = parseFloat(costData.vat_rate) || 0;
-    const withholdingBase = vatRate > 0
-      ? effectiveSalePrice / (1 + (vatRate / 100))
-      : effectiveSalePrice;
-    const withholdingTax = withholdingTaxEnabled ? (withholdingBase * 0.01) : 0;
-
-    const serviceFee = Math.max(0, serviceFeeFixed);
-    const roundedCommissionAmount = Math.round(commissionAmount * 100) / 100;
-    const roundedWithholdingTax = Math.round(withholdingTax * 100) / 100;
-    const netProfit = effectiveSalePrice - roundedCommissionAmount - serviceFee - roundedWithholdingTax - totalCost;
-    const profitMargin = cogs > 0 ? (netProfit / cogs) * 100 : 0;
+    const canonical = globalThis.ZolmProfitCalculator.calculate({
+      salePrice: effectiveSalePrice,
+      commissionRate: effectiveCommission,
+      cost: costData,
+      serviceFeeFixed,
+      withholdingEnabled: withholdingTaxEnabled,
+      withholdingRate: 1,
+    });
 
     return {
-      hasCost: cogs > 0,
-      totalCost: Math.round(totalCost * 100) / 100,
+      hasCost: canonical.hasCost,
+      totalCost: canonical.totalCost,
       commissionRate: effectiveCommission,
-      commissionAmount: roundedCommissionAmount,
-      serviceFee: Math.round(serviceFee * 100) / 100,
-      netProfit: Math.round(netProfit * 100) / 100,
-      profitMargin: Math.round(profitMargin * 10) / 10,
+      commissionAmount: canonical.commissionAmount,
+      serviceFee: canonical.serviceFee,
+      netProfit: canonical.cashProfit,
+      accountingProfit: canonical.accountingProfit,
+      profitMargin: canonical.profitMargin,
       salePrice: effectiveSalePrice,
-      cogs: cogs,
-      cargoCost: parseFloat(costData.cargo_cost) || 0,
-      packagingCost: parseFloat(costData.packaging_cost) || 0,
-      extraFixed: parseFloat(costData.extra_cost_fixed) || 0,
-      extraPercent: parseFloat(costData.extra_cost_percentage) || 0,
-      vatRate: vatRate,
-      withholdingBase: Math.round(withholdingBase * 100) / 100,
-      withholdingTax: roundedWithholdingTax,
+      cogs: canonical.cogs,
+      cargoCost: canonical.cargoCost,
+      packagingCost: canonical.packagingCost,
+      extraFixed: canonical.extraFixed,
+      extraPercent: canonical.extraRate,
+      vatRate: canonical.vatRate,
+      withholdingBase: canonical.withholdingBase,
+      withholdingTax: canonical.withholdingTax,
+      calculationVersion: canonical.calculationVersion,
     };
   }
 

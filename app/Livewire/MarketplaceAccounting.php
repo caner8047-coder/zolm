@@ -75,6 +75,7 @@ class MarketplaceAccounting extends Component
     public float $settingsExpenseVatRate = 0.20;
     public bool $settingsKdvHesaplamaAktif = false;
     public bool $settingsEstimatedWithholdingEnabled = false;
+    public float $settingsTrendyolServiceFee = 9.33;
 
     // Bölüm 2: Kargo & Barem
     public float $settingsBaremLimit = 300;
@@ -340,7 +341,15 @@ class MarketplaceAccounting extends Component
         $this->settingsDefaultProductVatRate   = (float) ($all['tax']['default_product_vat_rate'] ?? 0.10);
         $this->settingsExpenseVatRate           = (float) ($all['tax']['expense_vat_rate'] ?? 0.20);
         $this->settingsKdvHesaplamaAktif        = (bool) ($all['tax']['kdv_hesaplama_aktif'] ?? false);
-        $this->settingsEstimatedWithholdingEnabled = (bool) ($all['tax']['estimated_withholding_enabled'] ?? false);
+        $this->settingsEstimatedWithholdingEnabled = (bool) (
+            $all['marketplace_products']['profit']['estimated_withholding_enabled']
+            ?? $all['tax']['estimated_withholding_enabled']
+            ?? true
+        );
+        $this->settingsTrendyolServiceFee = (float) (
+            $all['marketplace_products']['profit']['estimated_service_fee_fixed']['trendyol']
+            ?? 9.33
+        );
 
         // Kargo
         $this->settingsUsesOwnCargo              = (bool) ($all['cargo']['uses_own_cargo'] ?? false);
@@ -479,16 +488,25 @@ class MarketplaceAccounting extends Component
     {
         $this->validate([
             'settingsCurrency' => ['required', 'string', 'in:TRY,EUR,USD,GBP'],
+            'settingsTrendyolServiceFee' => ['required', 'numeric', 'min:0', 'max:100000'],
         ]);
 
         $svc = new MpSettingsService();
-        $svc->save([
+        $svc->save(array_replace_recursive($svc->all(), [
             'tax' => [
                 'stopaj_rate'                   => (float) $this->settingsStopajRate,
                 'default_product_vat_rate'      => (float) $this->settingsDefaultProductVatRate,
                 'expense_vat_rate'              => (float) $this->settingsExpenseVatRate,
                 'kdv_hesaplama_aktif'           => (bool) $this->settingsKdvHesaplamaAktif,
                 'estimated_withholding_enabled' => (bool) $this->settingsEstimatedWithholdingEnabled,
+            ],
+            'marketplace_products' => [
+                'profit' => [
+                    'estimated_withholding_enabled' => (bool) $this->settingsEstimatedWithholdingEnabled,
+                    'estimated_service_fee_fixed' => [
+                        'trendyol' => round((float) $this->settingsTrendyolServiceFee, 2),
+                    ],
+                ],
             ],
             'cargo' => [
                 'barem_limit'           => (float) $this->settingsBaremLimit,
@@ -571,7 +589,7 @@ class MarketplaceAccounting extends Component
                 'visible_columns' => $this->visibleColumns,
                 'help_tips_enabled' => (bool) $this->settingsHelpTipsEnabled,
             ],
-        ]);
+        ]));
 
         // Eski MpFinancialRule tablosuna da senkron yaz (geriye uyumluluk)
         $ruleSync = [

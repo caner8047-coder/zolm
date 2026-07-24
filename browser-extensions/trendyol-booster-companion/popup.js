@@ -48,7 +48,7 @@ async function load() {
     marginLow: 5.0,
     marginHigh: 20.0,
     serviceFeeFixed: 9.33,
-    withholdingTaxEnabled: false,
+    withholdingTaxEnabled: true,
     boosterMode: 'research',
   });
   baseUrlInput.value = stored.zolmBaseUrl || DEFAULT_BASE_URL;

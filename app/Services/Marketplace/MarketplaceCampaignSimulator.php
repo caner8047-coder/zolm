@@ -2,14 +2,14 @@
 
 namespace App\Services\Marketplace;
 
-use App\Models\MarketplaceStore;
 use App\Models\MpProduct;
+use App\Services\MpSettingsService;
 use App\Services\ProfitabilityMetric;
 
 class MarketplaceCampaignSimulator
 {
     public function __construct(
-        protected MarketplaceVatEffectService $vatEffectService
+        protected MarketplacePricingSimulationService $pricingSimulationService,
     ) {
     }
 
@@ -19,44 +19,44 @@ class MarketplaceCampaignSimulator
      */
     public function simulate(MpProduct $product, float $targetPrice, string $marketplace, array $options = []): array
     {
-        // Extract costs
         $cogs = (float) $product->cogs;
         $packaging = (float) $product->packaging_cost;
-        
-        // Defaults or overrides
+        $settings = new MpSettingsService((int) $product->user_id);
         $commissionRate = (float) ($options['commission_rate'] ?? $product->commission_rate ?? 15);
-        $cargoCost = (float) ($options['cargo_cost'] ?? 50); // Default assumed cargo
-        $serviceFee = (float) ($options['service_fee'] ?? 0);
-        $vatRate = (float) ($options['vat_rate'] ?? 20);
-        $withholdingRate = (float) ($options['withholding_rate'] ?? 0); // Default withholding if applied
-        
-        // Calculate
-        $grossRevenue = $targetPrice;
-        
-        // Commission
-        $commissionAmount = round($grossRevenue * ($commissionRate / 100), 2);
-        
-        // Withholding
-        $withholdingAmount = round($grossRevenue * ($withholdingRate / 100), 2);
-
-        // KDV calculation (Internal standard logic)
-        $vatEffect = round(($grossRevenue - ($grossRevenue / (1 + ($vatRate / 100)))), 2);
-        
-        // Total Deductions
-        $totalDeductions = $commissionAmount + $cargoCost + $serviceFee + $withholdingAmount;
-        
-        // Net Receivable
-        $netReceivable = round($grossRevenue - $totalDeductions, 2);
-        
-        // Estimated Profit
-        $profitValue = round($netReceivable - $cogs - $packaging - $vatEffect, 2);
-        
-        // Margins
+        $cargoCost = (float) ($options['cargo_cost'] ?? $product->cargo_cost ?? 0);
+        $serviceFee = (float) ($options['service_fee'] ?? $settings->getEstimatedPlatformServiceFee($marketplace));
+        $vatRate = (float) ($options['vat_rate'] ?? $product->vat_rate ?? ($settings->getDefaultProductVatRate() * 100));
+        $withholdingRate = (float) ($options['withholding_rate'] ?? ($settings->getStopajRate() * 100));
+        $calculation = $this->pricingSimulationService->calculateOnly([
+            'marketplace' => $marketplace,
+            'sale_price' => $targetPrice,
+            'cogs' => $cogs,
+            'packaging_cost' => $packaging,
+            'cargo_cost' => $cargoCost,
+            'extra_cost_fixed' => (float) ($product->extra_cost_fixed ?? 0),
+            'extra_cost_rate' => (float) ($product->extra_cost_percentage ?? 0),
+            'commission_rate' => $commissionRate,
+            'service_fee_fixed' => $serviceFee,
+            'vat_rate' => $vatRate,
+            'cost_vat_rate' => (float) ($product->cost_vat_rate ?? $vatRate),
+            'expense_vat_rate' => $settings->getExpenseVatRate() * 100,
+            'vat_enabled' => (bool) ($options['vat_enabled'] ?? $settings->isKdvEnabled()),
+            'withholding_enabled' => (bool) ($options['withholding_enabled'] ?? $settings->shouldEstimateWithholdingForMarketplace($marketplace)),
+            'withholding_rate' => $withholdingRate,
+        ]);
+        $breakdown = (array) $calculation['breakdown'];
+        $commissionAmount = (float) $breakdown['commission'];
+        $withholdingAmount = (float) $breakdown['withholding'];
+        $vatEffect = (float) $breakdown['net_vat'];
+        $totalDeductions = (float) $breakdown['total_deductions'];
+        $netReceivable = (float) $calculation['net_receivable'];
+        $profitValue = (float) $calculation['cash_profit'];
         $productCost = ProfitabilityMetric::productCost($cogs, $packaging);
         $marginMultiplier = ProfitabilityMetric::multiplierOrZero($profitValue, $productCost);
-        $profitPercent = $grossRevenue > 0 ? round(($profitValue / $grossRevenue) * 100, 1) : 0;
+        $profitPercent = (float) $calculation['profit_margin_percent'];
 
         return [
+            'calculation_version' => MarketplacePricingSimulationService::CALCULATION_VERSION,
             'marketplace' => strtolower($marketplace),
             'target_price' => $targetPrice,
             'cogs' => $cogs,
@@ -70,6 +70,7 @@ class MarketplaceCampaignSimulator
             'total_deductions' => $totalDeductions,
             'net_receivable' => $netReceivable,
             'profit_value' => $profitValue,
+            'accounting_profit' => (float) $calculation['accounting_profit'],
             'profit_margin_percent' => $profitPercent,
             'margin_multiplier' => $marginMultiplier,
             'is_profitable' => $profitValue > 0,

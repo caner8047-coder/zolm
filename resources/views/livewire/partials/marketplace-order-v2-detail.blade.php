@@ -2,9 +2,9 @@
     $snapshot = data_get($order, 'order_snapshot');
     $legacyOperationalOrder = data_get($order, 'legacy_operational_order');
     $legacyHasFinancial = $legacyOperationalOrder?->financialOrders?->isNotEmpty() ?? false;
-    $legacyNetProfit = $legacyHasFinancial ? (float) $legacyOperationalOrder->total_net_profit : null;
     $profitState = $order->profit_state_metric ?? ($snapshot?->profit_state ?: 'estimated');
     $profitValue = (float) ($order->profit_value_metric ?? ($profitState === 'confirmed' ? $snapshot?->confirmed_profit : $snapshot?->estimated_profit));
+    $legacyNetProfit = $legacyHasFinancial ? $profitValue : null;
     $productCostForProfitability = \App\Services\ProfitabilityMetric::productCost(
         (float) ($snapshot?->cogs_cost ?? 0),
         (float) ($snapshot?->packaging_cost ?? 0),
@@ -443,6 +443,14 @@
                     <p class="mt-2 text-sm font-semibold text-rose-600 truncate">{{ $formatMoney($snapshot?->commission_total ?? 0) }}</p>
                 </div>
                 <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 p-3 min-w-0">
+                    <p class="text-[10px] uppercase tracking-[0.16em] text-slate-500 truncate">Hizmet bedeli ve diğer</p>
+                    <p class="mt-2 text-sm font-semibold text-rose-600 truncate">{{ $formatMoney($snapshot?->service_fee_total ?? 0) }}</p>
+                </div>
+                <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 p-3 min-w-0">
+                    <p class="text-[10px] uppercase tracking-[0.16em] text-slate-500 truncate">E-ticaret stopajı</p>
+                    <p class="mt-2 text-sm font-semibold text-rose-600 truncate">{{ $formatMoney($snapshot?->withholding_total ?? 0) }}</p>
+                </div>
+                <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 p-3 min-w-0">
                     <p class="text-[10px] uppercase tracking-[0.16em] text-slate-500 truncate">Kargo etkisi</p>
                     <p class="mt-2 text-sm font-semibold text-amber-600 truncate">{{ $formatMoney(($snapshot?->cargo_total ?? 0) + ($snapshot?->own_cargo_cost ?? 0)) }}</p>
                 </div>
@@ -454,7 +462,7 @@
 
             @if($snapshot)
                 <div class="mt-3 rounded-[6px] border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500">
-                    Kârlılık: <span class="font-semibold text-slate-900">{{ $profitabilityPercent !== null ? '%' . number_format($profitabilityPercent, 1, ',', '.') : '—' }}</span>
+                    Maliyet getirisi: <span class="font-semibold text-slate-900">{{ $profitabilityPercent !== null ? '%' . number_format($profitabilityPercent, 1, ',', '.') : '—' }}</span>
                     · İade etkisi: <span class="font-semibold text-slate-900">{{ $formatMoney($snapshot->return_effect ?? 0) }}</span>
                 </div>
             @else

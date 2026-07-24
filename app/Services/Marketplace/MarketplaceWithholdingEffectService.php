@@ -31,7 +31,10 @@ class MarketplaceWithholdingEffectService
 
         $settings = new MpSettingsService((int) $store->user_id);
 
-        if (! $settings->isEstimatedWithholdingEnabled() || ! $this->withholdingApplies($order)) {
+        if (
+            ! $settings->shouldEstimateWithholdingForMarketplace((string) $store->marketplace)
+            || ! $this->withholdingApplies($order)
+        ) {
             return $this->result(0.0, 'none', 0.0, 0.0);
         }
 

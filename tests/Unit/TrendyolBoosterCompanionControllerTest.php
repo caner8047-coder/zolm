@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Http\Controllers\TrendyolBoosterCompanionController;
 use App\Models\TrendyolBestsellerReport;
 use App\Models\TrendyolBestsellerReportRun;
+use App\Services\Marketplace\MarketplacePricingSimulationService;
 use App\Services\Marketplace\TrendyolBestsellerReportService;
 use App\Services\Marketplace\TrendyolBoosterAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterProductAnalysisService;
@@ -58,6 +59,7 @@ class TrendyolBoosterCompanionControllerTest extends TestCase
             Mockery::mock(TrendyolBoosterReviewService::class),
             Mockery::mock(TrendyolProductPageReader::class),
             $reportService,
+            Mockery::mock(MarketplacePricingSimulationService::class),
         );
         $request = Request::create('/marketplace-trendyol-booster/companion/bestseller-capture', 'POST', [
             'query' => 'puf',

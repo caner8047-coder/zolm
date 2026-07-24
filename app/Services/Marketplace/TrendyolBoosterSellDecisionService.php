@@ -103,7 +103,8 @@ class TrendyolBoosterSellDecisionService
         $serviceFee = $this->splitIncludedVat($serviceFeeGross, $vatEnabled ? $expenseVatRate : 0);
         $returnReserveGross = round(($saleGross * $returnRate) + ($returnCargoGross * $returnRate), 2);
         $advertisingGross = round($saleGross * $advertisingRate, 2);
-        $withholding = $withholdingEnabled ? round($saleGross * $withholdingRate, 2) : 0.0;
+        $withholdingBase = $vatEnabled ? $sale['net'] : $saleGross;
+        $withholding = $withholdingEnabled ? round($withholdingBase * $withholdingRate, 2) : 0.0;
 
         $inputVat = round($cogs['vat'] + $packaging['vat'] + $commission['vat'] + $cargo['vat'] + $serviceFee['vat'], 2);
         $payableVat = max(0.0, round($sale['vat'] - $inputVat, 2));
@@ -173,6 +174,7 @@ class TrendyolBoosterSellDecisionService
             'income_tax' => $incomeTax,
             'income_tax_rate' => round($incomeTaxRate * 100, 2),
             'withholding' => $withholding,
+            'withholding_base' => round($withholdingBase, 2),
             'withholding_rate' => round($withholdingRate * 100, 2),
             'withholding_note' => 'Stopaj peşin vergi kabul edilir; net kâr hesabında ikinci kez düşülmedi.',
             'advertising_excluded' => $advertisingGross,

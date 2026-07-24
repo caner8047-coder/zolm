@@ -1085,18 +1085,14 @@
                             $legacyOrder = data_get($order, 'legacy_operational_order');
                             $legacyHasFinancial = $legacyOrder?->financialOrders?->isNotEmpty() ?? false;
                             $profitState = $order->profit_state_metric ?? ($snapshot?->profit_state ?: 'estimated');
-                            $profitValue = $legacyHasFinancial
-                                ? (float) $legacyOrder->total_net_profit
-                                : (float) ($order->profit_value_metric ?? ($profitState === 'confirmed' ? $snapshot?->confirmed_profit : $snapshot?->estimated_profit));
-                            $grossRevenue = $legacyOrder
-                                ? (float) ($legacyOrder->total_gross_amount ?? ($order->gross_revenue_metric ?? $snapshot?->gross_revenue))
-                                : (float) ($order->gross_revenue_metric ?? $snapshot?->gross_revenue);
-                            $netReceivable = $legacyHasFinancial
-                                ? (float) $legacyOrder->total_net_hakedis
-                                : (float) ($snapshot?->net_receivable ?? 0);
-                            $estimatedCogs = $legacyOrder
-                                ? (float) (($legacyOrder->estimated_cogs ?? 0) + ($legacyOrder->estimated_packaging ?? 0))
-                                : (float) (($snapshot?->cogs_cost ?? 0) + ($snapshot?->packaging_cost ?? 0));
+                            $profitValue = (float) ($order->profit_value_metric
+                                ?? ($profitState === 'confirmed' ? $snapshot?->confirmed_profit : $snapshot?->estimated_profit));
+                            $grossRevenue = (float) ($order->gross_revenue_metric ?? $snapshot?->gross_revenue);
+                            $netReceivable = (float) ($order->net_receivable_metric ?? $snapshot?->net_receivable ?? 0);
+                            $estimatedCogs = (float) (
+                                ($order->display_cogs_cost_metric ?? $snapshot?->cogs_cost ?? 0)
+                                + ($order->display_packaging_cost_metric ?? $snapshot?->packaging_cost ?? 0)
+                            );
                             $costProfitPercent = $estimatedCogs > 0
                                 ? \App\Services\ProfitabilityMetric::profitPercent($profitValue, $estimatedCogs)
                                 : null;
@@ -1435,15 +1431,10 @@
                                         $legacyOrder = data_get($order, 'legacy_operational_order');
                                         $legacyHasFinancial = $legacyOrder?->financialOrders?->isNotEmpty() ?? false;
                                         $profitState = $order->profit_state_metric ?? ($snapshot?->profit_state ?: 'estimated');
-                                        $profitValue = $legacyHasFinancial
-                                            ? (float) $legacyOrder->total_net_profit
-                                            : (float) ($order->profit_value_metric ?? ($profitState === 'confirmed' ? $snapshot?->confirmed_profit : $snapshot?->estimated_profit));
-                                        $grossRevenue = $legacyOrder
-                                            ? (float) ($legacyOrder->total_gross_amount ?? ($order->gross_revenue_metric ?? $snapshot?->gross_revenue))
-                                            : (float) ($order->gross_revenue_metric ?? $snapshot?->gross_revenue);
-                                        $netReceivable = $legacyHasFinancial
-                                            ? (float) $legacyOrder->total_net_hakedis
-                                            : (float) ($snapshot?->net_receivable ?? 0);
+                                        $profitValue = (float) ($order->profit_value_metric
+                                            ?? ($profitState === 'confirmed' ? $snapshot?->confirmed_profit : $snapshot?->estimated_profit));
+                                        $grossRevenue = (float) ($order->gross_revenue_metric ?? $snapshot?->gross_revenue);
+                                        $netReceivable = (float) ($order->net_receivable_metric ?? $snapshot?->net_receivable ?? 0);
                                         $matchedLines = (int) ($order->matched_lines_count ?? 0);
                                         $itemLines = (int) ($order->item_lines_count ?? 0);
                                         $lineCount = $legacyOrder?->items?->count() ?: $itemLines;
@@ -1471,50 +1462,39 @@
                                         $cargoDueDate = $this->displayCargoDueDate($order);
                                         $labelPrintSummary = $this->orderLabelPrintSummary($order);
                                         $financialAlert = $legacyHasFinancial ? $legacyOrder->financial_alert : ['type' => null, 'label' => null, 'color' => null];
-                                        $estimatedCogs = $legacyOrder
-                                            ? (float) (($legacyOrder->estimated_cogs ?? 0) + ($legacyOrder->estimated_packaging ?? 0))
-                                            : (float) (($snapshot?->cogs_cost ?? 0) + ($snapshot?->packaging_cost ?? 0));
-                                        $estimatedCargo = $legacyOrder
-                                            ? (float) ($legacyOrder->estimated_cargo ?? 0)
-                                            : (float) (($snapshot?->cargo_total ?? 0) + ($snapshot?->own_cargo_cost ?? 0));
-                                        $commissionImpact = $legacyHasFinancial
-                                            ? (float) ($legacyOrder->total_commission ?? 0)
-                                            : (float) (($snapshot?->commission_total ?? 0) + ($snapshot?->service_fee_total ?? 0) + ($snapshot?->withholding_total ?? 0));
-                                        $serviceFeeImpact = $legacyHasFinancial
-                                            ? max(0, round($grossRevenue - ((float) ($legacyOrder->total_commission ?? 0)) - ((float) ($legacyOrder->total_cargo_amount ?? 0)) - $netReceivable, 2))
-                                            : (float) ($snapshot?->service_fee_total ?? ($order->service_fee_total_metric ?? 0));
-                                        $withholdingImpact = $legacyHasFinancial
-                                            ? 0.0
-                                            : (float) ($snapshot?->withholding_total ?? ($order->withholding_total_metric ?? 0));
-                                        $receivableBase = $legacyHasFinancial
-                                            ? $grossRevenue
-                                            : ((float) ($order->seller_revenue_metric ?? 0) > 0 ? (float) $order->seller_revenue_metric : $grossRevenue);
-                                        $receivableBaseLabel = $legacyHasFinancial
-                                            ? 'Brüt satış'
-                                            : ((float) ($order->seller_revenue_metric ?? 0) > 0 ? 'Satıcı geliri' : 'Tahmini satış');
+                                        $estimatedCogs = (float) (
+                                            ($order->display_cogs_cost_metric ?? $snapshot?->cogs_cost ?? 0)
+                                            + ($order->display_packaging_cost_metric ?? $snapshot?->packaging_cost ?? 0)
+                                        );
+                                        $marketplaceCargoImpact = (float) ($snapshot?->cargo_total ?? $order->cargo_total_metric ?? 0);
+                                        $ownCargoImpact = (float) ($order->display_own_cargo_cost_metric ?? $snapshot?->own_cargo_cost ?? 0);
+                                        $estimatedCargo = $marketplaceCargoImpact + $ownCargoImpact;
+                                        $commissionImpact = (float) ($snapshot?->commission_total ?? $order->commission_total_metric ?? 0);
+                                        $serviceFeeImpact = (float) ($snapshot?->service_fee_total ?? $order->service_fee_total_metric ?? 0);
+                                        $withholdingImpact = (float) ($snapshot?->withholding_total ?? $order->withholding_total_metric ?? 0);
+                                        $vatImpact = (float) ($snapshot?->vat_effect ?? 0);
+                                        $isConfirmedProfit = $profitState === 'confirmed';
+                                        $receivableBase = $grossRevenue;
+                                        $receivableBaseLabel = $isConfirmedProfit ? 'Brüt satış / finans bazı' : 'Tahmini satış';
                                         $receivableRows = array_values(array_filter([
                                             ['label' => $receivableBaseLabel, 'value' => $formatMoney($receivableBase), 'tone' => 'default'],
-                                            $commissionImpact > 0 ? ['label' => 'Komisyon / temel kesinti', 'value' => $formatSignedMoney(-1 * $commissionImpact), 'tone' => 'danger'] : null,
-                                            $estimatedCargo > 0 ? ['label' => 'Kargo kesintisi', 'value' => $formatSignedMoney(-1 * $estimatedCargo), 'tone' => 'warning'] : null,
-                                            $serviceFeeImpact > 0 ? ['label' => $legacyHasFinancial ? 'Diğer kesintiler' : 'Hizmet bedeli', 'value' => $formatSignedMoney(-1 * $serviceFeeImpact), 'tone' => 'danger'] : null,
+                                            $commissionImpact > 0 ? ['label' => 'Komisyon', 'value' => $formatSignedMoney(-1 * $commissionImpact), 'tone' => 'danger'] : null,
+                                            $marketplaceCargoImpact > 0 ? ['label' => 'Pazaryeri kargo kesintisi', 'value' => $formatSignedMoney(-1 * $marketplaceCargoImpact), 'tone' => 'warning'] : null,
+                                            $serviceFeeImpact > 0 ? ['label' => 'Platform hizmet bedeli ve diğer', 'value' => $formatSignedMoney(-1 * $serviceFeeImpact), 'tone' => 'danger'] : null,
                                             $withholdingImpact > 0 ? ['label' => 'Stopaj', 'value' => $formatSignedMoney(-1 * $withholdingImpact), 'tone' => 'danger'] : null,
                                         ]));
-                                        $receivableFormula = $legacyHasFinancial
-                                            ? 'Net ödeme = Brüt satış - komisyon - kargo - diğer kesintiler'
-                                            : 'Net ödeme = Satıcı geliri - komisyon - kargo - hizmet - stopaj';
+                                        $receivableFormula = 'Net ödeme = Brüt satış - komisyon - pazaryeri kargosu - hizmet bedeli - stopaj';
                                         $profitRows = array_values(array_filter([
-                                            ($legacyHasFinancial || (int) ($order->financial_event_count ?? 0) > 0)
-                                                ? ['label' => 'Net ödeme', 'value' => $formatMoney($netReceivable), 'tone' => 'default']
-                                                : ['label' => 'Ciro', 'value' => $formatMoney($grossRevenue), 'tone' => 'default'],
-                                            (!$legacyHasFinancial && (int) ($order->financial_event_count ?? 0) === 0 && $commissionImpact > 0)
-                                                ? ['label' => 'Tahmini komisyon / kesinti', 'value' => $formatSignedMoney(-1 * $commissionImpact), 'tone' => 'danger']
-                                                : null,
+                                            ['label' => 'Ciro', 'value' => $formatMoney($grossRevenue), 'tone' => 'default'],
+                                            $commissionImpact > 0 ? ['label' => $isConfirmedProfit ? 'Komisyon' : 'Tahmini komisyon', 'value' => $formatSignedMoney(-1 * $commissionImpact), 'tone' => 'danger'] : null,
+                                            $serviceFeeImpact > 0 ? ['label' => $isConfirmedProfit ? 'Hizmet bedeli ve diğer' : 'Tahmini hizmet bedeli', 'value' => $formatSignedMoney(-1 * $serviceFeeImpact), 'tone' => 'danger'] : null,
+                                            $withholdingImpact > 0 ? ['label' => $isConfirmedProfit ? 'E-ticaret stopajı' : 'Tahmini e-ticaret stopajı', 'value' => $formatSignedMoney(-1 * $withholdingImpact), 'tone' => 'danger'] : null,
+                                            $marketplaceCargoImpact > 0 ? ['label' => 'Pazaryeri kargo kesintisi', 'value' => $formatSignedMoney(-1 * $marketplaceCargoImpact), 'tone' => 'warning'] : null,
                                             $estimatedCogs > 0 ? ['label' => 'Maliyet + ambalaj', 'value' => $formatSignedMoney(-1 * $estimatedCogs), 'tone' => 'danger'] : null,
-                                            $estimatedCargo > 0 ? ['label' => 'Kargo maliyeti', 'value' => $formatSignedMoney(-1 * $estimatedCargo), 'tone' => 'warning'] : null,
+                                            $ownCargoImpact > 0 ? ['label' => 'Kendi kargo maliyeti', 'value' => $formatSignedMoney(-1 * $ownCargoImpact), 'tone' => 'warning'] : null,
+                                            $vatImpact > 0 ? ['label' => 'Net KDV etkisi', 'value' => $formatSignedMoney(-1 * $vatImpact), 'tone' => 'danger'] : null,
                                         ]));
-                                        $profitFormula = ($legacyHasFinancial || (int) ($order->financial_event_count ?? 0) > 0)
-                                            ? 'Kâr = Net ödeme - (maliyet + ambalaj) - kargo maliyeti'
-                                            : 'Kâr = Ciro - komisyon / kesinti - (maliyet + ambalaj) - kargo maliyeti';
+                                        $profitFormula = 'Nakit net kâr = Ciro - komisyon - hizmet bedeli - stopaj - kargo - maliyet - ambalaj - net KDV';
                                         $costProfitPercent = $estimatedCogs > 0
                                             ? \App\Services\ProfitabilityMetric::profitPercent($profitValue, $estimatedCogs)
                                             : null;
@@ -1767,9 +1747,9 @@
                                                 @if($netReceivable > 0 || $legacyHasFinancial || (int) ($order->financial_event_count ?? 0) > 0 || $snapshot)
                                                     <x-zolm.metric-breakdown
                                                         title="Hakediş hesabı"
-                                                        :subtitle="($legacyHasFinancial || (int) ($order->financial_event_count ?? 0) > 0)
-                                                            ? 'Bu tutar finans hareketlerinden ve kesinti kalemlerinden oluşur.'
-                                                            : 'Pazar yeri ödeme işlemini tamamlamadığı için bu alandaki veriler sınırlı görünüyor.'"
+                                                        :subtitle="$isConfirmedProfit
+                                                            ? 'Kesinleşen finans hareketleri, eksik kalemlerde kanonik tahmin politikasıyla tamamlanır.'
+                                                            : 'Finans hareketleri gelene kadar kanonik tahmin sözleşmesi kullanılır.'"
                                                         :rows="$receivableRows"
                                                         result-label="Net Ödeme"
                                                         :result-value="$formatMoney($netReceivable)"
@@ -1778,7 +1758,7 @@
                                                             $receivableFormula,
                                                             $formatMoney($netReceivable) . ' = ' . collect($receivableRows)->pluck('value')->join(' ')
                                                         ]"
-                                                        :note="($legacyHasFinancial || (int) ($order->financial_event_count ?? 0) > 0)
+                                                        :note="$isConfirmedProfit
                                                             ? 'Kârlılık değeri ayrı kârlılık kolonunda gösterilir.'
                                                             : 'Finans olayları tamamlandığında hakediş dökümü netleşir. Kârlılık değeri ayrı kârlılık kolonunda gösterilir.'"
                                                     >
@@ -1804,17 +1784,17 @@
                                             <td class="order-metric-cell px-2.5 py-3.5 align-top text-right">
                                                 <x-zolm.metric-breakdown
                                                     title="Kârlılık hesabı"
-                                                    subtitle="Kârlılık, tüm kesintiler (kargo vb.) yapıldıktan sonra kazandığınız net kârın ürün maliyetine oranıdır."
+                                                    subtitle="Tüm ZOLM ekranlarında aynı kanonik nakit net kâr sözleşmesi kullanılır; hizmet bedeli ve e-ticaret stopajı hesaba dahildir."
                                                     :rows="$profitRows"
-                                                    result-label="Net kâr"
+                                                    result-label="Nakit net kâr"
                                                     :result-value="$formatSignedMoney($profitValue)"
                                                     :result-tone="$profitValue >= 0 ? 'success' : 'danger'"
                                                     :formulas="array_values(array_filter([
                                                         $profitFormula,
-                                                        'Kârlılık = Kâr / Maliyet',
+                                                        'Maliyet getirisi = Nakit net kâr / (ürün maliyeti + ambalaj)',
                                                         $costProfitPercent !== null ? $formatProfitabilityPercent($costProfitPercent) . ' = ' . $formatMoney($profitValue) . ' / ' . $formatMoney($estimatedCogs) : null,
                                                     ]))"
-                                                    note="Örnek: 218,09 / 522,09 = %41,8. Bu değer ciro marjı değil, maliyete göre net kâr oranıdır."
+                                                    note="Gösterilen yüzde satış marjı değil, ürün maliyeti ve ambalaja göre nakit net kâr getirisidir."
                                                 >
                                                     <div class="text-[10px] text-slate-500">Maliyet {{ $formatMoney($estimatedCogs) }}</div>
                                                     <div class="mt-1 text-[10px] text-rose-500">Kom. {{ $formatMoney($commissionImpact) }}</div>

@@ -1712,13 +1712,8 @@ class AuditEngine
         foreach ($grouped as $sku => $skuOrders) {
             $totalLoss = 0;
             $lossOrders = 0;
-            $includeOwnCargo = $this->settings->usesOwnCargo();
-
             foreach ($skuOrders as $order) {
-                $netProfit = $order->net_hakedis
-                    - ($order->resolved_cogs_at_time ?? 0)
-                    - ($order->resolved_packaging_cost_at_time ?? 0)
-                    - ($includeOwnCargo ? ($order->resolved_own_cargo_cost_at_time ?? 0) : 0);
+                $netProfit = $order->real_net_profit;
 
                 if ($netProfit < 0) {
                     $totalLoss += abs($netProfit);

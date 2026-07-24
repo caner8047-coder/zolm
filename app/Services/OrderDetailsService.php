@@ -287,27 +287,27 @@ class OrderDetailsService
                 $baseRevenue = 0.0;
                 $stopajVal = 0.0;
             } else {
-                // Eğer sipariş ödendiyse Bankaya Yatan (Settlement) - (COGS + Ambalaj + Ekstra Cezalar)
-                // Ödenmediyse Beklenen (Net Hakediş) - (...)
                 $baseRevenue = $settlementData['has_settlement'] ? $settlementData['seller_hakedis'] : $financials['expected_net'];
                 $costOfGoods = (float) $aggCogs + (float) $aggPackaging;
-                
-                // Kendi kargo maliyetini dahil et (toggle açıksa)
                 $ownCargoAmount = $svc->usesOwnCargo() ? (float) $aggOwnCargo : 0;
                 $costOfGoods += $ownCargoAmount;
 
-                // Gerçek Net Kâr = Tahsilat - Tüm Maliyetler - Ekstra Cezalar + Komisyon İadeleri
-                $absoluteNetProfit = $baseRevenue - $costOfGoods - $totalExtraDebt + $totalRefundCredit;
-                
-                // KDV Yükümlülüğü (sadece ayarlardan açıksa hesapla)
+                // Eski detay ekranı da UnitEconomicsService üzerinden aynı kanonik
+                // hizmet bedeli, stopaj ve maliyet sözleşmesini kullanır.
+                $unitEconomics = new UnitEconomicsService();
+                $canonicalProfit = (float) $allOrders->sum(
+                    fn (MpOrder $item) => $unitEconomics->calculateForOrder($item)['cash_profit'],
+                );
+                $settlementAdjustment = $settlementData['has_settlement']
+                    ? (float) $settlementData['seller_hakedis'] - (float) $aggExpectedNet
+                    : 0.0;
+                $absoluteNetProfit = $canonicalProfit
+                    + $settlementAdjustment
+                    - $totalExtraDebt
+                    + $totalRefundCredit;
+
                 $vatPayable = $kdvEnabled ? (float) $aggVatBalance : 0;
-                if ($vatPayable > 0) {
-                    $absoluteNetProfit -= $vatPayable;
-                }
-                
-                // Stopajı düş
                 $stopajVal = $actualStopajSum;
-                $absoluteNetProfit -= $stopajVal;
             }
 
             $summary = [

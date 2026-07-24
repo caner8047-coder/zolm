@@ -5,6 +5,8 @@ namespace App\Livewire;
 use App\Models\OptimizationReport;
 use App\Models\OptimizationReportItem;
 use App\Services\CampaignAnalysisService;
+use App\Services\Marketplace\MarketplacePricingSimulationService;
+use App\Services\MpSettingsService;
 use App\Services\ProfitabilityMetric;
 use App\Services\TariffOptimizerService;
 use App\Models\AIConversation;
@@ -286,8 +288,7 @@ class TariffOptimizer extends Component
                  $commissionRate = $item->scenario_details[0]['commission'];
             }
 
-            $commissionAmount = $price * ($commissionRate / 100);
-            $netProfit = $price - $commissionAmount - $cost;
+            $netProfit = $this->canonicalTariffProfit($item, (float) $price, (float) $commissionRate);
 
             $categories[$category]['count']++;
             $categories[$category]['cost'] += $cost;
@@ -544,11 +545,11 @@ class TariffOptimizer extends Component
         if (!$scenarios || !isset($scenarios[$tariffIndex])) return;
 
         $selected = $scenarios[$tariffIndex];
-        $totalCost = (float) $item->production_cost + (float) $item->shipping_cost;
-
-        // Net kâr: (Fiyat × (1 - Komisyon%/100)) - Toplam Maliyet
-        $revenue = $selected['price'] * (1 - $selected['commission'] / 100);
-        $netProfit = round($revenue - $totalCost, 2);
+        $netProfit = $this->canonicalTariffProfit(
+            $item,
+            (float) $selected['price'],
+            (float) $selected['commission'],
+        );
 
         $item->update([
             'selected_tariff_index' => $tariffIndex,
@@ -579,8 +580,6 @@ class TariffOptimizer extends Component
         if ($newPrice <= 0) return;
 
         $scenarios = $item->scenario_details;
-        $totalCost = (float) $item->production_cost + (float) $item->shipping_cost;
-
         // Fiyatın hangi tarife aralığına düştüğünü bul
         // Tarife fiyatları büyükten küçüğe sıralıdır: Tarife 1 > 2 > 3 > 4
         // Girilen fiyat >= tarifenin fiyatı ise o tarifeye girer
@@ -602,8 +601,7 @@ class TariffOptimizer extends Component
             }
         }
 
-        $revenue = $newPrice * (1 - $commission / 100);
-        $netProfit = round($revenue - $totalCost, 2);
+        $netProfit = $this->canonicalTariffProfit($item, $newPrice, $commission);
 
         $item->update([
             'custom_price'          => $newPrice,
@@ -621,6 +619,29 @@ class TariffOptimizer extends Component
         if (!in_array($itemId, $this->selectedItems)) {
             $this->selectedItems[] = $itemId;
         }
+    }
+
+    protected function canonicalTariffProfit(
+        OptimizationReportItem $item,
+        float $salePrice,
+        float $commissionRate,
+    ): float {
+        $settings = new MpSettingsService((int) auth()->id());
+        $result = app(MarketplacePricingSimulationService::class)->calculateOnly([
+            'marketplace' => 'trendyol',
+            'sale_price' => $salePrice,
+            'cogs' => (float) $item->production_cost,
+            'cargo_cost' => (float) $item->shipping_cost,
+            'commission_rate' => $commissionRate,
+            'service_fee_fixed' => $settings->getEstimatedPlatformServiceFee('trendyol'),
+            'vat_rate' => $settings->getDefaultProductVatRate() * 100,
+            'expense_vat_rate' => $settings->getExpenseVatRate() * 100,
+            'vat_enabled' => $settings->isKdvEnabled(),
+            'withholding_enabled' => $settings->shouldEstimateWithholdingForMarketplace('trendyol'),
+            'withholding_rate' => $settings->getStopajRate() * 100,
+        ]);
+
+        return (float) $result['cash_profit'];
     }
 
     public function exportSelected()

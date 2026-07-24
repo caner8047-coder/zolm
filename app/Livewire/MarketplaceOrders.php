@@ -3039,10 +3039,27 @@ class MarketplaceOrders extends Component
             ? round((float) ($order->net_receivable_metric ?? $snapshot?->net_receivable ?? 0), 2)
             : $estimatedNetReceivable;
 
-        $estimatedProfit = round($estimatedNetReceivable - $displayCogsCost - $displayPackagingCost - $displayOwnCargoCost, 2);
-        $confirmedProfit = $hasFinancials
-            ? round($netReceivable - $displayCogsCost - $displayPackagingCost - $displayOwnCargoCost, 2)
-            : $estimatedProfit;
+        $storedOperationalCost = round(
+            $snapshotCogsCost + $snapshotPackagingCost + $snapshotOwnCargoCost,
+            2,
+        );
+        $displayOperationalCost = round(
+            $displayCogsCost + $displayPackagingCost + $displayOwnCargoCost,
+            2,
+        );
+        $liveCostDelta = round($displayOperationalCost - $storedOperationalCost, 2);
+        $hasPersistedSnapshot = (bool) $snapshot?->exists;
+
+        // Snapshot kanonik kesinti sözleşmesini taşır. Ürün kartındaki canlı maliyet
+        // değiştiğinde yalnızca maliyet farkını uygula; eski hakediş formülüne dönme.
+        $estimatedProfit = $hasPersistedSnapshot
+            ? round((float) $snapshot->estimated_profit - $liveCostDelta, 2)
+            : round($estimatedNetReceivable - $displayOperationalCost, 2);
+        $confirmedProfit = $hasPersistedSnapshot
+            ? round((float) $snapshot->confirmed_profit - $liveCostDelta, 2)
+            : ($hasFinancials
+                ? round($netReceivable - $displayOperationalCost, 2)
+                : $estimatedProfit);
 
         $profitValue = $profitState === 'confirmed' ? $confirmedProfit : $estimatedProfit;
         $marginPercent = ProfitabilityMetric::multiplierOrZero(

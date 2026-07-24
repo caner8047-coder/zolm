@@ -16,7 +16,7 @@ class MarketplaceVatEffectService
 
     /**
      * @param  iterable<int, mixed>  $items
-     * @return array{enabled: bool, sales_vat: float, expense_vat: float, net_vat: float, sales_vat_rate: float, expense_vat_rate: float}
+     * @return array{enabled: bool, sales_vat: float, expense_vat: float, net_vat: float, vat_credit_carryforward: float, sales_vat_rate: float, expense_vat_rate: float}
      */
     public function calculate(
         MarketplaceStore $store,
@@ -25,6 +25,7 @@ class MarketplaceVatEffectService
         float $grossRevenue,
         float $commissionTotal,
         float $cargoTotal,
+        float $serviceFeeTotal = 0.0,
     ): array {
         $settings = new MpSettingsService((int) $store->user_id);
 
@@ -36,14 +37,19 @@ class MarketplaceVatEffectService
         $salesVat = $this->salesVatApplies($order)
             ? $this->salesVatTotal($items, $grossRevenue, $settings)
             : 0.0;
-        $expenseVat = round((abs($commissionTotal) + abs($cargoTotal)) * $expenseVatRate, 2);
-        $netVat = round($salesVat - $expenseVat, 2);
+        $expenseVat = $this->includedVat(
+            abs($commissionTotal) + abs($cargoTotal) + abs($serviceFeeTotal),
+            $expenseVatRate,
+        );
+        $netVatBeforeFloor = round($salesVat - $expenseVat, 2);
+        $netVat = max(0.0, $netVatBeforeFloor);
 
         return [
             'enabled' => true,
             'sales_vat' => round($salesVat, 2),
             'expense_vat' => $expenseVat,
             'net_vat' => $netVat,
+            'vat_credit_carryforward' => abs(min(0.0, $netVatBeforeFloor)),
             'sales_vat_rate' => $this->dominantSalesVatRate($items, $settings),
             'expense_vat_rate' => $expenseVatRate,
         ];
@@ -165,7 +171,7 @@ class MarketplaceVatEffectService
     }
 
     /**
-     * @return array{enabled: bool, sales_vat: float, expense_vat: float, net_vat: float, sales_vat_rate: float, expense_vat_rate: float}
+     * @return array{enabled: bool, sales_vat: float, expense_vat: float, net_vat: float, vat_credit_carryforward: float, sales_vat_rate: float, expense_vat_rate: float}
      */
     protected function emptyResult(bool $enabled): array
     {
@@ -174,6 +180,7 @@ class MarketplaceVatEffectService
             'sales_vat' => 0.0,
             'expense_vat' => 0.0,
             'net_vat' => 0.0,
+            'vat_credit_carryforward' => 0.0,
             'sales_vat_rate' => 0.0,
             'expense_vat_rate' => 0.0,
         ];

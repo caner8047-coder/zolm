@@ -19,7 +19,7 @@
   let marginLow = 5;
   let marginHigh = 20;
   let serviceFeeFixed = 9.33;
-  let withholdingTaxEnabled = false;
+  let withholdingTaxEnabled = true;
   let scanRunning = false;
   let queued = false;
   let timer = null;
@@ -110,20 +110,26 @@
   function calculate(row, cost) {
     if (!cost || row.salePrice <= 0) return null;
     const commissionRate = Number(cost.commission_rate || 0);
-    const commission = row.salePrice * commissionRate / 100;
-    const vatRate = Number(cost.vat_rate || 0);
-    const withholding = withholdingTaxEnabled ? (row.salePrice / (1 + vatRate / 100)) * .01 : 0;
-    const netProfit = row.salePrice - row.sellerDiscount - commission - serviceFeeFixed - withholding - Number(cost.total_cost || 0);
-    const margin = Number(cost.cogs || 0) > 0 ? (netProfit / Number(cost.cogs)) * 100 : null;
-    const maximumAdCost = Math.max(0, netProfit);
+    const canonical = globalThis.ZolmProfitCalculator.calculate({
+      salePrice: row.salePrice,
+      sellerDiscount: row.sellerDiscount,
+      commissionRate,
+      cost,
+      serviceFeeFixed,
+      withholdingEnabled: withholdingTaxEnabled,
+      withholdingRate: 1,
+    });
+    const maximumAdCost = Math.max(0, canonical.cashProfit);
 
     return {
-      hasCost: Number(cost.cogs || 0) > 0,
-      netProfit,
-      margin,
+      hasCost: canonical.hasCost,
+      netProfit: canonical.cashProfit,
+      accountingProfit: canonical.accountingProfit,
+      margin: canonical.hasCost ? canonical.profitMargin : null,
       commissionRate,
       maximumAdCost,
-      breakEvenRoas: maximumAdCost > 0 ? row.salePrice / maximumAdCost : null,
+      breakEvenRoas: maximumAdCost > 0 ? canonical.grossRevenue / maximumAdCost : null,
+      calculationVersion: canonical.calculationVersion,
     };
   }
 
@@ -203,7 +209,7 @@
     timer = setTimeout(scan, 700);
   }
 
-  chrome.storage.sync.get({ marginLow: 5, marginHigh: 20, serviceFeeFixed: 9.33, withholdingTaxEnabled: false }).then((settings) => {
+  chrome.storage.sync.get({ marginLow: 5, marginHigh: 20, serviceFeeFixed: 9.33, withholdingTaxEnabled: true }).then((settings) => {
     marginLow = Number(settings.marginLow || 5);
     marginHigh = Number(settings.marginHigh || 20);
     serviceFeeFixed = Math.max(0, Number(settings.serviceFeeFixed || 0));

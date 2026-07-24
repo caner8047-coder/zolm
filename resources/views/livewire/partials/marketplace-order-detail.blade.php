@@ -82,7 +82,7 @@
     </h5>
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-center">
         <div>
-            <div class="text-[10px] text-gray-500 uppercase">Net Hakediş</div>
+            <div class="text-[10px] text-gray-500 uppercase">Kanonik Nakit Net Kâr</div>
             <div class="text-sm font-bold text-gray-900">₺{{ number_format($order->total_net_hakedis, 2, ',', '.') }}</div>
         </div>
         <div>

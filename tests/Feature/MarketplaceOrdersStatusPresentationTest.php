@@ -173,4 +173,62 @@ class MarketplaceOrdersStatusPresentationTest extends TestCase
         $this->assertSame(150.0, (float) $resolvedSnapshot->commission_total);
         $this->assertSame(850.0, (float) $resolvedSnapshot->estimated_profit);
     }
+
+    public function test_display_profit_metrics_preserve_canonical_snapshot_deductions(): void
+    {
+        $component = new MarketplaceOrders();
+
+        $product = new MpProduct([
+            'commission_rate' => 23,
+            'cogs' => 3000,
+            'packaging_cost' => 0,
+            'cargo_cost' => 560,
+        ]);
+
+        $item = new ChannelOrderItem([
+            'quantity' => 1,
+            'unit_price' => 1999,
+            'gross_amount' => 1999,
+            'billable_amount' => 1999,
+            'commission_rate' => 23,
+        ]);
+        $item->setRelation('product', $product);
+
+        $order = new ChannelOrder([
+            'id' => 1,
+            'store_id' => 1,
+        ]);
+        $order->setAttribute('gross_revenue_metric', 1999);
+        $order->setAttribute('net_receivable_metric', 1511.73);
+        $order->setAttribute('financial_event_count', 2);
+        $order->setAttribute('profit_state_metric', 'confirmed');
+        $order->setRelation('items', collect([$item]));
+
+        $snapshot = new OrderProfitSnapshot([
+            'store_id' => 1,
+            'channel_order_id' => 1,
+            'profit_state' => 'confirmed',
+            'gross_revenue' => 1999,
+            'net_receivable' => 1511.73,
+            'commission_total' => 459.77,
+            'service_fee_total' => 9.33,
+            'withholding_total' => 18.17,
+            'cogs_cost' => 3000,
+            'packaging_cost' => 0,
+            'own_cargo_cost' => 560,
+            'estimated_profit' => -2048.27,
+            'confirmed_profit' => -2048.27,
+        ]);
+        $snapshot->exists = true;
+
+        $method = new \ReflectionMethod($component, 'applyDisplayProfitMetrics');
+        $method->setAccessible(true);
+
+        $resolvedSnapshot = $method->invoke($component, $order, $snapshot);
+
+        $this->assertSame(9.33, (float) $resolvedSnapshot->service_fee_total);
+        $this->assertSame(18.17, (float) $resolvedSnapshot->withholding_total);
+        $this->assertSame(-2048.27, (float) $resolvedSnapshot->confirmed_profit);
+        $this->assertSame(-2048.27, (float) $order->profit_value_metric);
+    }
 }

@@ -95,9 +95,56 @@ class MarketplacePricingSimulatorTest extends TestCase
 
         $this->assertSame(200.0, $domestic['breakdown']['sales_vat']);
         $this->assertSame(0.0, $microExport['breakdown']['sales_vat']);
-        $this->assertSame(-100.0, $microExport['breakdown']['net_vat']);
-        $this->assertSame(700.0, $microExport['net_profit']);
+        $this->assertSame(0.0, $microExport['breakdown']['net_vat']);
+        $this->assertSame(100.0, $microExport['breakdown']['vat_credit_carryforward']);
+        $this->assertSame(600.0, $microExport['net_profit']);
         $this->assertNotEmpty($microExport['warnings']);
+    }
+
+    public function test_canonical_profit_contract_matches_approved_trendyol_example(): void
+    {
+        $result = app(MarketplacePricingSimulationService::class)->calculateOnly([
+            'sale_price' => 839.90,
+            'cogs' => 373.24,
+            'packaging_cost' => 0,
+            'cargo_cost' => 194.60,
+            'commission_rate' => 22,
+            'service_fee_fixed' => 9.33,
+            'vat_rate' => 10,
+            'vat_enabled' => false,
+            'withholding_enabled' => true,
+            'withholding_rate' => 1,
+        ]);
+
+        $this->assertSame(2, $result['calculation_version']);
+        $this->assertSame(184.78, $result['breakdown']['commission']);
+        $this->assertSame(9.33, $result['breakdown']['service_fee']);
+        $this->assertSame(763.55, $result['breakdown']['withholding_base']);
+        $this->assertSame(7.64, $result['breakdown']['withholding']);
+        $this->assertSame(77.95, $result['accounting_profit']);
+        $this->assertSame(70.31, $result['cash_profit']);
+        $this->assertSame(70.31, $result['net_profit']);
+        $this->assertSame(8.37, $result['profit_margin_percent']);
+        $this->assertSame(18.84, $result['roi_percent']);
+    }
+
+    public function test_expense_vat_is_extracted_from_vat_inclusive_costs(): void
+    {
+        $result = app(MarketplacePricingSimulationService::class)->calculateOnly([
+            'sale_price' => 1200,
+            'cogs' => 600,
+            'commission_rate' => 10,
+            'cargo_cost' => 120,
+            'service_fee_fixed' => 12,
+            'vat_rate' => 20,
+            'cost_vat_rate' => 20,
+            'expense_vat_rate' => 20,
+            'vat_enabled' => true,
+        ]);
+
+        // 252 TL KDV dahil pazaryeri giderinin içindeki KDV: 252 / 1,20 × %20 = 42 TL.
+        $this->assertSame(42.0, $result['breakdown']['expense_vat_credit']);
+        $this->assertSame(58.0, $result['breakdown']['net_vat']);
     }
 
     public function test_negative_profit_returns_loss_warning(): void

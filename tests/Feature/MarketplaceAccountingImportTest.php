@@ -523,6 +523,45 @@ class MarketplaceAccountingImportTest extends TestCase
         $this->assertSame(90.0, $profitItems[1]['total_cogs']);
     }
 
+    public function test_legacy_unit_economics_uses_canonical_service_fee_and_withholding_contract(): void
+    {
+        $user = User::factory()->create();
+        $period = $this->createPeriod($user, 2026, 2);
+
+        (new MpSettingsService($user->id))->setMany([
+            'cargo.uses_own_cargo' => true,
+            'marketplace_products.profit.estimated_service_fee_fixed.trendyol' => 9.33,
+            'marketplace_products.profit.estimated_withholding_enabled' => true,
+            'tax.stopaj_rate' => 0.01,
+            'tax.default_product_vat_rate' => 0.10,
+        ]);
+
+        $order = MpOrder::create([
+            'period_id' => $period->id,
+            'source_marketplace' => 'trendyol',
+            'order_number' => 'CANONICAL-LEGACY-1',
+            'quantity' => 1,
+            'gross_amount' => 1999,
+            'net_hakedis' => 1521.06,
+            'commission_amount' => 459.77,
+            'service_fee' => 0,
+            'withholding_tax' => 18.17,
+            'cogs_at_time' => 3000,
+            'packaging_cost_at_time' => 0,
+            'own_cargo_cost_at_time' => 560,
+            'product_vat_rate' => 10,
+            'status' => 'Teslim Edildi',
+        ]);
+
+        $result = (new UnitEconomicsService())->calculateForOrder($order);
+
+        $this->assertSame(2, $result['calculation_version']);
+        $this->assertSame(9.33, $result['service_fee']);
+        $this->assertSame(18.17, $result['stopaj_deduction']);
+        $this->assertSame(-2048.27, $result['cash_profit']);
+        $this->assertSame(-2048.27, (float) $order->real_net_profit);
+    }
+
     public function test_missing_cogs_audit_uses_resolved_product_match_before_flagging(): void
     {
         $user = User::factory()->create();
@@ -807,7 +846,11 @@ class MarketplaceAccountingImportTest extends TestCase
         $user = User::factory()->create();
         $period = $this->createPeriod($user, 2025, 10);
 
-        (new MpSettingsService($user->id))->set('cargo.uses_own_cargo', false);
+        (new MpSettingsService($user->id))->setMany([
+            'cargo.uses_own_cargo' => false,
+            'marketplace_products.profit.estimated_service_fee_fixed.trendyol' => 0,
+            'marketplace_products.profit.estimated_withholding_enabled' => false,
+        ]);
 
         MpProduct::create([
             'user_id' => $user->id,
@@ -880,12 +923,15 @@ class MarketplaceAccountingImportTest extends TestCase
         Livewire::test(MarketplaceAccounting::class)
             ->set('settingsHelpTipsEnabled', false)
             ->set('settingsEstimatedWithholdingEnabled', true)
+            ->set('settingsTrendyolServiceFee', 9.33)
             ->call('saveSettings');
 
         $settings = MpAccountingSetting::where('user_id', $user->id)->firstOrFail();
 
         $this->assertFalse((bool) data_get($settings->settings, 'ui.help_tips_enabled', true));
         $this->assertTrue((bool) data_get($settings->settings, 'tax.estimated_withholding_enabled', false));
+        $this->assertTrue((bool) data_get($settings->settings, 'marketplace_products.profit.estimated_withholding_enabled', false));
+        $this->assertSame(9.33, (float) data_get($settings->settings, 'marketplace_products.profit.estimated_service_fee_fixed.trendyol'));
         $this->assertTrue((new MpSettingsService($user->id))->isEstimatedWithholdingEnabled());
     }
 

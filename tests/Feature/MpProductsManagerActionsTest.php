@@ -688,6 +688,132 @@ class MpProductsManagerActionsTest extends TestCase
         $this->assertEqualsWithDelta(1.6273, (float) $scenario['profit_margin'], 0.0001);
     }
 
+    public function test_trendyol_profit_scenario_uses_canonical_service_fee_and_withholding_contract(): void
+    {
+        $user = User::factory()->create();
+        $legalEntity = LegalEntity::query()->create([
+            'user_id' => $user->id,
+            'name' => 'Zem Test Ltd',
+            'tax_number' => '1234567800',
+            'company_type' => 'limited',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        $product = MpProduct::query()->create(array_merge($this->productPayload($user->id), [
+            'cogs' => 373.24,
+            'packaging_cost' => 0,
+            'cargo_cost' => 194.60,
+            'sale_price' => 839.90,
+            'commission_rate' => 22,
+            'vat_rate' => 10,
+        ]));
+        $store = MarketplaceStore::query()->create([
+            'user_id' => $user->id,
+            'legal_entity_id' => $legalEntity->id,
+            'marketplace' => 'trendyol',
+            'store_name' => 'griza',
+            'status' => 'active',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        $listing = ChannelListing::query()->create([
+            'store_id' => $store->id,
+            'mp_product_id' => $product->id,
+            'listing_id' => 'TY-CANONICAL-1',
+            'listing_status' => 'active',
+            'sale_price' => 839.90,
+            'commission_rate' => 22,
+            'commission_source' => 'catalog',
+            'currency' => 'TRY',
+            'stock_quantity' => 10,
+        ]);
+
+        (new MpSettingsService($user->id))->setMany([
+            'tax.estimated_withholding_enabled' => true,
+            'marketplace_products.profit.estimated_withholding_enabled' => true,
+            'tax.stopaj_rate' => 0.01,
+            'marketplace_products.profit.estimated_service_fee_fixed.trendyol' => 9.33,
+        ]);
+        $this->actingAs($user);
+
+        $scenario = (new MpProductsManager)->listingCommissionScenario(
+            $product->fresh(),
+            $listing->fresh('store'),
+        );
+
+        $this->assertSame(2, $scenario['calculation_version']);
+        $this->assertSame(184.78, $scenario['commission_amount']);
+        $this->assertSame(9.33, $scenario['service_fee_amount']);
+        $this->assertSame(7.64, $scenario['withholding_amount']);
+        $this->assertSame(77.95, $scenario['accounting_profit']);
+        $this->assertSame(70.31, $scenario['cash_profit']);
+        $this->assertEqualsWithDelta(1.1884, $scenario['profit_margin'], 0.0001);
+    }
+
+    public function test_inline_sale_price_update_recalculates_profit_with_new_master_price(): void
+    {
+        $user = User::factory()->create();
+        $legalEntity = LegalEntity::query()->create([
+            'user_id' => $user->id,
+            'name' => 'Zem Test Ltd',
+            'tax_number' => '1234567801',
+            'company_type' => 'limited',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        $product = MpProduct::query()->create(array_merge($this->productPayload($user->id), [
+            'product_name' => 'Fiyat Güncelleme Test Ürünü',
+            'cogs' => 2000,
+            'packaging_cost' => 0,
+            'cargo_cost' => 560,
+            'sale_price' => 1999,
+            'commission_rate' => 23,
+            'vat_rate' => 10,
+        ]));
+        $store = MarketplaceStore::query()->create([
+            'user_id' => $user->id,
+            'legal_entity_id' => $legalEntity->id,
+            'marketplace' => 'trendyol',
+            'store_name' => 'griza',
+            'status' => 'active',
+            'currency' => 'TRY',
+            'is_active' => true,
+        ]);
+        ChannelListing::query()->create([
+            'store_id' => $store->id,
+            'mp_product_id' => $product->id,
+            'listing_id' => 'TY-PRICE-REFRESH-1',
+            'listing_status' => 'active',
+            'sale_price' => 1999,
+            'commission_rate' => 23,
+            'commission_source' => 'catalog',
+            'currency' => 'TRY',
+            'stock_quantity' => 10,
+        ]);
+
+        (new MpSettingsService($user->id))->setMany([
+            'marketplace_products.profit.default_marketplace' => 'trendyol',
+            'marketplace_products.profit.estimated_withholding_enabled' => true,
+            'marketplace_products.profit.estimated_service_fee_fixed.trendyol' => 9.33,
+            'tax.stopaj_rate' => 0.01,
+        ]);
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->assertSee('-₺1.048,27')
+            ->call('updateInlineField', $product->id, 'sale_price', 5999)
+            ->assertSee('+₺1.995,36');
+
+        $scenario = (new MpProductsManager)->selectedProductCommissionScenario(
+            $product->fresh()->load('channelListings.store')
+        );
+
+        $this->assertSame(5999.0, (float) $scenario['sale_price']);
+        $this->assertSame(1379.77, (float) $scenario['commission_amount']);
+        $this->assertSame(54.54, (float) $scenario['withholding_amount']);
+        $this->assertSame(1995.36, (float) $scenario['cash_profit']);
+    }
+
     public function test_default_marketplace_missing_uses_average_with_clear_label(): void
     {
         $user = User::factory()->create();

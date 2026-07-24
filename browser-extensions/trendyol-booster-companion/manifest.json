@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ZOLM Trendyol Booster Companion",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Trendyol fırsat ve toplu karar kuyruğunu, medya merkezini ve Seller Panel kârlılığını ZOLM'a taşır.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -40,7 +40,7 @@
     },
     {
       "matches": ["https://partner.trendyol.com/*"],
-      "js": ["seller-panel.js", "campaign-panel.js", "orders-panel.js", "seller-profit-overlay.js"],
+      "js": ["profit-calculator.js", "seller-panel.js", "campaign-panel.js", "orders-panel.js", "seller-profit-overlay.js"],
       "run_at": "document_idle"
     },
     {

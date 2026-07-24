@@ -20,6 +20,7 @@ use App\Services\Marketplace\MarketplaceListingQualityService;
 use App\Services\Marketplace\MarketplaceManualMatchService;
 use App\Services\Marketplace\MarketplaceManualSyncDispatchService;
 use App\Services\Marketplace\MarketplaceListingPushService;
+use App\Services\Marketplace\MarketplacePricingSimulationService;
 use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Services\Marketplace\MarketplaceRiskSignalService;
 use App\Services\Marketplace\MarketplaceProductReturnRateService;
@@ -822,8 +823,16 @@ class MpProductsManager extends Component
         $defaultMarketplace = $profitSettings['default_marketplace'];
         $woocommerceCommissionRate = $profitSettings['woocommerce_commission_rate'];
         $koctasCommissionRate = $profitSettings['koctas_commission_rate'];
+        $settings = new MpSettingsService($this->userId());
+        $trendyolServiceFee = $settings->getEstimatedPlatformServiceFee('trendyol');
+        $withholdingRate = (bool) $settings->get('marketplace_products.profit.estimated_withholding_enabled', true)
+            ? $settings->getStopajRate()
+            : 0.0;
+        $defaultVatRate = $settings->getDefaultProductVatRate() * 100;
         $usesProviderDefault = !in_array($defaultMarketplace, ['average', 'worst'], true);
         $listingCommissionExpression = "CASE WHEN LOWER(marketplace_stores.marketplace) = 'woocommerce' THEN ? WHEN LOWER(marketplace_stores.marketplace) = 'koctas' THEN ? ELSE channel_listings.commission_rate END";
+        $listingServiceFeeExpression = "CASE WHEN LOWER(marketplace_stores.marketplace) = 'trendyol' THEN {$trendyolServiceFee} ELSE 0 END";
+        $listingWithholdingExpression = "CASE WHEN LOWER(marketplace_stores.marketplace) IN ('woocommerce', '') THEN 0 ELSE 1 END";
         $hasListingShippingDays = Schema::hasColumn('channel_listings', 'shipping_days');
         $listingShippingDaysSelect = $hasListingShippingDays
             ? 'MIN(channel_listings.shipping_days) as min_shipping_days_metric'
@@ -841,7 +850,9 @@ class MpProductsManager extends Component
             ")
             ->selectRaw("AVG({$listingCommissionExpression}) as avg_commission_rate_metric", [$woocommerceCommissionRate, $koctasCommissionRate])
             ->selectRaw("MAX({$listingCommissionExpression}) as max_commission_rate_metric", [$woocommerceCommissionRate, $koctasCommissionRate])
-            ->when($usesProviderDefault, function ($query) use ($defaultMarketplace, $listingCommissionExpression, $woocommerceCommissionRate, $koctasCommissionRate) {
+            ->selectRaw("AVG({$listingServiceFeeExpression}) as avg_service_fee_metric")
+            ->selectRaw("AVG({$listingWithholdingExpression}) as avg_withholding_factor_metric")
+            ->when($usesProviderDefault, function ($query) use ($defaultMarketplace, $listingCommissionExpression, $listingServiceFeeExpression, $listingWithholdingExpression, $woocommerceCommissionRate, $koctasCommissionRate) {
                 $query
                     ->selectRaw(
                         "AVG(CASE WHEN LOWER(marketplace_stores.marketplace) = ? THEN {$listingCommissionExpression} END) as selected_commission_rate_metric",
@@ -849,6 +860,14 @@ class MpProductsManager extends Component
                     )
                     ->selectRaw(
                         'AVG(CASE WHEN LOWER(marketplace_stores.marketplace) = ? THEN channel_listings.sale_price END) as selected_sale_price_metric',
+                        [$defaultMarketplace]
+                    )
+                    ->selectRaw(
+                        "AVG(CASE WHEN LOWER(marketplace_stores.marketplace) = ? THEN {$listingServiceFeeExpression} END) as selected_service_fee_metric",
+                        [$defaultMarketplace]
+                    )
+                    ->selectRaw(
+                        "AVG(CASE WHEN LOWER(marketplace_stores.marketplace) = ? THEN {$listingWithholdingExpression} END) as selected_withholding_factor_metric",
                         [$defaultMarketplace]
                     );
             })
@@ -859,10 +878,19 @@ class MpProductsManager extends Component
             ? 'COALESCE(listing_agg.selected_commission_rate_metric, listing_agg.avg_commission_rate_metric, mp_products.commission_rate, 0)'
             : 'COALESCE(listing_agg.avg_commission_rate_metric, mp_products.commission_rate, 0)';
 
+        // Ürün çalışma alanındaki "Ana" fiyat, tüm kanal komisyon senaryolarının
+        // teklif fiyatıdır. Kanal fiyatı yalnızca ana fiyat tanımlı değilse yedektir.
         $salePriceMetricBaseExpression = $usesProviderDefault
-            ? 'COALESCE(listing_agg.selected_sale_price_metric, mp_products.sale_price, 0)'
+            ? 'COALESCE(NULLIF(mp_products.sale_price, 0), listing_agg.selected_sale_price_metric, 0)'
             : 'COALESCE(mp_products.sale_price, 0)';
         $deliveryTermMetricExpression = 'COALESCE(listing_agg.min_shipping_days_metric, mp_products.shipping_days, 9999)';
+        $serviceFeeMetricExpression = $usesProviderDefault
+            ? 'COALESCE(listing_agg.selected_service_fee_metric, listing_agg.avg_service_fee_metric, 0)'
+            : 'COALESCE(listing_agg.avg_service_fee_metric, 0)';
+        $withholdingFactorMetricExpression = $usesProviderDefault
+            ? 'COALESCE(listing_agg.selected_withholding_factor_metric, listing_agg.avg_withholding_factor_metric, 0)'
+            : 'COALESCE(listing_agg.avg_withholding_factor_metric, 0)';
+        $vatRateMetricExpression = "COALESCE(NULLIF(mp_products.vat_rate, 0), {$defaultVatRate})";
 
         $commissionMetricExpression = "CASE WHEN COALESCE(mp_products.profit_commission_override_enabled, 0) = 1 THEN COALESCE(mp_products.commission_rate, 0) ELSE {$commissionMetricBaseExpression} END";
         $salePriceMetricExpression = "CASE WHEN COALESCE(mp_products.profit_commission_override_enabled, 0) = 1 THEN COALESCE(mp_products.sale_price, 0) ELSE {$salePriceMetricBaseExpression} END";
@@ -876,6 +904,8 @@ class MpProductsManager extends Component
                 + ({$salePriceMetricExpression} * (COALESCE(mp_products.extra_cost_percentage, 0) / 100))
             )
             - ({$salePriceMetricExpression} * ({$commissionMetricExpression} / 100))
+            - ({$serviceFeeMetricExpression})
+            - (({$salePriceMetricExpression} / (1 + ({$vatRateMetricExpression} / 100))) * {$withholdingRate} * {$withholdingFactorMetricExpression})
         )";
         $profitabilityCostMetricExpression = '(COALESCE(mp_products.cogs, 0) + COALESCE(mp_products.packaging_cost, 0))';
         $profitMarginMetricExpression = "CASE WHEN {$profitabilityCostMetricExpression} > 0 THEN (({$profitMetricExpression}) + {$profitabilityCostMetricExpression}) / {$profitabilityCostMetricExpression} ELSE NULL END";
@@ -4381,7 +4411,9 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
         $marketplaceKey = MarketplaceProviderRegistry::normalize((string) data_get($store, 'marketplace', ''));
         $marketplaceLabel = $this->humanMarketplace($marketplaceKey);
         $storeName = (string) (data_get($store, 'store_name') ?: $marketplaceLabel);
-        $salePrice = (float) (($listing->sale_price ?? 0) > 0 ? $listing->sale_price : $product->sale_price);
+        // Kanal komisyonunu mağazadan, hesaplanacak teklif fiyatını ürün kartındaki
+        // "Ana" fiyattan al. Böylece satır içi fiyat değişikliği kârı hemen yeniler.
+        $salePrice = (float) (($product->sale_price ?? 0) > 0 ? $product->sale_price : $listing->sale_price);
         $commission = $this->resolvedListingCommissionRate($product, $listing);
 
         return $this->buildProfitScenarioPayload(
@@ -4456,12 +4488,47 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
         $cargoCost = (float) ($product->cargo_cost ?? 0);
         $extraCostFixed = (float) ($product->extra_cost_fixed ?? 0);
         $extraCostPercentage = (float) ($product->extra_cost_percentage ?? 0);
-        $extraCostPercentageAmount = round($salePrice * ($extraCostPercentage / 100), 2);
+        $settings = new MpSettingsService((int) ($product->user_id ?: $this->userId()));
+        $serviceFeeFixed = $settings->getEstimatedPlatformServiceFee($marketplaceKey);
+        $withholdingEnabled = $settings->shouldEstimateWithholdingForMarketplace($marketplaceKey);
+        $vatRate = (float) ($product->vat_rate ?? 0);
+        if ($vatRate <= 0) {
+            $vatRate = $settings->getDefaultProductVatRate() * 100;
+        }
+        $costVatRate = (float) ($product->cost_vat_rate ?? 0);
+        if ($costVatRate <= 0) {
+            $costVatRate = $vatRate;
+        }
+
+        $calculation = app(MarketplacePricingSimulationService::class)->calculateOnly([
+            'marketplace' => $marketplaceKey,
+            'sale_price' => $salePrice,
+            'cogs' => $cogs,
+            'packaging_cost' => $packagingCost,
+            'cargo_cost' => $cargoCost,
+            'extra_cost_fixed' => $extraCostFixed,
+            'extra_cost_rate' => $extraCostPercentage,
+            'commission_rate' => $commissionRate,
+            'service_fee_fixed' => $serviceFeeFixed,
+            'vat_rate' => $vatRate,
+            'cost_vat_rate' => $costVatRate,
+            'expense_vat_rate' => $settings->getExpenseVatRate() * 100,
+            'vat_enabled' => $settings->isKdvEnabled(),
+            'withholding_enabled' => $withholdingEnabled,
+            'withholding_rate' => $settings->getStopajRate() * 100,
+            'target_mode' => 'amount',
+            'target_profit_amount' => 0,
+        ]);
+
+        $breakdown = (array) ($calculation['breakdown'] ?? []);
+        $extraCostPercentageAmount = (float) ($breakdown['extra_percentage_cost'] ?? 0);
         $totalUnitCost = $cogs + $packagingCost + $cargoCost + $extraCostFixed + $extraCostPercentageAmount;
         $costPlusPackaging = round($cogs + $packagingCost, 2);
-        $commissionAmount = round($salePrice * ($commissionRate / 100), 2);
-        $receivable = round($salePrice - $commissionAmount, 2);
-        $profit = round($receivable - $totalUnitCost, 2);
+        $commissionAmount = (float) ($breakdown['commission'] ?? 0);
+        $withholdingAmount = (float) ($breakdown['withholding'] ?? 0);
+        $serviceFeeAmount = (float) ($breakdown['service_fee'] ?? 0);
+        $receivable = round($salePrice - $commissionAmount - $serviceFeeAmount - $withholdingAmount, 2);
+        $profit = (float) ($calculation['cash_profit'] ?? $calculation['net_profit'] ?? 0);
         $profitMargin = ProfitabilityMetric::multiplier($profit, $costPlusPackaging);
         $syncedAtCarbon = $syncedAt ? \Illuminate\Support\Carbon::parse($syncedAt) : null;
 
@@ -4476,6 +4543,9 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
             'commission_amount' => $commissionAmount,
             'receivable' => $receivable,
             'profit' => $profit,
+            'cash_profit' => $profit,
+            'accounting_profit' => (float) ($calculation['accounting_profit'] ?? $profit),
+            'sales_margin_percent' => (float) ($calculation['profit_margin_percent'] ?? 0),
             'profit_margin' => $profitMargin,
             'total_unit_cost' => round($totalUnitCost, 2),
             'cost_plus_packaging' => $costPlusPackaging,
@@ -4485,6 +4555,11 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
             'extra_cost_fixed' => round($extraCostFixed, 2),
             'extra_cost_percentage' => round($extraCostPercentage, 2),
             'extra_cost_percentage_amount' => $extraCostPercentageAmount,
+            'service_fee_amount' => $serviceFeeAmount,
+            'withholding_amount' => $withholdingAmount,
+            'withholding_base' => (float) ($breakdown['withholding_base'] ?? 0),
+            'vat_effect' => (float) ($breakdown['net_vat'] ?? 0),
+            'calculation_version' => (int) ($calculation['calculation_version'] ?? 1),
             'commission_source' => $commissionSource,
             'synced_at_label' => $syncedAtCarbon?->format('d.m.Y H:i') ?: 'Henüz yok',
             'synced_at_sort' => $syncedAtCarbon?->timestamp ?? 0,
@@ -4530,6 +4605,9 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
             'commission_amount' => $average('commission_amount'),
             'receivable' => $average('receivable'),
             'profit' => $profit,
+            'cash_profit' => $profit,
+            'accounting_profit' => $average('accounting_profit'),
+            'sales_margin_percent' => $average('sales_margin_percent'),
             'profit_margin' => $profitMargin,
             'total_unit_cost' => round($totalUnitCost, 2),
             'cost_plus_packaging' => round($cogs + $packagingCost, 2),
@@ -4539,6 +4617,11 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
             'extra_cost_fixed' => round($extraCostFixed, 2),
             'extra_cost_percentage' => round($extraCostPercentage, 2),
             'extra_cost_percentage_amount' => $extraCostPercentageAmount,
+            'service_fee_amount' => $average('service_fee_amount'),
+            'withholding_amount' => $average('withholding_amount'),
+            'withholding_base' => $average('withholding_base'),
+            'vat_effect' => $average('vat_effect'),
+            'calculation_version' => MarketplacePricingSimulationService::CALCULATION_VERSION,
             'commission_source' => 'Platform ortalaması',
             'synced_at_label' => is_array($latestScenario) ? ($latestScenario['synced_at_label'] ?? 'Henüz yok') : 'Henüz yok',
             'synced_at_sort' => collect($scenarios)->max('synced_at_sort') ?: 0,

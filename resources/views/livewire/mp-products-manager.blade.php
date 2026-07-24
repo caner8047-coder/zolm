@@ -1289,6 +1289,10 @@
                 $selectedExtraCostFixed = (float) ($selectedProfitScenario['extra_cost_fixed'] ?? $product->extra_cost_fixed ?? 0);
                 $selectedExtraCostPercentageAmount = (float) ($selectedProfitScenario['extra_cost_percentage_amount'] ?? ($displaySalePrice * (((float) ($product->extra_cost_percentage ?? 0)) / 100)));
                 $selectedExtraCostTotal = $selectedExtraCostFixed + $selectedExtraCostPercentageAmount;
+                $selectedServiceFee = (float) ($selectedProfitScenario['service_fee_amount'] ?? 0);
+                $selectedWithholding = (float) ($selectedProfitScenario['withholding_amount'] ?? 0);
+                $selectedAccountingProfit = (float) ($selectedProfitScenario['accounting_profit'] ?? $profitValue);
+                $selectedVatEffect = (float) ($selectedProfitScenario['vat_effect'] ?? 0);
                 $selectedScenarioLabel = (string) ($selectedProfitScenario['selection_label'] ?? $selectedProfitScenario['label'] ?? $this->productProfitDefaultMarketplaceLabel());
                 $hasDistinctStockCode = filled($product->stock_code) && $product->stock_code !== $product->barcode;
                 $desiValue = (float) ($product->desi ?? 0);
@@ -1892,6 +1896,10 @@
                             $selectedExtraCostFixed = (float) ($selectedProfitScenario['extra_cost_fixed'] ?? $product->extra_cost_fixed ?? 0);
                             $selectedExtraCostPercentageAmount = (float) ($selectedProfitScenario['extra_cost_percentage_amount'] ?? ($displaySalePrice * (((float) ($product->extra_cost_percentage ?? 0)) / 100)));
                             $selectedExtraCostTotal = $selectedExtraCostFixed + $selectedExtraCostPercentageAmount;
+                            $selectedServiceFee = (float) ($selectedProfitScenario['service_fee_amount'] ?? 0);
+                            $selectedWithholding = (float) ($selectedProfitScenario['withholding_amount'] ?? 0);
+                            $selectedAccountingProfit = (float) ($selectedProfitScenario['accounting_profit'] ?? $profitValue);
+                            $selectedVatEffect = (float) ($selectedProfitScenario['vat_effect'] ?? 0);
                             $selectedScenarioLabel = (string) ($selectedProfitScenario['selection_label'] ?? $selectedProfitScenario['label'] ?? $this->productProfitDefaultMarketplaceLabel());
                             $hasDistinctStockCode = filled($product->stock_code) && $product->stock_code !== $product->barcode;
                             $desiValue = (float) ($product->desi ?? 0);
@@ -2578,6 +2586,14 @@
                                                         <span class="font-medium text-rose-600">{{ $formatSignedMoney(-1 * $selectedCommissionAmount) }}</span>
                                                     </div>
                                                     <div class="flex items-start justify-between gap-3 text-[11px] leading-4">
+                                                        <span class="text-slate-500">Platform hizmet bedeli</span>
+                                                        <span class="font-medium text-rose-600">{{ $formatSignedMoney(-1 * $selectedServiceFee) }}</span>
+                                                    </div>
+                                                    <div class="flex items-start justify-between gap-3 text-[11px] leading-4">
+                                                        <span class="text-slate-500">E-ticaret stopajı (%1)</span>
+                                                        <span class="font-medium text-rose-600">{{ $formatSignedMoney(-1 * $selectedWithholding) }}</span>
+                                                    </div>
+                                                    <div class="flex items-start justify-between gap-3 text-[11px] leading-4">
                                                         <span class="text-slate-500">Maliyet + ambalaj</span>
                                                         <span class="font-medium text-rose-600">{{ $formatSignedMoney(-1 * $selectedCostPlusPackaging) }}</span>
                                                     </div>
@@ -2589,17 +2605,29 @@
                                                         <span class="text-slate-500">Ek gider</span>
                                                         <span class="font-medium text-amber-600">{{ $formatSignedMoney(-1 * $selectedExtraCostTotal) }}</span>
                                                     </div>
+                                                    @if($selectedVatEffect > 0)
+                                                        <div class="flex items-start justify-between gap-3 text-[11px] leading-4">
+                                                            <span class="text-slate-500">Net KDV etkisi</span>
+                                                            <span class="font-medium text-amber-600">{{ $formatSignedMoney(-1 * $selectedVatEffect) }}</span>
+                                                        </div>
+                                                    @endif
                                                 </div>
 
                                                 <div class="mt-3 rounded-[8px] border border-slate-200 bg-slate-50/70 px-3 py-2">
                                                     <div class="flex items-start justify-between gap-3 text-[11px] leading-4">
-                                                        <span class="font-medium text-slate-600">Kâr</span>
+                                                        <span class="font-medium text-slate-600">Nakit net kâr</span>
                                                         <span class="font-semibold {{ $profitValue >= 0 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $signedProfitLabel }}</span>
                                                     </div>
+                                                    @if($selectedWithholding > 0)
+                                                        <div class="mt-1 flex items-start justify-between gap-3 text-[10px] leading-4 text-slate-500">
+                                                            <span>Muhasebe kârı / stopaj alacağı</span>
+                                                            <span>{{ $formatMoney($selectedAccountingProfit) }} / {{ $formatMoney($selectedWithholding) }}</span>
+                                                        </div>
+                                                    @endif
                                                 </div>
 
                                                 <div class="mt-3 space-y-1 border-t border-slate-100 pt-3 text-[10px] leading-4 text-slate-500">
-                                                    <p>Kâr = Ciro - komisyon / kesinti - (maliyet + ambalaj) - kargo maliyeti - ek gider</p>
+                                                    <p>Nakit net kâr = Ciro - komisyon - hizmet bedeli - stopaj - maliyet - kargo - ek gider - net KDV</p>
                                                     <p>Kârlılık = Kâr / Maliyet</p>
                                                     <p>{{ $formatMultiplier($profitMargin) }} = {{ $formatMoney($profitValue) }} / {{ $formatMoney($selectedCostPlusPackaging) }}</p>
                                                 </div>

@@ -144,6 +144,44 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
         $this->assertSame('1981.00', (string) $snapshot->confirmed_profit);
     }
 
+    public function test_trendyol_api_seller_revenue_is_not_reduced_by_commission_twice(): void
+    {
+        [$store, $order] = $this->createOrderGraph('trendyol');
+
+        foreach ([
+            ['event_type' => 'seller_revenue', 'amount' => 2070, 'direction' => 'credit'],
+            ['event_type' => 'commission', 'amount' => 230, 'direction' => 'debit'],
+            ['event_type' => 'service_fee', 'amount' => 69, 'direction' => 'debit'],
+            ['event_type' => 'withholding', 'amount' => 20, 'direction' => 'debit'],
+        ] as $index => $event) {
+            OrderFinancialEvent::query()->create([
+                'store_id' => $store->id,
+                'legal_entity_id' => $store->legal_entity_id,
+                'channel_order_id' => $order->id,
+                'event_source' => 'settlements',
+                'event_type' => $event['event_type'],
+                'external_event_id' => 'trendyol-api-settlement-'.$index,
+                'event_date' => now(),
+                'settlement_date' => now(),
+                'amount' => $event['amount'],
+                'currency' => 'TRY',
+                'direction' => $event['direction'],
+                'status' => 'posted',
+            ]);
+        }
+
+        app(MarketplaceProfitSnapshotService::class)->recalculateForOrders($store, [$order->id]);
+
+        $snapshot = OrderProfitSnapshot::query()
+            ->where('channel_order_id', $order->id)
+            ->whereNull('channel_order_item_id')
+            ->firstOrFail();
+
+        $this->assertSame('1981.00', (string) $snapshot->net_receivable);
+        $this->assertSame('230.00', (string) $snapshot->commission_total);
+        $this->assertSame('1981.00', (string) $snapshot->confirmed_profit);
+    }
+
     public function test_extended_cost_categories_reduce_confirmed_profit_without_new_snapshot_columns(): void
     {
         [$store, $order] = $this->createOrderGraph('trendyol');
@@ -226,9 +264,9 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame('2020.00', (string) $snapshot->net_receivable);
-        $this->assertSame('327.33', (string) $snapshot->vat_effect);
-        $this->assertSame('1903.67', (string) $snapshot->estimated_profit);
-        $this->assertSame('1692.67', (string) $snapshot->confirmed_profit);
+        $this->assertSame('336.66', (string) $snapshot->vat_effect);
+        $this->assertSame('1894.34', (string) $snapshot->estimated_profit);
+        $this->assertSame('1683.34', (string) $snapshot->confirmed_profit);
     }
 
     public function test_kdv_enabled_falls_back_to_product_vat_rate_when_item_rate_is_missing(): void
@@ -266,9 +304,9 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame('estimated', $snapshot->profit_state);
-        $this->assertSame('195.29', (string) $snapshot->vat_effect);
-        $this->assertSame('2035.71', (string) $snapshot->estimated_profit);
-        $this->assertSame('2035.71', (string) $snapshot->confirmed_profit);
+        $this->assertSame('197.59', (string) $snapshot->vat_effect);
+        $this->assertSame('2033.41', (string) $snapshot->estimated_profit);
+        $this->assertSame('2033.41', (string) $snapshot->confirmed_profit);
     }
 
     public function test_vat_service_normalizes_zero_one_ten_and_twenty_percent_rates(): void
@@ -373,6 +411,56 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
         $this->assertSame('15.00', (string) $snapshot->withholding_total);
         $this->assertSame('2055.00', (string) $snapshot->net_receivable);
         $this->assertSame('2055.00', (string) $snapshot->confirmed_profit);
+    }
+
+    public function test_confirmed_trendyol_profit_keeps_estimated_service_fee_until_actual_event_arrives(): void
+    {
+        [$store, $order] = $this->createOrderGraph('trendyol');
+        (new MpSettingsService((int) $store->user_id))->setMany([
+            'marketplace_products.profit.estimated_service_fee_fixed.trendyol' => 9.33,
+            'marketplace_products.profit.estimated_withholding_enabled' => true,
+            'tax.stopaj_rate' => 0.01,
+            'tax.default_product_vat_rate' => 0.10,
+        ]);
+
+        ChannelOrderItem::query()
+            ->where('channel_order_id', $order->id)
+            ->update(['vat_rate' => 10]);
+
+        foreach ([
+            ['event_type' => 'seller_revenue', 'amount' => 2231, 'direction' => 'credit'],
+            ['event_type' => 'commission', 'amount' => 69, 'direction' => 'debit'],
+        ] as $index => $event) {
+            OrderFinancialEvent::query()->create([
+                'store_id' => $store->id,
+                'legal_entity_id' => $store->legal_entity_id,
+                'channel_order_id' => $order->id,
+                'event_source' => 'settlements',
+                'event_type' => $event['event_type'],
+                'external_event_id' => 'missing-service-fee-'.$index,
+                'event_date' => now(),
+                'settlement_date' => now(),
+                'amount' => $event['amount'],
+                'currency' => 'TRY',
+                'direction' => $event['direction'],
+                'status' => 'posted',
+            ]);
+        }
+
+        app(MarketplaceProfitSnapshotService::class)->recalculateForOrders($store, [$order->id]);
+
+        $snapshot = OrderProfitSnapshot::query()
+            ->where('store_id', $store->id)
+            ->where('channel_order_id', $order->id)
+            ->whereNull('channel_order_item_id')
+            ->firstOrFail();
+
+        $this->assertSame('confirmed', $snapshot->profit_state);
+        $this->assertSame('9.33', (string) $snapshot->service_fee_total);
+        $this->assertSame('20.91', (string) $snapshot->withholding_total);
+        $this->assertSame('2200.76', (string) $snapshot->net_receivable);
+        $this->assertSame('2200.76', (string) $snapshot->estimated_profit);
+        $this->assertSame('2200.76', (string) $snapshot->confirmed_profit);
     }
 
     public function test_authorization_alone_does_not_mark_order_as_confirmed(): void
@@ -490,6 +578,10 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
             'currency' => 'TRY',
             'is_active' => true,
         ]);
+        (new MpSettingsService($user->id))->setMany([
+            'marketplace_products.profit.estimated_withholding_enabled' => false,
+            "marketplace_products.profit.estimated_service_fee_fixed.{$marketplace}" => 0,
+        ]);
 
         $order = ChannelOrder::query()->create([
             'store_id' => $store->id,
@@ -531,6 +623,7 @@ class MarketplaceProfitSnapshotServiceTest extends TestCase
     {
         (new MpSettingsService((int) $store->user_id))->setMany([
             'tax.estimated_withholding_enabled' => true,
+            'marketplace_products.profit.estimated_withholding_enabled' => true,
             'tax.stopaj_rate' => 0.01,
             'tax.default_product_vat_rate' => 0.10,
         ]);

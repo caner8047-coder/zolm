@@ -25,7 +25,7 @@
   let marginLow = 5;
   let marginHigh = 20;
   let serviceFeeFixed = 9.33;
-  let withholdingTaxEnabled = false;
+  let withholdingTaxEnabled = true;
   let scanInProgress = false;
   let scanQueued = false;
   let debounceTimer = null;
@@ -79,7 +79,7 @@
       marginLow: 5,
       marginHigh: 20,
       serviceFeeFixed: 9.33,
-      withholdingTaxEnabled: false,
+      withholdingTaxEnabled: true,
     });
 
     marginLow = Number.parseFloat(stored.marginLow) || 5;

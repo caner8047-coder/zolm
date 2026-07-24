@@ -6,6 +6,9 @@ use App\Models\MpPeriod;
 use App\Models\MpOrder;
 use App\Models\MpTransaction;
 use App\Models\MpFinancialRule;
+use App\Services\Marketplace\MarketplacePricingSimulationService;
+use App\Services\Marketplace\MarketplaceProfitCalculationService;
+use App\Services\Marketplace\MarketplaceProviderRegistry;
 use App\Services\ProfitabilityMetric;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -45,11 +48,20 @@ class UnitEconomicsService
         $hakedis          = (float) $order->net_hakedis;
         $commissionAmount = (float) $order->commission_amount;
         $cargoAmount      = (float) $order->cargo_amount;
+        $actualServiceFee = abs((float) $order->service_fee);
         $cogs             = (float) $order->resolved_cogs_at_time;
         $packaging        = (float) $order->resolved_packaging_cost_at_time;
         $svc              = new \App\Services\MpSettingsService($userId);
         $ownCargo         = $svc->usesOwnCargo() ? (float) $order->resolved_own_cargo_cost_at_time : 0.0;
         $defaultVatRate   = $svc->getDefaultProductVatRate();
+        $marketplace = MarketplaceProviderRegistry::normalize((string) (
+            $order->source_marketplace
+            ?: $order->store?->marketplace
+            ?: 'trendyol'
+        ));
+        $effectiveServiceFee = $actualServiceFee > 0
+            ? $actualServiceFee
+            : $this->allocatedEstimatedServiceFee($order, $svc, $marketplace);
         
         // Ürün bazlı KDV oranı: MpProduct tablosunda tanımlıysa onu kullan, yoksa sistem ayarını kullan
         $productVatRate = $defaultVatRate; // Sistem ayarındaki oran (0.10 = %10)
@@ -93,16 +105,14 @@ class UnitEconomicsService
             $netVat = 0;
         }
 
-        // ─── Gerçek Net Kâr ─────────────────────────────────────
-        // Eğer KDV negatifse (avantaj), kâra eklenir. Pozitifse (yük), kârdan düşülmez
-        // çünkü zaten satış fiyatı içinde tahsil edilmiş — devlete ödenmesi gereken tutar.
-        // Gerçek formül: Kâr = Hakediş - COGS - Ambalaj - Kargo - max(0, netVat) [vergi yükü]
-        // Ancak kullanıcı "Net KDV Avantajı/Yükü" dahil etmek istiyor
-        $realNetProfitWithVat = round($hakedis - $cogs - $packaging - $ownCargo - $netVat, 2);
-
         // ─── Epik 8 / Düzeltme: Stopaj Yükü (Teorik veya Pratik) ───
-        $actualStopaj = (float) $order->withholding_tax;
-        if ($actualStopaj <= 0 && !in_array($order->status, ['İptal Edildi'])) {
+        $storedStopaj = abs((float) $order->withholding_tax);
+        $actualStopaj = $storedStopaj;
+        if (
+            $actualStopaj <= 0
+            && ! in_array($order->status, ['İptal Edildi'])
+            && $svc->shouldEstimateWithholdingForMarketplace($marketplace)
+        ) {
             // stopaj_rate ayarı 0.01 formatında tutulur (%1)
             $stopajRate = $svc->getStopajRate();
             $totalDiscounts = abs((float) $order->discount_amount) + abs((float) $order->campaign_discount);
@@ -110,11 +120,37 @@ class UnitEconomicsService
             $vatExcludedBase = $discountedGross / (1 + $productVatRate);
             $actualStopaj = round($vatExcludedBase * $stopajRate, 2);
         }
-        
-        // Stopajı da net kârdan (ve hakedişten cebe girenden) düşüyoruz
-        $realNetProfitWithVat = round($realNetProfitWithVat - $actualStopaj, 2);
+
+        $knownActualDeductions = abs($commissionAmount)
+            + abs($cargoAmount)
+            + $actualServiceFee
+            + $storedStopaj;
+        $canonicalGrossBasis = round($hakedis + $knownActualDeductions, 2);
+
+        if ($canonicalGrossBasis <= 0 && $grossAmount > 0) {
+            $canonicalGrossBasis = round(max(
+                0,
+                $grossAmount
+                    - abs((float) $order->discount_amount)
+                    - abs((float) $order->campaign_discount),
+            ), 2);
+        }
+
+        $calculation = app(MarketplaceProfitCalculationService::class)->calculate([
+            'gross_revenue' => $canonicalGrossBasis,
+            'cogs' => $cogs,
+            'packaging_cost' => $packaging,
+            'commission' => abs($commissionAmount),
+            'marketplace_cargo' => abs($cargoAmount),
+            'own_cargo' => $ownCargo,
+            'service_fee' => $effectiveServiceFee,
+            'withholding' => $actualStopaj,
+            'net_vat' => max(0, $netVat),
+        ]);
+        $realNetProfitWithVat = $calculation['cash_profit'];
 
         return [
+            'calculation_version' => MarketplacePricingSimulationService::CALCULATION_VERSION,
             'order_number'     => $order->order_number,
             'group_key'        => $this->resolveSkuGroupKey(
                 $resolvedBarcode,
@@ -132,12 +168,15 @@ class UnitEconomicsService
             'commission'       => $commissionAmount,
             'cargo'            => $cargoAmount,
             'own_cargo'        => $ownCargo,
+            'service_fee'      => $effectiveServiceFee,
             'cogs'             => $cogs,
             'packaging'        => $packaging,
             'sales_vat'        => round($salesVat, 2),
             'expense_vat'      => round($totalExpenseVat, 2),
             'net_vat'          => $netVat,
             'stopaj_deduction' => $actualStopaj,
+            'accounting_profit' => $calculation['accounting_profit'],
+            'cash_profit'      => $realNetProfitWithVat,
             'real_net_profit'  => $realNetProfitWithVat,
             'is_bleeding'      => $realNetProfitWithVat < 0,
             'has_cogs'         => $cogs > 0,
@@ -277,6 +316,29 @@ class UnitEconomicsService
     protected function productCacheKey(?int $userId, string $barcode): string
     {
         return ($userId ?? 0) . '|' . $barcode;
+    }
+
+    protected function allocatedEstimatedServiceFee(
+        MpOrder $order,
+        MpSettingsService $settings,
+        string $marketplace,
+    ): float {
+        $orderFee = $settings->getEstimatedPlatformServiceFee($marketplace);
+
+        if ($orderFee <= 0 || blank($order->order_number)) {
+            return $orderFee;
+        }
+
+        $siblingGross = (float) MpOrder::query()
+            ->where('period_id', $order->period_id)
+            ->where('order_number', $order->order_number)
+            ->sum('gross_amount');
+
+        if ($siblingGross <= 0) {
+            return $orderFee;
+        }
+
+        return round($orderFee * max(0, (float) $order->gross_amount) / $siblingGross, 2);
     }
 
     protected function resolveSkuGroupKey(

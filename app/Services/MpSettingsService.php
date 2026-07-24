@@ -168,6 +168,24 @@ class MpSettingsService
         return (bool) $this->get('tax.estimated_withholding_enabled', false);
     }
 
+    public function getEstimatedPlatformServiceFee(string $marketplace): float
+    {
+        $marketplace = MarketplaceProviderRegistry::normalize($marketplace);
+
+        return round(max(0, $this->getFloat(
+            "marketplace_products.profit.estimated_service_fee_fixed.{$marketplace}",
+            $marketplace === 'trendyol' ? 9.33 : 0.0,
+        )), 2);
+    }
+
+    public function shouldEstimateWithholdingForMarketplace(string $marketplace): bool
+    {
+        $marketplace = MarketplaceProviderRegistry::normalize($marketplace);
+
+        return (bool) $this->get('marketplace_products.profit.estimated_withholding_enabled', true)
+            && ! in_array($marketplace, ['', 'manual', 'master', 'woocommerce'], true);
+    }
+
     /**
      * Firma kendi kargo anlaşması ile mi çalışıyor?
      * Açıksa, MpProduct.cargo_cost sipariş kâr hesabına dahil edilir.
@@ -702,6 +720,11 @@ class MpSettingsService
                     'default_marketplace' => 'average',
                     'woocommerce_commission_rate' => 0.00,
                     'koctas_commission_rate' => (float) config('marketplace.koctas.commission_rate', 15),
+                    'estimated_withholding_enabled' => true,
+                    // Tahmini tutardır; kesinleşmiş siparişte finans API kaydı üstün gelir.
+                    'estimated_service_fee_fixed' => [
+                        'trendyol' => 9.33,
+                    ],
                 ],
                 'recipe_cost_sync_enabled' => true,
                 'low_stock_threshold' => 0,

@@ -4,6 +4,26 @@ namespace App\Services\Marketplace;
 
 class MarketplacePricingSimulationService
 {
+    public const CALCULATION_VERSION = 2;
+
+    public function __construct(
+        protected MarketplaceProfitCalculationService $profitCalculationService,
+    ) {
+    }
+
+    /**
+     * Hedef fiyat araması yapmadan kanonik birim ekonomi sonucunu üretir.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
+     */
+    public function calculateOnly(array $input): array
+    {
+        $normalized = $this->normalizeInput($input);
+
+        return $this->calculate($normalized) + ['input' => $normalized];
+    }
+
     /**
      * @param  array<string, mixed>  $input
      * @return array<string, mixed>
@@ -44,6 +64,7 @@ class MarketplacePricingSimulationService
             2
         );
         $advertising = round($salePrice * $input['advertising_rate_decimal'], 2);
+        $extraPercentageCost = round($salePrice * $input['extra_cost_rate_decimal'], 2);
         $returnReserve = round(
             ($salePrice * $input['return_rate_decimal'])
             + ($input['return_cargo_cost'] * $input['return_rate_decimal']),
@@ -66,19 +87,38 @@ class MarketplacePricingSimulationService
             )
             : 0.0;
         $expenseVat = $input['vat_enabled']
-            ? round(($commission + $input['cargo_cost']) * $input['expense_vat_rate_decimal'], 2)
+            ? $this->includedVat(
+                $commission
+                    + $input['cargo_cost']
+                    + $serviceFee
+                    + $advertising
+                    + ($input['extra_cost_vat_eligible']
+                        ? $input['extra_cost_fixed'] + $extraPercentageCost
+                        : 0),
+                $input['expense_vat_rate_decimal']
+            )
             : 0.0;
-        $netVat = round($salesVat - $purchaseVat - $expenseVat, 2);
+        $inputVatCredit = round($purchaseVat + $expenseVat, 2);
+        $netVatBeforeFloor = round($salesVat - $inputVatCredit, 2);
+        // Devreden KDV ürün kârını yapay biçimde artırmaz; yalnızca ödenecek KDV sıfırlanır.
+        $netVat = max(0.0, $netVatBeforeFloor);
+        $vatCreditCarryforward = abs(min(0.0, $netVatBeforeFloor));
 
-        $productCost = round($input['cogs'] + $input['packaging_cost'], 2);
-        $operationalCosts = round(
-            $input['cargo_cost']
-            + $serviceFee
-            + $advertising
-            + $returnReserve
-            + $input['extra_cost_fixed'],
-            2
-        );
+        $formula = $this->profitCalculationService->calculate([
+            'gross_revenue' => $salePrice,
+            'cogs' => $input['cogs'],
+            'packaging_cost' => $input['packaging_cost'],
+            'commission' => $commission,
+            'marketplace_cargo' => $input['cargo_cost'],
+            'service_fee' => $serviceFee,
+            'advertising' => $advertising,
+            'return_reserve' => $returnReserve,
+            'extra_operational_cost' => $input['extra_cost_fixed'] + $extraPercentageCost,
+            'withholding' => $withholding,
+            'net_vat' => $netVat,
+        ]);
+        $productCost = $formula['product_cost'];
+        $operationalCosts = $formula['operational_costs'];
         $totalDeductions = round(
             $commission
             + $operationalCosts
@@ -86,31 +126,14 @@ class MarketplacePricingSimulationService
             + max(0, $netVat),
             2
         );
-        $netReceivable = round(
-            $salePrice
-            - $commission
-            - $input['cargo_cost']
-            - $serviceFee
-            - $advertising
-            - $returnReserve
-            - $withholding,
-            2
-        );
-        $netProfit = round(
-            $salePrice
-            - $commission
-            - $productCost
-            - $operationalCosts
-            - $withholding
-            - $netVat,
-            2
-        );
-        $marginPercent = $salePrice > 0
-            ? round(($netProfit / $salePrice) * 100, 2)
-            : 0.0;
-        $roiPercent = $productCost > 0
-            ? round(($netProfit / $productCost) * 100, 2)
-            : 0.0;
+        $netReceivable = $formula['net_receivable'];
+        $accountingProfit = $formula['accounting_profit'];
+        // Operasyon ekranlarının ana metriği nakit hakediş etkisini gösterir.
+        // Stopaj ayrıca mahsup edilebilir vergi alacağı olarak raporlanır.
+        $cashProfit = $formula['cash_profit'];
+        $netProfit = $cashProfit;
+        $marginPercent = $formula['sales_margin_percent'];
+        $roiPercent = $formula['roi_percent'];
         $status = match (true) {
             $salePrice <= 0 || $netProfit < 0 => 'loss',
             $marginPercent < 10 => 'warning',
@@ -142,9 +165,13 @@ class MarketplacePricingSimulationService
         }
 
         return [
+            'calculation_version' => self::CALCULATION_VERSION,
             'sale_price' => round($salePrice, 2),
             'net_receivable' => $netReceivable,
             'net_profit' => $netProfit,
+            'cash_profit' => $cashProfit,
+            'accounting_profit' => $accountingProfit,
+            'withholding_tax_credit' => $withholding,
             'profit_margin_percent' => $marginPercent,
             'roi_percent' => $roiPercent,
             'status' => $status,
@@ -158,11 +185,14 @@ class MarketplacePricingSimulationService
                 'advertising' => $advertising,
                 'return_reserve' => $returnReserve,
                 'extra_cost' => round($input['extra_cost_fixed'], 2),
+                'extra_percentage_cost' => $extraPercentageCost,
                 'withholding' => $withholding,
+                'withholding_base' => round($withholdingBase, 2),
                 'sales_vat' => $salesVat,
                 'purchase_vat_credit' => $purchaseVat,
                 'expense_vat_credit' => $expenseVat,
                 'net_vat' => $netVat,
+                'vat_credit_carryforward' => $vatCreditCarryforward,
                 'product_cost' => $productCost,
                 'operational_costs' => $operationalCosts,
                 'total_deductions' => $totalDeductions,
@@ -191,6 +221,8 @@ class MarketplacePricingSimulationService
             'return_cargo_cost' => $this->money($input['return_cargo_cost'] ?? 0),
             'service_fee_fixed' => $this->money($input['service_fee_fixed'] ?? 0),
             'extra_cost_fixed' => $this->money($input['extra_cost_fixed'] ?? 0),
+            'extra_cost_rate' => $this->percentValue($input['extra_cost_rate'] ?? 0),
+            'extra_cost_rate_decimal' => $this->rate($input['extra_cost_rate'] ?? 0),
             'commission_rate' => $this->percentValue($input['commission_rate'] ?? 0),
             'commission_rate_decimal' => $this->rate($input['commission_rate'] ?? 0),
             'service_fee_rate' => $this->percentValue($input['service_fee_rate'] ?? 0),
@@ -209,6 +241,7 @@ class MarketplacePricingSimulationService
             'withholding_rate_decimal' => $this->rate($input['withholding_rate'] ?? 1),
             'vat_enabled' => (bool) ($input['vat_enabled'] ?? false),
             'withholding_enabled' => (bool) ($input['withholding_enabled'] ?? false),
+            'extra_cost_vat_eligible' => (bool) ($input['extra_cost_vat_eligible'] ?? false),
             'micro_export' => (bool) ($input['micro_export'] ?? false),
             'target_mode' => $targetMode,
             'target_profit_amount' => $this->money($input['target_profit_amount'] ?? 0),

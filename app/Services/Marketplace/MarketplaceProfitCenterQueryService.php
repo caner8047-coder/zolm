@@ -948,10 +948,27 @@ class MarketplaceProfitCenterQueryService
         $productNameSql = "COALESCE(mp_products.product_name, channel_order_items.product_name, 'Eşleşmeyen ürün')";
         $stockCodeSql = "COALESCE(mp_products.stock_code, channel_order_items.stock_code, '')";
         $barcodeSql = "COALESCE(mp_products.barcode, channel_order_items.barcode, '')";
+        $snapshotDeductionsSql = "CASE
+            WHEN order_profit_snapshots.id IS NOT NULL AND COALESCE(order_profit_snapshots.gross_revenue, 0) > 0
+            THEN (({$revenueSql}) / order_profit_snapshots.gross_revenue) * (
+                COALESCE(order_profit_snapshots.commission_total, 0)
+                + COALESCE(order_profit_snapshots.cargo_total, 0)
+                + COALESCE(order_profit_snapshots.service_fee_total, 0)
+                + COALESCE(order_profit_snapshots.withholding_total, 0)
+                + COALESCE(order_profit_snapshots.own_cargo_cost, 0)
+                + COALESCE(order_profit_snapshots.vat_effect, 0)
+                + COALESCE(order_profit_snapshots.return_effect, 0)
+            )
+            ELSE ({$revenueSql}) * {$commissionRateSql} / 100
+        END";
 
         return ChannelOrderItem::query()
             ->joinSub($orderIds, 'filtered_orders', fn ($join) => $join->on('filtered_orders.id', '=', 'channel_order_items.channel_order_id'))
             ->leftJoin('mp_products', 'mp_products.id', '=', 'channel_order_items.mp_product_id')
+            ->leftJoin('order_profit_snapshots', function ($join) {
+                $join->on('order_profit_snapshots.channel_order_id', '=', 'channel_order_items.channel_order_id')
+                    ->whereNull('order_profit_snapshots.channel_order_item_id');
+            })
             ->selectRaw("
                 {$productIdSql} as product_id,
                 {$productNameSql} as product_name,
@@ -964,6 +981,7 @@ class MarketplaceProfitCenterQueryService
                 COALESCE(SUM(COALESCE(mp_products.cogs, 0) * COALESCE(channel_order_items.quantity, 0)), 0) as cogs_cost,
                 COALESCE(SUM(COALESCE(mp_products.packaging_cost, 0) * COALESCE(channel_order_items.quantity, 0)), 0) as packaging_cost,
                 COALESCE(SUM(({$revenueSql}) * {$commissionRateSql} / 100), 0) as estimated_commission,
+                COALESCE(SUM({$snapshotDeductionsSql}), 0) as allocated_deductions,
                 SUM(CASE WHEN channel_order_items.mp_product_id IS NULL THEN 1 ELSE 0 END) as unmatched_lines,
                 SUM(CASE WHEN channel_order_items.mp_product_id IS NOT NULL AND (COALESCE(mp_products.cogs, 0) <= 0 OR COALESCE(mp_products.packaging_cost, 0) <= 0) THEN 1 ELSE 0 END) as missing_cost_lines
             ")
@@ -973,7 +991,9 @@ class MarketplaceProfitCenterQueryService
             ->get()
             ->map(function ($row) {
                 $grossRevenue = (float) ($row->gross_revenue ?? 0);
-                $totalCost = (float) ($row->cogs_cost ?? 0) + (float) ($row->packaging_cost ?? 0) + (float) ($row->estimated_commission ?? 0);
+                $totalCost = (float) ($row->cogs_cost ?? 0)
+                    + (float) ($row->packaging_cost ?? 0)
+                    + (float) ($row->allocated_deductions ?? 0);
                 $profitValue = $grossRevenue - $totalCost;
                 $riskCount = (int) ($row->unmatched_lines ?? 0) + (int) ($row->missing_cost_lines ?? 0);
                 $readinessScore = max(0, min(100, 100 - ($riskCount * 25)));
@@ -988,6 +1008,7 @@ class MarketplaceProfitCenterQueryService
                     'quantity' => (int) ($row->quantity ?? 0),
                     'gross_revenue' => round($grossRevenue, 2),
                     'estimated_commission' => round((float) ($row->estimated_commission ?? 0), 2),
+                    'allocated_deductions' => round((float) ($row->allocated_deductions ?? 0), 2),
                     'cogs_cost' => round((float) ($row->cogs_cost ?? 0), 2),
                     'packaging_cost' => round((float) ($row->packaging_cost ?? 0), 2),
                     'profit_value' => round($profitValue, 2),

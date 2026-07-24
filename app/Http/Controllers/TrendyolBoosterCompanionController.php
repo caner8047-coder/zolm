@@ -7,6 +7,7 @@ use App\Models\TrendyolBoosterReviewSync;
 use App\Services\Marketplace\TrendyolBestsellerReportService;
 use App\Services\Marketplace\TrendyolBoosterAnalysisService;
 use App\Services\Marketplace\TrendyolBoosterProductAnalysisService;
+use App\Services\Marketplace\MarketplacePricingSimulationService;
 use App\Services\Marketplace\TrendyolBoosterReviewService;
 use App\Services\Marketplace\TrendyolBoosterStockService;
 use App\Services\Marketplace\TrendyolBoosterStoreWatchService;
@@ -29,6 +30,7 @@ class TrendyolBoosterCompanionController extends Controller
         protected TrendyolBoosterReviewService $reviewService,
         protected TrendyolProductPageReader $reader,
         protected TrendyolBestsellerReportService $bestsellerReportService,
+        protected MarketplacePricingSimulationService $pricingSimulationService,
     ) {}
 
     public function session(): JsonResponse
@@ -1278,6 +1280,8 @@ class TrendyolBoosterCompanionController extends Controller
             $totalCost = 0.0;
             $commission = 0.0;
             $withholding = 0.0;
+            $cashProfitBeforeOrderFee = 0.0;
+            $accountingProfitBeforeOrderFee = 0.0;
 
             foreach ($items as $item) {
                 $barcode = trim((string) ($item['barcode'] ?? ''));
@@ -1291,19 +1295,31 @@ class TrendyolBoosterCompanionController extends Controller
                 $allocatedRevenue = (float) $item['line_amount'] * $allocationFactor;
                 $commissionRate = (float) $product->commission_rate;
                 $vatRate = (float) $product->vat_rate;
+                $lineCalculation = $this->pricingSimulationService->calculateOnly([
+                    'marketplace' => 'trendyol',
+                    'sale_price' => $allocatedRevenue,
+                    'cogs' => (float) $product->cogs * $quantity,
+                    'packaging_cost' => (float) $product->packaging_cost * $quantity,
+                    'cargo_cost' => (float) $product->cargo_cost * $quantity,
+                    'extra_cost_fixed' => (float) $product->extra_cost_fixed * $quantity,
+                    'extra_cost_rate' => (float) $product->extra_cost_percentage,
+                    'commission_rate' => $commissionRate,
+                    'service_fee_fixed' => 0,
+                    'vat_rate' => $vatRate,
+                    'vat_enabled' => false,
+                    'withholding_enabled' => $withholdingEnabled,
+                    'withholding_rate' => 1,
+                ]);
+                $lineBreakdown = (array) ($lineCalculation['breakdown'] ?? []);
 
                 $cogs += (float) $product->cogs * $quantity;
                 $packaging += (float) $product->packaging_cost * $quantity;
                 $ownCargo += (float) $product->cargo_cost * $quantity;
                 $totalCost += (float) $product->total_cost * $quantity;
-                $commission += $allocatedRevenue * ($commissionRate / 100);
-
-                if ($withholdingEnabled) {
-                    $withholdingBase = $vatRate > 0
-                        ? $allocatedRevenue / (1 + ($vatRate / 100))
-                        : $allocatedRevenue;
-                    $withholding += $withholdingBase * 0.01;
-                }
+                $commission += (float) ($lineBreakdown['commission'] ?? 0);
+                $withholding += (float) ($lineBreakdown['withholding'] ?? 0);
+                $cashProfitBeforeOrderFee += (float) ($lineCalculation['cash_profit'] ?? 0);
+                $accountingProfitBeforeOrderFee += (float) ($lineCalculation['accounting_profit'] ?? 0);
             }
 
             if ($missingIdentifiers !== []) {
@@ -1319,13 +1335,18 @@ class TrendyolBoosterCompanionController extends Controller
             // Net kârı ham ondalıklardan değil, gösterilen/tahsil edilen kalemlerden üret.
             $commission = round($commission, 2);
             $withholding = round($withholding, 2);
-            $profit = $revenue - $commission - $serviceFeeFixed - $withholding - $totalCost;
+            $profit = round($cashProfitBeforeOrderFee - $serviceFeeFixed, 2);
+            $accountingProfit = round($accountingProfitBeforeOrderFee - $serviceFeeFixed, 2);
             $margin = $cogs > 0 ? ($profit / $cogs) * 100 : 0;
 
             $results[$orderNumber] = [
                 'source' => 'live_estimate',
                 'state' => $cogs > 0 ? 'estimated' : 'missing_cost',
                 'profit' => round($profit, 2),
+                'cash_profit' => round($profit, 2),
+                'accounting_profit' => $accountingProfit,
+                'withholding_tax_credit' => round($withholding, 2),
+                'calculation_version' => MarketplacePricingSimulationService::CALCULATION_VERSION,
                 'margin_percent' => round($margin, 1),
                 'gross_revenue' => $revenue,
                 'commission_total' => round($commission, 2),
