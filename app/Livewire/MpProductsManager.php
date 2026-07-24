@@ -15,6 +15,7 @@ use App\Models\ProductSetItem;
 use App\Models\ProductMatchIssue;
 use App\Models\Recipe;
 use App\Models\TrendyolBoosterReview;
+use App\Services\Marketplace\MarketplaceDeliveryTermClassifier;
 use App\Services\Marketplace\MarketplaceDiagnosticsGuidanceService;
 use App\Services\Marketplace\MarketplaceListingQualityService;
 use App\Services\Marketplace\MarketplaceManualMatchService;
@@ -4155,7 +4156,7 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
     }
 
     /**
-     * @return array{label: string, short_label: string, detail: string, title: string, count: int, terms: array<int, array<string, mixed>>, has_channel_terms: bool}
+     * @return array{label: string, short_label: string, status_label: string, tone: string, days_label: string|null, detail: string, title: string, count: int, terms: array<int, array<string, mixed>>, has_channel_terms: bool}
      */
     public function productDeliverySummary(MpProduct $product): array
     {
@@ -4199,14 +4200,23 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
             $shortLabel = $dayValues->isNotEmpty()
                 ? $this->deliveryRangeShortLabel((int) $dayValues->min(), (int) $dayValues->max())
                 : $this->compactDeliveryTermLabel((string) $terms->first()['label']);
+            $classification = $dayValues->isNotEmpty()
+                ? app(MarketplaceDeliveryTermClassifier::class)->classify((int) $dayValues->max())
+                : null;
+            $termTitle = $terms
+                ->map(fn (array $term) => "{$term['store_name']} ({$term['marketplace']}): {$term['label']}")
+                ->implode(' | ');
 
             return [
                 'label' => $label,
                 'short_label' => $shortLabel,
+                'status_label' => $classification['label'] ?? (string) $terms->first()['label'],
+                'tone' => $classification['tone'] ?? 'slate',
+                'days_label' => $dayValues->isNotEmpty() ? $label : null,
                 'detail' => $terms->count() . ' mağazadan',
-                'title' => $terms
-                    ->map(fn (array $term) => "{$term['store_name']} ({$term['marketplace']}): {$term['label']}")
-                    ->implode(' | '),
+                'title' => $classification
+                    ? "{$classification['label']} · {$termTitle} · Sınıflandırma en uzun termin süresine göredir."
+                    : $termTitle,
                 'count' => $terms->count(),
                 'terms' => $terms->all(),
                 'has_channel_terms' => true,
@@ -4215,12 +4225,16 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
 
         if ($product->shipping_days !== null) {
             $label = $this->deliveryDaysLabel((int) $product->shipping_days);
+            $classification = app(MarketplaceDeliveryTermClassifier::class)->classify((int) $product->shipping_days);
 
             return [
                 'label' => $label,
                 'short_label' => $this->deliveryDaysShortLabel((int) $product->shipping_days),
+                'status_label' => $classification['label'],
+                'tone' => $classification['tone'],
+                'days_label' => $label,
                 'detail' => $product->shipping_type ?: 'Ana ürün',
-                'title' => $label,
+                'title' => "{$classification['label']} · {$label}",
                 'count' => 0,
                 'terms' => [],
                 'has_channel_terms' => false,
@@ -4232,12 +4246,16 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
 
         if ($manualDays !== null) {
             $label = $this->deliveryDaysLabel($manualDays);
+            $classification = app(MarketplaceDeliveryTermClassifier::class)->classify($manualDays);
 
             return [
                 'label' => $label,
                 'short_label' => $this->deliveryDaysShortLabel($manualDays),
+                'status_label' => $classification['label'],
+                'tone' => $classification['tone'],
+                'days_label' => $label,
                 'detail' => 'Ana ürün',
-                'title' => $label,
+                'title' => "{$classification['label']} · {$label}",
                 'count' => 0,
                 'terms' => [],
                 'has_channel_terms' => false,
@@ -4247,6 +4265,9 @@ Lütfen en alakalı 8-12 adet Türkçe arama anahtar kelimesini SADECE virgülle
         return [
             'label' => $manualLabel !== '' ? $manualLabel : 'Standart',
             'short_label' => $manualLabel !== '' ? $this->compactDeliveryTermLabel($manualLabel) : 'Std',
+            'status_label' => $manualLabel !== '' ? $manualLabel : 'Standart',
+            'tone' => Str::contains(Str::lower($manualLabel), ['hızlı', 'hizli', 'aynı gün', 'ayni gun']) ? 'emerald' : 'slate',
+            'days_label' => null,
             'detail' => $manualLabel !== '' ? 'Ana ürün' : 'Termin yok',
             'title' => $manualLabel !== '' ? $manualLabel : 'Kanal termin bilgisi yok',
             'count' => 0,

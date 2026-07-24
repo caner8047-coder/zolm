@@ -48,6 +48,12 @@ class MarketplaceSettings extends Component
 
     public int $trendyolTimestampOffsetSeconds = 10800;
 
+    public int $deliveryFastMaxDays = 1;
+
+    public int $deliveryStandardMaxDays = 3;
+
+    public int $deliverySlowMaxDays = 7;
+
     public array $labelPrintSettings = [];
 
     public array $dispatchPrintSettings = [];
@@ -83,6 +89,10 @@ class MarketplaceSettings extends Component
         $this->candidateResultLimit = $settings->getMatchingCandidateResultLimit();
         $this->autoRunMatchingOnSync = $settings->getAutoRunMatchingOnSync();
         $this->trendyolTimestampOffsetSeconds = $settings->getTrendyolTimestampOffsetSeconds();
+        $deliveryTermThresholds = $settings->getDeliveryTermThresholds();
+        $this->deliveryFastMaxDays = $deliveryTermThresholds['fast_max_days'];
+        $this->deliveryStandardMaxDays = $deliveryTermThresholds['standard_max_days'];
+        $this->deliverySlowMaxDays = $deliveryTermThresholds['slow_max_days'];
         $this->labelPrintSettings = $settings->getArray('print.label', $this->defaultLabelPrintSettings());
         $this->dispatchPrintSettings = $settings->getArray('print.dispatch', $this->defaultDispatchPrintSettings());
         $this->companyForm = [
@@ -164,6 +174,38 @@ class MarketplaceSettings extends Component
         }
 
         session()->flash('settings_success', $message);
+    }
+
+    public function saveDeliveryTermSettings(): void
+    {
+        $validated = $this->validate([
+            'deliveryFastMaxDays' => ['required', 'integer', 'min:0', 'max:363'],
+            'deliveryStandardMaxDays' => ['required', 'integer', 'gt:deliveryFastMaxDays', 'max:364'],
+            'deliverySlowMaxDays' => ['required', 'integer', 'gt:deliveryStandardMaxDays', 'max:365'],
+        ], [
+            'deliveryStandardMaxDays.gt' => 'Standart teslimat üst sınırı hızlı teslimat sınırından büyük olmalıdır.',
+            'deliverySlowMaxDays.gt' => 'Yavaş gönderim üst sınırı standart teslimat sınırından büyük olmalıdır.',
+        ]);
+
+        app(MpSettingsService::class)->set('marketplace_products.delivery_term_thresholds', [
+            'fast_max_days' => (int) $validated['deliveryFastMaxDays'],
+            'standard_max_days' => (int) $validated['deliveryStandardMaxDays'],
+            'slow_max_days' => (int) $validated['deliverySlowMaxDays'],
+        ]);
+
+        $this->loadSettings();
+
+        session()->flash('delivery_term_settings_success', 'Termin sınıflandırma ayarları kaydedildi.');
+    }
+
+    public function resetDeliveryTermSettings(): void
+    {
+        $defaults = app(MpSettingsService::class)->getDefaults()['marketplace_products']['delivery_term_thresholds'];
+
+        app(MpSettingsService::class)->set('marketplace_products.delivery_term_thresholds', $defaults);
+        $this->loadSettings();
+
+        session()->flash('delivery_term_settings_success', 'Termin sınıflandırması varsayılan aralıklara döndürüldü.');
     }
 
     public function saveDocumentSettings(): void

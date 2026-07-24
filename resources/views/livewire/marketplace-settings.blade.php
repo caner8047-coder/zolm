@@ -60,6 +60,12 @@
         </div>
     @endif
 
+    @if (session('delivery_term_settings_success'))
+        <div class="rounded-[8px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {{ session('delivery_term_settings_success') }}
+        </div>
+    @endif
+
     @if($errors->any())
         <div class="rounded-[8px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {{ $errors->first() }}
@@ -90,6 +96,102 @@
                     <p class="mt-2 truncate text-sm font-semibold text-slate-900">{{ $currentLabelPaper }}</p>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <section data-testid="delivery-term-settings"
+             class="rounded-[10px] border border-slate-200 bg-white p-4 shadow-sm lg:p-6">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Ürün operasyonu</p>
+                <h2 class="mt-2 text-lg font-semibold text-slate-900">Termin görünümü</h2>
+                <p class="mt-1 max-w-3xl text-sm leading-5 text-slate-500">
+                    Ürün tablosundaki teslimat etiketlerini firmanızın hazırlık kapasitesine göre sınıflandırın. Çok mağazalı ürünlerde en uzun termin süresi esas alınır.
+                </p>
+            </div>
+
+            <div class="flex flex-col gap-2 sm:flex-row">
+                <button type="button"
+                        wire:click="saveDeliveryTermSettings"
+                        wire:loading.attr="disabled"
+                        wire:target="saveDeliveryTermSettings"
+                        class="inline-flex w-full items-center justify-center rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2">
+                    <span wire:loading.remove wire:target="saveDeliveryTermSettings">Termin ayarlarını kaydet</span>
+                    <span wire:loading wire:target="saveDeliveryTermSettings">Kaydediliyor...</span>
+                </button>
+                <button type="button"
+                        wire:click="resetDeliveryTermSettings"
+                        wire:loading.attr="disabled"
+                        class="inline-flex w-full items-center justify-center rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2">
+                    Varsayılan
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-4 rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="rounded-[6px] border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                    Hızlı teslimat · 0–{{ $deliveryFastMaxDays }} gün
+                </span>
+                <span class="rounded-[6px] border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                    Standart · {{ $deliveryFastMaxDays + 1 }}–{{ $deliveryStandardMaxDays }} gün
+                </span>
+                <span class="rounded-[6px] border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">
+                    Yavaş gönderim · {{ $deliveryStandardMaxDays + 1 }}–{{ $deliverySlowMaxDays }} gün
+                </span>
+                <span class="rounded-[6px] border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+                    Çok yavaş · {{ $deliverySlowMaxDays + 1 }}+ gün
+                </span>
+            </div>
+
+            <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-500">Hızlı teslimat üst sınırı</label>
+                    <div class="relative">
+                        <input type="number"
+                               min="0"
+                               max="363"
+                               wire:model.live="deliveryFastMaxDays"
+                               class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 pr-12 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">gün</span>
+                    </div>
+                    @error('deliveryFastMaxDays')
+                        <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                    @enderror
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-500">Standart teslimat üst sınırı</label>
+                    <div class="relative">
+                        <input type="number"
+                               min="1"
+                               max="364"
+                               wire:model.live="deliveryStandardMaxDays"
+                               class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 pr-12 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">gün</span>
+                    </div>
+                    @error('deliveryStandardMaxDays')
+                        <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                    @enderror
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-500">Yavaş gönderim üst sınırı</label>
+                    <div class="relative">
+                        <input type="number"
+                               min="2"
+                               max="365"
+                               wire:model.live="deliverySlowMaxDays"
+                               class="min-h-[44px] w-full rounded-[6px] border border-slate-200 bg-white px-4 py-3 pr-12 text-base text-slate-900 shadow-sm outline-none transition focus:border-slate-900 sm:text-sm">
+                        <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-400">gün</span>
+                    </div>
+                    @error('deliverySlowMaxDays')
+                        <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                    @enderror
+                </div>
+            </div>
+
+            <p class="mt-3 text-[11px] leading-4 text-slate-500">
+                Eşikler artan sırada olmalıdır. Son sınırın üzerindeki tüm kayıtlar otomatik olarak “Çok yavaş” sınıfına alınır.
+            </p>
         </div>
     </section>
 

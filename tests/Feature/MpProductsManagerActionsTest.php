@@ -93,7 +93,54 @@ class MpProductsManagerActionsTest extends TestCase
 
         $this->assertSame('5 gün', $summary['label']);
         $this->assertSame('5g', $summary['short_label']);
-        $this->assertSame('5 gün', $summary['title']);
+        $this->assertSame('Yavaş gönderim', $summary['status_label']);
+        $this->assertSame('orange', $summary['tone']);
+        $this->assertSame('Yavaş gönderim · 5 gün', $summary['title']);
+    }
+
+    public function test_multi_channel_delivery_summary_uses_longest_term_for_classification(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $fastListing = new ChannelListing(['shipping_days' => 1]);
+        $fastListing->setRelation('store', new MarketplaceStore([
+            'store_name' => 'Hızlı Mağaza',
+            'marketplace' => 'trendyol',
+        ]));
+
+        $slowListing = new ChannelListing(['shipping_days' => 5]);
+        $slowListing->setRelation('store', new MarketplaceStore([
+            'store_name' => 'Yavaş Mağaza',
+            'marketplace' => 'hepsiburada',
+        ]));
+
+        $product = new MpProduct;
+        $product->setRelation('channelListings', collect([$fastListing, $slowListing]));
+
+        $summary = (new MpProductsManager)->productDeliverySummary($product);
+
+        $this->assertSame('Yavaş gönderim', $summary['status_label']);
+        $this->assertSame('orange', $summary['tone']);
+        $this->assertSame('1 gün - 5 gün', $summary['days_label']);
+        $this->assertStringContainsString('Hızlı Mağaza (Trendyol): 1 gün', $summary['title']);
+        $this->assertStringContainsString('Yavaş Mağaza (Hepsiburada): 5 gün', $summary['title']);
+    }
+
+    public function test_product_table_renders_colored_delivery_status_with_days(): void
+    {
+        $user = User::factory()->create();
+        MpProduct::query()->create(array_merge($this->productPayload($user->id), [
+            'shipping_days' => 1,
+        ]));
+
+        $this->actingAs($user);
+
+        Livewire::test(MpProductsManager::class)
+            ->assertSee('Hızlı teslimat')
+            ->assertSee('(1 gün)')
+            ->assertSeeHtml('border-emerald-200')
+            ->assertSeeHtml('bg-emerald-50');
     }
 
     public function test_duplicate_product_creates_copy(): void

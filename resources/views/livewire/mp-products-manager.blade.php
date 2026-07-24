@@ -12,6 +12,20 @@
     $formatSignedMoney = fn ($value) => ((float) $value > 0 ? '+' : ((float) $value < 0 ? '-' : '')) . $formatMoney(abs((float) $value));
     $formatPercent = fn ($value) => $value !== null ? '%' . number_format((float) $value, 1, ',', '.') : '—';
     $formatMultiplier = fn ($value) => $value !== null ? '%' . number_format((((float) $value) - 1) * 100, 1, ',', '.') : '—';
+    $deliveryToneClasses = fn (?string $tone) => match ($tone) {
+        'emerald' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        'amber' => 'border-amber-200 bg-amber-50 text-amber-700',
+        'orange' => 'border-orange-200 bg-orange-50 text-orange-700',
+        'red' => 'border-red-200 bg-red-50 text-red-700',
+        default => 'border-slate-200 bg-slate-50/70 text-slate-700',
+    };
+    $deliveryToneTextClasses = fn (?string $tone) => match ($tone) {
+        'emerald' => 'text-emerald-700',
+        'amber' => 'text-amber-700',
+        'orange' => 'text-orange-700',
+        'red' => 'text-red-700',
+        default => 'text-slate-600',
+    };
     $marketplaceDomain = fn (?string $marketplace) => match (strtolower((string) $marketplace)) {
         'trendyol' => 'trendyol.com',
         'hepsiburada' => 'hepsiburada.com',
@@ -1467,7 +1481,10 @@
                                 <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 px-3 py-2">
                                     <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Kanal</p>
                                     <p class="mt-1 text-sm font-semibold text-slate-900">{{ $listingCount }} mağaza</p>
-                                    <p class="mt-0.5 truncate text-[11px] {{ $pendingIssueCount > 0 ? 'text-amber-600' : 'text-emerald-600' }}">{{ $activeListingCount }}/{{ $listingCount }} yayında{{ $pendingIssueCount > 0 ? ' · sorun var' : '' }} · {{ $deliverySummary['label'] }}</p>
+                                    <p class="mt-0.5 truncate text-[11px]" title="{{ $deliverySummary['title'] }}">
+                                        <span class="{{ $pendingIssueCount > 0 ? 'text-amber-600' : 'text-emerald-600' }}">{{ $activeListingCount }}/{{ $listingCount }} yayında{{ $pendingIssueCount > 0 ? ' · sorun var' : '' }}</span>
+                                        <span class="{{ $deliveryToneTextClasses($deliverySummary['tone'] ?? null) }}">· {{ $deliverySummary['status_label'] ?? $deliverySummary['label'] }}{{ filled($deliverySummary['days_label'] ?? null) ? ' ('.$deliverySummary['days_label'].')' : '' }}</span>
+                                    </p>
                                 </div>
                                 <div class="rounded-[6px] border border-slate-200 bg-slate-50/70 px-3 py-2">
                                     <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Stok</p>
@@ -2648,9 +2665,11 @@
 
                             @if(in_array('teslimat', $visibleColumns, true))
                                 <td class="px-1.5 py-3 align-top">
-                                    @if($deliverySummary['has_channel_terms'])
-                                        <div class="inline-flex h-8 max-w-full items-center justify-center rounded-[6px] border border-slate-200 bg-slate-50/70 px-2" title="{{ $deliverySummary['title'] }}">
-                                            <span class="truncate text-[12px] font-semibold text-slate-900">{{ $deliverySummary['short_label'] ?? $deliverySummary['label'] }}</span>
+                                    @if(filled($deliverySummary['days_label'] ?? null))
+                                        <div class="inline-flex min-h-9 w-full max-w-[92px] flex-col items-center justify-center rounded-[6px] border px-1.5 py-1 text-center {{ $deliveryToneClasses($deliverySummary['tone'] ?? null) }}"
+                                             title="{{ $deliverySummary['title'] }}">
+                                            <span class="whitespace-nowrap text-[10px] font-semibold leading-3">{{ $deliverySummary['status_label'] }}</span>
+                                            <span class="mt-0.5 whitespace-nowrap text-[9px] font-medium leading-3 opacity-80">({{ $deliverySummary['days_label'] }})</span>
                                         </div>
                                     @else
                                         <input type="text"

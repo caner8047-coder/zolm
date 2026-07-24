@@ -30,6 +30,72 @@ class MarketplaceSettingsTest extends TestCase
         $response->assertOk();
         $response->assertSee('Pazaryeri Ayarları');
         $response->assertSee('Bilgilendirici yardım ipuçlarını göster');
+        $response->assertSee('Termin görünümü');
+        $response->assertSeeHtml('data-testid="delivery-term-settings"');
+    }
+
+    public function test_marketplace_settings_can_persist_delivery_term_thresholds(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceSettings::class)
+            ->set('deliveryFastMaxDays', 2)
+            ->set('deliveryStandardMaxDays', 5)
+            ->set('deliverySlowMaxDays', 10)
+            ->call('saveDeliveryTermSettings')
+            ->assertHasNoErrors();
+
+        $this->assertSame([
+            'fast_max_days' => 2,
+            'standard_max_days' => 5,
+            'slow_max_days' => 10,
+        ], (new MpSettingsService($user->id))->getDeliveryTermThresholds());
+    }
+
+    public function test_marketplace_settings_rejects_overlapping_delivery_term_thresholds(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceSettings::class)
+            ->set('deliveryFastMaxDays', 3)
+            ->set('deliveryStandardMaxDays', 3)
+            ->set('deliverySlowMaxDays', 7)
+            ->call('saveDeliveryTermSettings')
+            ->assertHasErrors(['deliveryStandardMaxDays']);
+
+        $this->assertSame([
+            'fast_max_days' => 1,
+            'standard_max_days' => 3,
+            'slow_max_days' => 7,
+        ], (new MpSettingsService($user->id))->getDeliveryTermThresholds());
+    }
+
+    public function test_marketplace_settings_can_reset_delivery_term_thresholds(): void
+    {
+        $user = User::factory()->create();
+        (new MpSettingsService($user->id))->set('marketplace_products.delivery_term_thresholds', [
+            'fast_max_days' => 2,
+            'standard_max_days' => 5,
+            'slow_max_days' => 10,
+        ]);
+
+        $this->actingAs($user);
+
+        Livewire::test(MarketplaceSettings::class)
+            ->call('resetDeliveryTermSettings')
+            ->assertSet('deliveryFastMaxDays', 1)
+            ->assertSet('deliveryStandardMaxDays', 3)
+            ->assertSet('deliverySlowMaxDays', 7);
+
+        $this->assertSame([
+            'fast_max_days' => 1,
+            'standard_max_days' => 3,
+            'slow_max_days' => 7,
+        ], (new MpSettingsService($user->id))->getDeliveryTermThresholds());
     }
 
     public function test_marketplace_settings_can_persist_help_tip_visibility(): void

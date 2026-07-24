@@ -584,6 +584,31 @@ class MpSettingsService
         return max(0, $this->getInt('marketplace_products.low_stock_threshold', 0));
     }
 
+    /**
+     * @return array{fast_max_days: int, standard_max_days: int, slow_max_days: int}
+     */
+    public function getDeliveryTermThresholds(): array
+    {
+        $defaults = $this->getDefaults()['marketplace_products']['delivery_term_thresholds'];
+        $saved = $this->getArray('marketplace_products.delivery_term_thresholds', $defaults);
+
+        $fastMaxDays = min(363, max(0, (int) ($saved['fast_max_days'] ?? $defaults['fast_max_days'])));
+        $standardMaxDays = min(364, max(
+            $fastMaxDays + 1,
+            (int) ($saved['standard_max_days'] ?? $defaults['standard_max_days'])
+        ));
+        $slowMaxDays = min(365, max(
+            $standardMaxDays + 1,
+            (int) ($saved['slow_max_days'] ?? $defaults['slow_max_days'])
+        ));
+
+        return [
+            'fast_max_days' => $fastMaxDays,
+            'standard_max_days' => $standardMaxDays,
+            'slow_max_days' => $slowMaxDays,
+        ];
+    }
+
     public function isAiAnswerEnabled(): bool
     {
         return (bool) $this->get('questions.ai_answer_enabled', true);
@@ -728,6 +753,11 @@ class MpSettingsService
                 ],
                 'recipe_cost_sync_enabled' => true,
                 'low_stock_threshold' => 0,
+                'delivery_term_thresholds' => [
+                    'fast_max_days' => 1,
+                    'standard_max_days' => 3,
+                    'slow_max_days' => 7,
+                ],
             ],
             'print' => [
                 'label' => [
