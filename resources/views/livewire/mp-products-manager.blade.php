@@ -945,70 +945,123 @@
                             </div>
                         @endif
 
-                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div class="grid grid-cols-1 gap-3 md:hidden">
                             @if(count($selectedProducts) > 0)
-                                <div x-data="{ bulkOpen: false }" class="relative">
+                                <div x-data="{ bulkOpen: false, bulkTab: 'quick' }"
+                                     @keydown.escape.window="bulkOpen = false"
+                                     class="relative flex flex-col sm:flex-row">
                                     <button @click="bulkOpen = !bulkOpen"
                                             type="button"
+                                            :aria-expanded="bulkOpen"
+                                            aria-controls="mobile-bulk-actions"
                                             wire:loading.attr="disabled"
-                                            wire:target="bulkUpdateStatus,bulkRefreshCurrentStatus,bulkSetProfitCommissionOverride,bulkAdjustSalePrices,bulkSetTargetProfitMargin,bulkSetPackagingCost,bulkSetLogisticsInfo,bulkSetStockQuantity,bulkSetCriticalStockThreshold,bulkClearCriticalStockThreshold,bulkDelete"
-                                            class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-indigo-300 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60">
-                                        Toplu İşlem
-                                        <span class="rounded-[6px] bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">{{ count($selectedProducts) }}</span>
+                                            wire:target="bulkUpdateStatus,bulkRefreshCurrentStatus,bulkSetProfitCommissionOverride,bulkAdjustSalePrices,bulkSetTargetProfitMargin,bulkSetPackagingCost,bulkSetCogs,bulkSetLogisticsInfo,bulkSetStockQuantity,bulkSetCriticalStockThreshold,bulkClearCriticalStockThreshold,bulkDelete"
+                                            class="inline-flex min-h-[44px] w-full items-center justify-between gap-3 rounded-[6px] bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+                                        <span class="inline-flex items-center gap-2">
+                                            <svg class="h-4 w-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
+                                            </svg>
+                                            Seçili ürün işlemleri
+                                        </span>
+                                        <span class="rounded-[6px] bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white">{{ count($selectedProducts) }}</span>
                                     </button>
                                     <div x-show="bulkOpen"
                                          @click.outside="bulkOpen = false"
                                          x-transition
-                                         class="absolute left-0 right-0 top-full z-30 mt-2 max-h-[80vh] overflow-y-auto rounded-[8px] border border-slate-200 bg-white py-1 shadow-xl sm:left-auto sm:w-72">
-                                        <button wire:click="bulkUpdateStatus('active')"
+                                         x-cloak
+                                         id="mobile-bulk-actions"
+                                         class="fixed inset-x-3 bottom-3 z-50 max-h-[calc(100vh-1.5rem)] overflow-y-auto rounded-[10px] border border-slate-200 bg-white p-3 shadow-2xl">
+                                        <div class="sticky top-0 z-10 -mx-3 -mt-3 border-b border-slate-200 bg-white px-4 py-3">
+                                            <div class="flex items-start justify-between gap-3">
+                                                <div class="min-w-0">
+                                                    <p class="text-sm font-semibold text-slate-900">Toplu işlemler</p>
+                                                    <p class="mt-0.5 text-xs text-slate-500">{{ count($selectedProducts) }} ürün seçildi · İşlem tüm seçime uygulanır</p>
+                                                </div>
+                                                <button type="button"
+                                                        @click="bulkOpen = false"
+                                                        aria-label="Toplu işlemleri kapat"
+                                                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900">
+                                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            <div class="mt-3 grid grid-cols-2 gap-1 rounded-[8px] bg-slate-100 p-1">
+                                                @foreach([
+                                                    ['id' => 'quick', 'label' => 'Hızlı'],
+                                                    ['id' => 'price', 'label' => 'Fiyat & kâr'],
+                                                    ['id' => 'cost', 'label' => 'Maliyet'],
+                                                    ['id' => 'stock', 'label' => 'Stok'],
+                                                ] as $bulkTabOption)
+                                                    <button type="button"
+                                                            @click="bulkTab = '{{ $bulkTabOption['id'] }}'"
+                                                            :class="bulkTab === '{{ $bulkTabOption['id'] }}' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'"
+                                                            class="min-h-[40px] rounded-[6px] px-2 py-2 text-xs font-semibold transition">
+                                                        {{ $bulkTabOption['label'] }}
+                                                    </button>
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <button x-show="bulkTab === 'quick'"
+                                                wire:click="bulkUpdateStatus('active')"
                                                 wire:loading.attr="disabled"
                                                 wire:loading.class="cursor-wait opacity-60"
                                                 wire:target="bulkUpdateStatus"
                                                 @click="bulkOpen = false"
-                                                class="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed">
-                                            Satışa al
+                                                class="flex min-h-[64px] w-full flex-col items-start justify-center rounded-[8px] border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-left transition hover:bg-emerald-50 disabled:cursor-not-allowed">
+                                            <span class="text-sm font-semibold text-emerald-800">Satışa al</span>
+                                            <span class="mt-0.5 text-[11px] text-emerald-700">Seçili ürünleri aktifleştir</span>
                                         </button>
-                                        <button wire:click="bulkUpdateStatus('suspended')"
+                                        <button x-show="bulkTab === 'quick'"
+                                                wire:click="bulkUpdateStatus('suspended')"
                                                 wire:loading.attr="disabled"
                                                 wire:loading.class="cursor-wait opacity-60"
                                                 wire:target="bulkUpdateStatus"
                                                 @click="bulkOpen = false"
-                                                class="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed">
-                                            Beklet
+                                                class="flex min-h-[64px] w-full flex-col items-start justify-center rounded-[8px] border border-amber-200 bg-amber-50/70 px-3 py-2 text-left transition hover:bg-amber-50 disabled:cursor-not-allowed">
+                                            <span class="text-sm font-semibold text-amber-800">Beklet</span>
+                                            <span class="mt-0.5 text-[11px] text-amber-700">Satışı geçici olarak durdur</span>
                                         </button>
-                                        <div class="my-1 border-t border-slate-100"></div>
-                                        <button wire:click="bulkRefreshCurrentStatus"
+                                        <button x-show="bulkTab === 'quick'"
+                                                wire:click="bulkRefreshCurrentStatus"
                                                 wire:loading.attr="disabled"
                                                 wire:loading.class="cursor-wait opacity-60"
                                                 wire:target="bulkRefreshCurrentStatus"
                                                 @click="bulkOpen = false"
                                                 title="Seçili ürünlerin bağlı pazaryerlerinden güncel fiyat, stok ve kanal bilgisini al"
-                                                class="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed">
-                                            <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                class="flex min-h-[64px] w-full items-center gap-3 rounded-[8px] border border-slate-200 bg-slate-50/60 px-3 py-2 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed">
+                                            <svg class="h-5 w-5 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v6h6M20 20v-6h-6M5.5 15A7 7 0 0018 18.5M18.5 9A7 7 0 006 5.5" />
                                             </svg>
-                                            Güncel durum al
+                                            <span>
+                                                <span class="block text-sm font-semibold text-slate-800">Güncel durumu al</span>
+                                                <span class="mt-0.5 block text-[11px] text-slate-500">Fiyat, stok ve kanal bilgisini yenile</span>
+                                            </span>
                                         </button>
-                                        <div class="my-1 border-t border-slate-100"></div>
-                                        <button wire:click="bulkSetProfitCommissionOverride(true)"
+                                        <button x-show="bulkTab === 'quick'"
+                                                wire:click="bulkSetProfitCommissionOverride(true)"
                                                 wire:loading.attr="disabled"
                                                 wire:loading.class="cursor-wait opacity-60"
                                                 wire:target="bulkSetProfitCommissionOverride"
                                                 @click="bulkOpen = false"
-                                                class="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed">
-                                            Manuel komisyonu aç
+                                                class="flex min-h-[64px] w-full flex-col items-start justify-center rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed">
+                                            <span class="text-sm font-semibold text-slate-800">Manuel komisyonu aç</span>
+                                            <span class="mt-0.5 text-[11px] text-slate-500">Ürün bazlı oranı kullan</span>
                                         </button>
-                                        <button wire:click="bulkSetProfitCommissionOverride(false)"
+                                        <button x-show="bulkTab === 'quick'"
+                                                wire:click="bulkSetProfitCommissionOverride(false)"
                                                 wire:loading.attr="disabled"
                                                 wire:loading.class="cursor-wait opacity-60"
                                                 wire:target="bulkSetProfitCommissionOverride"
                                                 @click="bulkOpen = false"
-                                                class="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed">
-                                            Manuel komisyonu kapat
+                                                class="flex min-h-[64px] w-full flex-col items-start justify-center rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed">
+                                            <span class="text-sm font-semibold text-slate-800">Manuel komisyonu kapat</span>
+                                            <span class="mt-0.5 text-[11px] text-slate-500">Kanal oranlarına geri dön</span>
                                         </button>
-                                        <div class="my-1 border-t border-slate-100"></div>
-                                        <div class="px-3 py-2">
-                                            <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Fiyat güncelle</p>
+                                        <div x-show="bulkTab === 'price'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                            <p class="text-sm font-semibold text-slate-900">Satış fiyatı</p>
+                                            <p class="mt-0.5 text-[11px] text-slate-500">Mevcut fiyatı yüzdeyle artırın veya düşürün.</p>
                                             <select wire:model.defer="bulkPriceTarget"
                                                     class="mt-2 min-h-[38px] w-full rounded-[6px] border border-slate-200 bg-white px-3 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
                                                 <option value="all">Tümü (ana + kanal)</option>
@@ -1047,9 +1100,9 @@
                                                 <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
                                             @enderror
                                         </div>
-                                        <div class="my-1 border-t border-slate-100"></div>
-                                        <div class="px-3 py-2">
-                                            <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Kârlılık hedefle</p>
+                                        <div x-show="bulkTab === 'price'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                            <p class="text-sm font-semibold text-slate-900">Hedef kârlılık</p>
+                                            <p class="mt-0.5 text-[11px] text-slate-500">Fiyatı seçtiğiniz kâr hedefine göre hesaplayın.</p>
                                             <select wire:model.defer="bulkProfitTarget"
                                                     class="mt-2 min-h-[38px] w-full rounded-[6px] border border-slate-200 bg-white px-3 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
                                                 <option value="all">Tümü (ana + kanal)</option>
@@ -1081,9 +1134,9 @@
                                                 <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
                                             @enderror
                                         </div>
-                                        <div class="my-1 border-t border-slate-100"></div>
-                                        <div class="px-3 py-2">
-                                            <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Ambalaj fiyatı gir</p>
+                                        <div x-show="bulkTab === 'cost'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                            <p class="text-sm font-semibold text-slate-900">Ambalaj maliyeti</p>
+                                            <p class="mt-0.5 text-[11px] text-slate-500">Ürün başına sabit ambalaj tutarı.</p>
                                             <div class="mt-2 flex gap-2">
                                                 <input type="number"
                                                        min="0"
@@ -1104,9 +1157,32 @@
                                                 <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
                                             @enderror
                                         </div>
-                                        <div class="my-1 border-t border-slate-100"></div>
-                                        <div class="px-3 py-2">
-                                            <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Lojistik bilgisi gir</p>
+                                        <div x-show="bulkTab === 'cost'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                            <p class="text-sm font-semibold text-slate-900">Birim maliyet (COGS)</p>
+                                            <p class="mt-0.5 text-[11px] text-slate-500">Seçili ürünlerin temel ürün maliyeti.</p>
+                                            <div class="mt-2 flex gap-2">
+                                                <input type="number"
+                                                       min="0"
+                                                       step="0.01"
+                                                       wire:model.defer="bulkCogs"
+                                                       aria-label="Toplu birim maliyet"
+                                                       placeholder="₺"
+                                                       class="min-h-[44px] min-w-0 w-full rounded-[6px] border border-slate-200 bg-white px-3 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                                <button type="button"
+                                                        wire:click="bulkSetCogs"
+                                                        wire:loading.attr="disabled"
+                                                        wire:target="bulkSetCogs"
+                                                        class="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-[6px] bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
+                                                    Güncelle
+                                                </button>
+                                            </div>
+                                            @error('bulkCogs')
+                                                <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
+                                            @enderror
+                                        </div>
+                                        <div x-show="bulkTab === 'cost'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3 sm:col-span-2">
+                                            <p class="text-sm font-semibold text-slate-900">Lojistik bilgisi</p>
+                                            <p class="mt-0.5 text-[11px] text-slate-500">Tutar, desi ve parça alanlarından yalnızca değiştireceklerinizi doldurun.</p>
                                             <div class="mt-2 grid grid-cols-3 gap-2">
                                                 <input type="number"
                                                        min="0"
@@ -1145,9 +1221,9 @@
                                                 <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
                                             @enderror
                                         </div>
-                                        <div class="my-1 border-t border-slate-100"></div>
-                                        <div class="px-3 py-2">
-                                            <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Stok güncelle</p>
+                                        <div x-show="bulkTab === 'stock'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                            <p class="text-sm font-semibold text-slate-900">Stok adedi</p>
+                                            <p class="mt-0.5 text-[11px] text-slate-500">Ana ürünü ve kanal stoklarını birlikte veya ayrı güncelleyin.</p>
                                             <select wire:model.defer="bulkStockTarget"
                                                     class="mt-2 min-h-[38px] w-full rounded-[6px] border border-slate-200 bg-white px-3 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
                                                 <option value="all">Tümü (ana + kanal)</option>
@@ -1178,9 +1254,9 @@
                                                 <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
                                             @enderror
                                         </div>
-                                        <div class="my-1 border-t border-slate-100"></div>
-                                        <div class="px-3 py-2">
-                                            <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Kritik stok</p>
+                                        <div x-show="bulkTab === 'stock'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                            <p class="text-sm font-semibold text-slate-900">Kritik stok eşiği</p>
+                                            <p class="mt-0.5 text-[11px] text-slate-500">Düşük stok uyarısının başlayacağı adedi belirleyin.</p>
                                             <div class="mt-2 flex gap-2">
                                                 <input type="number"
                                                        min="0"
@@ -1208,16 +1284,19 @@
                                                 Eşiği kaldır
                                             </button>
                                         </div>
-                                        <div class="my-1 border-t border-slate-100"></div>
-                                        <button wire:click="bulkDelete"
-                                                wire:loading.attr="disabled"
-                                                wire:loading.class="cursor-wait opacity-60"
-                                                wire:target="bulkDelete"
-                                                wire:confirm="Seçili ürünleri silmek istediğinize emin misiniz?"
-                                                @click="bulkOpen = false"
-                                                class="flex w-full items-center gap-2 px-3 py-2 text-sm text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed">
-                                            Sil
-                                        </button>
+                                        </div>
+                                        <div class="mt-3 flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
+                                            <p class="text-[11px] text-slate-500">Geri alınamaz işlemler ayrıca onay ister.</p>
+                                            <button wire:click="bulkDelete"
+                                                    wire:loading.attr="disabled"
+                                                    wire:loading.class="cursor-wait opacity-60"
+                                                    wire:target="bulkDelete"
+                                                    wire:confirm="Seçili {{ count($selectedProducts) }} ürünü kalıcı olarak silmek istediğinize emin misiniz?"
+                                                    @click="bulkOpen = false"
+                                                    class="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-[6px] border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed">
+                                                Ürünleri sil
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             @endif
@@ -1558,68 +1637,122 @@
                 </div>
 
                 @if(count($selectedProducts) > 0)
-                    <div x-data="{ bulkOpen: false }" class="relative w-full sm:w-auto">
+                    <div x-data="{ bulkOpen: false, bulkTab: 'quick' }"
+                         @keydown.escape.window="bulkOpen = false"
+                         class="relative flex w-full flex-col sm:w-auto sm:flex-row">
                         <button @click="bulkOpen = !bulkOpen"
                                 type="button"
+                                :aria-expanded="bulkOpen"
+                                aria-controls="desktop-bulk-actions"
                                 wire:loading.attr="disabled"
-                                wire:target="bulkUpdateStatus,bulkRefreshCurrentStatus,bulkSetProfitCommissionOverride,bulkAdjustSalePrices,bulkSetTargetProfitMargin,bulkSetPackagingCost,bulkSetLogisticsInfo,bulkSetStockQuantity,bulkSetCriticalStockThreshold,bulkClearCriticalStockThreshold,bulkDelete"
-                                class="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[6px] border border-indigo-300 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:py-2">
-                            Toplu İşlem
-                            <span class="rounded-[6px] bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">{{ count($selectedProducts) }}</span>
+                                wire:target="bulkUpdateStatus,bulkRefreshCurrentStatus,bulkSetProfitCommissionOverride,bulkAdjustSalePrices,bulkSetTargetProfitMargin,bulkSetPackagingCost,bulkSetCogs,bulkSetLogisticsInfo,bulkSetStockQuantity,bulkSetCriticalStockThreshold,bulkClearCriticalStockThreshold,bulkDelete"
+                                class="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-[6px] bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+                            İşlemler
+                            <span class="rounded-[6px] bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white">{{ count($selectedProducts) }}</span>
+                            <svg class="h-3.5 w-3.5 text-slate-300 transition" :class="{ 'rotate-180': bulkOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6" />
+                            </svg>
                         </button>
                         <div x-show="bulkOpen"
                              @click.outside="bulkOpen = false"
                              x-transition
-                             class="absolute right-0 top-full z-30 mt-2 max-h-[80vh] w-72 overflow-y-auto rounded-[8px] border border-slate-200 bg-white py-1 shadow-xl">
-                            <button wire:click="bulkUpdateStatus('active')"
+                             x-cloak
+                             id="desktop-bulk-actions"
+                             class="absolute right-0 top-full z-40 mt-2 max-h-[min(76vh,680px)] w-[40rem] max-w-[calc(100vw-3rem)] overflow-y-auto rounded-[10px] border border-slate-200 bg-white p-4 shadow-xl">
+                            <div class="sticky top-0 z-10 -mx-4 -mt-4 border-b border-slate-200 bg-white px-4 py-3">
+                                <div class="flex items-start justify-between gap-4">
+                                    <div class="min-w-0">
+                                        <div class="flex items-center gap-2">
+                                            <p class="text-sm font-semibold text-slate-900">Toplu işlemler</p>
+                                            <span class="rounded-[6px] border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{{ count($selectedProducts) }} seçili</span>
+                                        </div>
+                                        <p class="mt-1 text-xs text-slate-500">Değişiklikler seçili ürünlerin tamamına uygulanır.</p>
+                                    </div>
+                                    <button type="button"
+                                            @click="bulkOpen = false"
+                                            aria-label="Toplu işlemleri kapat"
+                                            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900">
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <div class="mt-3 grid grid-cols-4 gap-1 rounded-[8px] bg-slate-100 p-1">
+                                    @foreach([
+                                        ['id' => 'quick', 'label' => 'Hızlı'],
+                                        ['id' => 'price', 'label' => 'Fiyat & kâr'],
+                                        ['id' => 'cost', 'label' => 'Maliyet & lojistik'],
+                                        ['id' => 'stock', 'label' => 'Stok'],
+                                    ] as $bulkTabOption)
+                                        <button type="button"
+                                                @click="bulkTab = '{{ $bulkTabOption['id'] }}'"
+                                                :class="bulkTab === '{{ $bulkTabOption['id'] }}' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'"
+                                                class="min-h-[36px] rounded-[6px] px-2 py-2 text-xs font-semibold transition">
+                                            {{ $bulkTabOption['label'] }}
+                                        </button>
+                                    @endforeach
+                                </div>
+                            </div>
+                            <div class="mt-4 grid grid-cols-2 gap-3">
+                            <button x-show="bulkTab === 'quick'"
+                                    wire:click="bulkUpdateStatus('active')"
                                     wire:loading.attr="disabled"
                                     wire:loading.class="cursor-wait opacity-60"
                                     wire:target="bulkUpdateStatus"
                                     @click="bulkOpen = false"
-                                    class="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed">
-                                Satışa al
+                                    class="flex min-h-[64px] w-full flex-col items-start justify-center rounded-[8px] border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-left transition hover:bg-emerald-50 disabled:cursor-not-allowed">
+                                <span class="text-sm font-semibold text-emerald-800">Satışa al</span>
+                                <span class="mt-0.5 text-[11px] text-emerald-700">Seçili ürünleri aktifleştir</span>
                             </button>
-                            <button wire:click="bulkUpdateStatus('suspended')"
+                            <button x-show="bulkTab === 'quick'"
+                                    wire:click="bulkUpdateStatus('suspended')"
                                     wire:loading.attr="disabled"
                                     wire:loading.class="cursor-wait opacity-60"
                                     wire:target="bulkUpdateStatus"
                                     @click="bulkOpen = false"
-                                    class="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed">
-                                Beklet
+                                    class="flex min-h-[64px] w-full flex-col items-start justify-center rounded-[8px] border border-amber-200 bg-amber-50/70 px-3 py-2 text-left transition hover:bg-amber-50 disabled:cursor-not-allowed">
+                                <span class="text-sm font-semibold text-amber-800">Beklet</span>
+                                <span class="mt-0.5 text-[11px] text-amber-700">Satışı geçici olarak durdur</span>
                             </button>
-                            <div class="my-1 border-t border-slate-100"></div>
-                            <button wire:click="bulkRefreshCurrentStatus"
+                            <button x-show="bulkTab === 'quick'"
+                                    wire:click="bulkRefreshCurrentStatus"
                                     wire:loading.attr="disabled"
                                     wire:loading.class="cursor-wait opacity-60"
                                     wire:target="bulkRefreshCurrentStatus"
                                     @click="bulkOpen = false"
                                     title="Seçili ürünlerin bağlı pazaryerlerinden güncel fiyat, stok ve kanal bilgisini al"
-                                    class="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed">
-                                <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    class="flex min-h-[64px] w-full items-center gap-3 rounded-[8px] border border-slate-200 bg-slate-50/60 px-3 py-2 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed">
+                                <svg class="h-5 w-5 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v6h6M20 20v-6h-6M5.5 15A7 7 0 0018 18.5M18.5 9A7 7 0 006 5.5" />
                                 </svg>
-                                Güncel durum al
+                                <span>
+                                    <span class="block text-sm font-semibold text-slate-800">Güncel durumu al</span>
+                                    <span class="mt-0.5 block text-[11px] text-slate-500">Fiyat, stok ve kanal bilgisini yenile</span>
+                                </span>
                             </button>
-                            <div class="my-1 border-t border-slate-100"></div>
-                            <button wire:click="bulkSetProfitCommissionOverride(true)"
+                            <button x-show="bulkTab === 'quick'"
+                                    wire:click="bulkSetProfitCommissionOverride(true)"
                                     wire:loading.attr="disabled"
                                     wire:loading.class="cursor-wait opacity-60"
                                     wire:target="bulkSetProfitCommissionOverride"
                                     @click="bulkOpen = false"
-                                    class="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed">
-                                Manuel komisyonu aç
+                                    class="flex min-h-[64px] w-full flex-col items-start justify-center rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed">
+                                <span class="text-sm font-semibold text-slate-800">Manuel komisyonu aç</span>
+                                <span class="mt-0.5 text-[11px] text-slate-500">Ürün bazlı oranı kullan</span>
                             </button>
-                            <button wire:click="bulkSetProfitCommissionOverride(false)"
+                            <button x-show="bulkTab === 'quick'"
+                                    wire:click="bulkSetProfitCommissionOverride(false)"
                                     wire:loading.attr="disabled"
                                     wire:loading.class="cursor-wait opacity-60"
                                     wire:target="bulkSetProfitCommissionOverride"
                                     @click="bulkOpen = false"
-                                    class="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed">
-                                Manuel komisyonu kapat
+                                    class="flex min-h-[64px] w-full flex-col items-start justify-center rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed">
+                                <span class="text-sm font-semibold text-slate-800">Manuel komisyonu kapat</span>
+                                <span class="mt-0.5 text-[11px] text-slate-500">Kanal oranlarına geri dön</span>
                             </button>
-                            <div class="my-1 border-t border-slate-100"></div>
-                            <div class="px-3 py-2">
-                                <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Fiyat güncelle</p>
+                            <div x-show="bulkTab === 'price'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                <p class="text-sm font-semibold text-slate-900">Satış fiyatı</p>
+                                <p class="mt-0.5 text-[11px] text-slate-500">Mevcut fiyatı yüzdeyle artırın veya düşürün.</p>
                                 <select wire:model.defer="bulkPriceTarget"
                                         class="mt-2 min-h-[38px] w-full rounded-[6px] border border-slate-200 bg-white px-3 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
                                     <option value="all">Tümü (ana + kanal)</option>
@@ -1658,9 +1791,9 @@
                                     <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
                                 @enderror
                             </div>
-                            <div class="my-1 border-t border-slate-100"></div>
-                            <div class="px-3 py-2">
-                                <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Kârlılık hedefle</p>
+                            <div x-show="bulkTab === 'price'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                <p class="text-sm font-semibold text-slate-900">Hedef kârlılık</p>
+                                <p class="mt-0.5 text-[11px] text-slate-500">Fiyatı seçtiğiniz kâr hedefine göre hesaplayın.</p>
                                 <select wire:model.defer="bulkProfitTarget"
                                         class="mt-2 min-h-[38px] w-full rounded-[6px] border border-slate-200 bg-white px-3 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
                                     <option value="all">Tümü (ana + kanal)</option>
@@ -1692,9 +1825,9 @@
                                     <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
                                 @enderror
                             </div>
-                            <div class="my-1 border-t border-slate-100"></div>
-                            <div class="px-3 py-2">
-                                <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Ambalaj fiyatı gir</p>
+                            <div x-show="bulkTab === 'cost'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                <p class="text-sm font-semibold text-slate-900">Ambalaj maliyeti</p>
+                                <p class="mt-0.5 text-[11px] text-slate-500">Ürün başına sabit ambalaj tutarı.</p>
                                 <div class="mt-2 flex gap-2">
                                     <input type="number"
                                            min="0"
@@ -1715,9 +1848,32 @@
                                     <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
                                 @enderror
                             </div>
-                            <div class="my-1 border-t border-slate-100"></div>
-                            <div class="px-3 py-2">
-                                <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Lojistik bilgisi gir</p>
+                            <div x-show="bulkTab === 'cost'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                <p class="text-sm font-semibold text-slate-900">Birim maliyet (COGS)</p>
+                                <p class="mt-0.5 text-[11px] text-slate-500">Seçili ürünlerin temel ürün maliyeti.</p>
+                                <div class="mt-2 flex gap-2">
+                                    <input type="number"
+                                           min="0"
+                                           step="0.01"
+                                           wire:model.defer="bulkCogs"
+                                           aria-label="Toplu birim maliyet"
+                                           placeholder="₺"
+                                           class="min-h-[44px] min-w-0 w-full rounded-[6px] border border-slate-200 bg-white px-3 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
+                                    <button type="button"
+                                            wire:click="bulkSetCogs"
+                                            wire:loading.attr="disabled"
+                                            wire:target="bulkSetCogs"
+                                            class="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-[6px] bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
+                                        Güncelle
+                                    </button>
+                                </div>
+                                @error('bulkCogs')
+                                    <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
+                                @enderror
+                            </div>
+                            <div x-show="bulkTab === 'cost'" class="col-span-2 rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                <p class="text-sm font-semibold text-slate-900">Lojistik bilgisi</p>
+                                <p class="mt-0.5 text-[11px] text-slate-500">Tutar, desi ve parça alanlarından yalnızca değiştireceklerinizi doldurun.</p>
                                 <div class="mt-2 grid grid-cols-3 gap-2">
                                     <input type="number"
                                            min="0"
@@ -1756,9 +1912,9 @@
                                     <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
                                 @enderror
                             </div>
-                            <div class="my-1 border-t border-slate-100"></div>
-                            <div class="px-3 py-2">
-                                <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Stok güncelle</p>
+                            <div x-show="bulkTab === 'stock'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                <p class="text-sm font-semibold text-slate-900">Stok adedi</p>
+                                <p class="mt-0.5 text-[11px] text-slate-500">Ana ürünü ve kanal stoklarını birlikte veya ayrı güncelleyin.</p>
                                 <select wire:model.defer="bulkStockTarget"
                                         class="mt-2 min-h-[38px] w-full rounded-[6px] border border-slate-200 bg-white px-3 text-base text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-200 sm:text-sm">
                                     <option value="all">Tümü (ana + kanal)</option>
@@ -1789,9 +1945,9 @@
                                     <p class="mt-1 text-[11px] text-rose-600">{{ $message }}</p>
                                 @enderror
                             </div>
-                            <div class="my-1 border-t border-slate-100"></div>
-                            <div class="px-3 py-2">
-                                <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Kritik stok</p>
+                            <div x-show="bulkTab === 'stock'" class="rounded-[8px] border border-slate-200 bg-slate-50/60 p-3">
+                                <p class="text-sm font-semibold text-slate-900">Kritik stok eşiği</p>
+                                <p class="mt-0.5 text-[11px] text-slate-500">Düşük stok uyarısının başlayacağı adedi belirleyin.</p>
                                 <div class="mt-2 flex gap-2">
                                     <input type="number"
                                            min="0"
@@ -1819,16 +1975,19 @@
                                     Eşiği kaldır
                                 </button>
                             </div>
-                            <div class="my-1 border-t border-slate-100"></div>
-                            <button wire:click="bulkDelete"
-                                    wire:loading.attr="disabled"
-                                    wire:loading.class="cursor-wait opacity-60"
-                                    wire:target="bulkDelete"
-                                    wire:confirm="Seçili ürünleri silmek istediğinize emin misiniz?"
-                                    @click="bulkOpen = false"
-                                    class="flex w-full items-center gap-2 px-3 py-2 text-sm text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed">
-                                Sil
-                            </button>
+                            </div>
+                            <div class="mt-4 flex items-center justify-between gap-4 border-t border-slate-200 pt-3">
+                                <p class="text-[11px] text-slate-500">Geri alınamaz işlemler ayrıca onay ister.</p>
+                                <button wire:click="bulkDelete"
+                                        wire:loading.attr="disabled"
+                                        wire:loading.class="cursor-wait opacity-60"
+                                        wire:target="bulkDelete"
+                                        wire:confirm="Seçili {{ count($selectedProducts) }} ürünü kalıcı olarak silmek istediğinize emin misiniz?"
+                                        @click="bulkOpen = false"
+                                        class="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-[6px] border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed">
+                                    Ürünleri sil
+                                </button>
+                            </div>
                         </div>
                     </div>
                 @endif
